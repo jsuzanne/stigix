@@ -64,9 +64,13 @@ The `config/applications-config.json` file is the unified configuration for all 
 
 ### Example Entry
 
-```
-# Google Mail - High priority (100), requests /mail/ endpoint
-mail.google.com|100|/mail/
+```json
+{
+  "domain": "mail.google.com",
+  "weight": 100,
+  "endpoint": "/mail/",
+  "category": "Google Workspace"
+}
 ```
 
 ---
@@ -81,10 +85,12 @@ Weights determine the **probability** of each application being selected for tra
 
 **Example:**
 
-```
-google.com|100|/
-microsoft.com|50|/
-zoom.us|50|/
+```json
+[
+  { "domain": "google.com", "weight": 100, "endpoint": "/" },
+  { "domain": "microsoft.com", "weight": 50, "endpoint": "/" },
+  { "domain": "zoom.us", "weight": 50, "endpoint": "/" }
+]
 ```
 
 **Total Weight:** 100 + 50 + 50 = 200
@@ -113,40 +119,26 @@ zoom.us|50|/
 
 Typical business environment with Microsoft 365 and Google Workspace.
 
-```
-# Microsoft 365 Suite - Primary productivity
-outlook.office365.com|100|/
-teams.microsoft.com|90|/api/mt/emea/beta/users/
-login.microsoftonline.com|85|/
-onedrive.live.com|75|/
-sharepoint.com|70|/
-
-# Google Workspace - Secondary
-mail.google.com|80|/mail/
-drive.google.com|70|/
-docs.google.com|60|/document/
-
-# Collaboration Tools
-zoom.us|65|/
-slack.com|60|/api/api.test
-webex.com|45|/
-
-# Business Apps
-salesforce.com|50|/
-hubspot.com|40|/
-jira.atlassian.com|45|/
-
-# Cloud Storage
-dropbox.com|35|/
-box.com|30|/
+```json
+{
+  "applications": [
+    { "domain": "outlook.office365.com", "weight": 80, "endpoint": "/", "category": "Microsoft 365 Suite" },
+    { "domain": "teams.microsoft.com", "weight": 75, "endpoint": "/api/mt/emea/beta/users/", "category": "Microsoft 365 Suite" },
+    { "domain": "login.microsoftonline.com", "weight": 70, "endpoint": "/", "category": "Microsoft 365 Suite" },
+    { "domain": "mail.google.com", "weight": 75, "endpoint": "/mail/", "category": "Google Workspace" },
+    { "domain": "drive.google.com", "weight": 60, "endpoint": "/", "category": "Google Workspace" },
+    { "domain": "zoom.us", "weight": 65, "endpoint": "/", "category": "Communication" },
+    { "domain": "slack.com", "weight": 60, "endpoint": "/api/api.test", "category": "Communication" },
+    { "domain": "salesforce.com", "weight": 50, "endpoint": "/", "category": "Business Apps" }
+  ]
+}
 ```
 
 **Traffic Distribution:**
-- Microsoft 365: ~35%
+- Microsoft 365: ~40%
 - Google Workspace: ~25%
-- Collaboration: ~20%
-- Business Apps: ~15%
-- Storage: ~5%
+- Communication: ~25%
+- Business Apps: ~10%
 
 ---
 
@@ -154,39 +146,24 @@ box.com|30|/
 
 Heavy social media, gaming, and streaming for SD-WAN demos.
 
-```
-# Social Media - Very Heavy
-facebook.com|150|/robots.txt
-instagram.com|145|/robots.txt
-tiktok.com|140|/
-twitter.com|135|/robots.txt
-snapchat.com|130|/
-linkedin.com|125|/
-
-# Gaming - Very Heavy
-twitch.tv|150|/
-steampowered.com|145|/
-epicgames.com|140|/
-fortnite.com|125|/
-roblox.com|135|/
-
-# Video Streaming
-youtube.com|130|/feed/trending
-netflix.com|90|/robots.txt
-spotify.com|85|/
-hulu.com|80|/
-
-# Business Apps - Light
-outlook.office365.com|60|/
-mail.google.com|55|/
-zoom.us|50|/
+```json
+{
+  "applications": [
+    { "domain": "facebook.com", "weight": 150, "endpoint": "/robots.txt", "category": "Social Media" },
+    { "domain": "tiktok.com", "weight": 140, "endpoint": "/", "category": "Social Media" },
+    { "domain": "twitch.tv", "weight": 150, "endpoint": "/", "category": "Gaming" },
+    { "domain": "steampowered.com", "weight": 145, "endpoint": "/", "category": "Gaming" },
+    { "domain": "youtube.com", "weight": 130, "endpoint": "/feed/trending", "category": "Streaming" },
+    { "domain": "netflix.com", "weight": 90, "endpoint": "/robots.txt", "category": "Streaming" },
+    { "domain": "spotify.com", "weight": 85, "endpoint": "/", "category": "Streaming" }
+  ]
+}
 ```
 
 **Traffic Distribution:**
 - Social Media: ~35%
-- Gaming: ~30%
-- Streaming: ~20%
-- Business: ~15%
+- Gaming: ~35%
+- Streaming: ~30%
 
 ---
 
@@ -218,20 +195,22 @@ zoom.us|50|/
 **Total Weight:** Sum of all weights
 
 **Example:**
-```
-google.com|100|/
-microsoft.com|80|/
-zoom.us|60|/
-slack.com|50|/
+```json
+[
+  { "domain": "google.com", "weight": 100, "endpoint": "/" },
+  { "domain": "microsoft.com", "weight": 80, "endpoint": "/" },
+  { "domain": "zoom.us", "weight": 60, "endpoint": "/" },
+  { "domain": "slack.com", "weight": 50, "endpoint": "/" }
+]
 ```
 
 **Total:** 100 + 80 + 60 + 50 = **290**
 
 **Distribution:**
-- Google: 100/290 = **34.5%** → ~345 requests per 1000
-- Microsoft: 80/290 = **27.6%** → ~276 requests per 1000
-- Zoom: 60/290 = **20.7%** → ~207 requests per 1000
-- Slack: 50/290 = **17.2%** → ~172 requests per 1000
+- Google: 100/290 = **34.5%**
+- Microsoft: 80/290 = **27.6%**
+- Zoom: 60/290 = **20.7%**
+- Slack: 50/290 = **17.2%**
 
 ### View Current Stats
 
@@ -247,11 +226,12 @@ cat logs/stats.json | jq '.requests_by_app'
 
 ### Multiple Endpoints per Domain
 
-```
-# Microsoft Graph API - Different endpoints
-graph.microsoft.com|60|/v1.0/me
-graph.microsoft.com|40|/v1.0/users
-graph.microsoft.com|30|/v1.0/groups
+```json
+[
+  { "domain": "graph.microsoft.com", "weight": 60, "endpoint": "/v1.0/me" },
+  { "domain": "graph.microsoft.com", "weight": 40, "endpoint": "/v1.0/users" },
+  { "domain": "graph.microsoft.com", "weight": 30, "endpoint": "/v1.0/groups" }
+]
 ```
 
 ### Protocol Selection
@@ -259,13 +239,15 @@ graph.microsoft.com|30|/v1.0/groups
 The traffic generator uses HTTPS by default. Endpoints are automatically prefixed with `https://` unless an explicit protocol is specified.
 
 **Default (HTTPS):**
-```
-google.com|100|/search  =>  https://google.com/search
+```json
+{ "domain": "google.com", "weight": 100, "endpoint": "/search" }
+// Result: https://google.com/search
 ```
 
-**Explicit HTTP (Internal Servers):**
-```
-http://192.168.203.100|50|/status  =>  http://192.168.203.100/status
+**Explicit Protocol (Internal Servers):**
+```json
+{ "domain": "http://192.168.203.100", "weight": 50, "endpoint": "/status" }
+// Result: http://192.168.203.100/status
 ```
 
 ### IP Address Identification
@@ -454,5 +436,5 @@ Add applications gradually and verify they're reachable before adding more.
 
 ---
 
-**Last Updated:** 2026-02-18  
-**Version:** 1.2.1-patch.65
+**Last Updated:** 2026-02-27  
+**Version:** 1.2.1-patch.109
