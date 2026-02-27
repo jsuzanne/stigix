@@ -8,6 +8,28 @@ The system consists of two main components:
 1.  **Voice Orchestrator**: Manages multiple simultaneous calls, handles timing between calls, and logs start/end events.
 2.  **RTP Engine (`rtp.py`)**: A Scapy-based engine that forges raw Ethernet/IP/UDP/RTP packets to simulate specific audio codecs.
 
+### 📡 Network Topology & Port Mapping
+
+The following diagram illustrates the flow of simulated voice (RTP) calls and how ports are utilized for SD-WAN flow tracking.
+
+```mermaid
+sequenceDiagram
+    participant S as Source (Voice Orchestrator)
+    participant RA as Source Router
+    participant RB as Destination Router
+    participant T as Target Site (Voice Echo)
+
+    Note over S: Source Port: 31000 + CALL-ID
+    S->>RA: RTP Stream (G.711 / G.729)
+    RA->>RB: SD-WAN Path / Tunnel
+    RB->>T: Destination Port: 6100
+    
+    Note over T: Silence Detection (5s)
+    T-->>RB: Echo RTP Response
+    RB-->>RA: Reverse Path
+    RA-->>S: Latency, Jitter & MOS Analysis
+```
+
 ## 🛠️ Configuration
 
 ### Server List (`voice-servers.txt`)
