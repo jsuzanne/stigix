@@ -153,7 +153,7 @@ URL filtering, DNS security, threat prevention validation, and test results hist
 ### 🎯 Performance Monitoring
 Connectivity performance, synthetic probes, and endpoint health tracking.
 
-<img src="docs/screenshots/04 - Performance/13.png" alt="Performance Monitoring" width="800">
+<img src="docs/screenshots/04 - Performance/13a.png" alt="Performance Monitoring" width="800">
 
 **[View all Performance screenshots →](docs/screenshots/04%20-%20Performance)** (5 images)
 
