@@ -871,22 +871,7 @@ export default function Voice(props: VoiceProps) {
                                 )}
 
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between px-1">
-                                        <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Raw Target Parameter</label>
-                                        <span className="text-[9px] text-text-muted font-bold uppercase tracking-widest opacity-40">JSONL-Compat</span>
-                                    </div>
-                                    <textarea
-                                        value={rawServers}
-                                        onChange={(e) => {
-                                            setIsDirty(true);
-                                            setRawServers(e.target.value);
-                                        }}
-                                        rows={6}
-                                        className="w-full bg-card border border-border text-text-primary rounded-2xl p-4 text-[11px] font-mono focus:ring-1 focus:ring-blue-500 outline-none shadow-inner resize-none scrollbar-thin scrollbar-thumb-border"
-                                        placeholder="host:port|codec|weight|duration_sec"
-                                    />
-
-                                    <div className="space-y-3 mt-6">
+                                    <div className="space-y-3">
                                         <div className="flex items-center justify-between px-1">
                                             <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Active Distribution ({parsedProbes.length})</label>
                                         </div>
