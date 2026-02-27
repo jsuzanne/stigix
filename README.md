@@ -1,12 +1,12 @@
-# SD-WAN Traffic Generator Web
+# Stigix
 
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/jsuzanne/sdwan-traffic-gen)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.2.1--patch.76-blue.svg)](https://github.com/jsuzanne/sdwan-traffic-generator-web/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.1--patch.76-blue.svg)](https://github.com/jsuzanne/stigix/releases)
 
 A modern web-based SD-WAN traffic generator with real-time monitoring, customizable traffic patterns, and comprehensive security testing. Perfect for testing SD-WAN deployments, network QoS policies, and application performance.
 
-![SD-WAN Traffic Generator](docs/hero-banner.png)
+![Stigix](docs/hero-banner.png)
 
 ---
 
@@ -260,17 +260,17 @@ docker ps
 
 **Full Dashboard (Default):**
 ```bash
-curl -sSL https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash
 ```
 
 **Target Site Only:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/install.sh | bash -s -- --target
+curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash -s -- --target
 ```
 
 **What to expect (macOS Example):**
 ```text
-🚀 SD-WAN Traffic Generator - Installation
+🚀 Stigix - Installation
 ==========================================
 ✅ Docker is running.
 🍎 Platform: macOS detected. (Host Mode has limitations on macOS)
@@ -317,7 +317,7 @@ This will:
 **Full Dashboard (Interactive):**
 ```bash
 # Download docker-compose.yml
-curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/docker-compose.host.yml
+curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.host.yml
 
 # Start services
 docker compose up -d
@@ -329,7 +329,7 @@ open http://localhost:8080
 ### Option 2b: Manual Install (Mac in docker bridge mode)
 ```bash
 # Download docker-compose.yml
-curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/docker-compose.example.yml
+curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.example.yml
 
 # Start services
 docker compose up -d
@@ -344,7 +344,7 @@ open http://localhost:8080
 mkdir -p sdwan-target && cd sdwan-target
 
 # Download target docker-compose.yml
-curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/docker-compose.target.yml
+curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.target.yml
 
 # Start services
 docker compose up -d
@@ -360,7 +360,7 @@ mkdir C:\sdwan-traffic-gen
 cd C:\sdwan-traffic-gen
 
 # Download docker-compose.yml (note: curl.exe, not curl)
-curl.exe -L https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/docker-compose.example.yml -o docker-compose.yml
+curl.exe -L https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.example.yml -o docker-compose.yml
 
 # Start services
 docker compose up -d
@@ -718,7 +718,7 @@ openssl rand -base64 32
 
 ### Traffic Generator vs Security Tests
 
-The SD-WAN Traffic Generator has **two separate systems**:
+The Stigix has **two separate systems**:
 
 | Feature | Traffic Generator | Security Tests |
 |---------|------------------|----------------|
@@ -748,7 +748,7 @@ Images are automatically built for **AMD64** and **ARM64** architectures.
 
 ## 📚 Documentation
 
-Comprehensive guides organized by your journey with the SD-WAN Traffic Generator.
+Comprehensive guides organized by your journey with the Stigix.
 
 ### 🚀 Getting Started
 - **[Installation Guide](INSTALLATION.md)** - Complete setup instructions with troubleshooting
@@ -804,8 +804,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ```bash
 # Clone repository
-git clone https://github.com/jsuzanne/sdwan-traffic-generator-web.git
-cd sdwan-traffic-generator-web
+git clone https://github.com/jsuzanne/stigix.git
+cd stigix
 
 # Install web dashboard dependencies
 cd web-dashboard
@@ -860,8 +860,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🆘 Support
 
 - **Documentation:** [INSTALLATION.md](INSTALLATION.md) | [Windows Guide](docs/WINDOWS_INSTALL.md)
-- **Issues:** [GitHub Issues](https://github.com/jsuzanne/sdwan-traffic-generator-web/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/jsuzanne/sdwan-traffic-generator-web/discussions)
+- **Issues:** [GitHub Issues](https://github.com/jsuzanne/stigix/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/jsuzanne/stigix/discussions)
 
 ---
 
