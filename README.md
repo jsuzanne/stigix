@@ -260,12 +260,12 @@ docker ps
 
 **Full Dashboard (Default):**
 ```bash
-curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/install.sh | bash
 ```
 
 **Target Site Only:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash -s -- --target
+curl -sSL https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/install.sh | bash -s -- --target
 ```
 
 **What to expect (macOS Example):**
@@ -317,7 +317,7 @@ This will:
 **Full Dashboard (Interactive):**
 ```bash
 # Download docker-compose.yml
-curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.host.yml
+curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/docker-compose.host.yml
 
 # Start services
 docker compose up -d
@@ -329,7 +329,7 @@ open http://localhost:8080
 ### Option 2b: Manual Install (Mac in docker bridge mode)
 ```bash
 # Download docker-compose.yml
-curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.example.yml
+curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/docker-compose.example.yml
 
 # Start services
 docker compose up -d
@@ -344,7 +344,7 @@ open http://localhost:8080
 mkdir -p sdwan-target && cd sdwan-target
 
 # Download target docker-compose.yml
-curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.target.yml
+curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/docker-compose.target.yml
 
 # Start services
 docker compose up -d
@@ -360,7 +360,7 @@ mkdir C:\sdwan-traffic-gen
 cd C:\sdwan-traffic-gen
 
 # Download docker-compose.yml (note: curl.exe, not curl)
-curl.exe -L https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.example.yml -o docker-compose.yml
+curl.exe -L https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/docker-compose.example.yml -o docker-compose.yml
 
 # Start services
 docker compose up -d

@@ -140,7 +140,7 @@ cd C:\sdwan-traffic-gen
 
 ```powershell
 # Note: Use curl.exe (not curl alias in PowerShell)
-curl.exe -L https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.example.yml -o docker-compose.yml
+curl.exe -L https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/docker-compose.example.yml -o docker-compose.yml
 ```
 
 ### 3.3 Verify Download

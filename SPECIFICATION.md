@@ -813,7 +813,7 @@ sdwan-traffic-generator/
 
 ```bash
 # Download install script
-curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install_latest.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/install_latest.sh | bash
 
 # Or manual
 git clone https://github.com/jsuzanne/stigix.git
