@@ -260,12 +260,12 @@ docker ps
 
 **Full Dashboard (Default):**
 ```bash
-curl -sSL https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash
 ```
 
 **Target Site Only:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/install.sh | bash -s -- --target
+curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash -s -- --target
 ```
 
 **What to expect (macOS Example):**
