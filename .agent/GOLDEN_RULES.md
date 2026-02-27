@@ -241,4 +241,4 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 ---
 
 **Last Updated:** 2026-01-30  
-**Workspace:** sdwan-traffic-generator
+**Workspace:** stigix

@@ -551,9 +551,9 @@ const generateConfig = async (prompt: string) => {
 
 ### Need Help?
 
-📖 **Full documentation:** [GitHub README](https://github.com/jsuzanne/sdwan-traffic-generator)  
-💬 **Discussions:** [GitHub Discussions](https://github.com/jsuzanne/sdwan-traffic-generator/discussions)  
-🐛 **Issues:** [GitHub Issues](https://github.com/jsuzanne/sdwan-traffic-generator/issues)
+📖 **Full documentation:** [GitHub README](https://github.com/jsuzanne/stigix)  
+💬 **Discussions:** [GitHub Discussions](https://github.com/jsuzanne/stigix/discussions)  
+🐛 **Issues:** [GitHub Issues](https://github.com/jsuzanne/stigix/issues)
 
 ### Contribute Your Prompts
 

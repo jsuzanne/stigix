@@ -43,7 +43,7 @@ applications.txt
 interfaces.txt
 user_agents.txt
 If missing, reinstall
-cd sdwan-traffic-generator
+cd stigix
 sudo ./install.sh
 
 text
@@ -70,7 +70,7 @@ If errors, check for:
 - Unclosed brackets
 - Invalid bash syntax
 Reinstall if corrupted
-cd sdwan-traffic-generator
+cd stigix
 sudo cp traffic-generator.sh /opt/sdwan-traffic-gen/
 sudo systemctl restart sdwan-traffic-gen
 
@@ -628,8 +628,8 @@ text
 
 ### Where to Get Help
 
-- **GitHub Issues**: https://github.com/jsuzanne/sdwan-traffic-generator/issues
-- **Discussions**: https://github.com/jsuzanne/sdwan-traffic-generator/discussions
+- **GitHub Issues**: https://github.com/jsuzanne/stigix/issues
+- **Discussions**: https://github.com/jsuzanne/stigix/discussions
 
 When opening an issue, include:
 1. Your diagnostic report (sdwan-diag.txt)

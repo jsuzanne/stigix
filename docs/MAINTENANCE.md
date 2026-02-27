@@ -23,7 +23,7 @@ The easiest way to update is directly from the Dashboard.
 If you used the one-liner installation, you can run it again to update.
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash
 ```
 
 The script will detect your existing installation and offer an **Upgrade** option:

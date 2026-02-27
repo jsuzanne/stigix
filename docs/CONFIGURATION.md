@@ -1,10 +1,10 @@
 bash
 # Créer le répertoire docs
-mkdir -p ~/sdwan-traffic-generator/docs
+mkdir -p ~/stigix/docs
 Créez le fichier :
 
 bash
-nano ~/sdwan-traffic-generator/docs/CONFIGURATION.md
+nano ~/stigix/docs/CONFIGURATION.md
 Collez ce contenu :
 
 text

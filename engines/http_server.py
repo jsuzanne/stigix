@@ -148,7 +148,7 @@ def index():
                 <li><a href="/ok" target="_blank">/ok (Health Check)</a></li>
                 <li><a href="/slow" target="_blank">/slow (Variable Latency)</a></li>
                 <li><a href="/eicar.com.txt">/eicar.com.txt (Security Test)</a></li>
-                <li><a href="https://github.com/jsuzanne/sdwan-traffic-generator/blob/main/docs/TARGET_CAPABILITIES.md" target="_blank">📚 Help / Documentation</a></li>
+                <li><a href="https://github.com/jsuzanne/stigix/blob/main/docs/TARGET_CAPABILITIES.md" target="_blank">📚 Help / Documentation</a></li>
             </ul>
         </div>
 

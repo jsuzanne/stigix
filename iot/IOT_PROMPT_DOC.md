@@ -520,7 +520,7 @@ examples/healthcare-hospital.json	Healthcare	80	Medical devices, building system
 examples/smart-building.json	Commercial	100	Office IoT, HVAC, security
 examples/manufacturing-factory.json	Industrial	90	PLCs, robots, safety systems
 examples/retail-store.json	Retail	60	PoS, signage, cameras
-Download from: https://github.com/[YOUR_ORG]/sdwan-traffic-generator/tree/main/examples
+Download from: https://github.com/[YOUR_ORG]/stigix/tree/main/examples
 
 Advanced: Custom Device Catalogs
 Create Industry Templates

@@ -21,8 +21,8 @@ The project uses three types of Docker tags to ensure stability:
 
 #### Step 1: Clone the repository
 ```bash
-git clone https://github.com/jsuzanne/sdwan-traffic-generator.git
-cd sdwan-traffic-generator
+git clone https://github.com/jsuzanne/stigix.git
+cd stigix
 ```
 
 #### Step 2: Copy example configuration
@@ -68,8 +68,8 @@ Click "Start Traffic" in the dashboard → Traffic generation begins immediately
 
 #### Step 1: Clone the repository
 ```bash
-git clone https://github.com/jsuzanne/sdwan-traffic-generator.git
-cd sdwan-traffic-generator
+git clone https://github.com/jsuzanne/stigix.git
+cd stigix
 ```
 
 #### Step 2: [Optional] Modify the code
@@ -189,7 +189,7 @@ Dashboard → Settings → Change Password
 ## 📂 File Structure After Installation
 
 ```
-sdwan-traffic-generator/
+stigix/
 ├── docker-compose.yml          # Your config (copied from .example.yml)
 ├── config/                     # ✅ Auto-generated on first start
 │   ├── applications.txt        # 67 popular SaaS applications
@@ -365,8 +365,8 @@ environment:
 
 ## 📚 Complete Documentation
 
-- **GitHub:** https://github.com/jsuzanne/sdwan-traffic-generator
-- **README:** https://github.com/jsuzanne/sdwan-traffic-generator#readme
+- **GitHub:** https://github.com/jsuzanne/stigix
+- **README:** https://github.com/jsuzanne/stigix#readme
 
 ---
 

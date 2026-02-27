@@ -36,8 +36,8 @@ Unlike the LLM-based generation approach, this script provides:
 
 ```bash
 # Clone the repository
-git clone https://github.com/jsuzanne/sdwan-traffic-generator.git
-cd sdwan-traffic-generator/iot
+git clone https://github.com/jsuzanne/stigix.git
+cd stigix/iot
 
 # Make executable
 chmod +x generate_iot_devices.py
@@ -509,7 +509,7 @@ The script uses correct MAC address OUI prefixes per vendor:
 python generate_iot_devices.py --preset medium -o iot-devices.json
 
 # 2. Copy to traffic generator directory
-cp iot-devices.json /path/to/sdwan-traffic-generator/
+cp iot-devices.json /path/to/stigix/
 
 # 3. Run the emulator
 sudo ./iot_emulator.py -i eth0 -c iot-devices.json
@@ -665,9 +665,9 @@ MIT License - See main repository LICENSE file
 
 ## Support
 
-📖 **Main Documentation:** [GitHub README](https://github.com/jsuzanne/sdwan-traffic-generator)  
-💬 **Discussions:** [GitHub Discussions](https://github.com/jsuzanne/sdwan-traffic-generator/discussions)  
-🐛 **Issues:** [GitHub Issues](https://github.com/jsuzanne/sdwan-traffic-generator/issues)
+📖 **Main Documentation:** [GitHub README](https://github.com/jsuzanne/stigix)  
+💬 **Discussions:** [GitHub Discussions](https://github.com/jsuzanne/stigix/discussions)  
+🐛 **Issues:** [GitHub Issues](https://github.com/jsuzanne/stigix/issues)
 
 ---
 

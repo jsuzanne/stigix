@@ -23,7 +23,7 @@ cd sdwan-traffic-gen
 **Step 2: Download docker-compose.yml**
 
 ```bash
-curl -O https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.yml
 ```
 
 Or create it manually:

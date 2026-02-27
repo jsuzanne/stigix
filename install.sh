@@ -35,7 +35,7 @@ else
 fi
 
 # 2. Configuration & Mode Selection
-REPO_URL="https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main"
+REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/main"
 
 # Handle command line arguments
 while [[ "$#" -gt 0 ]]; do

@@ -71,7 +71,7 @@ The MCP Server provides a **natural language interface** to orchestrate multiple
 ### 1. Build the MCP Server
 
 ```bash
-cd /path/to/sdwan-traffic-generator
+cd /path/to/stigix
 docker compose build mcp-server
 ```
 

@@ -36,8 +36,8 @@ Unlike the LLM-based generation approach, this script provides:
 
 ```bash
 # Clone the repository
-git clone https://github.com/[YOUR_ORG]/sdwan-traffic-generator.git
-cd sdwan-traffic-generator/scripts
+git clone https://github.com/[YOUR_ORG]/stigix.git
+cd stigix/scripts
 
 # Make executable
 chmod +x generate_iot_devices.py
@@ -479,7 +479,7 @@ bash
 python generate_iot_devices.py --preset medium -o iot-devices.json
 
 # 2. Copy to traffic generator directory
-cp iot-devices.json /path/to/sdwan-traffic-generator/
+cp iot-devices.json /path/to/stigix/
 
 # 3. Run the emulator
 sudo ./iot_emulator.py -i eth0 -c iot-devices.json

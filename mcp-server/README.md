@@ -38,7 +38,7 @@ Claude Desktop (Natural Language)
 ### 1. Build the MCP Server
 
 ```bash
-cd sdwan-traffic-generator
+cd stigix
 docker compose build mcp-server
 ```
 
