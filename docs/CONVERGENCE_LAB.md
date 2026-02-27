@@ -10,14 +10,36 @@ The tool uses a **High-Frequency UDP Probe** strategy to identify sub-second net
 
 ### 1. High-Frequency Probing
 - **Default Rate**: 50 PPS (Packets Per Second), meaning a packet is sent every **20ms**.
-- **Default Port**: **UDP 6101** (Separated from Voice traffic on 6100).
+- **Default Port**: **UDP 6200** (Target Site Echo Service).
 - **Source Port**: Deterministic based on Test ID (Range **30000+**).
     - `CONV-001` → Source Port `30001`
     - `CONV-042` → Source Port `30042`
 - **Payload**: Each packet contains a unique **Sequence Number** and a high-resolution **Timestamp**.
 - **Echo Mechanism**: The destination `echo_server.py` receives the packet and echoes it back, appending its own reception counter to allow for directional loss analysis.
 
-### 2. Sequence Gap Analysis
+### 2. Network Topology & Port Mapping
+
+The following diagram illustrates the flow of high-frequency UDP probes and how source/destination ports are utilized for tracking.
+
+```mermaid
+sequenceDiagram
+    participant S as Source (Stigix Generator)
+    participant RA as Source Router
+    participant RB as Destination Router
+    participant T as Target (Echo / Target Site)
+
+    Note over S: Source Port: 30000 + Test Number
+    S->>RA: High-Freq UDP Probe (20ms)
+    RA->>RB: SD-WAN Path / Tunnel
+    RB->>T: Destination Port: 6200
+    
+    Note over T: Port 6200 Ready
+    T-->>RB: Echo Response (+Counter)
+    RB-->>RA: Reverse Path
+    RA-->>S: Sequence & Loss Analysis
+```
+
+### 3. Sequence Gap Analysis
 The core logic resides in the `convergence_orchestrator.py`. It detects "Blackouts" by monitoring gaps in the received sequence numbers:
 - When a packet arrives, the orchestrator calculates the difference between the current sequence and the last received sequence.
 - **Formula**: `Gap = (Current_Seq - Last_Seq - 1) * (1000 / PPS)`
