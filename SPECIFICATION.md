@@ -813,11 +813,11 @@ sdwan-traffic-generator/
 
 ```bash
 # Download install script
-curl -fsSL https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main/install_latest.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install_latest.sh | bash
 
 # Or manual
-git clone https://github.com/jsuzanne/sdwan-traffic-generator-web.git
-cd sdwan-traffic-generator-web
+git clone https://github.com/jsuzanne/stigix.git
+cd stigix
 cp .env.example .env   # Fill in Prisma credentials
 docker compose up -d
 open http://localhost:8080
@@ -897,7 +897,7 @@ docker compose down
 
 ## Resources
 
-- **GitHub**: [jsuzanne/sdwan-traffic-generator-web](https://github.com/jsuzanne/sdwan-traffic-generator-web)
+- **GitHub**: [jsuzanne/stigix](https://github.com/jsuzanne/stigix)
 - **Docker Hub**: [jsuzanne/sdwan-web-ui](https://hub.docker.com/r/jsuzanne/sdwan-web-ui)
 - **Prisma SASE API**: [pan.dev/sase](https://pan.dev/sase/)
 - **XFR Engine**: [github.com/lance0/xfr](https://github.com/lance0/xfr)

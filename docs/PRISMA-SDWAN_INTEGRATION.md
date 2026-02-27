@@ -318,7 +318,7 @@ services:
 
 ## 📚 Resources
 
-- [GitHub Issues](https://github.com/jsuzanne/sdwan-traffic-generator-web/issues)
+- [GitHub Issues](https://github.com/jsuzanne/stigix/issues)
 - [Prisma SASE API Docs](https://pan.dev/sase/)
 - [prisma-sase Python SDK](https://pypi.org/project/prisma-sase/)
 - [Live Community SD-WAN Forum](https://live.paloaltonetworks.com/t5/prisma-sd-wan/ct-p/Prisma_SD-WAN)

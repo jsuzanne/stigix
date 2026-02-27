@@ -281,7 +281,7 @@ export default function Iot({ token }: IotProps) {
                             </button>
                             <span className="text-text-muted/30">|</span>
                             <a
-                                href="https://github.com/jsuzanne/sdwan-traffic-generator-web/blob/main/docs/IOT_DEVICE_GENERATOR.md"
+                                href="https://github.com/jsuzanne/stigix/blob/main/docs/IOT_DEVICE_GENERATOR.md"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-blue-400 hover:text-blue-300 text-xs font-bold transition-colors flex items-center gap-1"
@@ -291,7 +291,7 @@ export default function Iot({ token }: IotProps) {
                             </a>
                             <span className="text-text-muted/30">|</span>
                             <a
-                                href="https://github.com/jsuzanne/sdwan-traffic-generator-web/blob/main/docs/IOT_LLM_GENERATION.md"
+                                href="https://github.com/jsuzanne/stigix/blob/main/docs/IOT_LLM_GENERATION.md"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-blue-400 hover:text-blue-300 text-xs font-bold transition-colors flex items-center gap-1"

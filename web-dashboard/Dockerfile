@@ -80,7 +80,7 @@ RUN pip3 install --no-cache-dir prisma-sase -r iot/requirements.txt --break-syst
 # Labels for Docker Hub
 LABEL org.opencontainers.image.title="SD-WAN Traffic Generator - Web UI"
 LABEL org.opencontainers.image.description="Modern web dashboard for SD-WAN traffic generation and monitoring"
-LABEL org.opencontainers.image.source="https://github.com/jsuzanne/sdwan-traffic-generator-web"
+LABEL org.opencontainers.image.source="https://github.com/jsuzanne/stigix"
 LABEL org.opencontainers.image.vendor="jsuzanne"
 
 ENV NODE_ENV=production

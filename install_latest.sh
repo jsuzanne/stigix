@@ -1,11 +1,11 @@
 #!/bin/bash
-# Quick install script for SD-WAN Traffic Generator (LATEST/TEST MODE)
+# Quick install script for Stigix (LATEST/TEST MODE)
 # Version: 1.1.2-patch.33.40-RC
 
 set -e
 
 
-echo "🚀 SD-WAN Traffic Generator - Installation"
+echo "🚀 Stigix - Installation"
 echo "=========================================="
 
 # 1. Prerequisite Check: Docker
@@ -35,7 +35,7 @@ else
 fi
 
 # 2. Configuration & Mode Selection
-REPO_URL="https://raw.githubusercontent.com/jsuzanne/sdwan-traffic-generator-web/main"
+REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/main"
 
 # Handle command line arguments
 while [[ "$#" -gt 0 ]]; do

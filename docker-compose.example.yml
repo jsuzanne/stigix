@@ -355,6 +355,6 @@ networks:
 # Issue: "Configuration file not found" errors
 # Solution: This is fixed in v1.1.0-patch.7! Update your docker-compose.yml
 #
-# For more help: https://github.com/jsuzanne/sdwan-traffic-generator-web
+# For more help: https://github.com/jsuzanne/stigix
 #
 # ============================================================================

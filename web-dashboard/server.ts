@@ -5452,7 +5452,7 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
             let retries = 2;
             while (retries > 0) {
                 try {
-                    const res = await execPromise('curl -sL --connect-timeout 10 https://api.github.com/repos/jsuzanne/sdwan-traffic-generator-web/tags');
+                    const res = await execPromise('curl -sL --connect-timeout 10 https://api.github.com/repos/jsuzanne/stigix/tags');
                     stdout = res.stdout;
                     if (stdout.trim()) break;
                 } catch (e) {
