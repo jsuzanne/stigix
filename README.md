@@ -341,7 +341,7 @@ open http://localhost:8080
 **Target Site Only:**
 ```bash
 # Create directory
-mkdir -p sdwan-target && cd sdwan-target
+mkdir -p stigix-target && cd stigix-target
 
 # Download target docker-compose.yml
 curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.target.yml
@@ -356,8 +356,8 @@ docker compose ps
 **Windows (PowerShell):**
 ```powershell
 # Create directory
-mkdir C:\sdwan-traffic-gen
-cd C:\sdwan-traffic-gen
+mkdir C:\stigix
+cd C:\stigix
 
 # Download docker-compose.yml (note: curl.exe, not curl)
 curl.exe -L https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.example.yml -o docker-compose.yml
@@ -379,7 +379,7 @@ docker compose up -d
 
 ```bash
 # go to directory
-cd sdwan-traffic-gen/
+cd stigix/
 
 # Check containers status
 docker compose ps

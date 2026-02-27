@@ -665,7 +665,7 @@ services:
     network_mode: host
     restart: unless-stopped
     volumes:
-      - ./config:/opt/sdwan-traffic-gen/config
+      - ./config:/opt/stigix/config
       - traffic_logs:/var/log/sdwan-traffic-gen
     environment:
       - SLEEP_BETWEEN_REQUESTS=1

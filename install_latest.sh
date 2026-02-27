@@ -54,7 +54,7 @@ fi
 
 if [ "$INSTALL_MODE" == "2" ]; then
     echo "🎯 Mode: Target Site (Echo Server)"
-    INSTALL_DIR="sdwan-target"
+    INSTALL_DIR="stigix-target"
     
     # Platform-specific for target mode too
     if [[ "$OS_TYPE" == "Linux" ]] && ! grep -qi microsoft /proc/version 2>/dev/null; then
