@@ -36,7 +36,7 @@ A modern web-based SD-WAN traffic generator with real-time monitoring, customiza
 
 ---
 
-## Why I built this tool
+## Why I built Stigix tool ?
 
 I built this tool after years of writing one-off scripts for SD-WAN and security POCs, and never finding a single lab platform that really matched what I see in the field.
 With a long background in networking and security, I wanted something that could generate realistic mixes of web/SaaS, voice and IoT traffic, tie in security use cases, and still be simple enough for engineers, partners and customers to run on their own.
