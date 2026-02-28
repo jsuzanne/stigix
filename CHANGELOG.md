@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [v1.2.1-patch.121] - 2026-02-28
+### Added
+- **UI**: Added a comprehensive System Information tab to Settings displaying active Host/Bridge execution context, Memory, Network I/O, and Disk capacity metrics. 🖥️
+### Fixed
+- **Backend API**: Abstracted Network I/O reads to dynamically find the correct host/container interface instead of hardcoding `eth0`, fixing compatibility for Ubuntu Host deployments. 🛠️
+
+## [v1.2.1-patch.120] - 2026-02-28
+### Added
+- **IoT Simulation**: Interactive visual badges ("Pills") on device cards dynamically indicating active attack modes (C2 Beacon, DNS Flood, etc). 💀
+### Changed
+- **Settings UI**: Re-labelled "Initialize" button to "Add Probe" on the Connectivity configuration page for clarity. ✨
+
+## [v1.2.1-patch.112] - 2026-02-28
+### Added
+- **Branding**: Comprehensive rebrand across the dashboard migrating all headers, assets, and typography from the generic "SD-WAN Traffic Generator" to "Stigix - Engine for SASE Validation". 🚀
+- **Branding**: Implemented a pixel-perfect font-based SVG wordmark with customized "glow" and tracking for the primary header. ✨
+### Changed
+- **UI Softening**: Aggressively removed fully capitalized labels across all modals, configuration sheets, and sidebar navigation to adopt a premium, softened Title Case design aesthetic. 🎨
+- **Theme**: Finalized the Traffic Generation and Maintenance System interface modules to seamlessly align with the dark glassmorphism standards.
+
+## [v1.2.1-patch.111] - 2026-02-21
+### Added
+- **Documentation**: Significant rewrites to `SPECIFICATION.md`, `XFR_TESTING.md`, and `TARGET_CAPABILITIES.md` outlining the latest API and Prisma metrics capabilities. 📚
+### Fixed
+- **Convergence Engine**: Eliminated false blackouts for 0% packet loss metrics. Implemented intelligent rate-aware gap thresholds. 📉
+
+## [v1.2.1-patch.109] - 2026-02-21
+### Added
+- **XFR Target**: Re-established native macOS (Colima/Orbstack) documentation and Docker instructions. 🍎
+- **Speedtest**: Automatic pre-flight ICMP connectivity check preventing frozen tests before initiating the XFR bandwidth engine. 🩺
 ## [v1.2.1-patch.103] - 2026-02-20
 ### Added
 - **Convergence Lab**: Automatic async enrichment of convergence test results with SD-WAN egress path data using Prisma Flow Browser (`getflow.py`). 🛣️🔍
