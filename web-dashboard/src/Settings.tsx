@@ -92,26 +92,17 @@ export default function Settings({ token }: { token: string }) {
     // Data Fetching
     useEffect(() => {
         setLoading(true);
+        // Core Config data - Must load for initial page state
         Promise.all([
-            // Config data
             fetch('/api/config/apps', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
             fetch('/api/config/interfaces', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
             fetch('/api/connectivity/custom', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            // System data
-            fetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            fetch('/api/admin/maintenance/status', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
-        ]).then(([catsData, ifaceData, probesData, maintenanceData, upgradeData]) => {
-            // Config initialization
+        ]).then(([catsData, ifaceData, probesData]) => {
             setCategories(catsData.map((c: any) => ({ ...c, expanded: true })));
             setInterfaces(ifaceData);
             setCustomProbes(probesData || []);
 
-            // Maintenance initialization
-            setStatus(maintenanceData);
-            setUpgradeStatus(upgradeData);
-            if (upgradeData.inProgress) setUpgrading(true);
-
-            // Fetch ALL detected interfaces
+            // Fetch ALL detected interfaces (secondary)
             fetch('/api/config/interfaces?all=true', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(r => r.json())
                 .then(setAvailableInterfaces)
@@ -119,6 +110,23 @@ export default function Settings({ token }: { token: string }) {
 
             setLoading(false);
         }).catch(() => setLoading(false));
+
+        // System/Maintenance data - Decoupled to avoid blocking initial load
+        fetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(maintenanceData => {
+                setStatus(maintenanceData);
+            })
+            .catch(() => { });
+
+        fetch('/api/admin/maintenance/status', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(upgradeData => {
+                setUpgradeStatus(upgradeData);
+                if (upgradeData.inProgress) setUpgrading(true);
+            })
+            .catch(() => { });
+
     }, [token]);
 
     // Polling for upgrade status
