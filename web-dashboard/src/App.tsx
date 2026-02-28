@@ -614,39 +614,34 @@ export default function App() {
       <Toaster position="top-right" />
       <header className="mb-8 flex justify-between items-center">
         <div>
-          <div className="flex items-center gap-4">
-            <svg width="140" height="48" viewBox="0 0 140 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
-              {/* Stigix Text - Balanced tracking and refined letterforms */}
-              <g fill="white" className="font-black">
-                {/* S (Capital) - Baseline at X=0 */}
-                <path d="M9 34c-4.5 0-8.5-1.5-8.5-6h4.5c0 2 2 3 4 3s3.5-1 3.5-2.5c0-4.5-12-1.5-12-10c0-4.5 4-6.5 8.5-6.5s8 2 8 6h-4.5c0-1.5-1.5-3-3.5-3s-3.5 1-3.5 2.5c0 4.5 12 1.5 12 10c0 4.5-4.5 6.5-9 6.5z" />
-                {/* t (lowercase) - Balanced at X=14 */}
-                <path d="M18 12v4h-3.5v3h3.5v11c0 2.5 1.5 4 4 4h2v-3.5h-1c-.5 0-.7-.2-.7-.7V19h4v-3h-4v-4h-4.3z" />
-                {/* i (lowercase stem) - Balanced at X=26 */}
-                <rect x="28" y="19" width="4.5" height="15" rx="0.5" />
-                {/* g (lowercase - clean geometric circle) - Balanced at X=35 */}
-                <circle cx="41" cy="26.5" r="7.5" fill="none" stroke="white" strokeWidth="5" />
-                <rect x="46" y="26.5" width="5" height="13.5" rx="1" />
-                {/* i (lowercase stem) - Balanced at X=53 */}
-                <rect x="56" y="19" width="4.5" height="15" rx="0.5" />
-                {/* x (lowercase) - Balanced at X=63 */}
-                <path d="M66 19h5l3.5 6.5l3.5-6.5h5l-6 10l6.5 9h-5l-4-7l-4 7h-5l6.5-10l-6-9z" />
-              </g>
-
-              {/* Pulsing Cyan Nodes - Balanced with stems */}
-              <g className="animate-pulse" style={{ animationDuration: '2s' }}>
-                <circle cx="30.25" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
-                <circle cx="58.25" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
-              </g>
-            </svg>
+          <div className="flex flex-col gap-0.5">
+            <h1 className="text-[42px] font-bold tracking-[-0.03em] leading-tight text-white flex items-baseline">
+              St
+              <span className="relative">
+                i
+                <span className="absolute left-[50%] top-[22%] -translate-x-1/2 -translate-y-1/2">
+                  <span className="absolute inset-0 bg-cyan-400 rounded-full blur-[4px] animate-pulse"></span>
+                  <span className="relative block w-[7px] h-[7px] bg-cyan-400 rounded-full border border-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.8)]"></span>
+                </span>
+              </span>
+              g
+              <span className="relative">
+                i
+                <span className="absolute left-[50%] top-[22%] -translate-x-1/2 -translate-y-1/2">
+                  <span className="absolute inset-0 bg-cyan-400 rounded-full blur-[4px] animate-pulse"></span>
+                  <span className="relative block w-[7px] h-[7px] bg-cyan-400 rounded-full border border-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.8)]"></span>
+                </span>
+              </span>
+              x
+            </h1>
+            <p className="text-text-muted text-lg tracking-tight font-medium">
+              The Engine for SASE Validation
+              {siteInfo?.success && siteInfo.detected_site_name && (
+                <span className="text-text-muted/60"> • <span className="text-blue-400 font-bold">{siteInfo.detected_site_name}</span></span>
+              )}
+              {version && <span className="text-text-muted/60"> • {version}</span>}
+            </p>
           </div>
-          <p className="text-text-muted mt-1">
-            Engine for SASE Validation
-            {siteInfo?.success && siteInfo.detected_site_name && (
-              <span className="text-text-muted/60"> • <span className="text-blue-400 font-bold">{siteInfo.detected_site_name}</span></span>
-            )}
-            {version && <span className="text-text-muted/60"> • {version}</span>}
-          </p>
 
         </div>
 
