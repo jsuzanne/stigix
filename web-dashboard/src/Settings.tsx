@@ -134,7 +134,20 @@ export default function Settings({ token }: { token: string }) {
         const fetchSystemInfo = () => {
             fetch('/api/admin/system/info', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(r => r.json())
-                .then(setSystemInfo)
+                .then(newInfo => {
+                    setSystemInfo((prev: any) => {
+                        const now = Date.now();
+                        if (prev && prev.network && newInfo.network && prev.timestamp) {
+                            const timeDiff = (now - prev.timestamp) / 1000;
+                            if (timeDiff > 0) {
+                                const rxSpeed = ((newInfo.network.rx - prev.network.rx) * 8) / 1000000 / timeDiff;
+                                const txSpeed = ((newInfo.network.tx - prev.network.tx) * 8) / 1000000 / timeDiff;
+                                return { ...newInfo, networkSpeed: { rx: Math.max(0, rxSpeed), tx: Math.max(0, txSpeed) }, timestamp: now };
+                            }
+                        }
+                        return { ...newInfo, networkSpeed: { rx: 0, tx: 0 }, timestamp: now };
+                    });
+                })
                 .catch(() => { });
         };
         fetchSystemInfo();
@@ -1035,11 +1048,11 @@ export default function Settings({ token }: { token: string }) {
                                     <div className="grid grid-cols-2 gap-4 h-full">
                                         <div className="bg-card p-4 rounded-xl border border-border flex flex-col justify-center">
                                             <div className="text-[9px] font-black text-text-muted tracking-widest uppercase mb-1 flex items-center gap-1.5"><Download size={10} className="text-green-500" /> Received</div>
-                                            <div className="font-mono text-lg font-black text-text-primary">{(systemInfo.network?.rx / 1024 / 1024).toFixed(2)} <span className="text-[10px] text-text-muted">MB</span></div>
+                                            <div className="font-mono text-lg font-black text-text-primary">{(systemInfo.networkSpeed?.rx || 0).toFixed(2)} <span className="text-[10px] text-text-muted">Mb/s</span></div>
                                         </div>
                                         <div className="bg-card p-4 rounded-xl border border-border flex flex-col justify-center">
                                             <div className="text-[9px] font-black text-text-muted tracking-widest uppercase mb-1 flex items-center gap-1.5"><Upload size={10} className="text-blue-500" /> Transmitted</div>
-                                            <div className="font-mono text-lg font-black text-text-primary">{(systemInfo.network?.tx / 1024 / 1024).toFixed(2)} <span className="text-[10px] text-text-muted">MB</span></div>
+                                            <div className="font-mono text-lg font-black text-text-primary">{(systemInfo.networkSpeed?.tx || 0).toFixed(2)} <span className="text-[10px] text-text-muted">Mb/s</span></div>
                                         </div>
                                     </div>
                                 </div>
