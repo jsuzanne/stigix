@@ -421,7 +421,7 @@ export default function Settings({ token }: { token: string }) {
         } catch (e) { setUpgrading(false); }
     };
 
-    if (loading) return <div className="p-8 text-center text-text-muted animate-pulse font-bold uppercase tracking-widest text-xs">Loading Settings...</div>;
+    if (loading) return <div className="p-8 text-center text-text-muted animate-pulse font-bold tracking-widest text-xs">Loading Settings...</div>;
 
     const tabs = [
         { id: 'interfaces', label: 'Network Interfaces' },
@@ -444,7 +444,7 @@ export default function Settings({ token }: { token: string }) {
                         <div>
                             <div className="flex items-center gap-3">
                                 <h2 className="text-2xl font-black text-text-primary tracking-tight">Settings</h2>
-                                <span className="text-[10px] text-text-muted font-bold uppercase tracking-widest opacity-60">Control Center • {status?.current || 'v1.2.1-patch.112'}</span>
+                                <span className="text-[10px] text-text-muted font-bold tracking-widest opacity-60">Control Center • {status?.current || 'v1.2.1-patch.112'}</span>
                             </div>
                             <div className="flex items-center gap-4 mt-1">
                                 {tabs.map((tab) => (
@@ -471,13 +471,13 @@ export default function Settings({ token }: { token: string }) {
             {successMsg && (
                 <div className="fixed top-24 right-8 bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400 px-6 py-3.5 rounded-2xl flex items-center gap-3 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-4 z-50">
                     <CheckCircle size={18} />
-                    <span className="text-[10px] font-black uppercase tracking-[0.15em]">{successMsg}</span>
+                    <span className="text-[10px] font-black tracking-[0.15em]">{successMsg}</span>
                 </div>
             )}
             {errorMsg && (
                 <div className="fixed top-24 right-8 bg-red-600/10 border border-red-500/20 text-red-600 dark:text-red-400 px-6 py-3.5 rounded-2xl flex items-center gap-3 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-4 z-50">
                     <AlertCircle size={18} />
-                    <span className="text-[10px] font-black uppercase tracking-[0.15em]">{errorMsg}</span>
+                    <span className="text-[10px] font-black tracking-[0.15em]">{errorMsg}</span>
                 </div>
             )}
 
@@ -491,7 +491,7 @@ export default function Settings({ token }: { token: string }) {
                             </div>
                             <div>
                                 <h2 className="text-lg font-black text-text-primary tracking-tight">Network Interfaces</h2>
-                                <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-70">Physical interfaces for traffic egress</p>
+                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Physical interfaces for traffic egress</p>
                             </div>
                         </div>
 
@@ -520,7 +520,7 @@ export default function Settings({ token }: { token: string }) {
                                             input.value = '';
                                         }
                                     }}
-                                    className="bg-purple-600 hover:bg-purple-500 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 shadow-lg shadow-purple-900/20"
+                                    className="bg-purple-600 hover:bg-purple-500 text-white px-8 py-3 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center gap-2 shadow-lg shadow-purple-900/20"
                                 >
                                     <Plus size={16} />
                                     Register
@@ -535,7 +535,7 @@ export default function Settings({ token }: { token: string }) {
                                             key={iface}
                                             onClick={() => toggleInterface(iface)}
                                             className={cn(
-                                                "px-4 py-2 rounded-xl text-[10px] font-black border transition-all flex items-center gap-3 uppercase tracking-widest shadow-sm",
+                                                "px-4 py-2 rounded-xl text-[10px] font-black border transition-all flex items-center gap-3 tracking-widest shadow-sm",
                                                 isSelected
                                                     ? "bg-purple-600/10 border-purple-500/30 text-purple-600 dark:text-purple-400"
                                                     : "bg-card-secondary/30 border-border text-text-muted hover:border-text-muted/30"
@@ -561,7 +561,7 @@ export default function Settings({ token }: { token: string }) {
                                 </div>
                                 <div>
                                     <h2 className="text-lg font-black text-text-primary tracking-tight">Synthetic Probes (DEM)</h2>
-                                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-70">Custom telemetry for real-time monitoring</p>
+                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Custom telemetry for real-time monitoring</p>
                                 </div>
                             </div>
                             <div className="flex gap-2">
@@ -599,7 +599,7 @@ export default function Settings({ token }: { token: string }) {
                         <div className="max-w-4xl mx-auto space-y-8">
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-6 bg-card-secondary/30 p-6 rounded-2xl border border-border shadow-inner">
                                 <div className="space-y-2">
-                                    <label className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em] ml-1">Probe Name</label>
+                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">Probe Name</label>
                                     <input
                                         type="text"
                                         placeholder="HQ-GATEWAY"
@@ -609,9 +609,9 @@ export default function Settings({ token }: { token: string }) {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em] ml-1">Protocol</label>
+                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">Protocol</label>
                                     <select
-                                        className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black uppercase tracking-widest shadow-sm"
+                                        className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-sm"
                                         value={newProbe.type}
                                         onChange={e => setNewProbe({ ...newProbe, type: e.target.value as any, timeout: e.target.value === 'PING' ? 2000 : 5000 })}
                                     >
@@ -624,7 +624,7 @@ export default function Settings({ token }: { token: string }) {
                                     </select>
                                 </div>
                                 <div className="md:col-span-2 space-y-2">
-                                    <label className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em] ml-1">Target URI/IP</label>
+                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">Target Uri / Ip</label>
                                     <input
                                         type="text"
                                         placeholder="google.com"
@@ -636,7 +636,7 @@ export default function Settings({ token }: { token: string }) {
                                 <div className="space-y-2 flex flex-col justify-end">
                                     <button
                                         onClick={addProbe}
-                                        className="w-full bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20"
+                                        className="w-full bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20"
                                     >
                                         <Plus size={16} />
                                         {editingIndex !== null ? 'Update' : 'Initialize'}
@@ -655,7 +655,7 @@ export default function Settings({ token }: { token: string }) {
                                                 {probe.type.substring(0, 3)}
                                             </div>
                                             <div>
-                                                <div className="text-[11px] font-black text-text-primary uppercase tracking-tight">{probe.name}</div>
+                                                <div className="text-[11px] font-black text-text-primary tracking-tight">{probe.name}</div>
                                                 <div className="text-[10px] text-text-muted font-mono tracking-tighter truncate max-w-[140px] opacity-70">{probe.target}</div>
                                             </div>
                                         </div>
@@ -701,7 +701,7 @@ export default function Settings({ token }: { token: string }) {
                                 </div>
                                 <div>
                                     <h2 className="text-lg font-black text-text-primary tracking-tight">Traffic Distribution</h2>
-                                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-70">Adjust weights by category or individual app</p>
+                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Adjust weights by category or individual app</p>
                                 </div>
                             </div>
                             <div className="flex gap-2">
@@ -743,7 +743,7 @@ export default function Settings({ token }: { token: string }) {
                                 return (
                                     <div key={category.name} className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
                                         <div className="bg-card-secondary/30 p-5 flex items-center justify-between border-b border-border">
-                                            <div className="flex items-center gap-3 text-[11px] font-black text-text-primary uppercase tracking-widest">
+                                            <div className="flex items-center gap-3 text-[11px] font-black text-text-primary tracking-widest">
                                                 <Database size={14} className="text-blue-600" />
                                                 {category.name}
                                             </div>
@@ -764,7 +764,7 @@ export default function Settings({ token }: { token: string }) {
                                                 return (
                                                     <div key={app.domain} className="bg-card-secondary/20 border border-border rounded-xl p-4 space-y-3">
                                                         <div className="flex justify-between items-center">
-                                                            <span className="text-[10px] font-black uppercase text-text-primary truncate max-w-[150px]">{app.domain}</span>
+                                                            <span className="text-[10px] font-black text-text-primary truncate max-w-[150px]">{app.domain}</span>
                                                             <span className="text-[10px] font-black text-blue-600">{appPercent}%</span>
                                                         </div>
                                                         <input
@@ -793,18 +793,18 @@ export default function Settings({ token }: { token: string }) {
                             </div>
                             <div>
                                 <h2 className="text-lg font-black text-text-primary tracking-tight">System Maintenance</h2>
-                                <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-0.5 opacity-70">Update system logic and engine</p>
+                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Update system logic and engine</p>
                             </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-4">
                                 <div className="flex justify-between items-center p-4 bg-card-secondary/50 rounded-xl border border-border">
-                                    <span className="text-[10px] text-text-muted font-black uppercase tracking-widest">Current Version</span>
+                                    <span className="text-[10px] text-text-muted font-black tracking-widest">Current Version</span>
                                     <span className="text-sm font-mono text-blue-600 font-bold">{status?.current}</span>
                                 </div>
                                 <div className="flex justify-between items-center p-4 bg-card-secondary/50 rounded-xl border border-border">
-                                    <span className="text-[10px] text-text-muted font-black uppercase tracking-widest">Latest Stable</span>
+                                    <span className="text-[10px] text-text-muted font-black tracking-widest">Latest Stable</span>
                                     <span className="text-sm font-mono text-green-600 font-bold">{status?.latest}</span>
                                 </div>
                             </div>
@@ -819,7 +819,7 @@ export default function Settings({ token }: { token: string }) {
                                     onClick={handleUpgrade}
                                     disabled={upgrading || !status?.updateAvailable}
                                     className={cn(
-                                        "w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all",
+                                        "w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all",
                                         (upgrading || !status?.updateAvailable)
                                             ? "bg-card-secondary text-text-muted border border-border cursor-not-allowed"
                                             : "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
@@ -834,7 +834,7 @@ export default function Settings({ token }: { token: string }) {
                         {upgrading && upgradeStatus && (
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-600">Upgrade Monitor</span>
+                                    <span className="text-[10px] font-black tracking-widest text-blue-600">Upgrade Monitor</span>
                                     <span className="text-[10px] font-mono opacity-50">{upgradeStatus.logs.length} events logged</span>
                                 </div>
                                 <div className="bg-black/20 rounded-2xl border border-border p-4 h-64 overflow-y-auto font-mono text-[10px] leading-relaxed scrollbar-thin scrollbar-thumb-border">
@@ -857,14 +857,14 @@ export default function Settings({ token }: { token: string }) {
                                 </div>
                                 <div>
                                     <h2 className="text-lg font-black text-text-primary tracking-tight">Service Restart</h2>
-                                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-0.5 opacity-70">Soft reload of internal components</p>
+                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Soft reload of internal components</p>
                                 </div>
                             </div>
                             <p className="text-xs text-text-muted font-bold italic opacity-60">Memory cleanup and internal state reset. Fast completion.</p>
                             <button
                                 onClick={() => handleRestart('restart')}
                                 disabled={upgrading}
-                                className="w-full py-4 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm"
+                                className="w-full py-4 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black tracking-widest transition-all shadow-sm"
                             >
                                 <RefreshCw size={16} className="inline mr-2" />
                                 Restart Containers
@@ -878,14 +878,14 @@ export default function Settings({ token }: { token: string }) {
                                 </div>
                                 <div>
                                     <h2 className="text-lg font-black text-text-primary tracking-tight">System Redeploy</h2>
-                                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-0.5 opacity-70">Full stack container recreation</p>
+                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Full stack container recreation</p>
                                 </div>
                             </div>
                             <p className="text-xs text-text-muted font-bold italic opacity-60">Applies docker-compose and environment changes. Temporary downtime.</p>
                             <button
                                 onClick={() => handleRestart('redeploy')}
                                 disabled={upgrading}
-                                className="w-full py-4 bg-red-600/10 hover:bg-red-600/20 border border-red-500/30 text-red-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm"
+                                className="w-full py-4 bg-red-600/10 hover:bg-red-600/20 border border-red-500/30 text-red-600 rounded-xl text-[10px] font-black tracking-widest transition-all shadow-sm"
                             >
                                 <Power size={16} className="inline mr-2" />
                                 Redepoy Stack
@@ -902,13 +902,13 @@ export default function Settings({ token }: { token: string }) {
                             </div>
                             <div>
                                 <h2 className="text-lg font-black text-text-primary tracking-tight">Configuration Backup</h2>
-                                <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-0.5 opacity-70">Import/Export system state and settings</p>
+                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Import/Export system state and settings</p>
                             </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div className="space-y-4">
-                                <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-text-primary">Export Engine State</h3>
+                                <h3 className="text-[11px] font-black tracking-[0.2em] text-text-primary">Export Engine State</h3>
                                 <p className="text-xs text-text-muted font-bold opacity-60">Download a secure JSON bundle containing all your rules and account data.</p>
                                 <button
                                     onClick={async () => {
@@ -925,7 +925,7 @@ export default function Settings({ token }: { token: string }) {
                                             }
                                         } catch (e) { alert('Export failed'); }
                                     }}
-                                    className="px-6 py-3 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                    className="px-6 py-3 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2"
                                 >
                                     <Download size={16} />
                                     Download Bundle
@@ -933,7 +933,7 @@ export default function Settings({ token }: { token: string }) {
                             </div>
 
                             <div className="space-y-4">
-                                <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-text-primary">Restore State</h3>
+                                <h3 className="text-[11px] font-black tracking-[0.2em] text-text-primary">Restore State</h3>
                                 <p className="text-xs text-text-muted font-bold opacity-60">Upload a previously exported bundle to overwrite the current system configuration.</p>
                                 <div className="flex gap-2">
                                     <input
@@ -964,7 +964,7 @@ export default function Settings({ token }: { token: string }) {
                                     />
                                     <button
                                         onClick={() => document.getElementById('restore-upload')?.click()}
-                                        className="px-6 py-3 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                        className="px-6 py-3 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 text-blue-600 rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2"
                                     >
                                         <Upload size={16} />
                                         Restore Bundle
