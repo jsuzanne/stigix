@@ -1731,18 +1731,18 @@ export default function Security({ token }: SecurityProps) {
                             {/* Top Stats Row */}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div className="bg-card-secondary/50 border border-border rounded-2xl p-4 shadow-sm">
-                                    <label className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em] mb-2 block opacity-60">List Class</label>
-                                    <p className="text-sm font-black text-text-primary uppercase">
+                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] mb-2 block opacity-60">List Class</label>
+                                    <p className="text-sm font-black text-text-primary">
                                         {selectedTest.type === 'url' ? 'URL Filtering' : selectedTest.type === 'dns' ? 'DNS Security' : 'Threat Prevention'}
                                     </p>
                                 </div>
                                 <div className="bg-card-secondary/50 border border-border rounded-2xl p-4 shadow-sm">
-                                    <label className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em] mb-2 block opacity-60">Security State</label>
+                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] mb-2 block opacity-60">Security State</label>
                                     <div className="mt-1">{getStatusBadge({ status: selectedTest.status })}</div>
                                 </div>
                                 <div className="bg-card-secondary/50 border border-border rounded-2xl p-4 shadow-sm">
-                                    <label className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em] mb-2 block opacity-60">Execution Time</label>
-                                    <p className="text-sm font-black text-text-primary uppercase tracking-tighter">
+                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] mb-2 block opacity-60">Execution Time</label>
+                                    <p className="text-sm font-black text-text-primary tracking-tighter">
                                         {selectedTest.details?.executionTime ? `${selectedTest.details.executionTime}ms` : 'N/A'}
                                     </p>
                                 </div>
@@ -1753,8 +1753,8 @@ export default function Security({ token }: SecurityProps) {
                                 <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                                     <Settings size={80} />
                                 </div>
-                                <label className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em] mb-3 block opacity-60">Test Descriptor</label>
-                                <p className="text-lg font-black text-text-primary leading-tight uppercase tracking-tight">{selectedTest.name}</p>
+                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em] mb-3 block opacity-60">Test Descriptor</label>
+                                <p className="text-lg font-black text-text-primary leading-tight tracking-tight">{selectedTest.name}</p>
                             </div>
 
                             {/* Detailed Telemetry Data */}
