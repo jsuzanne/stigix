@@ -624,18 +624,19 @@ export default function App() {
                 <path d="M18 12v4h-3.5v3h3.5v11c0 2.5 1.5 4 4 4h2v-3.5h-1c-.5 0-.7-.2-.7-.7V19h4v-3h-4v-4h-4.3z" />
                 {/* i (lowercase stem) - Balanced at X=26 */}
                 <rect x="28" y="19" width="4.5" height="15" rx="0.5" />
-                {/* g (lowercase - refined distinctive bowl) - Balanced at X=35 */}
-                <path d="M35 26.5c0-4.5 3.5-7.5 7.5-7.5s7.5 3 7.5 7.5v6.5c0 5-4 8-8 8h-4v-3.5h3c2 0 4-1.5 4-4.5v-1c-1 1.5-2.5 2.5-4.5 2.5-4.5 0-8-3.5-8-8zm9.5 3.5c2 0 3.5-1.5 3.5-4s-1.5-4-3.5-4-3.5 1.5-3.5 4 1.5 4 3.5 4z" />
+                {/* g (lowercase - clean geometric circle) - Balanced at X=35 */}
+                <circle cx="41" cy="26.5" r="7.5" fill="none" stroke="white" strokeWidth="5" />
+                <rect x="46" y="26.5" width="5" height="13.5" rx="1" />
                 {/* i (lowercase stem) - Balanced at X=53 */}
-                <rect x="54" y="19" width="4.5" height="15" rx="0.5" />
+                <rect x="56" y="19" width="4.5" height="15" rx="0.5" />
                 {/* x (lowercase) - Balanced at X=63 */}
-                <path d="M63 19h5l3.5 6.5l3.5-6.5h5l-6 10l6.5 9h-5l-4-7l-4 7h-5l6.5-10l-6-9z" />
+                <path d="M66 19h5l3.5 6.5l3.5-6.5h5l-6 10l6.5 9h-5l-4-7l-4 7h-5l6.5-10l-6-9z" />
               </g>
 
               {/* Pulsing Cyan Nodes - Balanced with stems */}
               <g className="animate-pulse" style={{ animationDuration: '2s' }}>
                 <circle cx="30.25" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
-                <circle cx="56.25" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
+                <circle cx="58.25" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
               </g>
             </svg>
           </div>
