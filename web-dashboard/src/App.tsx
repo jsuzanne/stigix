@@ -615,7 +615,7 @@ export default function App() {
       <header className="mb-8 flex justify-between items-center">
         <div>
           <div className="flex items-center gap-4">
-            {/* Geometric Node Icon - Aligned horizontally with text nodes */}
+            {/* Geometric Node Icon - Aligned horizontally */}
             <g className="animate-pulse" style={{ animationDuration: '3s' }}>
               <path d="M8 12L20 5L32 12V28L20 35L8 28V12Z" stroke="white" strokeWidth="2" strokeLinejoin="round" fill="white" fillOpacity="0.05" />
               <path d="M14 22L20 28L30 18L30 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -623,26 +623,26 @@ export default function App() {
               <circle cx="20" cy="14" r="4.5" fill="#22D3EE" className="shadow-[0_0_15px_#22d3ee]" />
             </g>
 
-            {/* Stigix Text - Unified horizontal zone and reinforced 'g' */}
+            {/* Stigix Text - Tightened tracking and refined 'g' */}
             <g fill="white" className="font-black">
-              {/* S (Capital) */}
-              <path d="M54 34c-4.5 0-8.5-1.5-8.5-6h4.5c0 2 2 3 4 3s3.5-1 3.5-2.5c0-4.5-12-1.5-12-10c0-4.5 4-6.5 8.5-6.5s8 2 8 6h-4.5c0-1.5-1.5-3-3.5-3s-3.5 1-3.5 2.5c0 4.5 12 1.5 12 10c0 4.5-4.5 6.5-9 6.5z" />
-              {/* t (lowercase, tall to match S) */}
-              <path d="M70 12v4h-3v3h3v11c0 2.5 1.5 4 4 4h2v-3.5h-1c-.5 0-.7-.2-.7-.7V19h4v-3h-4v-4h-4.3z" />
-              {/* i (lowercase stem) */}
-              <rect x="85" y="19" width="5.5" height="15" rx="1" />
-              {/* g (lowercase - distinct descender) */}
-              <path d="M101.5 26.5c0-4.5 3.5-7.5 7.5-7.5s7.5 3 7.5 7.5v6.5c0 5-4 8-8 8h-4v-3.5h3c2 0 4-1.5 4-4.5v-1c-1 1.5-2.5 2.5-4.5 2.5-4.5 0-8-3.5-8-8zm9.5 3.5c2 0 3.5-1.5 3.5-4s-1.5-4-3.5-4-3.5 1.5-3.5 4 1.5 4 3.5 4z" />
-              {/* i (lowercase stem) */}
-              <rect x="123" y="19" width="5.5" height="15" rx="1" />
-              {/* x (lowercase) */}
-              <path d="M136 19h5l3.5 6.5l3.5-6.5h5l-6 10l6.5 9h-5l-4-7l-4 7h-5l6.5-10l-6-9z" />
+              {/* S (Capital) - Moved to X=42 */}
+              <path d="M51 34c-4.5 0-8.5-1.5-8.5-6h4.5c0 2 2 3 4 3s3.5-1 3.5-2.5c0-4.5-12-1.5-12-10c0-4.5 4-6.5 8.5-6.5s8 2 8 6h-4.5c0-1.5-1.5-3-3.5-3s-3.5 1-3.5 2.5c0 4.5 12 1.5 12 10c0 4.5-4.5 6.5-9 6.5z" />
+              {/* t (lowercase) - Moved to X=63 */}
+              <path d="M67 12v4h-3v3h3v11c0 2.5 1.5 4 4 4h2v-3.5h-1c-.5 0-.7-.2-.7-.7V19h4v-3h-4v-4h-4.3z" />
+              {/* i (lowercase stem) - Moved to X=76 */}
+              <rect x="76" y="19" width="4.5" height="15" rx="0.5" />
+              {/* g (lowercase - sharper bowl) - Moved to X=85 */}
+              <path d="M85 26.5c0-4.5 3.5-7.5 7.5-7.5s7.5 3 7.5 7.5v6.5c0 5-4 8-8 8h-4v-3.5h3c2 0 4-1.5 4-4.5v-1c-1 1.5-2.5 2.5-4.5 2.5-4.5 0-8-3.5-8-8zm9.5 3.5c2 0 3.5-1.5 3.5-4s-1.5-4-3.5-4-3.5 1.5-3.5 4 1.5 4 3.5 4z" />
+              {/* i (lowercase stem) - Moved to X=105 */}
+              <rect x="105" y="19" width="4.5" height="15" rx="0.5" />
+              {/* x (lowercase) - Moved to X=114 */}
+              <path d="M114 19h5l3.5 6.5l3.5-6.5h5l-6 10l6.5 9h-5l-4-7l-4 7h-5l6.5-10l-6-9z" />
             </g>
 
-            {/* Pulsing Cyan Nodes - All on Y=14 for perfect horizontal alignment */}
+            {/* Pulsing Cyan Nodes - Tracking matched to stems */}
             <g className="animate-pulse" style={{ animationDuration: '2s' }}>
-              <circle cx="87.75" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
-              <circle cx="125.75" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
+              <circle cx="78.25" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
+              <circle cx="107.25" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
             </g>
           </div>
           <p className="text-text-muted mt-1">
