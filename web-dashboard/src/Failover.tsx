@@ -333,14 +333,28 @@ export default function Failover(props: FailoverProps) {
                                     <Activity size={14} className="text-blue-500" />
                                     <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Current Outage</span>
                                 </div>
-                                <div className="text-4xl font-black text-text-primary font-mono tracking-tighter">
+                                <div className={`text-4xl font-black font-mono tracking-tighter transition-all duration-300 ${test.current_blackout_ms > 0 ? 'text-red-500 animate-pulse' : 'text-text-primary'}`} style={test.current_blackout_ms > 0 ? { textShadow: '0 0 20px rgba(2ef, 68, 68, 0.4)' } : {}}>
                                     {formatMs(test.current_blackout_ms || 0)}
                                 </div>
                             </div>
-                            <div className="space-y-1">
-                                <div className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Max Blackout</div>
-                                <div className="text-xl font-bold text-orange-500 font-mono">
-                                    {formatMs(test.max_blackout_ms || 0)}
+                            <div className="flex justify-center gap-6 w-full">
+                                <div className="space-y-1">
+                                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Max Blackout</div>
+                                    <div className="text-xl font-bold text-orange-500 font-mono">
+                                        {formatMs(test.max_blackout_ms || 0)}
+                                    </div>
+                                </div>
+                                <div className="w-px bg-border/50"></div>
+                                <div className="space-y-1 flex flex-col items-center">
+                                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-widest">QoE Score</div>
+                                    {(() => {
+                                        // Simple synthetic QoE Score: Starts at 100, drops for loss, jitter, and high RTT.
+                                        let qoe = 100 - (test.loss_pct * 2) - ((test.jitter_ms || 0) * 0.5) - ((test.avg_rtt_ms > 50 ? test.avg_rtt_ms - 50 : 0) * 0.1);
+                                        qoe = Math.max(0, Math.min(100, Math.round(qoe)));
+                                        let color = qoe >= 90 ? 'text-green-400 font-bold' : qoe >= 70 ? 'text-amber-500 font-bold' : 'text-red-500 font-bold animate-pulse';
+                                        let glow = qoe >= 90 ? '0 0 10px rgba(74, 222, 128, 0.3)' : qoe >= 70 ? '0 0 10px rgba(245, 158, 11, 0.3)' : '0 0 15px rgba(2ef, 68, 68, 0.4)';
+                                        return <div className={`text-xl font-mono ${color}`} style={{ textShadow: glow }}>{qoe}/100</div>;
+                                    })()}
                                 </div>
                             </div>
                         </div>
@@ -382,13 +396,30 @@ export default function Failover(props: FailoverProps) {
                                 </div>
                             </div>
 
-                            <div className="h-[40px] w-full flex items-end gap-0.5 mb-6">
-                                {(test.history || Array(100).fill(1)).map((val: number, i: number) => (
-                                    <div
-                                        key={i}
-                                        className={`flex-1 min-w-[1px] rounded-t-sm transition-all duration-300 ${val === 1 ? 'bg-blue-500/80 h-full' : 'bg-red-500 h-[30%] animate-pulse'}`}
-                                    />
-                                ))}
+                            <div className="h-[40px] w-full flex flex-col justify-end relative rounded overflow-hidden bg-card-secondary/20 mb-6">
+                                {/* Blackout Overlay */}
+                                {test.current_blackout_ms > 0 && (
+                                    <div className="absolute inset-0 z-10 bg-red-900/40 backdrop-blur-[1px] flex items-center justify-center animate-in fade-in">
+                                        <div className="bg-red-950/80 text-red-500 border border-red-500/50 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 shadow-[0_0_20px_rgba(239,68,68,0.4)]">
+                                            <AlertCircle size={12} className="animate-pulse" />
+                                            NETWORK OUTAGE: {(test.current_blackout_ms / 1000).toFixed(1)}s - FAILOVER IN PROGRESS...
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="w-full flex items-end gap-[1px] h-full px-1">
+                                    {(test.history || Array(100).fill(1)).map((val: number, i: number) => {
+                                        const isLast = i === (test.history || []).length - 1;
+                                        return (
+                                            <div
+                                                key={i}
+                                                className={`flex-1 min-w-[2px] rounded-t-[1px] transition-all duration-300 ${val === 1
+                                                    ? 'bg-gradient-to-t from-blue-700 to-blue-400 h-[80%]'
+                                                    : 'bg-red-500 h-[20%] opacity-80'}`}
+                                                style={isLast && val === 1 ? { background: '#60a5fa', boxShadow: '0 0 10px #60a5fa', height: '100%' } : {}}
+                                            />
+                                        )
+                                    })}
+                                </div>
                             </div>
 
                             <div className="flex justify-between items-center">
@@ -535,12 +566,17 @@ export default function Failover(props: FailoverProps) {
                                                                 </div>
                                                                 <div className="bg-card-secondary p-2 rounded border border-border">
                                                                     <div className="text-[8px] text-text-muted font-bold uppercase flex items-center gap-1">
-                                                                        <ArrowRightLeft size={7} className="shrink-0" />
+                                                                        <ArrowRightLeft size={7} className="shrink-0 animate-pulse text-blue-400" />
                                                                         Egress Path
                                                                     </div>
                                                                     {test.egress_path ? (
-                                                                        <div className="text-xs font-mono font-bold text-blue-400 truncate" title={test.egress_path}>
-                                                                            {test.egress_path}
+                                                                        <div className="text-xs font-mono font-bold text-blue-400 truncate flex items-center gap-1.5" title={test.egress_path}>
+                                                                            {test.egress_path.split(' -> ').map((node: string, idx: number, arr: string[]) => (
+                                                                                <React.Fragment key={idx}>
+                                                                                    {node}
+                                                                                    {idx < arr.length - 1 && <span className="text-text-muted">⇢</span>}
+                                                                                </React.Fragment>
+                                                                            ))}
                                                                         </div>
                                                                     ) : (Date.now() - (test.timestamp || 0)) < 3 * 60 * 1000 ? (
                                                                         <div className="text-[9px] text-text-muted italic">⏳ fetching...</div>
