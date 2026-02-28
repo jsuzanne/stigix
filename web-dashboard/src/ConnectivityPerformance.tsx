@@ -37,7 +37,7 @@ function EndpointTypeGraph({ type, results, color }: { type: string; results: an
     if (results.length === 0) {
         return (
             <div className="bg-card border border-border p-4 rounded-xl shadow-sm">
-                <div className="text-text-muted text-xs font-bold mb-2 uppercase tracking-wider">{type}</div>
+                <div className="text-text-muted text-xs font-bold mb-2 tracking-wider">{type}</div>
                 <div className="text-xs text-text-muted italic">No data available</div>
             </div>
         );
@@ -299,27 +299,27 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
             {/* Header Analytics */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-card border border-border p-6 rounded-2xl flex flex-col items-center justify-center text-center shadow-sm">
-                    <div className="text-text-muted text-xs font-bold mb-2 uppercase tracking-wider flex items-center gap-2">
+                    <div className="text-text-muted text-xs font-bold mb-2 tracking-wider flex items-center gap-2">
                         <Gauge size={16} /> Global Experience
                     </div>
                     <div className={cn("text-4xl font-black mb-1 tracking-tighter", stats?.globalHealth >= 80 ? "text-green-600 dark:text-green-400" : stats?.globalHealth >= 50 ? "text-orange-500" : "text-red-500")}>
                         {stats?.globalHealth || 0}<span className="text-lg text-text-muted">/100</span>
                     </div>
-                    <div className="text-[10px] text-text-muted font-bold uppercase tracking-tight opacity-70">Avg. Scoring across all probes</div>
+                    <div className="text-[10px] text-text-muted font-bold tracking-tight opacity-70">Avg. Scoring across all probes</div>
                 </div>
 
                 <div className="bg-card border border-border p-6 rounded-2xl flex flex-col items-center justify-center text-center shadow-sm">
-                    <div className="text-text-muted text-xs font-bold mb-2 uppercase tracking-wider flex items-center gap-2">
+                    <div className="text-text-muted text-xs font-bold mb-2 tracking-wider flex items-center gap-2">
                         <Activity size={16} /> HTTP Coverage
                     </div>
                     <div className="text-3xl font-black text-blue-600 dark:text-blue-400 mb-1 tracking-tighter">
                         {stats?.httpEndpoints?.total || 0}
                     </div>
-                    <div className="text-[10px] text-text-muted font-bold uppercase tracking-tight opacity-70">Active Synthetic Endpoints</div>
+                    <div className="text-[10px] text-text-muted font-bold tracking-tight opacity-70">Active Synthetic Endpoints</div>
                 </div>
 
                 <div className="bg-card border border-border p-6 rounded-2xl flex flex-col shadow-sm">
-                    <div className="text-text-muted text-[10px] font-bold mb-3 uppercase tracking-widest flex items-center gap-2">
+                    <div className="text-text-muted text-[10px] font-bold mb-3 tracking-widest flex items-center gap-2">
                         <Flame size={14} className="text-orange-500" /> Flaky Endpoints
                     </div>
                     <div className="space-y-2">
@@ -351,7 +351,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                 {/* Performance Trends by Endpoint Type */}
                 <div className="md:col-span-4 bg-card-secondary/30 border border-border p-6 rounded-2xl shadow-sm">
                     <div className="flex items-center justify-between mb-4">
-                        <div className="text-text-muted text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                        <div className="text-text-muted text-xs font-bold tracking-wider flex items-center gap-2">
                             <BarChart3 size={16} /> Performance Trends by Type
                         </div>
                         <div className="flex items-center gap-2">
@@ -385,7 +385,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
             <div className="bg-blue-600/5 border border-blue-500/20 p-4 rounded-xl flex items-start gap-3 mb-2 shadow-sm">
                 <Info size={18} className="text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                    <h4 className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">How is the score calculated?</h4>
+                    <h4 className="text-xs font-bold text-blue-600 dark:text-blue-400 tracking-wider">How is the score calculated?</h4>
                     <p className="text-[11px] text-text-muted leading-relaxed italic">
                         The performance score (0-100) is a weighted calculation for SD-WAN path quality:
                         <span className="text-blue-600 dark:text-blue-400 font-bold ml-1">Total Latency</span>,
@@ -435,7 +435,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                         )}
                     >
                         <Clock size={14} className={showDeleted ? "text-blue-600 dark:text-blue-400" : ""} />
-                        {showDeleted ? "HIDE DELETED" : "SHOW DELETED"}
+                        {showDeleted ? "Hide Deleted" : "Show Deleted"}
                     </button>
                     <button
                         onClick={() => setShowInactive(!showInactive)}
@@ -447,7 +447,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                         )}
                     >
                         <XCircle size={14} className={showInactive ? "text-orange-600 dark:text-orange-400" : ""} />
-                        {showInactive ? "HIDE INACTIVE" : "SHOW INACTIVE"}
+                        {showInactive ? "Hide Inactive" : "Show Inactive"}
                     </button>
                 </div>
 
@@ -478,7 +478,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                         )}
                     >
                         <RefreshCw size={14} className={cn(isSyncing && "animate-spin")} />
-                        {isSyncing ? "SYNCING..." : "SYNC PRISMA SD-WAN"}
+                        {isSyncing ? "Syncing..." : "Sync Prisma SD-WAN"}
                     </button>
 
                     {onManage && (
@@ -486,7 +486,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                             onClick={onManage}
                             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-lg shadow-blue-900/20"
                         >
-                            <Plus size={14} /> MANAGE ENDPOINTS
+                            <Plus size={14} /> Manage Endpoints
                         </button>
                     )}
                 </div>
@@ -539,7 +539,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                             >
                                 <div className="flex items-center justify-center">Reliability <SortIndicator field="reliability" /></div>
                             </th>
-                            <th className="px-6 py-4 text-[11px] font-bold text-text-muted uppercase tracking-wider text-right">Actions</th>
+                            <th className="px-6 py-4 text-[11px] font-bold text-text-muted tracking-wider text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -624,7 +624,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                 {endpoints.length === 0 && (
                     <div className="p-12 text-center text-text-muted flex flex-col items-center gap-3 bg-card/40">
                         <Activity size={48} className="text-text-muted opacity-30" />
-                        <div className="text-sm font-bold uppercase tracking-widest">No performance data captured yet</div>
+                        <div className="text-sm font-bold tracking-widest">No performance data captured yet</div>
                         <div className="text-[10px] max-w-xs leading-relaxed italic opacity-70">Synthetic checks run every 5 minutes and store metrics for the historical reporting.</div>
                     </div>
                 )}
@@ -640,7 +640,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                     <Gauge size={24} />
                                 </div>
                                 <div>
-                                    <h3 className="text-xl font-black text-text-primary tracking-tight uppercase">{selectedEndpoint.name}</h3>
+                                    <h3 className="text-xl font-black text-text-primary tracking-tight">{selectedEndpoint.name}</h3>
                                     <p className="text-[10px] text-text-muted font-mono font-bold uppercase tracking-widest">{selectedEndpoint.lastResult.url}</p>
                                 </div>
                             </div>
@@ -725,11 +725,11 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                     <table className="w-full text-left text-xs">
                                         <thead className="bg-card-secondary/50 border-b border-border">
                                             <tr>
-                                                <th className="px-4 py-3 text-text-muted font-bold uppercase tracking-tight">Time</th>
-                                                <th className="px-4 py-3 text-text-muted font-bold uppercase tracking-tight text-center">Score</th>
-                                                <th className="px-4 py-3 text-text-muted font-bold uppercase tracking-tight text-center">Total</th>
-                                                <th className="px-4 py-3 text-text-muted font-bold uppercase tracking-tight text-center">IP Address</th>
-                                                <th className="px-4 py-3 text-text-muted font-bold uppercase tracking-tight text-right">HTTP Code</th>
+                                                <th className="px-4 py-3 text-text-muted font-bold tracking-tight">Time</th>
+                                                <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-center">Score</th>
+                                                <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-center">Total</th>
+                                                <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-center">IP Address</th>
+                                                <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-right">HTTP Code</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border">

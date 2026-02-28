@@ -402,9 +402,9 @@ export default function Voice(props: VoiceProps) {
                         </div>
                         <div>
                             <div className="flex items-center gap-3 mb-1">
-                                <h2 className="text-2xl font-black text-text-primary uppercase tracking-tight">Voice Simulation</h2>
+                                <h2 className="text-2xl font-black text-text-primary tracking-tight">VoIP Simulation</h2>
                                 <span className={cn(
-                                    "px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border",
+                                    "px-2 py-0.5 rounded-full text-[10px] font-black tracking-widest border",
                                     enabled ? "bg-green-600/10 text-green-600 dark:text-green-400 border-green-500/20" : "bg-red-600/10 text-red-600 dark:text-red-400 border-red-500/20"
                                 )}>
                                     {enabled ? 'Active' : 'Offline'}
@@ -420,7 +420,7 @@ export default function Voice(props: VoiceProps) {
                         onClick={handleToggle}
                         disabled={isStartingV || isStoppingV}
                         className={cn(
-                            "px-10 py-4 rounded-2xl font-black uppercase text-[11px] tracking-[0.2em] transition-all shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden",
+                            "px-10 py-4 rounded-2xl font-black text-[11px] tracking-[0.2em] transition-all shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden",
                             enabled
                                 ? "bg-red-600 hover:bg-red-500 text-white shadow-red-900/40"
                                 : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40",
@@ -479,7 +479,7 @@ export default function Voice(props: VoiceProps) {
                 <button
                     onClick={() => setActiveTab('config')}
                     className={cn(
-                        "px-8 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                        "px-8 py-2.5 rounded-xl text-[10px] font-black tracking-widest transition-all",
                         activeTab === 'config'
                             ? "bg-card text-blue-600 dark:text-blue-400 shadow-md border border-border"
                             : "text-text-muted hover:text-text-primary"
@@ -494,7 +494,7 @@ export default function Voice(props: VoiceProps) {
                     {/* Active Calls Widget */}
                     <div className="lg:col-span-1 bg-card border border-border rounded-2xl p-6 shadow-sm overflow-hidden relative">
                         <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-[10px] font-black text-text-primary uppercase tracking-[0.2em] flex items-center gap-2 border-l-2 border-blue-500 pl-2">
+                            <h3 className="text-[10px] font-black text-text-primary tracking-[0.2em] flex items-center gap-2 border-l-2 border-blue-500 pl-2">
                                 <Activity size={14} className="text-blue-500" /> Live Streams
                             </h3>
                             <span className="text-[10px] font-black text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full">
@@ -522,7 +522,7 @@ export default function Voice(props: VoiceProps) {
                                         </div>
                                         <div className="flex items-center gap-2 bg-green-600/10 px-2 py-1 rounded-lg border border-green-500/20">
                                             <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                                            <span className="text-[9px] text-green-600 dark:text-green-400 font-black uppercase tracking-tighter">Live</span>
+                                            <span className="text-[9px] text-green-600 dark:text-green-400 font-black tracking-tighter">Live</span>
                                         </div>
                                     </div>
                                 ))
@@ -537,7 +537,7 @@ export default function Voice(props: VoiceProps) {
                                 <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400">
                                     <BarChart2 size={18} />
                                 </div>
-                                <h3 className="text-[10px] font-black text-text-primary uppercase tracking-[0.2em]">Diagnostic History</h3>
+                                <h3 className="text-[10px] font-black text-text-primary tracking-[0.2em]">Diagnostic History</h3>
                             </div>
 
                             <div className="flex flex-1 max-w-md gap-3">
@@ -545,10 +545,10 @@ export default function Voice(props: VoiceProps) {
                                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted opacity-50" />
                                     <input
                                         type="text"
-                                        placeholder="SEARCH TRACES..."
+                                        placeholder="Search traces..."
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="w-full bg-card-secondary/50 border border-border text-[10px] font-black uppercase tracking-widest text-text-primary rounded-xl pl-10 pr-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all shadow-inner"
+                                        className="w-full bg-card-secondary/50 border border-border text-[10px] font-black tracking-widest text-text-primary rounded-xl pl-10 pr-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all shadow-inner"
                                     />
                                 </div>
                                 <select
@@ -556,24 +556,24 @@ export default function Voice(props: VoiceProps) {
                                     onChange={(e) => setQualityFilter(e.target.value as any)}
                                     className="bg-card-secondary/50 border border-border text-[10px] font-black uppercase tracking-widest text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all shadow-inner"
                                 >
-                                    <option value="all">ANY QUALITY</option>
-                                    <option value="excellent">EXCELLENT</option>
-                                    <option value="fair">FAIR</option>
-                                    <option value="poor">POOR</option>
+                                    <option value="all">Any Quality</option>
+                                    <option value="excellent">Excellent</option>
+                                    <option value="fair">Fair</option>
+                                    <option value="poor">Poor</option>
                                 </select>
                             </div>
 
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={resetIds}
-                                    className="flex items-center gap-2 px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.15em] text-orange-600 dark:text-orange-400 hover:bg-orange-600/10 border border-orange-500/20 rounded-xl transition-all shadow-sm"
+                                    className="flex items-center gap-2 px-4 py-2.5 text-[9px] font-black tracking-[0.15em] text-orange-600 dark:text-orange-400 hover:bg-orange-600/10 border border-orange-500/20 rounded-xl transition-all shadow-sm"
                                 >
                                     <Hash size={12} />
                                     Reset ID
                                 </button>
                                 <button
                                     onClick={resetLogs}
-                                    className="flex items-center gap-2 px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.15em] text-red-600 dark:text-red-400 hover:bg-red-600/10 border border-red-500/20 rounded-xl transition-all shadow-sm"
+                                    className="flex items-center gap-2 px-4 py-2.5 text-[9px] font-black tracking-[0.15em] text-red-600 dark:text-red-400 hover:bg-red-600/10 border border-red-500/20 rounded-xl transition-all shadow-sm"
                                 >
                                     <Trash2 size={12} />
                                     Purge
@@ -594,7 +594,7 @@ export default function Voice(props: VoiceProps) {
                                             <th
                                                 key={col.key}
                                                 onClick={() => handleSort(col.key)}
-                                                className={`pb-4 px-3 text-[9px] font-black text-text-muted uppercase tracking-widest cursor-pointer hover:text-blue-500 transition-colors ${col.key === 'avg_rtt_ms' ? 'text-right' : ''}`}
+                                                className={`pb-4 px-3 text-[9px] font-black text-text-muted tracking-widest cursor-pointer hover:text-blue-500 transition-colors ${col.key === 'avg_rtt_ms' ? 'text-right' : ''}`}
                                             >
                                                 <div className={`flex items-center gap-2 ${col.key === 'avg_rtt_ms' ? 'justify-end' : ''}`}>
                                                     {col.label}
@@ -687,7 +687,7 @@ export default function Voice(props: VoiceProps) {
                     <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
                             <div>
-                                <h3 className="text-lg font-black text-text-primary uppercase tracking-tight flex items-center gap-3">
+                                <h3 className="text-lg font-black text-text-primary tracking-tight flex items-center gap-3">
                                     <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400">
                                         <Server size={18} />
                                     </div>
@@ -736,7 +736,7 @@ export default function Voice(props: VoiceProps) {
                                 <div className="bg-card-secondary/30 p-6 rounded-2xl border border-border space-y-6 shadow-inner">
                                     <div className="flex items-center gap-2 mb-2 border-b border-border pb-4">
                                         <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                                        <h4 className="text-[10px] font-black text-text-primary uppercase tracking-[0.2em]">Runtime Controls</h4>
+                                        <h4 className="text-[10px] font-black text-text-primary tracking-[0.2em]">Runtime Controls</h4>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-4">

@@ -212,7 +212,7 @@ export default function Failover(props: FailoverProps) {
                             <Zap size={24} className={activeTests.length > 0 ? 'text-white' : 'text-text-muted'} />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-text-primary uppercase tracking-tight">Convergence Lab</h2>
+                            <h2 className="text-xl font-bold text-text-primary tracking-tight">Convergence Lab</h2>
                             <div className="flex items-center gap-2 mt-1">
                                 <p className="text-sm text-text-muted">Manage multiple failover targets for specialized test plans</p>
                                 {activeInterfaces.length > 0 && (
@@ -298,7 +298,7 @@ export default function Failover(props: FailoverProps) {
                                         {isSelected && <Zap size={12} className="text-white" fill="currentColor" />}
                                     </div>
                                     <div>
-                                        <h4 className={`font-bold transition-colors uppercase tracking-tight ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{e.label}</h4>
+                                        <h4 className={`font-bold transition-colors tracking-tight ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{e.label}</h4>
                                         <p className="text-[10px] text-text-muted font-mono mt-0.5">{e.target}:{e.port}</p>
                                     </div>
                                 </div>
@@ -353,7 +353,7 @@ export default function Failover(props: FailoverProps) {
                                         <span title={`Source Port: ${getSourcePort(test.test_id || '')}`} className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white uppercase tracking-tighter shadow-lg shadow-blue-500/20 cursor-help">
                                             {test.test_id?.match(/\((CONV-\d+)\)/)?.[1] || test.testId}
                                         </span>
-                                        <span className="text-sm font-bold text-text-primary uppercase tracking-tight">
+                                        <span className="text-sm font-bold text-text-primary tracking-tight">
                                             {test.label || test.test_id?.split(' (')[0] || 'Unknown Target'}
                                         </span>
                                         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-card-secondary border border-border">
@@ -435,10 +435,10 @@ export default function Failover(props: FailoverProps) {
                         <table className="w-full text-left text-xs">
                             <thead className="bg-card-secondary/70 border-b border-border text-text-muted">
                                 <tr>
-                                    <th className="px-6 py-3 font-bold uppercase tracking-tight">Date / ID / Label</th>
-                                    <th className="px-6 py-3 font-bold uppercase tracking-tight text-center">Verdict</th>
-                                    <th className="px-6 py-3 font-bold uppercase tracking-tight text-center">Outcome / Duration</th>
-                                    <th className="px-6 py-3 font-bold uppercase tracking-tight text-center">Packet Details</th>
+                                    <th className="px-6 py-3 font-bold tracking-tight">Date / ID / Label</th>
+                                    <th className="px-6 py-3 font-bold tracking-tight text-center">Verdict</th>
+                                    <th className="px-6 py-3 font-bold tracking-tight text-center">Outcome / Duration</th>
+                                    <th className="px-6 py-3 font-bold tracking-tight text-center">Packet Details</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">

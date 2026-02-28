@@ -780,7 +780,7 @@ export default function App() {
         <button
           onClick={() => setView('dashboard')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
             view === 'dashboard' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
@@ -789,27 +789,27 @@ export default function App() {
         <button
           onClick={() => setView('performance')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
             view === 'performance' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
-          <Gauge size={18} /> Performance
+          <Gauge size={18} /> Digital Experience
         </button>
         {features.xfr_enabled && (
           <button
             onClick={() => setView('speedtest')}
             className={cn(
-              "px-4 py-3 flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] border-b-2 transition-all",
+              "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
               view === 'speedtest' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
             )}
           >
-            <Activity size={18} /> Speedtest (xfr) <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">Beta</span>
+            <Activity size={18} /> Bandwidth Test <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">Beta</span>
           </button>
         )}
         <button
           onClick={() => setView('security')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
             view === 'security' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
@@ -818,49 +818,49 @@ export default function App() {
         <button
           onClick={() => setView('iot')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
             view === 'iot' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
-          <Cpu size={18} /> IoT
+          <Cpu size={18} /> IoT Simulation
         </button>
         <button
           onClick={() => setView('voice')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
             view === 'voice' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
-          <Phone size={18} /> Voice
+          <Phone size={18} /> VoIP
         </button>
         <button
           onClick={() => setView('failover')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
             view === 'failover' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
-          <Zap size={18} /> Failover
+          <Zap size={18} /> Convergence
         </button>
         <button
           onClick={() => setView('vyos')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
             view === 'vyos' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
-          <Monitor size={18} /> VyOS Control <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">Beta</span>
+          <Monitor size={18} /> Vyos Control <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">Beta</span>
         </button>
         {/* SRT Tab hidden in v1.1.2-patch.28 */}
         {username === 'admin' && (
           <button
             onClick={() => setView('settings')}
             className={cn(
-              "px-4 py-3 flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] border-b-2 transition-all relative",
+              "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all relative",
               view === 'settings' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
             )}
           >
-            <Settings size={18} /> Settings <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">Beta</span>
+            <Settings size={18} /> System & Settings <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">Beta</span>
             {maintenance?.updateAvailable && (
               <span className="absolute top-2 right-1 w-2 h-2 bg-blue-600 rounded-full animate-pulse border border-background" />
             )}
@@ -875,7 +875,7 @@ export default function App() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
               {/* Part 1: Status */}
               <div className="min-w-[200px]">
-                <h3 className="text-lg font-black text-text-primary flex items-center gap-2 uppercase tracking-tight">
+                <h3 className="text-lg font-black text-text-primary flex items-center gap-2 tracking-tight">
                   <Activity size={20} className={trafficRunning ? "text-green-600 dark:text-green-400 animate-pulse" : "text-text-muted opacity-50"} />
                   Traffic Generation
                 </h3>
@@ -890,7 +890,7 @@ export default function App() {
               <div className="flex-1 max-w-md bg-card-secondary/50 p-3 rounded-lg border border-border/50 shadow-inner">
                 <div className="flex items-center justify-between mb-2 px-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Speed Control</span>
+                    <span className="text-[10px] font-black text-text-muted tracking-widest">Speed Control</span>
                     <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 uppercase tracking-tighter">
                       {trafficRate <= 0.5 ? '🚀 Turbo' : trafficRate <= 2 ? '⚡ Fast' : trafficRate <= 5 ? '📱 Normal' : '🐢 Slow'}
                     </span>
@@ -919,7 +919,7 @@ export default function App() {
                 onClick={handleTrafficToggle}
                 disabled={!configValid}
                 className={cn(
-                  "px-6 py-3 rounded-lg font-black uppercase tracking-widest text-xs transition-all shadow-lg flex items-center gap-2 min-w-[170px] justify-center",
+                  "px-6 py-3 rounded-lg font-black tracking-widest text-xs transition-all shadow-lg flex items-center gap-2 min-w-[170px] justify-center",
                   trafficRunning
                     ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/20'
                     : 'bg-green-600 hover:bg-green-500 text-white shadow-green-500/20 border-transparent disabled:bg-card-secondary disabled:text-text-muted disabled:border-border disabled:shadow-none disabled:cursor-not-allowed opacity-80 disabled:opacity-50'
@@ -948,14 +948,14 @@ export default function App() {
 
                 {/* Public IP Badge */}
                 {publicIp && (
-                  <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 border border-blue-500/20 rounded text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">
+                  <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 border border-blue-500/20 rounded text-[10px] font-black text-blue-600 dark:text-blue-400 tracking-widest">
                     <Globe size={10} /> Public IP: {publicIp}
                   </div>
                 )}
 
                 {/* Iperf Status Badge */}
                 {iperfServerInfo?.running && (
-                  <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-green-500/10 border border-green-500/20 rounded text-[10px] font-black text-green-600 dark:text-green-400 uppercase tracking-widest">
+                  <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-green-500/10 border border-green-500/20 rounded text-[10px] font-black text-green-600 dark:text-green-400 tracking-widest">
                     <Server size={10} /> IPERF SERVER UP (5201)
                   </div>
                 )}
@@ -965,7 +965,7 @@ export default function App() {
                   onClick={runSpeedtest}
                   disabled={runningSpeedtest}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-sm border",
+                    "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all shadow-sm border",
                     runningSpeedtest
                       ? "bg-blue-500/5 text-blue-400 border-blue-500/20 cursor-not-allowed"
                       : "bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary border-border"
@@ -977,7 +977,7 @@ export default function App() {
 
                 <button
                   onClick={() => setShowIperfModal(true)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary border border-border transition-all shadow-sm"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary border border-border transition-all shadow-sm"
                 >
                   <Activity size={14} />
                   Iperf Client
@@ -985,7 +985,7 @@ export default function App() {
 
                 <button
                   onClick={() => setView('settings')}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 transition-all shadow-sm"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 transition-all shadow-sm"
                 >
                   <Plus size={14} />
                   Manage
@@ -1229,7 +1229,7 @@ export default function App() {
                 <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
                   <BarChart3 size={20} />
                 </div>
-                <h3 className="text-lg font-black text-text-primary uppercase tracking-tight">Traffic Volume</h3>
+                <h3 className="text-lg font-black text-text-primary tracking-tight">Traffic Volume</h3>
               </div>
               <div className="flex bg-card-secondary/20 p-1 rounded-xl border border-border">
                 {(['1h', '6h', '24h'] as const).map((range) => (

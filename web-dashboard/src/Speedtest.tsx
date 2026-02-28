@@ -219,7 +219,7 @@ export default function Speedtest({ token }: Props) {
                             <Gauge size={120} />
                         </div>
 
-                        <h2 className="text-xl font-black text-text-primary flex items-center gap-2 mb-6 uppercase tracking-tight">
+                        <h2 className="text-xl font-black text-text-primary flex items-center gap-2 mb-6 tracking-tight">
                             <Zap className="text-blue-500" size={24} />
                             Speedtest Config
                         </h2>
@@ -512,7 +512,7 @@ export default function Speedtest({ token }: Props) {
                                     <HistoryIcon size={18} />
                                 </div>
                                 <div>
-                                    <h3 className="text-sm font-black text-text-primary uppercase tracking-tight">Diagnostic History</h3>
+                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Diagnostic History</h3>
                                     <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest opacity-60">Past Telemetry Log</p>
                                 </div>
                             </div>
@@ -628,7 +628,7 @@ export default function Speedtest({ token }: Props) {
                                     <BarChart3 className="text-white" size={24} />
                                 </div>
                                 <div>
-                                    <h3 className="text-2xl font-black text-text-primary uppercase tracking-tight">Job Analysis</h3>
+                                    <h3 className="text-2xl font-black text-text-primary tracking-tight">Job Analysis</h3>
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs font-black text-text-muted bg-card px-2 py-0.5 rounded border border-border">{selectedJob.sequence_id}</span>
                                         <span className="text-[10px] font-black text-text-muted uppercase tracking-widest opacity-60">

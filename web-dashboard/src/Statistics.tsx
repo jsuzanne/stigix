@@ -120,31 +120,31 @@ export default function Statistics({ stats, appConfig, onReset }: StatsProps) {
                         <thead className="bg-card-secondary/50">
                             <tr>
                                 <th
-                                    className="text-left px-6 py-4 text-xs font-bold text-text-muted uppercase tracking-wider cursor-pointer hover:bg-card-hover transition-colors"
+                                    className="text-left px-6 py-4 text-xs font-bold text-text-muted tracking-wider cursor-pointer hover:bg-card-hover transition-colors"
                                     onClick={() => setSortBy('name')}
                                 >
                                     Application {sortBy === 'name' && '↓'}
                                 </th>
                                 <th
-                                    className="text-left px-6 py-4 text-xs font-bold text-text-muted uppercase tracking-wider cursor-pointer hover:bg-card-hover transition-colors"
+                                    className="text-left px-6 py-4 text-xs font-bold text-text-muted tracking-wider cursor-pointer hover:bg-card-hover transition-colors"
                                     onClick={() => setSortBy('group')}
                                 >
                                     Group {sortBy === 'group' && '↓'}
                                 </th>
                                 <th
-                                    className="text-right px-6 py-4 text-xs font-bold text-text-muted uppercase tracking-wider cursor-pointer hover:bg-card-hover transition-colors"
+                                    className="text-right px-6 py-4 text-xs font-bold text-text-muted tracking-wider cursor-pointer hover:bg-card-hover transition-colors"
                                     onClick={() => setSortBy('requests')}
                                 >
                                     Requests {sortBy === 'requests' && '↓'}
                                 </th>
                                 <th
-                                    className="text-right px-6 py-4 text-xs font-bold text-text-muted uppercase tracking-wider cursor-pointer hover:bg-card-hover transition-colors"
+                                    className="text-right px-6 py-4 text-xs font-bold text-text-muted tracking-wider cursor-pointer hover:bg-card-hover transition-colors"
                                     onClick={() => setSortBy('errors')}
                                 >
                                     Errors {sortBy === 'errors' && '↓'}
                                 </th>
                                 <th
-                                    className="text-right px-6 py-4 text-xs font-bold text-text-muted uppercase tracking-wider cursor-pointer hover:bg-card-hover transition-colors"
+                                    className="text-right px-6 py-4 text-xs font-bold text-text-muted tracking-wider cursor-pointer hover:bg-card-hover transition-colors"
                                     onClick={() => setSortBy('successRate')}
                                 >
                                     Success Rate {sortBy === 'successRate' && '↓'}

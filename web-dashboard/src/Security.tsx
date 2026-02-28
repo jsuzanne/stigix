@@ -87,7 +87,7 @@ const SchedulerSettings = ({
             <div className="flex items-center gap-4 bg-card-secondary p-2 rounded-lg border border-border">
                 <div className="flex items-center gap-2">
                     <Clock size={14} className={schedule.enabled ? "text-blue-600 dark:text-blue-400" : "text-text-muted"} />
-                    <span className="text-xs font-bold text-text-muted uppercase tracking-tight">{title} Schedule:</span>
+                    <span className="text-xs font-bold text-text-muted tracking-tight">{title} Schedule:</span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -111,7 +111,7 @@ const SchedulerSettings = ({
                 </div>
             </div>
             {schedule.enabled && schedule.next_run_time && (
-                <div className="flex items-center gap-1 text-[9px] text-blue-600 dark:text-blue-400 font-black uppercase tracking-widest px-2 opacity-80">
+                <div className="flex items-center gap-1 text-[9px] text-blue-600 dark:text-blue-400 font-black tracking-widest px-2 opacity-80">
                     <Clock size={10} />
                     Next test at {formatTime(schedule.next_run_time)}
                 </div>
@@ -729,7 +729,7 @@ export default function Security({ token }: SecurityProps) {
     };
 
     if (!config) {
-        return <div className="p-8 text-center text-text-muted animate-pulse font-black uppercase tracking-widest text-xs">Loading security configuration...</div>;
+        return <div className="p-8 text-center text-text-muted animate-pulse font-black tracking-widest text-xs">Loading security configuration...</div>;
     }
 
     const basicDNSTests = DNS_TEST_DOMAINS.filter(t => t.category === 'basic');
@@ -746,7 +746,7 @@ export default function Security({ token }: SecurityProps) {
                     {toast.type === 'success' && <CheckCircle size={20} />}
                     {toast.type === 'error' && <XCircle size={20} />}
                     {toast.type === 'info' && <Clock size={20} />}
-                    <span className="font-bold uppercase tracking-tight text-sm">{toast.message}</span>
+                    <span className="font-bold tracking-tight text-sm">{toast.message}</span>
                 </div>
             )}
 
@@ -757,7 +757,7 @@ export default function Security({ token }: SecurityProps) {
                         <Shield size={32} />
                     </div>
                     <div>
-                        <h2 className="text-3xl font-black text-text-primary uppercase tracking-tight">Security Testing</h2>
+                        <h2 className="text-3xl font-black text-text-primary tracking-tight">Security Testing</h2>
                         <p className="text-text-muted text-sm mt-0.5 font-medium">
                             Test Palo Alto Networks firewall security policies: URL Filtering, DNS Security, and Threat Prevention
                         </p>
@@ -767,7 +767,7 @@ export default function Security({ token }: SecurityProps) {
                 <div className="mt-6 bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3 shadow-sm">
                     <AlertTriangle size={20} className="text-amber-500 mt-0.5 flex-shrink-0" />
                     <div>
-                        <p className="text-amber-600 dark:text-amber-400 text-xs font-black uppercase tracking-widest leading-relaxed">
+                        <p className="text-amber-600 dark:text-amber-400 text-xs font-black tracking-widest leading-relaxed">
                             Warning: Direct Policy Impact
                         </p>
                         <p className="text-text-muted text-[11px] mt-1 italic font-medium">
@@ -786,16 +786,16 @@ export default function Security({ token }: SecurityProps) {
                             <>
                                 <CheckCircle size={20} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
                                 <div>
-                                    <div className="text-green-600 dark:text-green-400 text-xs font-black uppercase tracking-widest">System Health: Operational</div>
-                                    <div className="text-text-muted text-[10px] mt-0.5 font-bold uppercase tracking-tight opacity-70">All required security tools available ({systemHealth.platform})</div>
+                                    <div className="text-green-600 dark:text-green-400 text-xs font-black tracking-widest">System Health: Operational</div>
+                                    <div className="text-text-muted text-[10px] mt-0.5 font-bold tracking-tight opacity-70">All required security tools available ({systemHealth.platform})</div>
                                 </div>
                             </>
                         ) : (
                             <>
                                 <XCircle size={20} className="text-red-500 mt-0.5 flex-shrink-0" />
                                 <div>
-                                    <div className="text-red-500 text-xs font-black uppercase tracking-widest">System Health: Degraded</div>
-                                    <div className="text-text-muted text-[10px] mt-0.5 font-bold uppercase tracking-tight opacity-70">
+                                    <div className="text-red-500 text-xs font-black tracking-widest">System Health: Degraded</div>
+                                    <div className="text-text-muted text-[10px] mt-0.5 font-bold tracking-tight opacity-70">
                                         Missing: {Object.entries(systemHealth.commands).filter(([_, cmd]: any) => !cmd.available).map(([name]: any) => name).join(', ')}
                                     </div>
                                 </div>
@@ -810,12 +810,12 @@ export default function Security({ token }: SecurityProps) {
                 <div className="flex flex-col gap-6">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <h3 className="text-lg font-black text-text-primary uppercase tracking-tight">Security Efficacy</h3>
-                            <span className="px-2 py-0.5 rounded-full bg-blue-600/10 border border-blue-500/20 text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">Real-time stats</span>
+                            <h3 className="text-lg font-black text-text-primary tracking-tight">Security Efficacy</h3>
+                            <span className="px-2 py-0.5 rounded-full bg-blue-600/10 border border-blue-500/20 text-[9px] font-black text-blue-600 dark:text-blue-400 tracking-widest">Real-time stats</span>
                         </div>
                         <button
                             onClick={resetCounters}
-                            className="flex items-center gap-2 px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-red-600 hover:text-red-500 hover:bg-red-500/5 border border-red-500/20 rounded-lg transition-all shadow-sm"
+                            className="flex items-center gap-2 px-4 py-1.5 text-[10px] font-black tracking-widest text-red-600 hover:text-red-500 hover:bg-red-500/5 border border-red-500/20 rounded-lg transition-all shadow-sm"
                         >
                             <Trash2 size={14} />
                             Reset Counters
@@ -825,13 +825,13 @@ export default function Security({ token }: SecurityProps) {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div className="bg-card border border-border p-5 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                             <div className="flex items-center justify-between mb-3 text-text-muted">
-                                <span className="text-[10px] font-black uppercase tracking-widest opacity-80">Total Tests</span>
+                                <span className="text-[10px] font-black tracking-widest opacity-80">Total Tests</span>
                                 <div className="p-1.5 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 border border-blue-500/20">
                                     <Shield size={16} />
                                 </div>
                             </div>
                             <div className="text-3xl font-black text-text-primary tabular-nums tracking-tighter">{config.statistics.total_tests_run}</div>
-                            <div className="mt-2 text-[10px] font-medium text-text-muted flex items-center gap-1.5 uppercase tracking-widest">
+                            <div className="mt-2 text-[10px] font-medium text-text-muted flex items-center gap-1.5 tracking-widest">
                                 <Clock size={12} className="opacity-50" />
                                 Last: {config.statistics.last_test_time ? new Date(config.statistics.last_test_time).toLocaleTimeString() : 'Never'}
                             </div>
@@ -839,7 +839,7 @@ export default function Security({ token }: SecurityProps) {
 
                         <div className="bg-card border border-border p-5 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                             <div className="flex items-center justify-between mb-3 text-red-600 dark:text-red-400">
-                                <span className="text-[10px] font-black uppercase tracking-widest opacity-80">URL Filter</span>
+                                <span className="text-[10px] font-black tracking-widest opacity-80">URL Filter</span>
                                 <div className="p-1.5 bg-red-600/10 rounded-lg border border-red-500/20">
                                     <Shield size={16} />
                                 </div>
@@ -859,7 +859,7 @@ export default function Security({ token }: SecurityProps) {
 
                         <div className="bg-card border border-border p-5 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                             <div className="flex items-center justify-between mb-3 text-orange-600 dark:text-orange-400">
-                                <span className="text-[10px] font-black uppercase tracking-widest opacity-80">DNS Protect</span>
+                                <span className="text-[10px] font-black tracking-widest opacity-80">DNS Protect</span>
                                 <div className="p-1.5 bg-orange-600/10 rounded-lg border border-orange-500/20">
                                     <Shield size={16} />
                                 </div>
@@ -872,7 +872,7 @@ export default function Security({ token }: SecurityProps) {
                                 <div className="w-px h-8 bg-border/50" />
                                 <div>
                                     <div className="text-3xl font-black text-yellow-600 dark:text-yellow-400 tabular-nums tracking-tighter">{config.statistics.dns_tests_sinkholed || 0}</div>
-                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-widest opacity-60">Sinkhole</div>
+                                    <div className="text-[10px] font-black text-text-muted tracking-widest opacity-60">Sinkhole</div>
                                 </div>
                                 <div className="w-px h-8 bg-border/50" />
                                 <div>
@@ -884,7 +884,7 @@ export default function Security({ token }: SecurityProps) {
 
                         <div className="bg-card border border-border p-5 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                             <div className="flex items-center justify-between mb-3 text-purple-600 dark:text-purple-400">
-                                <span className="text-[10px] font-black uppercase tracking-widest opacity-80">Threat Prev</span>
+                                <span className="text-[10px] font-black tracking-widest opacity-80">Threat Prev</span>
                                 <div className="p-1.5 bg-purple-600/10 rounded-lg border border-purple-500/20">
                                     <Shield size={16} />
                                 </div>
@@ -897,7 +897,7 @@ export default function Security({ token }: SecurityProps) {
                                 <div className="w-px h-8 bg-border/50" />
                                 <div>
                                     <div className="text-3xl font-black text-green-600 dark:text-green-400 tabular-nums tracking-tighter">{config.statistics.threat_tests_allowed}</div>
-                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-widest opacity-60">Bypass</div>
+                                    <div className="text-[10px] font-black text-text-muted tracking-widest opacity-60">Bypass</div>
                                 </div>
                             </div>
                         </div>
@@ -916,7 +916,7 @@ export default function Security({ token }: SecurityProps) {
                             <Link size={18} />
                         </div>
                         <div>
-                            <h3 className="text-sm font-black text-text-primary uppercase tracking-tight">URL Filtering</h3>
+                            <h3 className="text-sm font-black text-text-primary tracking-tight">URL Filtering</h3>
                             <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest opacity-70">
                                 {config.url_filtering.enabled_categories.length} / {URL_CATEGORIES.length} Categories Active
                             </p>
@@ -991,7 +991,7 @@ export default function Security({ token }: SecurityProps) {
                                                 className="w-4 h-4 rounded border-border bg-card-secondary text-red-600 focus:ring-1 focus:ring-red-500 outline-none transition-all"
                                             />
                                             <div className="min-w-0 pr-2">
-                                                <div className={cn("text-xs font-black uppercase tracking-tight truncate", isEnabled ? "text-text-primary" : "text-text-muted")}>
+                                                <div className={cn("text-xs font-black tracking-tight truncate", isEnabled ? "text-text-primary" : "text-text-muted")}>
                                                     {category.name}
                                                 </div>
                                                 <div className="text-[9px] text-text-muted font-mono truncate opacity-60 group-hover:opacity-100 transition-opacity">
@@ -1038,7 +1038,7 @@ export default function Security({ token }: SecurityProps) {
                             <Shield size={18} />
                         </div>
                         <div>
-                            <h3 className="text-sm font-black text-text-primary uppercase tracking-tight">DNS Security Tests</h3>
+                            <h3 className="text-sm font-black text-text-primary tracking-tight">DNS Security Tests</h3>
                             <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest opacity-70">
                                 {config.dns_security.enabled_tests.length} / {DNS_TEST_DOMAINS.length} Domains Active
                             </p>
@@ -1091,7 +1091,7 @@ export default function Security({ token }: SecurityProps) {
 
                         {/* Basic DNS Tests */}
                         <div>
-                            <h4 className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] mb-4 border-l-2 border-blue-600 dark:border-blue-400 pl-2">Critical DNS Threats</h4>
+                            <h4 className="text-[10px] font-black text-text-muted tracking-[0.2em] mb-4 border-l-2 border-blue-600 dark:border-blue-400 pl-2">Critical DNS Threats</h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-80 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
                                 {basicDNSTests.map(test => {
                                     const isEnabled = config.dns_security.enabled_tests.includes(test.id);
@@ -1116,7 +1116,7 @@ export default function Security({ token }: SecurityProps) {
                                                     className="w-4 h-4 rounded border-border bg-card-secondary text-blue-600 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
                                                 />
                                                 <div className="min-w-0 pr-2">
-                                                    <div className={cn("text-xs font-black uppercase tracking-tight truncate", isEnabled ? "text-text-primary" : "text-text-muted")}>
+                                                    <div className={cn("text-xs font-black tracking-tight truncate", isEnabled ? "text-text-primary" : "text-text-muted")}>
                                                         {test.name}
                                                     </div>
                                                     <div className="text-[9px] text-text-muted font-mono truncate opacity-60 group-hover:opacity-100 transition-opacity">
@@ -1152,7 +1152,7 @@ export default function Security({ token }: SecurityProps) {
 
                         {/* Advanced DNS Tests */}
                         <div>
-                            <h4 className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] mb-4 border-l-2 border-purple-600 dark:border-purple-400 pl-2">Advanced DNS Security</h4>
+                            <h4 className="text-[10px] font-black text-text-muted tracking-[0.2em] mb-4 border-l-2 border-purple-600 dark:border-purple-400 pl-2">Advanced DNS Security</h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-80 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border">
                                 {advancedDNSTests.map(test => {
                                     const isEnabled = config.dns_security.enabled_tests.includes(test.id);
@@ -1177,7 +1177,7 @@ export default function Security({ token }: SecurityProps) {
                                                     className="w-4 h-4 rounded border-border bg-card-secondary text-purple-600 focus:ring-1 focus:ring-purple-500 outline-none transition-all"
                                                 />
                                                 <div className="min-w-0 pr-2">
-                                                    <div className={cn("text-xs font-black uppercase tracking-tight truncate", isEnabled ? "text-text-primary" : "text-text-muted")}>
+                                                    <div className={cn("text-xs font-black tracking-tight truncate", isEnabled ? "text-text-primary" : "text-text-muted")}>
                                                         {test.name}
                                                     </div>
                                                     <div className="text-[9px] text-text-muted font-mono truncate opacity-60 group-hover:opacity-100 transition-opacity">
@@ -1222,7 +1222,7 @@ export default function Security({ token }: SecurityProps) {
                 >
                     <div className="flex items-center gap-3">
                         <Shield size={20} className="text-red-400" />
-                        <h3 className="text-lg font-semibold text-foreground">Threat Prevention (EICAR)</h3>
+                        <h3 className="text-lg font-semibold text-foreground">Threat Prevention (Eicap)</h3>
                     </div>
                     {threatExpanded ? <ChevronUp size={20} className="text-text-secondary" /> : <ChevronDown size={20} className="text-text-secondary" />}
                 </button>
@@ -1300,8 +1300,8 @@ export default function Security({ token }: SecurityProps) {
                             <ListTree size={18} />
                         </div>
                         <div>
-                            <h3 className="text-sm font-black text-text-primary uppercase tracking-tight">External Dynamic Lists (EDL)</h3>
-                            <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest opacity-70">Automated Threat Feeds</p>
+                            <h3 className="text-sm font-black text-text-primary tracking-tight">External Dynamic Lists (Edl)</h3>
+                            <p className="text-[10px] text-text-muted font-bold tracking-widest opacity-70">Automated Threat Feeds</p>
                         </div>
                     </div>
                     {edlExpanded ? <ChevronUp size={20} className="text-text-muted" /> : <ChevronDown size={20} className="text-text-muted" />}
@@ -1325,7 +1325,7 @@ export default function Security({ token }: SecurityProps) {
                                                 </div>
                                                 <h4 className="text-[11px] font-black text-text-primary uppercase tracking-[0.1em]">{type} Lists</h4>
                                             </div>
-                                            <span className="text-[9px] font-black font-mono bg-card-secondary border border-border text-orange-600 dark:text-orange-400 px-2.5 py-1 rounded-full uppercase tracking-widest">
+                                            <span className="text-[9px] font-black font-mono bg-card-secondary border border-border text-orange-600 dark:text-orange-400 px-2.5 py-1 rounded-full tracking-widest">
                                                 {list.elementsCount || 0} Elements
                                             </span>
                                         </div>
@@ -1385,8 +1385,8 @@ export default function Security({ token }: SecurityProps) {
 
                         {/* Parameter Controls */}
                         <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-                            <h4 className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] mb-6 flex items-center gap-2 border-l-2 border-orange-500 pl-2">
-                                <Settings size={14} /> Global EDL Configuration
+                            <h4 className="text-[10px] font-black text-text-muted tracking-[0.2em] mb-6 flex items-center gap-2 border-l-2 border-orange-500 pl-2">
+                                <Settings size={14} /> Global Edl Configuration
                             </h4>
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                                 <div>
@@ -1429,7 +1429,7 @@ export default function Security({ token }: SecurityProps) {
                                 <div className="flex items-end">
                                     <button
                                         onClick={() => showToast('Configuration automatically saved', 'info')}
-                                        className="w-full py-2.5 bg-card-secondary hover:bg-card-hover border border-border text-text-primary rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-sm"
+                                        className="w-full py-2.5 bg-card-secondary hover:bg-card-hover border border-border text-text-primary rounded-xl text-[9px] font-black tracking-widest transition-all shadow-sm"
                                     >
                                         <Database size={14} className="inline mr-2" /> Commit Changes
                                     </button>
@@ -1439,7 +1439,7 @@ export default function Security({ token }: SecurityProps) {
 
                         {/* Test Execution & Mini Results */}
                         <div className="space-y-6">
-                            <h4 className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] flex items-center gap-2 border-l-2 border-orange-500 pl-2">
+                            <h4 className="text-[10px] font-black text-text-muted tracking-[0.2em] flex items-center gap-2 border-l-2 border-orange-500 pl-2">
                                 <Play size={14} fill="currentColor" /> List Execution
                             </h4>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1457,7 +1457,7 @@ export default function Security({ token }: SecurityProps) {
                                                 onClick={() => runEdlTest(type)}
                                                 disabled={isTesting || !list.elementsCount}
                                                 className={cn(
-                                                    "w-full py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-2 group shadow-lg",
+                                                    "w-full py-4 rounded-2xl font-black text-[10px] tracking-widest transition-all flex items-center justify-center gap-2 group shadow-lg",
                                                     isTesting || !list.elementsCount
                                                         ? "bg-card-secondary text-text-muted border border-border cursor-not-allowed"
                                                         : "bg-orange-600 hover:bg-orange-500 text-white shadow-orange-900/40"
@@ -1478,7 +1478,7 @@ export default function Security({ token }: SecurityProps) {
                                                             {(summary.successRate * 100).toFixed(0)}% Efficacy
                                                         </span>
                                                     </div>
-                                                    <div className="flex gap-4 text-[9px] items-center font-bold uppercase tracking-tight">
+                                                    <div className="flex gap-4 text-[9px] items-center font-bold tracking-tight">
                                                         <div className="flex flex-col">
                                                             <span className="text-text-muted opacity-60">Verified</span>
                                                             <span className="text-text-primary">{summary.testedCount}</span>
@@ -1549,8 +1549,8 @@ export default function Security({ token }: SecurityProps) {
                             <HistoryIcon size={18} />
                         </div>
                         <div>
-                            <h3 className="text-sm font-black text-text-primary uppercase tracking-tight">Security Test Log</h3>
-                            <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest opacity-70">
+                            <h3 className="text-sm font-black text-text-primary tracking-tight">Security Test Log</h3>
+                            <p className="text-[10px] text-text-muted font-bold tracking-widest opacity-70">
                                 {totalResults} entries tracked • showing {testResults.length}
                             </p>
                         </div>
@@ -1578,7 +1578,7 @@ export default function Security({ token }: SecurityProps) {
                                     <select
                                         value={testTypeFilter}
                                         onChange={(e) => setTestTypeFilter(e.target.value as any)}
-                                        className="pl-9 pr-8 py-3 bg-card-secondary border border-border text-text-primary rounded-xl text-xs font-bold uppercase tracking-widest outline-none focus:ring-1 focus:ring-blue-500 transition-all appearance-none"
+                                        className="pl-9 pr-8 py-3 bg-card-secondary border border-border text-text-primary rounded-xl text-xs font-bold tracking-widest outline-none focus:ring-1 focus:ring-blue-500 transition-all appearance-none"
                                     >
                                         <option value="all">All Lists</option>
                                         <option value="url">URL Lists</option>
@@ -1590,14 +1590,14 @@ export default function Security({ token }: SecurityProps) {
                                 <button
                                     onClick={exportResults}
                                     disabled={testResults.length === 0}
-                                    className="px-4 py-3 bg-card-secondary hover:bg-card-hover border border-border disabled:opacity-50 text-text-primary rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm"
+                                    className="px-4 py-3 bg-card-secondary hover:bg-card-hover border border-border disabled:opacity-50 text-text-primary rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2 shadow-sm"
                                 >
                                     <Download size={14} /> Export
                                 </button>
                                 <button
                                     onClick={clearHistory}
                                     disabled={testResults.length === 0}
-                                    className="px-4 py-3 bg-card-secondary hover:bg-red-500/10 hover:text-red-500 border border-border disabled:opacity-50 text-text-primary rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm"
+                                    className="px-4 py-3 bg-card-secondary hover:bg-red-500/10 hover:text-red-500 border border-border disabled:opacity-50 text-text-primary rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2 shadow-sm"
                                 >
                                     <Trash2 size={14} /> Purge
                                 </button>
@@ -1620,11 +1620,11 @@ export default function Security({ token }: SecurityProps) {
                                     <table className="w-full">
                                         <thead className="bg-card sticky top-0 z-10">
                                             <tr className="border-b border-border">
-                                                <th className="text-left px-4 py-4 text-[9px] font-black text-text-muted uppercase tracking-widest">Descriptor</th>
-                                                <th className="text-left px-4 py-4 text-[9px] font-black text-text-muted uppercase tracking-widest">Timeline</th>
-                                                <th className="text-left px-4 py-4 text-[9px] font-black text-text-muted uppercase tracking-widest">List</th>
-                                                <th className="text-left px-4 py-4 text-[9px] font-black text-text-muted uppercase tracking-widest">Identity</th>
-                                                <th className="text-right px-4 py-4 text-[9px] font-black text-text-muted uppercase tracking-widest">Disposition</th>
+                                                <th className="text-left px-4 py-4 text-[9px] font-black text-text-muted tracking-widest">Descriptor</th>
+                                                <th className="text-left px-4 py-4 text-[9px] font-black text-text-muted tracking-widest">Timeline</th>
+                                                <th className="text-left px-4 py-4 text-[9px] font-black text-text-muted tracking-widest">List</th>
+                                                <th className="text-left px-4 py-4 text-[9px] font-black text-text-muted tracking-widest">Identity</th>
+                                                <th className="text-right px-4 py-4 text-[9px] font-black text-text-muted tracking-widest">Disposition</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border/50">
@@ -1681,7 +1681,7 @@ export default function Security({ token }: SecurityProps) {
                                     <div className="text-center pt-2">
                                         <button
                                             onClick={loadMore}
-                                            className="px-6 py-2.5 bg-card-secondary hover:bg-card-hover border border-border text-text-primary rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm"
+                                            className="px-6 py-2.5 bg-card-secondary hover:bg-card-hover border border-border text-text-primary rounded-xl text-[10px] font-black tracking-widest transition-all shadow-sm"
                                         >
                                             See More entries
                                         </button>
@@ -1709,10 +1709,10 @@ export default function Security({ token }: SecurityProps) {
                                     <ShieldAlert size={24} />
                                 </div>
                                 <div>
-                                    <h3 className="text-xl font-black text-text-primary uppercase tracking-tight">Telemetry Diagnostic</h3>
+                                    <h3 className="text-xl font-black text-text-primary tracking-tight">Telemetry Diagnostic</h3>
                                     <div className="flex items-center gap-2 mt-0.5">
                                         <span className="text-[10px] font-black font-mono text-text-muted bg-card px-2 py-0.5 rounded border border-border">ID #{selectedTest.id}</span>
-                                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest opacity-60">
+                                        <span className="text-[10px] font-black text-text-muted tracking-widest opacity-60">
                                             {new Date(selectedTest.timestamp).toLocaleString()}
                                         </span>
                                     </div>
@@ -1834,9 +1834,9 @@ export default function Security({ token }: SecurityProps) {
                                                         <table className="w-full">
                                                             <thead className="bg-card-secondary sticky top-0 z-10 shadow-sm">
                                                                 <tr className="border-b border-border">
-                                                                    <th className="text-left py-3 px-4 text-text-muted font-black uppercase tracking-widest text-[9px]">Resource Identity</th>
-                                                                    <th className="text-right py-3 px-4 text-text-muted font-black uppercase tracking-widest text-[9px]">Security Status</th>
-                                                                    <th className="text-left py-3 px-4 text-text-muted font-black uppercase tracking-widest text-[9px]">Observation Details</th>
+                                                                    <th className="text-left py-3 px-4 text-text-muted font-black tracking-widest text-[9px]">Resource Identity</th>
+                                                                    <th className="text-right py-3 px-4 text-text-muted font-black tracking-widest text-[9px]">Security Status</th>
+                                                                    <th className="text-left py-3 px-4 text-text-muted font-black tracking-widest text-[9px]">Observation Details</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody className="divide-y divide-border/50">
@@ -1887,7 +1887,7 @@ export default function Security({ token }: SecurityProps) {
                         <div className="px-8 py-4 border-t border-border bg-card-secondary/30 flex justify-end">
                             <button
                                 onClick={() => setShowDetailModal(false)}
-                                className="px-6 py-2.5 bg-card hover:bg-card-hover border border-border text-text-primary rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm"
+                                className="px-6 py-2.5 bg-card hover:bg-card-hover border border-border text-text-primary rounded-xl text-[10px] font-black tracking-widest transition-all shadow-sm"
                             >
                                 Close Diagnostic
                             </button>

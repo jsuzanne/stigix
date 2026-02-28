@@ -148,9 +148,7 @@ export default function Settings({ token }: { token: string }) {
         return () => clearInterval(interval);
     }, [token]);
 
-    // Handlers (Merged from both components)
-
-    // Configuration Handlers
+    // Handlers
     const GLOBAL_TOTAL = 1000;
 
     const handleAppPercentageChange = (categoryName: string, domain: string, newAppPercent: number) => {
@@ -298,7 +296,6 @@ export default function Settings({ token }: { token: string }) {
         const probe = customProbes[index];
         setNewProbe({ ...probe });
         setEditingIndex(index);
-        // Scroll to form or ensure it's visible? It's at the top of the tab content.
     };
 
     const deleteProbe = async (index: number) => {
@@ -377,7 +374,6 @@ export default function Settings({ token }: { token: string }) {
         } catch (e) { alert('Import failed: ' + (e as Error).message); }
     };
 
-    // Maintenance Handlers
     const handleUpgrade = async () => {
         if (!status?.latest) return;
         if (!confirm(`This will pull v${status.latest} images and restart the dashboard. Proceed?`)) return;
@@ -420,48 +416,47 @@ export default function Settings({ token }: { token: string }) {
     if (loading) return <div className="p-8 text-center text-text-muted animate-pulse font-bold uppercase tracking-widest text-xs">Loading Settings...</div>;
 
     const tabs = [
-        { id: 'interfaces', label: 'Network Interfaces', icon: <Network size={16} /> },
-        { id: 'probes', label: 'Synthetic Probes', icon: <Activity size={16} /> },
-        { id: 'distribution', label: 'Traffic Distribution', icon: <Sliders size={16} /> },
-        { id: 'maintenance', label: 'System Maintenance', icon: <RefreshCw size={16} /> },
-        { id: 'power', label: 'Power & Restart', icon: <Terminal size={16} /> },
-        { id: 'backup', label: 'Configuration Backup', icon: <Database size={16} /> },
+        { id: 'interfaces', label: 'Network Interfaces' },
+        { id: 'probes', label: 'Synthetic Probes' },
+        { id: 'distribution', label: 'Traffic Distribution' },
+        { id: 'maintenance', label: 'System Maintenance' },
+        { id: 'power', label: 'Power & Restart' },
+        { id: 'backup', label: 'Configuration Backup' },
     ];
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500 w-full">
-            {/* Header */}
-            <div className="flex items-center gap-4 mb-2">
-                <div className="p-3 bg-purple-600/10 rounded-2xl text-purple-600 dark:text-purple-400 border border-purple-500/20 shadow-lg shadow-purple-900/10">
-                    <SettingsIcon size={32} />
-                </div>
-                <div>
-                    <h1 className="text-3xl font-black text-text-primary uppercase tracking-tighter">Settings</h1>
-                    <div className="flex items-center gap-2 text-text-muted text-[10px] font-bold uppercase tracking-[0.2em] opacity-70">
-                        <span>Terminal Node Control Center</span>
-                        <div className="w-1 h-1 rounded-full bg-text-muted/30" />
-                        <span>v1.2.1-patch.109</span>
+            {/* Header / Nav */}
+            <div className="bg-card border border-border p-6 rounded-2xl shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-purple-600/10 rounded-xl">
+                            <SettingsIcon size={24} className="text-purple-500" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-3">
+                                <h2 className="text-2xl font-black text-text-primary tracking-tight">Settings</h2>
+                                <span className="text-[10px] text-text-muted font-bold uppercase tracking-widest opacity-60">Control Center • {status?.current || 'v1.2.1-patch.112'}</span>
+                            </div>
+                            <div className="flex items-center gap-4 mt-1">
+                                {tabs.map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id as any)}
+                                        className={cn(
+                                            "text-xs font-bold tracking-wider transition-colors pt-1",
+                                            activeTab === tab.id
+                                                ? "text-purple-500 border-b-2 border-purple-500 pb-1"
+                                                : "text-text-muted hover:text-text-secondary"
+                                        )}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>
-
-            {/* Tab Navigation */}
-            <div className="bg-card/50 backdrop-blur-md border border-border rounded-2xl p-1.5 flex flex-wrap gap-1 shadow-xl overflow-x-auto no-scrollbar">
-                {tabs.map((tab) => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id as any)}
-                        className={cn(
-                            "flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap",
-                            activeTab === tab.id
-                                ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30 ring-1 ring-purple-400/30"
-                                : "text-text-muted hover:bg-card-hover hover:text-text-primary"
-                        )}
-                    >
-                        {tab.icon}
-                        {tab.label}
-                    </button>
-                ))}
             </div>
 
             {/* Success/Error Toasts */}
@@ -487,7 +482,7 @@ export default function Settings({ token }: { token: string }) {
                                 <Network size={20} />
                             </div>
                             <div>
-                                <h2 className="text-lg font-black text-text-primary uppercase tracking-tight">Network Interfaces</h2>
+                                <h2 className="text-lg font-black text-text-primary tracking-tight">Network Interfaces</h2>
                                 <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-70">Physical interfaces for traffic egress</p>
                             </div>
                         </div>
@@ -550,50 +545,50 @@ export default function Settings({ token }: { token: string }) {
                 )}
 
                 {activeTab === 'probes' && (
-                    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
-                            <div className="flex justify-between items-center">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400">
-                                        <Activity size={20} />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-lg font-black text-text-primary uppercase tracking-tight">Synthetic Probes (DEM)</h2>
-                                        <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-70">Custom telemetry for real-time monitoring</p>
-                                    </div>
+                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400">
+                                    <Activity size={20} />
                                 </div>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={handleExportProbes}
-                                        className="px-4 py-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
-                                    >
-                                        <Download size={14} />
-                                        Export
-                                    </button>
-                                    <input
-                                        type="file"
-                                        id="import-probes"
-                                        className="hidden"
-                                        accept=".json"
-                                        onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (file) {
-                                                const reader = new FileReader();
-                                                reader.onload = (ev) => handleImportProbes(ev.target?.result as string);
-                                                reader.readAsText(file);
-                                            }
-                                        }}
-                                    />
-                                    <button
-                                        onClick={() => document.getElementById('import-probes')?.click()}
-                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-blue-900/20"
-                                    >
-                                        <Upload size={14} />
-                                        Import
-                                    </button>
+                                <div>
+                                    <h2 className="text-lg font-black text-text-primary tracking-tight">Synthetic Probes (DEM)</h2>
+                                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-70">Custom telemetry for real-time monitoring</p>
                                 </div>
                             </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleExportProbes}
+                                    className="px-4 py-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                >
+                                    <Download size={14} />
+                                    Export
+                                </button>
+                                <input
+                                    type="file"
+                                    id="import-probes"
+                                    className="hidden"
+                                    accept=".json"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                            const reader = new FileReader();
+                                            reader.onload = (ev) => handleImportProbes(ev.target?.result as string);
+                                            reader.readAsText(file);
+                                        }
+                                    }}
+                                />
+                                <button
+                                    onClick={() => document.getElementById('import-probes')?.click()}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-blue-900/20"
+                                >
+                                    <Upload size={14} />
+                                    Import
+                                </button>
+                            </div>
+                        </div>
 
+                        <div className="max-w-4xl mx-auto space-y-8">
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-6 bg-card-secondary/30 p-6 rounded-2xl border border-border shadow-inner">
                                 <div className="space-y-2">
                                     <label className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em] ml-1">Probe Name</label>
@@ -690,96 +685,94 @@ export default function Settings({ token }: { token: string }) {
                 )}
 
                 {activeTab === 'distribution' && (
-                    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="space-y-8">
-                            <div className="flex items-center justify-between bg-card border border-border rounded-2xl p-6 shadow-sm">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 font-bold">
-                                        <Sliders size={20} />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-lg font-black text-text-primary uppercase tracking-tight">Traffic Distribution</h2>
-                                        <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-70">Adjust weights by category or individual app</p>
-                                    </div>
+                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 font-bold">
+                                    <Sliders size={20} />
                                 </div>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={handleExportApps}
-                                        className="px-4 py-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
-                                    >
-                                        <Download size={14} />
-                                        Export
-                                    </button>
-                                    <input
-                                        type="file"
-                                        id="import-apps"
-                                        className="hidden"
-                                        accept=".json,.txt"
-                                        onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (file) {
-                                                const reader = new FileReader();
-                                                reader.onload = (ev) => handleImportApps(ev.target?.result as string);
-                                                reader.readAsText(file);
-                                            }
-                                        }}
-                                    />
-                                    <button
-                                        onClick={() => document.getElementById('import-apps')?.click()}
-                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-blue-900/20"
-                                    >
-                                        <Upload size={14} />
-                                        Import
-                                    </button>
+                                <div>
+                                    <h2 className="text-lg font-black text-text-primary tracking-tight">Traffic Distribution</h2>
+                                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-70">Adjust weights by category or individual app</p>
                                 </div>
                             </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleExportApps}
+                                    className="px-4 py-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                >
+                                    <Download size={14} />
+                                    Export
+                                </button>
+                                <input
+                                    type="file"
+                                    id="import-apps"
+                                    className="hidden"
+                                    accept=".json,.txt"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                            const reader = new FileReader();
+                                            reader.onload = (ev) => handleImportApps(ev.target?.result as string);
+                                            reader.readAsText(file);
+                                        }
+                                    }}
+                                />
+                                <button
+                                    onClick={() => document.getElementById('import-apps')?.click()}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-blue-900/20"
+                                >
+                                    <Upload size={14} />
+                                    Import
+                                </button>
+                            </div>
+                        </div>
 
-                            <div className="space-y-4">
-                                {categories.map(category => {
-                                    const categoryWeight = category.apps.reduce((s, a) => s + a.weight, 0);
-                                    const categoryPercent = Math.round((categoryWeight / GLOBAL_TOTAL) * 100);
-                                    return (
-                                        <div key={category.name} className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-                                            <div className="bg-card-secondary/30 p-5 flex items-center justify-between border-b border-border">
-                                                <div className="flex items-center gap-3 text-[11px] font-black text-text-primary uppercase tracking-widest">
-                                                    <Database size={14} className="text-blue-600" />
-                                                    {category.name}
-                                                </div>
-                                                <div className="flex items-center gap-6">
-                                                    <span className="text-xs font-black text-blue-600 dark:text-blue-400">{categoryPercent}%</span>
-                                                    <input
-                                                        type="range"
-                                                        min="1" max="100"
-                                                        className="w-32 accent-blue-600 h-1 bg-card-secondary border border-border rounded-lg"
-                                                        value={categoryPercent}
-                                                        onChange={(e) => handleCategoryPercentageChange(category.name, parseInt(e.target.value))}
-                                                    />
-                                                </div>
+                        <div className="max-w-7xl mx-auto space-y-4">
+                            {categories.map(category => {
+                                const categoryWeight = category.apps.reduce((s, a) => s + a.weight, 0);
+                                const categoryPercent = Math.round((categoryWeight / GLOBAL_TOTAL) * 100);
+                                return (
+                                    <div key={category.name} className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+                                        <div className="bg-card-secondary/30 p-5 flex items-center justify-between border-b border-border">
+                                            <div className="flex items-center gap-3 text-[11px] font-black text-text-primary uppercase tracking-widest">
+                                                <Database size={14} className="text-blue-600" />
+                                                {category.name}
                                             </div>
-                                            <div className="p-6 grid gap-4 grid-cols-1 lg:grid-cols-2">
-                                                {category.apps.slice(0, 4).map(app => { // Showing subset for space
-                                                    const appPercent = categoryWeight > 0 ? Math.round((app.weight / categoryWeight) * 100) : 0;
-                                                    return (
-                                                        <div key={app.domain} className="bg-card-secondary/20 border border-border rounded-xl p-4 space-y-3">
-                                                            <div className="flex justify-between items-center">
-                                                                <span className="text-[10px] font-black uppercase text-text-primary truncate max-w-[150px]">{app.domain}</span>
-                                                                <span className="text-[10px] font-black text-blue-600">{appPercent}%</span>
-                                                            </div>
-                                                            <input
-                                                                type="range"
-                                                                min="0" max="100"
-                                                                value={appPercent}
-                                                                onChange={(e) => handleAppPercentageChange(category.name, app.domain, parseInt(e.target.value))}
-                                                                className="w-full accent-blue-600 h-1 bg-card border border-border rounded-lg"
-                                                            />
-                                                        </div>
-                                                    );
-                                                })}
+                                            <div className="flex items-center gap-6">
+                                                <span className="text-xs font-black text-blue-600 dark:text-blue-400">{categoryPercent}%</span>
+                                                <input
+                                                    type="range"
+                                                    min="1" max="100"
+                                                    className="w-32 accent-blue-600 h-1 bg-card-secondary border border-border rounded-lg"
+                                                    value={categoryPercent}
+                                                    onChange={(e) => handleCategoryPercentageChange(category.name, parseInt(e.target.value))}
+                                                />
                                             </div>
                                         </div>
-                                    );
-                                })}
-                            </div>
+                                        <div className="p-6 grid gap-4 grid-cols-1 lg:grid-cols-2">
+                                            {category.apps.slice(0, 4).map(app => {
+                                                const appPercent = categoryWeight > 0 ? Math.round((app.weight / categoryWeight) * 100) : 0;
+                                                return (
+                                                    <div key={app.domain} className="bg-card-secondary/20 border border-border rounded-xl p-4 space-y-3">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-[10px] font-black uppercase text-text-primary truncate max-w-[150px]">{app.domain}</span>
+                                                            <span className="text-[10px] font-black text-blue-600">{appPercent}%</span>
+                                                        </div>
+                                                        <input
+                                                            type="range"
+                                                            min="0" max="100"
+                                                            value={appPercent}
+                                                            onChange={(e) => handleAppPercentageChange(category.name, app.domain, parseInt(e.target.value))}
+                                                            className="w-full accent-blue-600 h-1 bg-card border border-border rounded-lg"
+                                                        />
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
@@ -791,7 +784,7 @@ export default function Settings({ token }: { token: string }) {
                                 <RefreshCw size={24} className={upgrading ? "animate-spin" : ""} />
                             </div>
                             <div>
-                                <h2 className="text-lg font-black text-text-primary uppercase tracking-tight">System Maintenance</h2>
+                                <h2 className="text-lg font-black text-text-primary tracking-tight">System Maintenance</h2>
                                 <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-0.5 opacity-70">Update system logic and engine</p>
                             </div>
                         </div>
@@ -855,7 +848,7 @@ export default function Settings({ token }: { token: string }) {
                                     <Terminal size={24} />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-black text-text-primary uppercase tracking-tight">Service Restart</h2>
+                                    <h2 className="text-lg font-black text-text-primary tracking-tight">Service Restart</h2>
                                     <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-0.5 opacity-70">Soft reload of internal components</p>
                                 </div>
                             </div>
@@ -876,7 +869,7 @@ export default function Settings({ token }: { token: string }) {
                                     <Cpu size={24} />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-black text-text-primary uppercase tracking-tight">System Redeploy</h2>
+                                    <h2 className="text-lg font-black text-text-primary tracking-tight">System Redeploy</h2>
                                     <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-0.5 opacity-70">Full stack container recreation</p>
                                 </div>
                             </div>
@@ -900,7 +893,7 @@ export default function Settings({ token }: { token: string }) {
                                 <Database size={24} />
                             </div>
                             <div>
-                                <h2 className="text-lg font-black text-text-primary uppercase tracking-tight">Configuration Backup</h2>
+                                <h2 className="text-lg font-black text-text-primary tracking-tight">Configuration Backup</h2>
                                 <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-0.5 opacity-70">Import/Export system state and settings</p>
                             </div>
                         </div>

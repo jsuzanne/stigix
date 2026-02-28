@@ -668,7 +668,7 @@ export default function Vyos(props: VyosProps) {
                         <div className="absolute inset-0 bg-purple-400 rounded-full animate-ping opacity-20" />
                     </div>
                     <div>
-                        <h4 className="text-xs font-black text-white uppercase tracking-tighter">Sequence In Progress</h4>
+                        <h4 className="text-xs font-black text-white tracking-tighter">Sequence In Progress</h4>
                         <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] text-purple-200 font-mono bg-purple-500/20 px-1.5 rounded">{activeExecution.step}</span>
                         </div>
@@ -685,7 +685,7 @@ export default function Vyos(props: VyosProps) {
                         </div>
                         <div className="relative">
                             <div className="flex items-center gap-3">
-                                <h2 className="text-2xl font-black text-text-primary uppercase tracking-tight">VyOS Control</h2>
+                                <h2 className="text-2xl font-black text-text-primary tracking-tight">VyOS Control</h2>
                                 <button
                                     onClick={() => setShowSettingsMenu(!showSettingsMenu)}
                                     className="p-1.5 text-text-muted hover:text-text-primary hover:bg-card-hover rounded-lg transition-all"
@@ -697,7 +697,7 @@ export default function Vyos(props: VyosProps) {
                                 {showSettingsMenu && (
                                     <div className="absolute top-full left-0 mt-2 w-64 bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-left">
                                         <div className="p-3 border-b border-border bg-card-hover/50">
-                                            <h4 className="text-[10px] font-black uppercase text-text-muted tracking-widest">Global Configuration</h4>
+                                            <h4 className="text-[10px] font-black text-text-muted tracking-widest">Global Configuration</h4>
                                         </div>
                                         <div className="p-1">
                                             <button
@@ -730,11 +730,11 @@ export default function Vyos(props: VyosProps) {
                                 )}
                             </div>
                             <div className="flex items-center gap-4 mt-1">
-                                <button onClick={() => setView('routers')} className={`text-xs font-bold uppercase tracking-wider transition-colors ${view === 'routers' ? 'text-blue-500 border-b-2 border-blue-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Routers</button>
-                                <button onClick={() => setView('sequences')} className={`text-xs font-bold uppercase tracking-wider transition-colors ${view === 'sequences' ? 'text-purple-500 border-b-2 border-purple-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Sequences</button>
-                                <button onClick={() => setView('history')} className={`text-xs font-bold uppercase tracking-wider transition-colors ${view === 'history' ? 'text-green-500 border-b-2 border-green-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>History</button>
-                                <button onClick={() => setView('timeline')} className={`text-xs font-bold uppercase tracking-wider transition-colors ${view === 'timeline' ? 'text-purple-500 border-b-2 border-purple-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Timeline</button>
-                                <button onClick={() => setView('metrics')} className={`text-xs font-bold uppercase tracking-wider transition-colors ${view === 'metrics' ? 'text-orange-500 border-b-2 border-orange-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Metrics</button>
+                                <button onClick={() => setView('routers')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'routers' ? 'text-blue-500 border-b-2 border-blue-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Routers</button>
+                                <button onClick={() => setView('sequences')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'sequences' ? 'text-purple-500 border-b-2 border-purple-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Sequences</button>
+                                <button onClick={() => setView('history')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'history' ? 'text-green-500 border-b-2 border-green-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>History</button>
+                                <button onClick={() => setView('timeline')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'timeline' ? 'text-purple-500 border-b-2 border-purple-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Timeline</button>
+                                <button onClick={() => setView('metrics')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'metrics' ? 'text-orange-500 border-b-2 border-orange-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Metrics</button>
                             </div>
                         </div>
                     </div>
@@ -745,7 +745,7 @@ export default function Vyos(props: VyosProps) {
                                 onClick={() => setShowAddModal(true)}
                                 className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition-all shadow-lg shadow-blue-900/20"
                             >
-                                <Wifi size={18} /> DISCOVER ROUTER
+                                <Wifi size={18} /> Discover Router
                             </button>
                         )}
                         {view === 'sequences' && (
@@ -753,7 +753,7 @@ export default function Vyos(props: VyosProps) {
                                 onClick={() => openSeqModal()}
                                 className="flex items-center gap-2 px-6 py-2.5 bg-purple-600/10 hover:bg-purple-600/20 text-purple-500 rounded-lg font-bold transition-all border border-purple-500/20"
                             >
-                                <Plus size={18} /> NEW SEQUENCE
+                                <Plus size={18} /> New Sequence
                             </button>
                         )}
                     </div>
@@ -771,7 +771,7 @@ export default function Vyos(props: VyosProps) {
                                         <Server size={22} className={router.status === 'online' ? 'text-green-500' : 'text-red-500'} />
                                     </div>
                                     <div>
-                                        <h4 className="font-bold text-text-primary uppercase tracking-tight text-lg">{router.name}</h4>
+                                        <h4 className="font-bold text-text-primary tracking-tight text-lg">{router.name}</h4>
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] text-text-muted font-mono bg-card-secondary px-1.5 py-0.5 rounded border border-border/50">{router.host}</span>
                                             {router.location && (
@@ -783,7 +783,7 @@ export default function Vyos(props: VyosProps) {
                                     </div>
                                 </div>
                                 <div className="flex flex-col items-end gap-2">
-                                    <div className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter border ${router.status === 'online' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'}`}>
+                                    <div className={`px-2 py-0.5 rounded text-[9px] font-black tracking-tighter border ${router.status === 'online' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'}`}>
                                         {router.status}
                                     </div>
                                     {/* Last Seen Indicator */}
@@ -886,7 +886,7 @@ export default function Vyos(props: VyosProps) {
                             {/* Header: Title and Tools */}
                             <div className="flex justify-between items-start">
                                 <div className="flex flex-col min-w-0">
-                                    <h3 className="text-sm font-black text-text-primary uppercase tracking-tight truncate pr-2">
+                                    <h3 className="text-sm font-black text-text-primary tracking-tight truncate pr-2">
                                         {seq.name}
                                     </h3>
                                     <div className="flex items-center gap-2 mt-1">

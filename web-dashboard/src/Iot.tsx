@@ -278,7 +278,7 @@ export default function Iot({ token }: IotProps) {
                                 }}
                                 className="text-blue-400 hover:text-blue-300 text-xs font-bold transition-colors flex items-center gap-1"
                             >
-                                <ExternalLink size={12} /> DOWNLOAD SAMPLE
+                                <ExternalLink size={12} /> Download Sample
                             </button>
                             <span className="text-text-muted/30">|</span>
                             <a
@@ -288,7 +288,7 @@ export default function Iot({ token }: IotProps) {
                                 className="text-blue-400 hover:text-blue-300 text-xs font-bold transition-colors flex items-center gap-1"
                                 title="Python Script Generator"
                             >
-                                <ExternalLink size={12} /> PYTHON GENERATOR
+                                <ExternalLink size={12} /> Python Generator
                             </a>
                             <span className="text-text-muted/30">|</span>
                             <a
@@ -298,7 +298,7 @@ export default function Iot({ token }: IotProps) {
                                 className="text-blue-400 hover:text-blue-300 text-xs font-bold transition-colors flex items-center gap-1"
                                 title="LLM-based Generation"
                             >
-                                <ExternalLink size={12} /> LLM GUIDE
+                                <ExternalLink size={12} /> Llm Guide
                             </a>
                         </div>
                     </div>
@@ -313,13 +313,13 @@ export default function Iot({ token }: IotProps) {
                                 onClick={handleBulkStart}
                                 className="flex items-center gap-1.5 text-xs font-bold text-green-400 hover:text-green-300 transition-colors"
                             >
-                                <Play size={14} /> START
+                                <Play size={14} /> Start
                             </button>
                             <button
                                 onClick={handleBulkStop}
                                 className="flex items-center gap-1.5 text-xs font-bold text-red-400 hover:text-red-300 transition-colors"
                             >
-                                <Square size={14} /> STOP
+                                <Square size={14} /> Stop
                             </button>
                         </div>
                     )}
@@ -329,11 +329,11 @@ export default function Iot({ token }: IotProps) {
                         className="flex items-center gap-2 bg-card-secondary hover:bg-card-hover text-text-secondary px-4 py-2.5 rounded-xl text-sm font-bold transition-all border border-border"
                         title="Export JSON Configuration"
                     >
-                        <ArrowUpRight size={18} /> EXPORT JSON
+                        <ArrowUpRight size={18} /> Export Json
                     </button>
 
                     <label className="flex items-center gap-2 bg-card-secondary hover:bg-card-hover text-text-secondary px-4 py-2.5 rounded-xl text-sm font-bold transition-all border border-border cursor-pointer" title="Import JSON Configuration">
-                        <Plus size={18} /> IMPORT JSON
+                        <Plus size={18} /> Import Json
                         <input type="file" accept=".json" className="hidden" onChange={handleImportJson} />
                     </label>
 
@@ -341,7 +341,7 @@ export default function Iot({ token }: IotProps) {
                         onClick={() => { setEditingDevice({ enabled: true, protocols: ['dhcp', 'arp', 'http'], traffic_interval: 60 }); setShowAddModal(true); }}
                         className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-900/20"
                     >
-                        <Plus size={18} /> ADD DEVICE
+                        <Plus size={18} /> Add Device
                     </button>
                 </div>
             </div>
@@ -350,7 +350,7 @@ export default function Iot({ token }: IotProps) {
             <div className="bg-blue-600/5 border border-blue-500/20 p-4 rounded-2xl flex items-start gap-3">
                 <Info size={20} className="text-blue-500 dark:text-blue-400 mt-0.5" />
                 <div className="space-y-1">
-                    <h4 className="text-sm font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Scale & Monitoring</h4>
+                    <h4 className="text-sm font-bold text-blue-600 dark:text-blue-400 tracking-wider">Scale & Monitoring</h4>
                     <p className="text-xs text-text-muted leading-relaxed max-w-4xl">
                         Toggle **Compact View** to manage large environments. Click the terminal icon on any running device to view **Live Protocol Logs** (DHCP, LLDP, SNMP).
                     </p>
@@ -376,7 +376,7 @@ export default function Iot({ token }: IotProps) {
                             className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary rounded-xl text-xs font-bold transition-all border border-border"
                         >
                             {selectedIds.length === filteredDevices.length && filteredDevices.length > 0 ? <CheckSquare size={16} className="text-blue-500" /> : <SquareIcon size={16} />}
-                            SELECT ALL
+                            Select All
                         </button>
 
                         <div className="flex bg-card-secondary rounded-xl p-1 border border-border">
@@ -399,11 +399,11 @@ export default function Iot({ token }: IotProps) {
                 <div className="flex items-center gap-6">
                     <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                        <span className="text-[11px] font-bold text-text-muted uppercase tracking-widest">{devices.filter(d => d.running).length} RUNNING</span>
+                        <span className="text-[11px] font-bold text-text-muted tracking-widest">{devices.filter(d => d.running).length} Running</span>
                     </div>
                     <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-border" />
-                        <span className="text-[11px] font-bold text-text-muted uppercase tracking-widest">{devices.filter(d => !d.running).length} STOPPED</span>
+                        <span className="text-[11px] font-bold text-text-muted tracking-widest">{devices.filter(d => !d.running).length} Stopped</span>
                     </div>
                 </div>
             </div>
@@ -450,7 +450,7 @@ export default function Iot({ token }: IotProps) {
                                         {getDeviceIcon(device.type, isCompact ? 16 : 24)}
                                     </div>
                                     <div className="truncate">
-                                        <h3 className={cn("font-bold text-text-primary transition-colors uppercase tracking-tight truncate", isCompact ? "text-sm" : "text-base group-hover:text-blue-500")}>{device.name}</h3>
+                                        <h3 className={cn("font-bold text-text-primary transition-colors tracking-tight truncate", isCompact ? "text-sm" : "text-base group-hover:text-blue-500")}>{device.name}</h3>
                                         <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest truncate">{device.vendor} • {device.type}</p>
                                         {!isCompact && device.security?.bad_behavior && (
                                             <div className="mt-1 flex items-center gap-1.5 flex-wrap">
@@ -502,7 +502,7 @@ export default function Iot({ token }: IotProps) {
                                     {!isCompact && (
                                         <div className="hidden lg:block shrink-0">
                                             <div className={cn(
-                                                "px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest uppercase border",
+                                                "px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest border",
                                                 device.running ? "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20" : "bg-card-secondary text-text-muted border-border"
                                             )}>
                                                 {device.running ? 'Running' : 'Stopped'}
@@ -555,7 +555,7 @@ export default function Iot({ token }: IotProps) {
                                         title={device.running ? "Shut Down" : "Initialize"}
                                     >
                                         <Power size={16} />
-                                        {!isCompact && <span className="ml-2 uppercase tracking-widest">{device.running ? 'SHUT' : 'START'}</span>}
+                                        {!isCompact && <span className="ml-2 tracking-widest">{device.running ? 'Shut' : 'Start'}</span>}
                                     </button>
 
                                     {!isCompact && (
@@ -794,7 +794,7 @@ export default function Iot({ token }: IotProps) {
                                 <button
                                     type="button"
                                     onClick={() => setShowAddModal(false)}
-                                    className="flex-1 px-4 py-3 bg-card-secondary border border-border text-text-muted font-bold rounded-xl hover:bg-card-hover transition-all uppercase tracking-widest text-xs"
+                                    className="flex-1 px-4 py-3 bg-card-secondary border border-border text-text-muted font-bold rounded-xl hover:bg-card-hover transition-all tracking-widest text-xs"
                                 >
                                     Cancel
                                 </button>
@@ -824,7 +824,7 @@ export default function Iot({ token }: IotProps) {
                                         <Terminal size={20} />
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-bold text-text-primary uppercase tracking-tight">Real-time Analysis</h3>
+                                        <h3 className="text-lg font-bold text-text-primary tracking-tight">Real-time Analysis</h3>
                                         <p className="text-xs text-text-muted font-medium">Monitoring {activeLogDevice.name}</p>
                                     </div>
                                 </div>
