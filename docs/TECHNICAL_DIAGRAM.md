@@ -49,7 +49,7 @@ graph TD
 
 | Flow Type | Protocol | Port(s) | Source | Target |
 |-----------|----------|---------|--------|--------|
-| **Dashboard UI** | TCP | 8080 / 8444 | User Browser | `sdwan-web-ui` |
+| **Dashboard UI** | TCP | 8080 | User Browser | `sdwan-web-ui` |
 | **Background HTTP**| TCP | 80, 443 | `sdwan-traffic-gen` | Internet / Cloud |
 | **Convergence/Voice**| UDP | 6200 | `sdwan-voice-gen` | `sdwan-voice-echo` |
 | **IoT L2 (DHCP)** | UDP | 67, 68 | `sdwan-web-ui/IOT` | Gateway |
