@@ -854,9 +854,9 @@ export default function Vyos(props: VyosProps) {
                                     <button
                                         onClick={() => editRouter(router)}
                                         className="p-2 bg-card-secondary hover:bg-orange-600/10 text-text-muted hover:text-orange-500 rounded-lg transition-all border border-border/50"
-                                        title="Node Settings"
+                                        title="Edit Node"
                                     >
-                                        <Settings size={16} />
+                                        <Edit2 size={16} />
                                     </button>
                                 </div>
                                 <button

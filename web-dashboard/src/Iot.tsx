@@ -5,7 +5,8 @@ import {
     Thermometer, Speaker, HardDrive, Info,
     Search, CheckSquare, Square as SquareIcon,
     ArrowUpRight, Clock, AlertCircle, ChevronRight,
-    LayoutGrid, List, Terminal, X, ExternalLink
+    LayoutGrid, List, Terminal, X, ExternalLink,
+    Power, Edit2
 } from 'lucide-react';
 import LogViewer from './components/LogViewer';
 
@@ -551,11 +552,21 @@ export default function Iot({ token }: IotProps) {
                                                 ? "bg-red-500/10 hover:bg-red-500/20 text-red-500 border-red-500/20"
                                                 : "bg-blue-600 hover:bg-blue-500 text-white border-transparent shadow-lg shadow-blue-900/40"
                                         )}
-                                        title={device.running ? "Stop Simulation" : "Start Simulation"}
+                                        title={device.running ? "Shut Down" : "Initialize"}
                                     >
-                                        {device.running ? <Square size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
-                                        {!isCompact && <span className="ml-2 uppercase tracking-widest">{device.running ? 'STOP' : 'START'}</span>}
+                                        <Power size={16} />
+                                        {!isCompact && <span className="ml-2 uppercase tracking-widest">{device.running ? 'SHUT' : 'START'}</span>}
                                     </button>
+
+                                    {!isCompact && (
+                                        <button
+                                            onClick={() => { setEditingDevice(device); setShowAddModal(true); }}
+                                            className="p-3 bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary rounded-2xl transition-all border border-border"
+                                            title="Edit Device"
+                                        >
+                                            <Edit2 size={18} />
+                                        </button>
+                                    )}
 
                                     <button
                                         onClick={() => setActiveLogDevice(device)}
@@ -570,21 +581,14 @@ export default function Iot({ token }: IotProps) {
                                     </button>
 
                                     {!isCompact && (
-                                        <>
-                                            <button
-                                                onClick={() => { setEditingDevice(device); setShowAddModal(true); }}
-                                                className="p-3 bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary rounded-2xl transition-all border border-border"
-                                            >
-                                                <ChevronRight size={18} />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(device.id)}
-                                                disabled={device.running}
-                                                className="p-3 bg-card-secondary hover:bg-red-500/20 text-text-muted hover:text-red-500 rounded-2xl transition-all border border-border disabled:opacity-30"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
-                                        </>
+                                        <button
+                                            onClick={() => handleDelete(device.id)}
+                                            disabled={device.running}
+                                            className="p-3 bg-card-secondary hover:bg-red-500/20 text-text-muted hover:text-red-500 rounded-2xl transition-all border border-border disabled:opacity-30"
+                                            title="Remove Device"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
                                     )}
                                 </div>
                             </div>

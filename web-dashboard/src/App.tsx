@@ -1350,6 +1350,10 @@ export default function App() {
         <ConnectivityPerformance token={token!} onManage={() => setView('settings')} />
       ) : view === 'security' ? (
         <Security token={token!} />
+      ) : view === 'vyos' ? (
+        <Vyos token={token!} />
+      ) : view === 'iot' ? (
+        <Iot token={token!} />
       ) : view === 'voice' ? (
         <Voice token={token!} externalStatus={globalVoiceStatus} />
       ) : view === 'failover' ? (

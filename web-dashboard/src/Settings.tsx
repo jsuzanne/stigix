@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     RefreshCw, Download, AlertCircle, CheckCircle, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
-    Settings as SettingsIcon, Database, Activity, Cpu, Plus
+    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -294,6 +294,13 @@ export default function Settings({ token }: { token: string }) {
         } catch (e) { console.error('Failed to save probes'); }
     };
 
+    const startEditProbe = (index: number) => {
+        const probe = customProbes[index];
+        setNewProbe({ ...probe });
+        setEditingIndex(index);
+        // Scroll to form or ensure it's visible? It's at the top of the tab content.
+    };
+
     const deleteProbe = async (index: number) => {
         const updatedProbes = customProbes.filter((_, i) => i !== index);
         await saveProbes(updatedProbes);
@@ -305,6 +312,69 @@ export default function Settings({ token }: { token: string }) {
         updatedProbes[index].enabled = !updatedProbes[index].enabled;
         await saveProbes(updatedProbes);
         setCustomProbes(updatedProbes);
+    };
+
+    const handleExportProbes = async () => {
+        try {
+            const res = await fetch('/api/connectivity/custom/export', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (res.ok) {
+                const data = await res.json();
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `probes-config-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+            }
+        } catch (e) { alert('Export failed'); }
+    };
+
+    const handleImportProbes = async (content: string) => {
+        try {
+            const data = JSON.parse(content);
+            const endpoints = Array.isArray(data) ? data : data.endpoints;
+            if (!endpoints) throw new Error("Invalid format");
+
+            await fetch('/api/connectivity/custom', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ endpoints })
+            });
+            showSuccess('Probes imported successfully');
+            setTimeout(() => window.location.reload(), 1500);
+        } catch (e) { alert('Import failed: ' + (e as Error).message); }
+    };
+
+    const handleExportApps = async () => {
+        try {
+            const res = await fetch('/api/config/applications/export?format=json', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (res.ok) {
+                const data = await res.json();
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `applications-config-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+            }
+        } catch (e) { alert('Export failed'); }
+    };
+
+    const handleImportApps = async (content: string) => {
+        try {
+            const res = await fetch('/api/config/applications/import', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ content })
+            });
+            if (res.ok) {
+                showSuccess('Applications imported successfully');
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                const err = await res.json();
+                throw new Error(err.error || 'Server error');
+            }
+        } catch (e) { alert('Import failed: ' + (e as Error).message); }
     };
 
     // Maintenance Handlers
@@ -492,6 +562,36 @@ export default function Settings({ token }: { token: string }) {
                                         <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-70">Custom telemetry for real-time monitoring</p>
                                     </div>
                                 </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={handleExportProbes}
+                                        className="px-4 py-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                    >
+                                        <Download size={14} />
+                                        Export
+                                    </button>
+                                    <input
+                                        type="file"
+                                        id="import-probes"
+                                        className="hidden"
+                                        accept=".json"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onload = (ev) => handleImportProbes(ev.target?.result as string);
+                                                reader.readAsText(file);
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        onClick={() => document.getElementById('import-probes')?.click()}
+                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-blue-900/20"
+                                    >
+                                        <Upload size={14} />
+                                        Import
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-6 bg-card-secondary/30 p-6 rounded-2xl border border-border shadow-inner">
@@ -556,9 +656,31 @@ export default function Settings({ token }: { token: string }) {
                                                 <div className="text-[10px] text-text-muted font-mono tracking-tighter truncate max-w-[140px] opacity-70">{probe.target}</div>
                                             </div>
                                         </div>
-                                        <div className="flex gap-1">
-                                            <button onClick={() => toggleProbeEnabled(idx)} className="p-2 hover:bg-card-hover rounded-xl text-text-muted"><Power size={14} /></button>
-                                            <button onClick={() => deleteProbe(idx)} className="p-2 hover:bg-red-600/10 rounded-xl text-text-muted hover:text-red-500"><Terminal size={14} /></button>
+                                        <div className="flex gap-1.5 px-2">
+                                            <button
+                                                onClick={() => toggleProbeEnabled(idx)}
+                                                className={cn(
+                                                    "p-2 rounded-xl transition-all",
+                                                    probe.enabled ? "text-green-500 hover:bg-green-500/10" : "text-text-muted hover:bg-card-hover"
+                                                )}
+                                                title="Toggle Probe"
+                                            >
+                                                <Power size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => startEditProbe(idx)}
+                                                className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
+                                                title="Edit Probe"
+                                            >
+                                                <Edit2 size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => deleteProbe(idx)}
+                                                className="p-2 hover:bg-red-600/10 rounded-xl text-text-muted hover:text-red-500 transition-all"
+                                                title="Remove Probe"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
                                         </div>
                                     </div>
                                 ))}
@@ -570,13 +692,45 @@ export default function Settings({ token }: { token: string }) {
                 {activeTab === 'distribution' && (
                     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div className="space-y-8">
-                            <div className="flex items-center gap-3 bg-card border border-border rounded-2xl p-6 shadow-sm">
-                                <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 font-bold">
-                                    <Sliders size={20} />
+                            <div className="flex items-center justify-between bg-card border border-border rounded-2xl p-6 shadow-sm">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 font-bold">
+                                        <Sliders size={20} />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-black text-text-primary uppercase tracking-tight">Traffic Distribution</h2>
+                                        <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-70">Adjust weights by category or individual app</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h2 className="text-lg font-black text-text-primary uppercase tracking-tight">Traffic Distribution</h2>
-                                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-70">Adjust weights by category or individual app</p>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={handleExportApps}
+                                        className="px-4 py-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                    >
+                                        <Download size={14} />
+                                        Export
+                                    </button>
+                                    <input
+                                        type="file"
+                                        id="import-apps"
+                                        className="hidden"
+                                        accept=".json,.txt"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onload = (ev) => handleImportApps(ev.target?.result as string);
+                                                reader.readAsText(file);
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        onClick={() => document.getElementById('import-apps')?.click()}
+                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-blue-900/20"
+                                    >
+                                        <Upload size={14} />
+                                        Import
+                                    </button>
                                 </div>
                             </div>
 
