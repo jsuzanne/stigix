@@ -614,8 +614,18 @@ export default function App() {
       <Toaster position="top-right" />
       <header className="mb-8 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
-            SD-WAN Traffic Generator
+          <h1 className="text-4xl font-black tracking-tighter flex items-center text-text-primary">
+            St
+            <span className="relative">
+              i
+              <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-[0_0_12px_#22d3ee,0_0_4px_#22d3ee]" />
+            </span>
+            g
+            <span className="relative">
+              i
+              <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-[0_0_12px_#22d3ee,0_0_4px_#22d3ee]" />
+            </span>
+            x
           </h1>
           <p className="text-text-muted mt-1">
             Real-time Control Center
