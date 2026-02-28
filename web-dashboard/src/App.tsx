@@ -614,9 +614,38 @@ export default function App() {
       <Toaster position="top-right" />
       <header className="mb-8 flex justify-between items-center">
         <div>
-          <h1 className="text-4xl font-black tracking-tight text-text-primary">
-            Stigix
-          </h1>
+          <div className="flex items-center gap-4">
+            <svg width="220" height="48" viewBox="0 0 220 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
+              {/* Geometric Node Icon */}
+              <g className="animate-pulse" style={{ animationDuration: '3s' }}>
+                <path d="M8 12L20 5L32 12V28L20 35L8 28V12Z" stroke="white" strokeWidth="2.5" strokeLinejoin="round" fill="white" fillOpacity="0.05" />
+                <path d="M12 26L20 32L35 17L30 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="20" cy="20" r="4" fill="#22D3EE" className="shadow-[0_0_15px_#22d3ee]" />
+              </g>
+
+              {/* STIGIX Text as high-fidelity paths to lock alignment */}
+              <g fill="white" className="font-black">
+                {/* S */}
+                <path d="M54 34c-4.5 0-8.5-1.5-8.5-6h4.5c0 2 2 3 4 3s3.5-1 3.5-2.5c0-4.5-12-1.5-12-10c0-4.5 4-6.5 8.5-6.5s8 2 8 6h-4.5c0-1.5-1.5-3-3.5-3s-3.5 1-3.5 2.5c0 4.5 12 1.5 12 10c0 4.5-4.5 6.5-9 6.5z" />
+                {/* T */}
+                <path d="M68 16h13v4h-4.5v14h-4V20H68v-4z" />
+                {/* I (Stem matched to nodes) */}
+                <rect x="85" y="21" width="5" height="13" rx="1" />
+                {/* G */}
+                <path d="M108 34c-5.5 0-9.5-4-9.5-9s4-9 9.5-9c4 0 7 1.5 8.5 4l-3.5 2.5c-1-1.5-2.5-2.5-5-2.5-3 0-5.5 2.5-5.5 5s2.5 5 5.5 5c2 0 3.5-1 4.5-2.5V25h-5v-4h9v10c-2 2-5 3-9 3z" />
+                {/* I (Stem matched to nodes) */}
+                <rect x="123" y="21" width="5" height="13" rx="1" />
+                {/* X */}
+                <path d="M136 16h5l4 7.5l4-7.5h5l-7 11.5l7.5 12.5h-5.5L145 27.5l-4.5 12.5h-5l7.5-12.5l-7-11.5z" />
+              </g>
+
+              {/* Pulsing Cyan Nodes over 'i's */}
+              <g className="animate-pulse" style={{ animationDuration: '2s' }}>
+                <circle cx="87.5" cy="14" r="3.5" fill="#22D3EE" shadow-color="#22d3ee" className="drop-shadow-[0_0_10px_#22d3ee]" />
+                <circle cx="125.5" cy="14" r="3.5" fill="#22D3EE" shadow-color="#22d3ee" className="drop-shadow-[0_0_10px_#22d3ee]" />
+              </g>
+            </svg>
+          </div>
           <p className="text-text-muted mt-1">
             Real-time Control Center
             {siteInfo?.success && siteInfo.detected_site_name && (
