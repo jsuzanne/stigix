@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.1-patch.122] - 2026-02-28
+### Changed
+- **System Info UI**: Enhanced Network I/O metrics to actively compute and display real-time throughput in **Mb/s** (megabits per second) instead of static bytes, improving monitoring visibility over the 5-second polling interval. 🚀
+
 ## [v1.2.1-patch.121] - 2026-02-28
 ### Added
 - **UI**: Added a comprehensive System Information tab to Settings displaying active Host/Bridge execution context, Memory, Network I/O, and Disk capacity metrics. 🖥️
