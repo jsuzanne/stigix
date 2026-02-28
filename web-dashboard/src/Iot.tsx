@@ -452,16 +452,6 @@ export default function Iot({ token }: IotProps) {
                                     <div className="truncate">
                                         <h3 className={cn("font-bold text-text-primary transition-colors tracking-tight truncate", isCompact ? "text-sm" : "text-base group-hover:text-blue-500")}>{device.name}</h3>
                                         <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest truncate">{device.vendor} • {device.type}</p>
-                                        {!isCompact && device.security?.bad_behavior && (
-                                            <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                                                <span className="bg-orange-500/10 text-orange-500 text-[9px] font-black px-1.5 py-0.5 rounded border border-orange-500/20 uppercase tracking-widest flex items-center gap-1">
-                                                    <Shield size={10} fill="currentColor" /> ATTACK MODE
-                                                </span>
-                                                <span className="text-[9px] text-text-muted font-bold uppercase truncate">
-                                                    {(device.security.behavior_type || []).join(', ')}
-                                                </span>
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
 
@@ -526,6 +516,16 @@ export default function Iot({ token }: IotProps) {
                                             </span>
                                             <span className="text-text-primary font-bold">{device.traffic_interval}s</span>
                                         </div>
+                                    </div>
+                                )}
+
+                                {!isCompact && device.security?.bad_behavior && (
+                                    <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                                        {(device.security.behavior_type || []).map(bt => (
+                                            <span key={bt} className="bg-red-500/10 text-red-400 text-[8px] font-black px-1.5 py-0.5 rounded border border-red-500/20 uppercase tracking-tight">
+                                                {bt.replace(/_/g, ' ')}
+                                            </span>
+                                        ))}
                                     </div>
                                 )}
 

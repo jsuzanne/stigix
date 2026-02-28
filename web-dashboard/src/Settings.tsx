@@ -639,7 +639,7 @@ export default function Settings({ token }: { token: string }) {
                                         className="w-full bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20"
                                     >
                                         <Plus size={16} />
-                                        {editingIndex !== null ? 'Update' : 'Initialize'}
+                                        {editingIndex !== null ? 'Update' : 'Add Probe'}
                                     </button>
                                 </div>
                             </div>
