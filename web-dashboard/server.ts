@@ -5314,6 +5314,64 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
 // Serve frontend in production
 // --- Phase 17: Maintenance & System Upgrades ---
 
+app.get('/api/admin/system/info', authenticateToken, async (req, res) => {
+    try {
+        // 1. Memory
+        const totalMem = os.totalmem();
+        const freeMem = os.freemem();
+        const usedMem = totalMem - freeMem;
+
+        // 2. Disk
+        let disk = { total: 0, used: 0, free: 0, usagePercent: 0 };
+        try {
+            const { stdout } = await promisify(exec)('df -k / | tail -n 1');
+            const parts = stdout.trim().split(/\s+/);
+            if (parts.length >= 5) {
+                // df -k gives 1K-blocks. Convert to bytes.
+                disk.total = parseInt(parts[1], 10) * 1024;
+                disk.used = parseInt(parts[2], 10) * 1024;
+                disk.free = parseInt(parts[3], 10) * 1024;
+                disk.usagePercent = parseInt(parts[4].replace('%', ''), 10);
+            }
+        } catch (e) {
+            console.error('Failed to read disk space', e);
+        }
+
+        // 3. Network I/O
+        let network = { rx: 0, tx: 0 };
+        try {
+            const { stdout } = await promisify(exec)('cat /proc/net/dev | grep eth0'); // Assuming eth0 is the primary container interface
+            const parts = stdout.split(':')[1].trim().split(/\s+/);
+            network.rx = parseInt(parts[0], 10); // Receive bytes
+            network.tx = parseInt(parts[8], 10); // Transmit bytes
+        } catch (e) {
+            console.error('Failed to read network stats', e);
+        }
+
+        // 4. Execution Context (Bridge vs Host)
+        let mode = 'Bridge Mode';
+        const nets = os.networkInterfaces();
+        // If we see interfaces typical of a host machine, it's host mode
+        const hasHostInterfaces = Object.keys(nets).some(name =>
+            name.startsWith('en') || name.startsWith('wl') || name.startsWith('wlan') ||
+            (name.startsWith('eth') && name !== 'eth0')
+        );
+        if (hasHostInterfaces) {
+            mode = 'Host Mode';
+        }
+
+        res.json({
+            memory: { total: totalMem, used: usedMem, free: freeMem },
+            disk,
+            network,
+            mode
+        });
+    } catch (e: any) {
+        console.error('[API] /api/admin/system/info error:', e.message);
+        res.status(500).json({ error: 'Failed to retrieve system info' });
+    }
+});
+
 app.get('/api/admin/system/dashboard-data', authenticateToken, async (req, res) => {
     try {
         const statsFile = path.join(APP_CONFIG.logDir, 'stats.json');

@@ -58,7 +58,7 @@ const BetaBadge = ({ className }: { className?: string }) => (
 );
 
 export default function Settings({ token }: { token: string }) {
-    const [activeTab, setActiveTab] = useState<'interfaces' | 'probes' | 'distribution' | 'maintenance' | 'power' | 'backup'>('interfaces');
+    const [activeTab, setActiveTab] = useState<'interfaces' | 'probes' | 'distribution' | 'maintenance' | 'power' | 'backup' | 'system'>('interfaces');
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -78,6 +78,9 @@ export default function Settings({ token }: { token: string }) {
     const [status, setStatus] = useState<MaintenanceStatus | null>(null);
     const [upgradeStatus, setUpgradeStatus] = useState<UpgradeStatus | null>(null);
     const [upgrading, setUpgrading] = useState(false);
+
+    // System Info State
+    const [systemInfo, setSystemInfo] = useState<any>(null);
 
     const showSuccess = (msg: string) => {
         setSuccessMsg(msg);
@@ -126,6 +129,18 @@ export default function Settings({ token }: { token: string }) {
                 if (upgradeData.inProgress) setUpgrading(true);
             })
             .catch(() => { });
+
+        // Fetch System Info
+        const fetchSystemInfo = () => {
+            fetch('/api/admin/system/info', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(setSystemInfo)
+                .catch(() => { });
+        };
+        fetchSystemInfo();
+        const sysInfoInterval = setInterval(fetchSystemInfo, 5000);
+
+        return () => clearInterval(sysInfoInterval);
 
     }, [token]);
 
@@ -427,6 +442,7 @@ export default function Settings({ token }: { token: string }) {
         { id: 'interfaces', label: 'Network Interfaces' },
         { id: 'probes', label: 'Synthetic Probes' },
         { id: 'distribution', label: 'Traffic Distribution' },
+        { id: 'system', label: 'System Info' },
         { id: 'maintenance', label: 'System Maintenance' },
         { id: 'power', label: 'Power & Restart' },
         { id: 'backup', label: 'Configuration Backup' },
@@ -972,6 +988,113 @@ export default function Settings({ token }: { token: string }) {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {activeTab === 'system' && (
+                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 animate-in fade-in duration-500">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
+                                <Server size={24} />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-text-primary tracking-tight">System Information</h2>
+                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Hardware metrics and execution context</p>
+                            </div>
+                        </div>
+
+                        {!systemInfo ? (
+                            <div className="text-center text-text-muted text-xs font-bold tracking-widest animate-pulse py-12">Gathering system metrics...</div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Execution Context */}
+                                <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-4 shadow-sm flex flex-col justify-center items-center h-48">
+                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] mb-2">Execution Context</div>
+                                    <div className={cn(
+                                        "px-6 py-3 rounded-2xl text-sm font-black tracking-widest uppercase border border-border shadow-inner flex items-center gap-3 transition-colors duration-500",
+                                        systemInfo.mode === 'Host Mode' ? "bg-amber-500/10 text-amber-500 border-amber-500/30" : "bg-blue-600/10 text-blue-500 border-blue-500/30"
+                                    )}>
+                                        <Server size={18} />
+                                        {systemInfo.mode}
+                                    </div>
+                                    <div className="text-center text-[10px] text-text-muted mt-2 px-8 leading-relaxed font-bold opacity-60">
+                                        {systemInfo.mode === 'Host Mode'
+                                            ? 'Containers share the host networking namespace directly. High throughput natively.'
+                                            : 'Containers are isolated on an internal bridge network. Standard Docker environment.'}
+                                    </div>
+                                </div>
+
+                                {/* Network I/O */}
+                                <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-6 shadow-sm flex flex-col justify-center h-48">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-lg bg-green-500/10 text-green-500 flex items-center justify-center">
+                                            <Network size={16} />
+                                        </div>
+                                        <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">Network I/O</div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4 h-full">
+                                        <div className="bg-card p-4 rounded-xl border border-border flex flex-col justify-center">
+                                            <div className="text-[9px] font-black text-text-muted tracking-widest uppercase mb-1 flex items-center gap-1.5"><Download size={10} className="text-green-500" /> Received</div>
+                                            <div className="font-mono text-lg font-black text-text-primary">{(systemInfo.network?.rx / 1024 / 1024).toFixed(2)} <span className="text-[10px] text-text-muted">MB</span></div>
+                                        </div>
+                                        <div className="bg-card p-4 rounded-xl border border-border flex flex-col justify-center">
+                                            <div className="text-[9px] font-black text-text-muted tracking-widest uppercase mb-1 flex items-center gap-1.5"><Upload size={10} className="text-blue-500" /> Transmitted</div>
+                                            <div className="font-mono text-lg font-black text-text-primary">{(systemInfo.network?.tx / 1024 / 1024).toFixed(2)} <span className="text-[10px] text-text-muted">MB</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Memory */}
+                                <div className="bg-card border border-border rounded-2xl p-6 space-y-6 shadow-sm md:col-span-2">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                                                <Cpu size={16} />
+                                            </div>
+                                            <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">System Memory (RAM)</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="font-mono text-sm font-black text-indigo-400">
+                                                {((systemInfo.memory?.used || 0) / 1024 / 1024 / 1024).toFixed(1)} GB / {((systemInfo.memory?.total || 0) / 1024 / 1024 / 1024).toFixed(1)} GB
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="h-3 w-full bg-card-secondary rounded-full overflow-hidden border border-border">
+                                        <div
+                                            className="h-full bg-indigo-500 transition-all duration-1000 shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+                                            style={{ width: `${Math.min(100, ((systemInfo.memory?.used || 0) / (systemInfo.memory?.total || 1)) * 100)}%` }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Disk */}
+                                <div className="bg-card border border-border rounded-2xl p-6 space-y-6 shadow-sm md:col-span-2">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-lg bg-pink-500/10 text-pink-500 flex items-center justify-center">
+                                                <Database size={16} />
+                                            </div>
+                                            <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">Host Disk Space</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="font-mono text-sm font-black text-pink-400">
+                                                {((systemInfo.disk?.used || 0) / 1024 / 1024 / 1024).toFixed(1)} GB / {((systemInfo.disk?.total || 0) / 1024 / 1024 / 1024).toFixed(1)} GB
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="h-3 w-full bg-card-secondary rounded-full overflow-hidden border border-border">
+                                        <div
+                                            className="h-full bg-pink-500 transition-all duration-1000 shadow-[0_0_10px_rgba(236,72,153,0.5)]"
+                                            style={{ width: `${systemInfo.disk?.usagePercent || 0}%` }}
+                                        />
+                                    </div>
+                                    <div className="flex justify-between text-[9px] font-black tracking-widest text-text-muted uppercase">
+                                        <span>Used: {systemInfo.disk?.usagePercent || 0}%</span>
+                                        <span>Free: {((systemInfo.disk?.free || 0) / 1024 / 1024 / 1024).toFixed(1)} GB</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
