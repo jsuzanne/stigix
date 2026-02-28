@@ -5340,10 +5340,16 @@ app.get('/api/admin/system/info', authenticateToken, async (req, res) => {
         // 3. Network I/O
         let network = { rx: 0, tx: 0 };
         try {
-            const { stdout } = await promisify(exec)('cat /proc/net/dev | grep eth0'); // Assuming eth0 is the primary container interface
-            const parts = stdout.split(':')[1].trim().split(/\s+/);
-            network.rx = parseInt(parts[0], 10); // Receive bytes
-            network.tx = parseInt(parts[8], 10); // Transmit bytes
+            if (fs.existsSync('/proc/net/dev')) {
+                const iface = getInterface();
+                const netDev = await fs.promises.readFile('/proc/net/dev', 'utf8');
+                const line = netDev.split('\n').find(l => l.trim().startsWith(iface + ':'));
+                if (line) {
+                    const parts = line.split(':')[1].trim().split(/\s+/);
+                    network.rx = parseInt(parts[0], 10);
+                    network.tx = parseInt(parts[8], 10);
+                }
+            }
         } catch (e) {
             console.error('Failed to read network stats', e);
         }
