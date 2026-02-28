@@ -615,29 +615,27 @@ export default function App() {
       <header className="mb-8 flex justify-between items-center">
         <div>
           <div className="flex items-center gap-4">
-            <svg width="160" height="48" viewBox="0 0 160 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-[0_0_8px_rgba(34,211,238,0.3)] -ml-2">
-              {/* Stigix Text - Shifted to left (X-offset -42) */}
+            <svg width="140" height="48" viewBox="0 0 140 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
+              {/* Stigix Text - Balanced tracking and refined letterforms */}
               <g fill="white" className="font-black">
-                {/* S (Capital) - Moved to X=9 */}
+                {/* S (Capital) - Baseline at X=0 */}
                 <path d="M9 34c-4.5 0-8.5-1.5-8.5-6h4.5c0 2 2 3 4 3s3.5-1 3.5-2.5c0-4.5-12-1.5-12-10c0-4.5 4-6.5 8.5-6.5s8 2 8 6h-4.5c0-1.5-1.5-3-3.5-3s-3.5 1-3.5 2.5c0 4.5 12 1.5 12 10c0 4.5-4.5 6.5-9 6.5z" />
-                {/* t (lowercase) - Tightened to X=21 */}
-                <path d="M21 12v4h-3v3h3v11c0 2.5 1.5 4 4 4h2v-3.5h-1c-.5 0-.7-.2-.7-.7V19h4v-3h-4v-4h-4.3z" />
-                {/* i (lowercase stem) - Centered at X=31 */}
-                <rect x="31" y="19" width="4.5" height="15" rx="0.5" />
-                {/* g (lowercase) - Tightened to X=41 */}
-                <g fillRule="evenodd">
-                  <path d="M41 26.5c0-4.5 3.5-7.5 7.5-7.5s7.5 3 7.5 7.5v6.5c0 5-4 8-8 8h-4v-3.5h3c2 0 4-1.5 4-4.5v-1c-1 1.5-2.5 2.5-4.5 2.5-4.5 0-8-3.5-8-8zm9.5 3.5c2 0 3.5-1.5 3.5-4s-1.5-4-3.5-4-3.5 1.5-3.5 4 1.5 4 3.5 4z" />
-                </g>
-                {/* i (lowercase stem) - Tightened to X=61 */}
-                <rect x="61" y="19" width="4.5" height="15" rx="0.5" />
-                {/* x (lowercase) - Tightened to X=70 */}
-                <path d="M70 19h5l3.5 6.5l3.5-6.5h5l-6 10l6.5 9h-5l-4-7l-4 7h-5l6.5-10l-6-9z" />
+                {/* t (lowercase) - Balanced at X=14 */}
+                <path d="M18 12v4h-3.5v3h3.5v11c0 2.5 1.5 4 4 4h2v-3.5h-1c-.5 0-.7-.2-.7-.7V19h4v-3h-4v-4h-4.3z" />
+                {/* i (lowercase stem) - Balanced at X=26 */}
+                <rect x="28" y="19" width="4.5" height="15" rx="0.5" />
+                {/* g (lowercase - refined distinctive bowl) - Balanced at X=35 */}
+                <path d="M35 26.5c0-4.5 3.5-7.5 7.5-7.5s7.5 3 7.5 7.5v6.5c0 5-4 8-8 8h-4v-3.5h3c2 0 4-1.5 4-4.5v-1c-1 1.5-2.5 2.5-4.5 2.5-4.5 0-8-3.5-8-8zm9.5 3.5c2 0 3.5-1.5 3.5-4s-1.5-4-3.5-4-3.5 1.5-3.5 4 1.5 4 3.5 4z" />
+                {/* i (lowercase stem) - Balanced at X=53 */}
+                <rect x="54" y="19" width="4.5" height="15" rx="0.5" />
+                {/* x (lowercase) - Balanced at X=63 */}
+                <path d="M63 19h5l3.5 6.5l3.5-6.5h5l-6 10l6.5 9h-5l-4-7l-4 7h-5l6.5-10l-6-9z" />
               </g>
 
-              {/* Pulsing Cyan Nodes - Synchronized with shifted stems */}
+              {/* Pulsing Cyan Nodes - Balanced with stems */}
               <g className="animate-pulse" style={{ animationDuration: '2s' }}>
-                <circle cx="33.25" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
-                <circle cx="63.25" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
+                <circle cx="30.25" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
+                <circle cx="56.25" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
               </g>
             </svg>
           </div>
