@@ -88,7 +88,7 @@ services:
 
 After a test completes, the dashboard displays real-time telemetry with throughput graph, RTT, and packet loss:
 
-![XFR Session Ready — throughput graph and metrics display](screenshots/09%20-%20XFR/XFR%201.png)
+![XFR Session Ready — throughput graph and metrics display](screenshots/09-XFR/XFR-1.png)
 
 **Key metrics shown:**
 - **Throughput** (Mbps) — live graph + final value
@@ -99,7 +99,7 @@ After a test completes, the dashboard displays real-time telemetry with throughp
 
 The configuration panel allows full control over the test target and parameters:
 
-![XFR Custom Config — port, protocol, direction, bitrate, streams](screenshots/09%20-%20XFR/XFR%202.png)
+![XFR Custom Config — port, protocol, direction, bitrate, streams](screenshots/09-XFR/XFR-2.png)
 
 **Config options:**
 | Field | Description |

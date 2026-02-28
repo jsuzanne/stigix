@@ -12,27 +12,27 @@ The Security Testing feature enables controlled testing of Palo Alto Networks / 
 ## Screenshots
 
 ### Security Overview Dashboard
-![Security Overview](screenshots/03 - security/06.png)
+![Security Overview](screenshots/03-security/06.png)
 
 *Real-time summary of URL filtering, DNS security, and threat prevention test results with system health monitoring*
 
 ### URL Filtering Tests
-![URL Filtering](screenshots/security/url-filtering.png)
+![URL Filtering](screenshots/03-security/07.png)
 
 *Test 66 different URL categories including malware, phishing, gambling, adult content, and more*
 
 ### DNS Security Tests
-![DNS Security](screenshots/security/dns-security.png)
+![DNS Security](screenshots/03-security/08.png)
 
 *Validate DNS security policies with basic and advanced test domains*
 
 ### Threat Prevention
-![Threat Prevention](screenshots/security/threat-prevention.png)
+![Threat Prevention](screenshots/03-security/09.png)
 
 *EICAR file download testing for IPS validation*
 
 ### Test Results History
-![Test Results](screenshots/security/test-results.png)
+![Test Results](screenshots/03-security/10.png)
 
 *Persistent logging with search, filtering, pagination, and export capabilities*
 

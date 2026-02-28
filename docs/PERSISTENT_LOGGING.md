@@ -96,7 +96,7 @@ docker compose restart sdwan-web-ui
 
 The **Security** tab includes a powerful search interface:
 
-![Test Results with Search](screenshots/security/test-results.png)
+![Test Results with Search](screenshots/03-security/10.png)
 
 **Features:**
 - **Text search**: Search by test name, URL, domain, or status

@@ -117,81 +117,81 @@ Explore the application interface organized by feature area. Each category conta
 ### 🏠 Main Dashboard
 Real-time monitoring, traffic control, and system health overview.
 
-<img src="docs/screenshots/00 - Main Dashboard/01.png" alt="Main Dashboard" width="800">
+<img src="docs/screenshots/00-Main-Dashboard/01.png" alt="Main Dashboard" width="800">
 
-**[View all Main Dashboard screenshots →](docs/screenshots/00%20-%20Main%20Dashboard)** (2 images)
+**[View all Main Dashboard screenshots →](docs/screenshots/00-Main-Dashboard)** (2 images)
 
 ---
 
 ### ⚙️ Configuration
 Network interfaces, traffic distribution, synthetic probes, and application management.
 
-<img src="docs/screenshots/01 - Configuration/04.png" alt="Configuration Management" width="800">
+<img src="docs/screenshots/01-Configuration/04.png" alt="Configuration Management" width="800">
 
-**[View all Configuration screenshots →](docs/screenshots/01%20-%20Configuration)** (2 images)
+**[View all Configuration screenshots →](docs/screenshots/01-Configuration)** (2 images)
 
 ---
 
 ### 📊 Statistics
 Traffic volume charts, success rates, and performance metrics.
 
-<img src="docs/screenshots/02 - Statistics/03.png" alt="Statistics Dashboard" width="800">
+<img src="docs/screenshots/02-Statistics/03.png" alt="Statistics Dashboard" width="800">
 
-**[View all Statistics screenshots →](docs/screenshots/02%20-%20Statistics)** (1 image)
+**[View all Statistics screenshots →](docs/screenshots/02-Statistics)** (1 image)
 
 ---
 
 ### 🛡️ Security Testing
 URL filtering, DNS security, threat prevention validation, and test results history.
 
-<img src="docs/screenshots/03 - security/06.png" alt="Security Testing" width="800">
+<img src="docs/screenshots/03-security/06.png" alt="Security Testing" width="800">
 
-**[View all Security screenshots →](docs/screenshots/03%20-%20security)** (7 images)
+**[View all Security screenshots →](docs/screenshots/03-security)** (7 images)
 
 ---
 
 ### 🎯 Performance Monitoring
 Connectivity performance, synthetic probes, and endpoint health tracking.
 
-<img src="docs/screenshots/04 - Performance/13a.png" alt="Performance Monitoring" width="800">
+<img src="docs/screenshots/04-Performance/13a.png" alt="Performance Monitoring" width="800">
 
-**[View all Performance screenshots →](docs/screenshots/04%20-%20Performance)** (5 images)
+**[View all Performance screenshots →](docs/screenshots/04-Performance)** (5 images)
 
 ---
 
 ### 🔌 IoT Simulation
 Layer-2/3 device simulation with DHCP and ARP support.
 
-<img src="docs/screenshots/05 - IOT/18.png" alt="IoT Simulation" width="800">
+<img src="docs/screenshots/05-IOT/18.png" alt="IoT Simulation" width="800">
 
-**[View all IoT screenshots →](docs/screenshots/05%20-%20IOT)** (6 images)
+**[View all IoT screenshots →](docs/screenshots/05-IOT)** (6 images)
 
 ---
 
 ### 🎙️ Voice Simulation
 RTP packet generation, QoS analytics, and MOS scoring.
 
-<img src="docs/screenshots/06 - Voice/22.png" alt="Voice Simulation" width="800">
+<img src="docs/screenshots/06-Voice/22.png" alt="Voice Simulation" width="800">
 
-**[View all Voice screenshots →](docs/screenshots/06%20-%20Voice)** (3 images)
+**[View all Voice screenshots →](docs/screenshots/06-Voice)** (3 images)
 
 ---
 
 ### 🔄 Failover Lab
 High-precision UDP failover monitoring and convergence testing.
 
-<img src="docs/screenshots/07 - Failover/24.png" alt="Failover Lab" width="800">
+<img src="docs/screenshots/07-Failover/24.png" alt="Failover Lab" width="800">
 
-**[View all Failover screenshots →](docs/screenshots/07%20-%20Failover)** (3 images)
+**[View all Failover screenshots →](docs/screenshots/07-Failover)** (3 images)
 
 ---
 
 ### 🌐 VyOS Control
 Network impairment orchestration (latency, loss, rate-limiting) on VyOS routers.
 
-<img src="docs/screenshots/08 - Vyos Control/27.png" alt="VyOS Control" width="800">
+<img src="docs/screenshots/08-Vyos-Control/27.png" alt="VyOS Control" width="800">
 
-**[View all VyOS Control screenshots →](docs/screenshots/08%20-%20Vyos%20Control)** (5 images)
+**[View all VyOS Control screenshots →](docs/screenshots/08-Vyos-Control)** (5 images)
 
 ---
 
