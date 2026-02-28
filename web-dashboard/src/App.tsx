@@ -615,37 +615,35 @@ export default function App() {
       <header className="mb-8 flex justify-between items-center">
         <div>
           <div className="flex items-center gap-4">
-            <svg width="220" height="48" viewBox="0 0 220 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
-              {/* Geometric Node Icon - Refined to match mockup perfectly */}
-              <g className="animate-pulse" style={{ animationDuration: '3s' }}>
-                <path d="M8 12L20 5L32 12V28L20 35L8 28V12Z" stroke="white" strokeWidth="2.5" strokeLinejoin="round" fill="white" fillOpacity="0.05" />
-                <path d="M14 24L20 30L30 20L30 14" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M26 12L20 6L10 16L10 22" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx="20" cy="18" r="4.5" fill="#22D3EE" className="shadow-[0_0_15px_#22d3ee]" />
-              </g>
+            {/* Geometric Node Icon - Aligned horizontally with text nodes */}
+            <g className="animate-pulse" style={{ animationDuration: '3s' }}>
+              <path d="M8 12L20 5L32 12V28L20 35L8 28V12Z" stroke="white" strokeWidth="2" strokeLinejoin="round" fill="white" fillOpacity="0.05" />
+              <path d="M14 22L20 28L30 18L30 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M26 10L20 4L10 14L10 20" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="20" cy="14" r="4.5" fill="#22D3EE" className="shadow-[0_0_15px_#22d3ee]" />
+            </g>
 
-              {/* Stigix Text - Softened to Title Case (lowercase t, g, x) */}
-              <g fill="white" className="font-black">
-                {/* S (Capital) */}
-                <path d="M54 34c-4.5 0-8.5-1.5-8.5-6h4.5c0 2 2 3 4 3s3.5-1 3.5-2.5c0-4.5-12-1.5-12-10c0-4.5 4-6.5 8.5-6.5s8 2 8 6h-4.5c0-1.5-1.5-3-3.5-3s-3.5 1-3.5 2.5c0 4.5 12 1.5 12 10c0 4.5-4.5 6.5-9 6.5z" />
-                {/* t (lowercase) */}
-                <path d="M70 14v4h-3v3h3v10c0 1.5.5 2.5 2 2.5h3v-3.5h-1c-.5 0-.5-.5-.5-1V21h4v-3h-4v-4h-3.5z" />
-                {/* i (lowercase stem) */}
-                <rect x="85" y="21" width="5" height="13" rx="1" />
-                {/* g (lowercase) */}
-                <path d="M108 34c-3.5 0-6.5-2-6.5-6.5s3-6.5 6.5-6.5s6.5 2 6.5 6.5v8c0 2-1.5 3.5-4 3.5h-4v-3.5h3c1 0 1.5-.5 1.5-1.5v-2.5c-.5.5-1.5 1-3 1zm0-9.5c-1.5 0-2.5 1-2.5 3s1 3 2.5 3s2.5-1 2.5-3s-1-3-2.5-3z" />
-                {/* i (lowercase stem) */}
-                <rect x="123" y="21" width="5" height="13" rx="1" />
-                {/* x (lowercase) */}
-                <path d="M136 21h4.5l3 5.5l3-5.5h4.5l-5.5 9l6 9h-4.5l-3.5-6l-3.5 6h-5l6-9l-5.5-9z" />
-              </g>
+            {/* Stigix Text - Unified horizontal zone and reinforced 'g' */}
+            <g fill="white" className="font-black">
+              {/* S (Capital) */}
+              <path d="M54 34c-4.5 0-8.5-1.5-8.5-6h4.5c0 2 2 3 4 3s3.5-1 3.5-2.5c0-4.5-12-1.5-12-10c0-4.5 4-6.5 8.5-6.5s8 2 8 6h-4.5c0-1.5-1.5-3-3.5-3s-3.5 1-3.5 2.5c0 4.5 12 1.5 12 10c0 4.5-4.5 6.5-9 6.5z" />
+              {/* t (lowercase, tall to match S) */}
+              <path d="M70 12v4h-3v3h3v11c0 2.5 1.5 4 4 4h2v-3.5h-1c-.5 0-.7-.2-.7-.7V19h4v-3h-4v-4h-4.3z" />
+              {/* i (lowercase stem) */}
+              <rect x="85" y="19" width="5.5" height="15" rx="1" />
+              {/* g (lowercase - distinct descender) */}
+              <path d="M101.5 26.5c0-4.5 3.5-7.5 7.5-7.5s7.5 3 7.5 7.5v6.5c0 5-4 8-8 8h-4v-3.5h3c2 0 4-1.5 4-4.5v-1c-1 1.5-2.5 2.5-4.5 2.5-4.5 0-8-3.5-8-8zm9.5 3.5c2 0 3.5-1.5 3.5-4s-1.5-4-3.5-4-3.5 1.5-3.5 4 1.5 4 3.5 4z" />
+              {/* i (lowercase stem) */}
+              <rect x="123" y="19" width="5.5" height="15" rx="1" />
+              {/* x (lowercase) */}
+              <path d="M136 19h5l3.5 6.5l3.5-6.5h5l-6 10l6.5 9h-5l-4-7l-4 7h-5l6.5-10l-6-9z" />
+            </g>
 
-              {/* Pulsing Cyan Nodes over 'i's */}
-              <g className="animate-pulse" style={{ animationDuration: '2s' }}>
-                <circle cx="87.5" cy="14" r="3.5" fill="#22D3EE" shadow-color="#22d3ee" className="drop-shadow-[0_0_10px_#22d3ee]" />
-                <circle cx="125.5" cy="14" r="3.5" fill="#22D3EE" shadow-color="#22d3ee" className="drop-shadow-[0_0_10px_#22d3ee]" />
-              </g>
-            </svg>
+            {/* Pulsing Cyan Nodes - All on Y=14 for perfect horizontal alignment */}
+            <g className="animate-pulse" style={{ animationDuration: '2s' }}>
+              <circle cx="87.75" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
+              <circle cx="125.75" cy="14" r="3.75" fill="#22D3EE" className="drop-shadow-[0_0_10px_#22d3ee]" />
+            </g>
           </div>
           <p className="text-text-muted mt-1">
             Engine for SASE Validation
