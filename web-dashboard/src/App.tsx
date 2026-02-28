@@ -614,19 +614,29 @@ export default function App() {
       <Toaster position="top-right" />
       <header className="mb-8 flex justify-between items-center">
         <div>
-          <h1 className="text-4xl font-black tracking-tighter flex items-center text-text-primary">
-            St
-            <span className="relative">
-              i
-              <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-[0_0_12px_#22d3ee,0_0_4px_#22d3ee]" />
-            </span>
-            g
-            <span className="relative">
-              i
-              <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-[0_0_12px_#22d3ee,0_0_4px_#22d3ee]" />
-            </span>
-            x
-          </h1>
+          <div className="flex items-center gap-4">
+            {/* Logo Icon: Option A (Geometric Node) */}
+            <svg width="42" height="42" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]">
+              <path d="M12 12L21 3L30 12V22L21 31L12 22V12Z" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M16 28L21 33L36 18V12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M26 14L21 9L6 24V30" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="21" cy="21" r="3.5" fill="#22D3EE" className="animate-pulse" />
+            </svg>
+
+            <h1 className="text-4xl font-black tracking-tighter flex items-end text-text-primary leading-none">
+              St
+              <span className="flex flex-col items-center mx-[1.5px] pb-[2px]">
+                <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-[0_0_10px_#22d3ee]" />
+                <span className="w-1.5 h-[22px] bg-text-primary mt-1 rounded-sm" />
+              </span>
+              g
+              <span className="flex flex-col items-center mx-[1.5px] pb-[2px]">
+                <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-[0_0_10px_#22d3ee]" />
+                <span className="w-1.5 h-[22px] bg-text-primary mt-1 rounded-sm" />
+              </span>
+              x
+            </h1>
+          </div>
           <p className="text-text-muted mt-1">
             Real-time Control Center
             {siteInfo?.success && siteInfo.detected_site_name && (
