@@ -52,13 +52,13 @@ export default function Login({ onLogin }: LoginProps) {
                 </div>
 
                 <div className="text-center mb-10">
-                    <h1 className="text-3xl font-black text-text-primary uppercase tracking-tighter mb-2">Console Access</h1>
+                    <h1 className="text-3xl font-black text-text-primary tracking-tighter mb-2">Console Access</h1>
                     <div className="h-1 w-12 bg-blue-600 mx-auto rounded-full mb-4" />
-                    <p className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] opacity-60">Network Traffic Generator</p>
+                    <p className="text-[10px] font-black text-text-muted tracking-[0.2em] opacity-60">Network Traffic Generator</p>
                 </div>
 
                 {error && (
-                    <div className="bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 px-5 py-3.5 rounded-2xl mb-8 text-[11px] font-black uppercase tracking-widest flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+                    <div className="bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 px-5 py-3.5 rounded-2xl mb-8 text-[11px] font-black tracking-widest flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
                         <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
                         {error}
                     </div>
@@ -66,7 +66,7 @@ export default function Login({ onLogin }: LoginProps) {
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="space-y-2">
-                        <label className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em] ml-1">Username</label>
+                        <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">Username</label>
                         <input
                             type="text"
                             value={username}
@@ -77,7 +77,7 @@ export default function Login({ onLogin }: LoginProps) {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em] ml-1">Password</label>
+                        <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">Password</label>
                         <input
                             type="password"
                             value={password}
@@ -91,7 +91,7 @@ export default function Login({ onLogin }: LoginProps) {
                     <button
                         type="submit"
                         disabled={loading}
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-[0.25em] py-4 rounded-2xl transition-all mt-4 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2"
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black tracking-[0.25em] py-4 rounded-2xl transition-all mt-4 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2"
                     >
                         {loading ? (
                             <>
@@ -103,7 +103,7 @@ export default function Login({ onLogin }: LoginProps) {
                 </form>
 
                 <div className="mt-10 pt-8 border-t border-border/50 text-center">
-                    <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest opacity-40">Version 1.1.2</p>
+                    <p className="text-[9px] font-bold text-text-muted tracking-widest opacity-40">Version 1.1.2</p>
                 </div>
             </div>
         </div>

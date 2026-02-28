@@ -712,14 +712,14 @@ export default function App() {
                 <Activity size={24} />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-text-primary uppercase tracking-tight">Iperf Client Test</h3>
+                <h3 className="text-xl font-bold text-text-primary tracking-tight">Iperf Client Test</h3>
                 <p className="text-text-muted text-xs mt-0.5">Test bandwidth against an iperf3 server.</p>
               </div>
             </div>
 
             <div className="space-y-4 mb-8">
               <div className="space-y-1.5">
-                <label className="text-[10px] text-text-muted uppercase font-black tracking-widest">Target IP / Hostname</label>
+                <label className="text-[10px] text-text-muted font-black tracking-widest">Target Ip / Hostname</label>
                 <input
                   type="text"
                   placeholder="e.g. 192.168.1.100"
@@ -734,7 +734,7 @@ export default function App() {
                 <div className="p-3 bg-purple-600/5 rounded-lg border border-purple-500/20 flex items-center justify-between shadow-sm">
                   <div className="flex items-center gap-2">
                     <Activity size={14} className="text-purple-600 dark:text-purple-400" />
-                    <span className="text-xs text-text-muted font-bold uppercase tracking-tight">Last Test ({iperfResult.target}):</span>
+                    <span className="text-xs text-text-muted font-bold tracking-tight">Last Test ({iperfResult.target}):</span>
                   </div>
                   <span className="text-sm font-black text-purple-600 dark:text-purple-400">
                     {Math.round(iperfResult.received_mbps || iperfResult.sent_mbps)} Mbps
@@ -752,7 +752,7 @@ export default function App() {
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowIperfModal(false)}
-                className="px-6 py-2.5 text-text-muted hover:text-text-primary font-bold transition-colors uppercase tracking-widest text-[10px]"
+                className="px-6 py-2.5 text-text-muted hover:text-text-primary font-bold transition-colors tracking-widest text-[10px]"
               >
                 Cancel
               </button>
@@ -760,7 +760,7 @@ export default function App() {
                 onClick={runIperf}
                 disabled={runningIperf || !iperfTarget}
                 className={cn(
-                  "px-8 py-2.5 rounded-lg font-black flex items-center gap-2 transition-all shadow-lg uppercase tracking-widest text-xs",
+                  "px-8 py-2.5 rounded-lg font-black flex items-center gap-2 transition-all shadow-lg tracking-widest text-xs",
                   runningIperf
                     ? "bg-card-secondary text-text-muted border border-border cursor-not-allowed opacity-50"
                     : "bg-purple-600 hover:bg-purple-500 text-white shadow-purple-900/40"
@@ -931,7 +931,7 @@ export default function App() {
 
             {!configValid && (
               <div className="mt-4 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
-                <p className="text-amber-600 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wide flex items-center gap-2">
+                <p className="text-amber-600 dark:text-amber-400 text-[10px] font-bold tracking-wide flex items-center gap-2">
                   <AlertCircle size={14} />
                   Configure an interface in <button onClick={() => setView('settings')} className="underline font-black hover:text-amber-500 ml-1">Settings</button> to enable traffic.
                 </p>
@@ -942,7 +942,7 @@ export default function App() {
           {/* Network Monitoring */}
           <div className="bg-card border border-border rounded-xl p-4 mb-8 shadow-sm">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-lg font-black text-text-primary flex items-center gap-2 uppercase tracking-tight">
+              <h3 className="text-lg font-black text-text-primary flex items-center gap-2 tracking-tight">
                 <Wifi size={20} className="text-blue-600 dark:text-blue-400" />
                 Network Status
 
@@ -956,7 +956,7 @@ export default function App() {
                 {/* Iperf Status Badge */}
                 {iperfServerInfo?.running && (
                   <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-green-500/10 border border-green-500/20 rounded text-[10px] font-black text-green-600 dark:text-green-400 tracking-widest">
-                    <Server size={10} /> IPERF SERVER UP (5201)
+                    <Server size={10} /> Iperf Server Up (5201)
                   </div>
                 )}
               </h3>
