@@ -614,30 +614,9 @@ export default function App() {
       <Toaster position="top-right" />
       <header className="mb-8 flex justify-between items-center">
         <div>
-          <div className="flex items-center gap-4">
-            {/* Logo Icon: Option A (Geometric Node) - Refined for closer match to mockup */}
-            <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-[0_0_12px_rgba(34,211,238,0.25)]">
-              <path d="M22 2L40 12V32L22 42L4 32V12L22 2Z" fill="white" fillOpacity="0.05" stroke="white" strokeWidth="1.5" />
-              <path d="M22 8L34 15V29L22 36L10 29V15L22 8Z" fill="white" fillOpacity="0.1" />
-              <path fillRule="evenodd" clipRule="evenodd" d="M22 12L30 16.5V27.5L22 32L14 27.5V16.5L22 12ZM22 15L17 17.8V26.2L22 29L27 26.2V17.8L22 15Z" fill="white" />
-              <circle cx="22" cy="22" r="4.5" fill="#22D3EE" className="animate-pulse shadow-lg" />
-              <circle cx="22" cy="22" r="2.5" fill="white" fillOpacity="0.5" />
-            </svg>
-
-            <h1 className="text-4xl font-black tracking-tighter flex items-baseline text-text-primary leading-none">
-              St
-              <span className="inline-flex flex-col items-center mx-[1.5px] translate-y-[-2px]">
-                <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-[0_0_10px_#22d3ee] mb-1.5" />
-                <span className="w-1.5 h-[1.1em] bg-text-primary rounded-sm" />
-              </span>
-              g
-              <span className="inline-flex flex-col items-center mx-[1.5px] translate-y-[-2px]">
-                <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-[0_0_10px_#22d3ee] mb-1.5" />
-                <span className="w-1.5 h-[1.1em] bg-text-primary rounded-sm" />
-              </span>
-              x
-            </h1>
-          </div>
+          <h1 className="text-4xl font-black tracking-tight text-text-primary">
+            Stigix
+          </h1>
           <p className="text-text-muted mt-1">
             Real-time Control Center
             {siteInfo?.success && siteInfo.detected_site_name && (
