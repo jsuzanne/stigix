@@ -12,7 +12,7 @@ The Security Testing feature enables controlled testing of Palo Alto Networks / 
 ## Screenshots
 
 ### Security Overview Dashboard
-![Security Overview](screenshots/security/overview.png)
+![Security Overview](screenshots/03 - security/06.png)
 
 *Real-time summary of URL filtering, DNS security, and threat prevention test results with system health monitoring*
 
