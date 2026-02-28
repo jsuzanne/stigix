@@ -871,7 +871,7 @@ export default function App() {
       {view === 'dashboard' ? (
         <>
           {/* Traffic Control Panel */}
-          <div className="bg-gradient-to-r from-purple-600/10 to-blue-600/10 border border-purple-500/30 rounded-xl p-5 mb-8 shadow-sm">
+          <div className="bg-card border border-border rounded-xl p-5 mb-8 shadow-sm">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
               {/* Part 1: Status */}
               <div className="min-w-[200px]">
