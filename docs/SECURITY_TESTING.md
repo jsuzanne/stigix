@@ -27,12 +27,18 @@ The Security Testing feature enables controlled testing of Palo Alto Networks / 
 *Validate DNS security policies with basic and advanced test domains*
 
 ### Threat Prevention
-![Threat Prevention](screenshots/03-security/09.png)
+![Threat Prevention](screenshots/03-security/10.png)
 
 *EICAR file download testing for IPS validation*
 
+### EDL
+![Threat Prevention](screenshots/03-security/11.png)
+
+*IP,DNS and URL EDL*
+
+
 ### Test Results History
-![Test Results](screenshots/03-security/10.png)
+![Test Results](screenshots/03-security/12.png)
 
 *Persistent logging with search, filtering, pagination, and export capabilities*
 
