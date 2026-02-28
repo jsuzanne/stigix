@@ -58,5 +58,3 @@ graph TD
 | **Speedtest** | TCP | 80, 443 | `sdwan-web-ui` | Public Ookla Servers |
 | **API Control** | TCP | 8080 | Dashboard | Orchestrator Engine |
 
-## Site Cloning (v1.1.2-patch.3+)
-When using the **Backup & Restore** feature, you are essentially exporting the logic and site categories from one **Branch Site** (UI side) and importing it into another UI instance to ensure consistent performance testing across the entire SD-WAN fabric.
