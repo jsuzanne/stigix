@@ -3,11 +3,10 @@ import { LineChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, Responsive
 import Statistics from './Statistics';
 import Security from './Security';
 import Voice from './Voice';
-import Config from './Config';
+import SettingsComponent from './Settings';
 import Login from './Login';
 import ConnectivityPerformance from './ConnectivityPerformance';
 import Failover from './Failover';
-import System from './System';
 import Iot from './Iot';
 import Vyos from './Vyos';
 import Speedtest from './Speedtest';
@@ -53,7 +52,7 @@ interface SiteInfo {
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
-  const [view, setView] = useState<'dashboard' | 'config' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'system' | 'srt' | 'iot' | 'vyos' | 'speedtest'>(
+  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest'>(
     (localStorage.getItem('activeView') as any) || 'performance'
   );
 
@@ -788,24 +787,6 @@ export default function App() {
           <LayoutDashboard size={18} /> Dashboard
         </button>
         <button
-          onClick={() => setView('statistics')}
-          className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] border-b-2 transition-all",
-            view === 'statistics' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <BarChart3 size={18} /> Statistics
-        </button>
-        <button
-          onClick={() => setView('config')}
-          className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] border-b-2 transition-all",
-            view === 'config' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Settings size={18} /> Configuration
-        </button>
-        <button
           onClick={() => setView('performance')}
           className={cn(
             "px-4 py-3 flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] border-b-2 transition-all",
@@ -873,13 +854,13 @@ export default function App() {
         {/* SRT Tab hidden in v1.1.2-patch.28 */}
         {username === 'admin' && (
           <button
-            onClick={() => setView('system')}
+            onClick={() => setView('settings')}
             className={cn(
               "px-4 py-3 flex items-center gap-2 font-bold uppercase tracking-widest text-[10px] border-b-2 transition-all relative",
-              view === 'system' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
+              view === 'settings' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
             )}
           >
-            <Monitor size={18} /> System <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">Beta</span>
+            <Settings size={18} /> Settings <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">Beta</span>
             {maintenance?.updateAvailable && (
               <span className="absolute top-2 right-1 w-2 h-2 bg-blue-600 rounded-full animate-pulse border border-background" />
             )}
@@ -952,7 +933,7 @@ export default function App() {
               <div className="mt-4 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
                 <p className="text-amber-600 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wide flex items-center gap-2">
                   <AlertCircle size={14} />
-                  Configure an interface in <button onClick={() => setView('config')} className="underline font-black hover:text-amber-500 ml-1">Configuration</button> to enable traffic.
+                  Configure an interface in <button onClick={() => setView('settings')} className="underline font-black hover:text-amber-500 ml-1">Settings</button> to enable traffic.
                 </p>
               </div>
             )}
@@ -1003,7 +984,7 @@ export default function App() {
                 </button>
 
                 <button
-                  onClick={() => setView('config')}
+                  onClick={() => setView('settings')}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 transition-all shadow-sm"
                 >
                   <Plus size={14} />
@@ -1211,15 +1192,34 @@ export default function App() {
           </div>
 
           {/* Metrics Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-8">
             <Card
               title="Traffic Rate"
-              value={`${Math.round(currentRpm)} req/min`}
+              value={`${Math.round(currentRpm)}`}
               icon={<Activity />}
-              subValue={`Total: ${stats?.total_requests || 0}`}
+              subValue="req/min"
             />
-            <Card title="Success Rate" value={`${successRate}%`} icon={<Server />} subValue={`${totalErrors} Errors`} />
-            <Card title="Active Apps" value={stats ? Object.keys(stats.requests_by_app).length : 0} icon={<AlertCircle />} />
+            <Card
+              title="Success Rate"
+              value={`${successRate}%`}
+              icon={<CheckCircle />}
+              subValue={`${totalErrors} errors`}
+            />
+            <Card
+              title="Active Apps"
+              value={stats ? Object.keys(stats.requests_by_app).length : 0}
+              icon={<LayoutDashboard />}
+            />
+            <Card
+              title="Total Requests"
+              value={stats?.total_requests?.toLocaleString() || 0}
+              icon={<Server />}
+            />
+            <Card
+              title="Total Errors"
+              value={totalErrors.toLocaleString()}
+              icon={<AlertCircle />}
+            />
           </div>
 
           {/* Main Chart */}
@@ -1316,6 +1316,12 @@ export default function App() {
             </div>
           </div>
 
+
+          {/* Statistics Table */}
+          <div className="mb-8 mt-4">
+            <Statistics stats={stats} appConfig={appConfig} onReset={resetTrafficStats} />
+          </div>
+
           {/* Logs Terminal */}
           <div className="bg-card border border-border rounded-xl overflow-hidden font-mono text-sm leading-6 shadow-md shadow-black/10">
             <div className="bg-card-secondary/80 backdrop-blur-md px-4 py-2.5 border-b border-border flex items-center gap-2 text-text-muted">
@@ -1341,25 +1347,19 @@ export default function App() {
           </div>
         </>
       ) : view === 'performance' ? (
-        <ConnectivityPerformance token={token!} onManage={() => setView('config')} />
-      ) : view === 'statistics' ? (
-        <Statistics stats={stats} appConfig={appConfig} onReset={resetTrafficStats} />
+        <ConnectivityPerformance token={token!} onManage={() => setView('settings')} />
       ) : view === 'security' ? (
         <Security token={token!} />
       ) : view === 'voice' ? (
         <Voice token={token!} externalStatus={globalVoiceStatus} />
       ) : view === 'failover' ? (
         <Failover token={token!} externalStatus={globalConvStatus} />
-      ) : view === 'system' ? (
-        <System token={token!} />
-      ) : view === 'iot' ? (
-        <Iot token={token!} />
-      ) : view === 'vyos' ? (
-        <Vyos token={token!} />
+      ) : view === 'settings' ? (
+        <SettingsComponent token={token!} />
       ) : view === 'speedtest' && features.xfr_enabled ? (
         <Speedtest token={token!} />
       ) : (
-        <Config token={token!} />
+        <div className="p-8 text-center text-text-muted font-bold uppercase tracking-widest">Select a module to begin</div>
       )}
     </div>
   );

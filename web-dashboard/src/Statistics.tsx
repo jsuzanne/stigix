@@ -90,40 +90,7 @@ export default function Statistics({ stats, appConfig, onReset }: StatsProps) {
         : '100.0';
 
     return (
-        <div className="space-y-6 max-w-6xl mx-auto">
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 dark:from-blue-900/20 dark:to-blue-800/10 border border-blue-500/20 dark:border-blue-500/30 rounded-xl p-6 shadow-sm">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-text-muted text-sm mb-1 font-medium">Total Requests</p>
-                            <p className="text-3xl font-bold text-blue-500 dark:text-blue-400">{stats.total_requests.toLocaleString()}</p>
-                        </div>
-                        <TrendingUp size={32} className="text-blue-500 dark:text-blue-400 opacity-40" />
-                    </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-green-500/10 to-green-600/5 dark:from-green-900/20 dark:to-green-800/10 border border-green-500/20 dark:border-green-500/30 rounded-xl p-6 shadow-sm">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-text-muted text-sm mb-1 font-medium">Success Rate</p>
-                            <p className="text-3xl font-bold text-green-500 dark:text-green-400">{overallSuccessRate}%</p>
-                        </div>
-                        <CheckCircle size={32} className="text-green-500 dark:text-green-400 opacity-40" />
-                    </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-red-500/10 to-red-600/5 dark:from-red-900/20 dark:to-red-800/10 border border-red-500/20 dark:border-red-500/30 rounded-xl p-6 shadow-sm">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-text-muted text-sm mb-1 font-medium">Total Errors</p>
-                            <p className="text-3xl font-bold text-red-500 dark:text-red-400">{totalErrors.toLocaleString()}</p>
-                        </div>
-                        <AlertTriangle size={32} className="text-red-500 dark:text-red-400 opacity-40" />
-                    </div>
-                </div>
-            </div>
-
+        <div className="space-y-6 w-full">
             {/* Controls */}
             <div className="bg-card border border-border rounded-xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between shadow-sm">
                 <div className="relative flex-1 w-full">
@@ -136,52 +103,14 @@ export default function Statistics({ stats, appConfig, onReset }: StatsProps) {
                         className="w-full bg-card-secondary border border-border text-text-primary rounded-lg pl-10 pr-4 py-2 outline-none focus:border-purple-500 transition-colors"
                     />
                 </div>
-                <div className="flex gap-2 flex-wrap">
+                {onReset && (
                     <button
-                        onClick={() => setSortBy('requests')}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${sortBy === 'requests'
-                            ? 'bg-purple-600 text-white shadow-md'
-                            : 'bg-card-secondary text-text-muted hover:bg-card hover:text-text-primary border border-border'
-                            }`}
+                        onClick={onReset}
+                        className="px-4 py-2 rounded-lg font-medium bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white border border-red-500/20 transition-all ml-2 text-sm shadow-sm"
                     >
-                        By Requests
+                        Reset
                     </button>
-                    <button
-                        onClick={() => setSortBy('errors')}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${sortBy === 'errors'
-                            ? 'bg-purple-600 text-white shadow-md'
-                            : 'bg-card-secondary text-text-muted hover:bg-card hover:text-text-primary border border-border'
-                            }`}
-                    >
-                        By Errors
-                    </button>
-                    <button
-                        onClick={() => setSortBy('group')}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${sortBy === 'group'
-                            ? 'bg-purple-600 text-white shadow-md'
-                            : 'bg-card-secondary text-text-muted hover:bg-card hover:text-text-primary border border-border'
-                            }`}
-                    >
-                        By Group
-                    </button>
-                    <button
-                        onClick={() => setSortBy('name')}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${sortBy === 'name'
-                            ? 'bg-purple-600 text-white shadow-md'
-                            : 'bg-card-secondary text-text-muted hover:bg-card hover:text-text-primary border border-border'
-                            }`}
-                    >
-                        By Name
-                    </button>
-                    {onReset && (
-                        <button
-                            onClick={onReset}
-                            className="px-4 py-2 rounded-lg font-medium bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white border border-red-500/20 transition-all ml-2 text-sm shadow-sm"
-                        >
-                            Reset
-                        </button>
-                    )}
-                </div>
+                )}
             </div>
 
             {/* Statistics Table */}
