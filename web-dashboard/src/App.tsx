@@ -647,7 +647,7 @@ export default function App() {
             </svg>
           </div>
           <p className="text-text-muted mt-1">
-            Real-time Control Center
+            Engine for SASE Validation
             {siteInfo?.success && siteInfo.detected_site_name && (
               <span className="text-text-muted/60"> • <span className="text-blue-400 font-bold">{siteInfo.detected_site_name}</span></span>
             )}
