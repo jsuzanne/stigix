@@ -2,7 +2,7 @@
 
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/jsuzanne/sdwan-traffic-gen)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.2.1--patch.76-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.1--patch.125-blue.svg)](https://github.com/jsuzanne/stigix/releases)
 
 A modern web-based SD-WAN traffic generator with real-time monitoring, customizable traffic patterns, and comprehensive security testing. Perfect for testing SD-WAN deployments, network QoS policies, and application performance.
 
@@ -101,6 +101,7 @@ This project is my way to turn all that lab and demo experience into an open-sou
 The project is evolving rapidly with new features and refinements added in every release.
 
 ### Highlights in v1.2.1
+- **Favicon System**: Automated discovery and caching of SaaS application icons with intelligent fallback UI for enhanced dashboard visibility. 🌐✨
 - **Speedtest (XFR)**: High-performance throughput and latency validation with real-time telemetry and searchable history.
 - **IoT Security Testing**: Bad behavior simulation for IoT devices (DNS Flood, C2 Beacon, Port Scan).
 - **Site Discovery**: Automatic discovery of Prisma SD-WAN LAN interfaces for path validation.

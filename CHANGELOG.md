@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [v1.2.1-patch.125] - 2026-03-01
+### Added
+- **Favicon Discovery**: Implemented an automated favicon discovery and caching system for SaaS applications, utilizing `cheerio` for intelligent HTML parsing and persistent JSON caching. 🌐✨
+- **UI**: Created a reusable `Favicon` component with intelligent fallbacks (deterministic colored circles with `Mail` or `Globe` icons) for when a domain-specific icon cannot be found. 🎨
+- **Configuration**: Added high-resolution manual `icon_url` overrides for major SaaS applications including Outlook, Teams, Gmail, Slack, Zoom, Salesforce, and GitHub. 🚀
+### Fixed
+- **Favicon System**: Improved error handling for image load failures and ensured manual configuration overrides are prioritized over automatic discovery. 🛠️
 
 ## [v1.2.1-patch.122] - 2026-02-28
 ### Changed
