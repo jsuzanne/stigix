@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [v1.2.1-patch.126] - 2026-03-01
+### Added
+- **VyOS UI Enhancements**: Implemented a custom premium `ActionSelector` component utilizing Lucide icons and intelligent backdrop blur for a high-end mission control experience. 💎
+- **Visual Feedback**: Integrated action-specific icons (Shut, No Shut, Traffic Control) across the sequence timeline, manual trigger buttons, and sequence card views. 🎨
+- **Layout Optimization**: Redesigned the sequence detailed view with a more compact layout and fixed timeline alignment issues for variable card heights. 🛠️
+
 ## [v1.2.1-patch.125] - 2026-03-01
 ### Added
 - **Favicon Discovery**: Implemented an automated favicon discovery and caching system for SaaS applications, utilizing `cheerio` for intelligent HTML parsing and persistent JSON caching. 🌐✨

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Plus, Trash2, RefreshCw, Shield, Server, Wifi, Layout, CheckCircle, XCircle, AlertCircle, ChevronRight, ChevronUp, Search, Monitor, Cpu, Zap, Clock, Terminal, MapPin, Globe, ExternalLink, Info, Settings, Edit2, Play, Download, Upload, Pause, Square, SkipBack, RotateCcw, PlayCircle } from 'lucide-react';
+import { Activity, Plus, Trash2, RefreshCw, Shield, Server, Wifi, Layout, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight, ChevronUp, Search, Monitor, Cpu, Zap, Clock, Terminal, MapPin, Globe, ExternalLink, Info, Settings, Edit2, Play, Download, Upload, Pause, Square, SkipBack, RotateCcw, PlayCircle, ArrowDownCircle, ArrowUpCircle, ShieldX, ShieldCheck, Eraser, Eye } from 'lucide-react';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { isValidIpOrFqdn } from './utils/validation';
@@ -10,18 +10,26 @@ function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
 
+const COMMAND_METADATA: Record<string, { label: string, icon: any, color: string, emoji: string }> = {
+    'interface-down': { label: 'Shut', icon: ArrowDownCircle, color: 'text-red-500', emoji: '⬇️' },
+    'interface-up': { label: 'No Shut', icon: ArrowUpCircle, color: 'text-green-500', emoji: '⬆️' },
+    'set-qos': { label: 'Latency/Loss', icon: Activity, color: 'text-indigo-500', emoji: '〰️' },
+    'clear-qos': { label: 'Clear Qos', icon: RotateCcw, color: 'text-blue-500', emoji: '🔄' },
+    'deny-traffic': { label: 'Deny Traffic', icon: ShieldX, color: 'text-red-500', emoji: '🚫' },
+    'allow-traffic': { label: 'Allow Traffic', icon: ShieldCheck, color: 'text-green-500', emoji: '✅' },
+    'show-denied': { label: 'Show Denied', icon: Eye, color: 'text-blue-500', emoji: '📋' },
+    'clear-all-blocks': { label: 'Clear All Blocks', icon: Eraser, color: 'text-amber-500', emoji: '🧹' },
+};
+
 function getCommandDisplayName(command: string): string {
-    switch (command) {
-        case 'interface-down': return 'Shut';
-        case 'interface-up': return 'No Shut';
-        case 'set-qos': return 'Latency/Loss';
-        case 'clear-qos': return 'Clear Qos';
-        case 'deny-traffic': return 'Deny Traffic';
-        case 'allow-traffic': return 'Allow Traffic';
-        case 'show-denied': return 'Show Denied';
-        case 'clear-all-blocks': return 'Clear All Blocks';
-        default: return command;
-    }
+    return COMMAND_METADATA[command]?.label || command;
+}
+
+function getCommandIcon(command: string, size: number = 16, className?: string) {
+    const meta = COMMAND_METADATA[command];
+    if (!meta) return <Activity size={size} className={className} />;
+    const Icon = meta.icon;
+    return <Icon size={size} className={cn(meta.color, className)} />;
 }
 
 // Format action parameters for clean display
@@ -88,6 +96,85 @@ export interface VyosSequence {
 
 interface VyosProps {
     token: string;
+}
+
+function ActionSelector({ value, onChange }: { value: string, onChange: (val: string) => void }) {
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = React.useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const options = [
+        { id: 'interface-down', group: 'Interface' },
+        { id: 'interface-up', group: 'Interface' },
+        { id: 'set-qos', group: 'Interface' },
+        { id: 'clear-qos', group: 'Interface' },
+        { id: 'deny-traffic', group: 'Traffic Control' },
+        { id: 'allow-traffic', group: 'Traffic Control' },
+        { id: 'clear-all-blocks', group: 'Traffic Control' },
+        { id: 'show-denied', group: 'Traffic Control' },
+    ];
+
+    return (
+        <div className="relative" ref={containerRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border/50 hover:border-purple-500/50 transition-all text-sm font-black uppercase tracking-tight"
+            >
+                {getCommandIcon(value, 16)}
+                <span>{getCommandDisplayName(value)}</span>
+                <ChevronDown size={14} className={cn("ml-2 transition-transform duration-300", isOpen ? "rotate-180" : "")} />
+            </button>
+
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-2 w-72 min-w-[280px] bg-card/95 backdrop-blur-xl border border-border shadow-2xl z-[100] rounded-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                    <div className="p-1 px-1.5 space-y-0.5 max-h-[400px] overflow-y-auto">
+                        {['Interface', 'Traffic Control'].map(group => (
+                            <div key={group} className="space-y-0.5 py-1">
+                                <div className="px-3 py-1.5 text-[8px] font-black text-text-muted uppercase tracking-[0.2em] opacity-40">
+                                    {group}
+                                </div>
+                                {options.filter(o => o.group === group).map(opt => (
+                                    <button
+                                        key={opt.id}
+                                        type="button"
+                                        onClick={() => {
+                                            onChange(opt.id);
+                                            setIsOpen(false);
+                                        }}
+                                        className={cn(
+                                            "w-full flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all text-left",
+                                            value === opt.id
+                                                ? "bg-purple-500/10 text-purple-500"
+                                                : "hover:bg-card-secondary text-text-secondary hover:text-text-primary"
+                                        )}
+                                    >
+                                        <div className={cn(
+                                            "p-1 rounded-lg border",
+                                            value === opt.id ? "bg-card border-purple-500/20 shadow-sm" : "bg-card-secondary border-border/50"
+                                        )}>
+                                            {getCommandIcon(opt.id, 14)}
+                                        </div>
+                                        <span className="text-[11px] font-bold uppercase tracking-tight">{getCommandDisplayName(opt.id)}</span>
+                                        {value === opt.id && <CheckCircle size={12} className="ml-auto" />}
+                                    </button>
+                                ))}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 }
 
 export default function Vyos(props: VyosProps) {
@@ -937,12 +1024,19 @@ export default function Vyos(props: VyosProps) {
                             <div className="grid grid-cols-2 gap-2 py-2 border-y border-border/50">
                                 <div className="flex flex-col">
                                     <label className="text-[9px] font-black text-text-muted uppercase tracking-widest opacity-60">Operations</label>
-                                    <span className="text-xs font-bold text-text-primary uppercase tracking-tighter">
-                                        {seq.actions.length === 1
-                                            ? getCommandDisplayName(seq.actions[0].command)
-                                            : `${seq.actions.length} commands`
-                                        }
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        {seq.actions.length === 1 && (
+                                            <div className="p-1 bg-card rounded border border-border/50">
+                                                {getCommandIcon(seq.actions[0].command, 12)}
+                                            </div>
+                                        )}
+                                        <span className="text-xs font-bold text-text-primary uppercase tracking-tighter">
+                                            {seq.actions.length === 1
+                                                ? getCommandDisplayName(seq.actions[0].command)
+                                                : `${seq.actions.length} commands`
+                                            }
+                                        </span>
+                                    </div>
                                 </div>
                                 <div className="flex flex-col">
                                     <label className="text-[9px] font-black text-text-muted uppercase tracking-widest opacity-60">Deployment</label>
@@ -1540,8 +1634,8 @@ export default function Vyos(props: VyosProps) {
 
                                 <div className="space-y-6">
                                     {editingSeq.actions.map((action, idx) => (
-                                        <div key={idx} className="bg-card-secondary/50 border border-border rounded-2xl p-6 space-y-6 group relative overflow-hidden animate-in slide-in-from-left-6 duration-300 shadow-sm">
-                                            <div className="absolute top-0 left-0 w-1.5 h-full bg-purple-500/20 group-hover:bg-purple-500/40 transition-all" />
+                                        <div key={idx} className="bg-card-secondary/50 border border-border rounded-2xl p-4 space-y-4 group relative animate-in slide-in-from-left-6 duration-300 shadow-sm">
+                                            <div className="absolute top-0 left-0 w-1.5 h-full bg-purple-500/20 group-hover:bg-purple-500/40 transition-all rounded-l-2xl" />
 
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-6">
@@ -1558,26 +1652,14 @@ export default function Vyos(props: VyosProps) {
                                                             className="bg-transparent border-none text-purple-400 font-black text-center w-10 p-0 text-sm focus:ring-0 shadow-none outline-none"
                                                         />
                                                     </div>
-                                                    <select
+                                                    <ActionSelector
                                                         value={action.command}
-                                                        onChange={(e) => {
+                                                        onChange={(val) => {
                                                             const newActions = [...editingSeq.actions];
-                                                            newActions[idx].command = e.target.value;
+                                                            newActions[idx].command = val;
                                                             setEditingSeq({ ...editingSeq, actions: newActions });
                                                         }}
-                                                        className="bg-transparent border-none text-text-primary font-black uppercase text-base focus:ring-0 cursor-pointer hover:text-purple-500 transition-colors shadow-none outline-none appearance-none tracking-tighter"
-                                                    >
-                                                        <option value="interface-down">Shut</option>
-                                                        <option value="interface-up">No Shut</option>
-                                                        <option value="set-qos">Latency/Loss</option>
-                                                        <option value="clear-qos">Clear Qos</option>
-                                                        <optgroup label="Traffic Control">
-                                                            <option value="deny-traffic">🚫 Deny Traffic From IP/Subnet</option>
-                                                            <option value="allow-traffic">✅ Allow Traffic From IP/Subnet</option>
-                                                            <option value="clear-all-blocks">🧹 Clear All Blocks</option>
-                                                            <option value="show-denied">📋 Show Denied Traffic</option>
-                                                        </optgroup>
-                                                    </select>
+                                                    />
                                                 </div>
                                                 <button
                                                     onClick={() => {
@@ -2119,7 +2201,7 @@ function ExecutionTimeline({
                                 {isStepRunning ? (
                                     <RefreshCw size={14} className="animate-spin" />
                                 ) : (
-                                    <Play size={14} />
+                                    getCommandIcon(sequence.actions[sequence.currentStep || 0]?.command, 14, "text-white")
                                 )}
                                 Execute
                             </button>
@@ -2188,13 +2270,16 @@ function ExecutionTimeline({
                                 </span>
                             </div>
 
-                            {/* Status Dot */}
-                            <div className={`w-4 h-4 rounded-full border-2 ${getDotStyles(state, lastExec)} mt-2 z-10 transition-all duration-500`} />
+                            {/* Vertical Dot & Line Column */}
+                            <div className="flex flex-col items-center self-stretch">
+                                {/* Status Dot */}
+                                <div className={`w-4 h-4 rounded-full border-2 ${getDotStyles(state, lastExec)} mt-2 z-10 transition-all duration-500`} />
 
-                            {/* Vertical Connecting Line (except for last item) */}
-                            {idx < sequence.actions.length - 1 && (
-                                <div className={`absolute left-[87.5px] w-px h-16 translate-y-8 ${state === 'future' ? 'bg-border/30' : 'bg-border'}`} />
-                            )}
+                                {/* Dynamic Connecting Line */}
+                                {idx < sequence.actions.length - 1 && (
+                                    <div className={`w-px flex-1 ${state === 'future' ? 'bg-border/30' : 'bg-border'} transition-colors duration-500`} />
+                                )}
+                            </div>
 
                             {/* Action Details Card */}
                             <div className={`flex-1 bg-card-secondary/30 border rounded-xl p-4 transition-all duration-500 
@@ -2205,21 +2290,12 @@ function ExecutionTimeline({
                                     {/* Command + Target */}
                                     <div className="flex items-center gap-3">
                                         <div className="flex flex-col">
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-1.5 bg-card/50 rounded-lg border border-border/50">
+                                                    {getCommandIcon(action.command, 16)}
+                                                </div>
                                                 <span className={`text-sm font-black uppercase tracking-tight ${state === 'current' ? 'text-blue-500' : 'text-text-primary'}`}>
-                                                    {(() => {
-                                                        switch (action.command) {
-                                                            case 'interface-down': return 'Shut';
-                                                            case 'interface-up': return 'No Shut';
-                                                            case 'set-qos': return 'Latency/Loss';
-                                                            case 'clear-qos': return 'Clear Qos';
-                                                            case 'deny-traffic': return 'Deny Traffic From';
-                                                            case 'allow-traffic': return 'Allow Traffic From';
-                                                            case 'show-denied': return 'Show Denied Traffic';
-                                                            case 'clear-all-blocks': return 'Clear All Blocks';
-                                                            default: return action.command;
-                                                        }
-                                                    })()}
+                                                    {getCommandDisplayName(action.command)}
                                                 </span>
                                                 {state === 'current' && (
                                                     <span className="text-[8px] bg-blue-500 text-white px-1.5 py-0.5 rounded font-black animate-pulse">RUNNING</span>
