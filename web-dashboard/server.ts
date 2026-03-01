@@ -6007,10 +6007,23 @@ app.post('/api/admin/maintenance/upgrade', authenticateToken, async (req, res) =
             // Short delay before restart
             setTimeout(async () => {
                 try {
-                    G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Running: docker compose up -d`);
-
+                    // Start by checking if we have compose file
                     if (fs.existsSync(path.join(rootDir, 'docker-compose.yml'))) {
+                        G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Running: docker compose up -d`);
                         execSync('docker compose up -d', { cwd: rootDir });
+                    } else if (fs.existsSync('/app/docker-compose.yml')) {
+                        G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Running: docker compose up -d`);
+                        execSync('docker compose up -d', { cwd: '/app' });
+                    } else {
+                        // Fallback: forcefully restart containers by name if no compose file is mapped
+                        G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] No compose file found, falling back to docker run/restart`);
+                        try {
+                            // This is a best-effort fallback if docker-compose up -d is not available
+                            // Usually, watchtower or similar is better for pure docker upgrades
+                            execSync('docker restart sdwan-traffic-gen sdwan-voice-gen sdwan-web-ui');
+                        } catch (e) {
+                            G_UPGRADE_STATUS.logs.push(`[WARN] Fallback restart failed: ${e}`);
+                        }
                     }
 
                     G_UPGRADE_STATUS.stage = 'complete';
@@ -6061,26 +6074,37 @@ app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) =
     const runRestart = async () => {
         try {
             // First check if /app/docker-compose.yml exists (mounted in prod)
-            const composeFile = fs.existsSync('/app/docker-compose.yml') ? '/app/docker-compose.yml' : path.join(rootDir, 'docker-compose.yml');
+            const hasAppCompose = fs.existsSync('/app/docker-compose.yml');
+            const hasRootCompose = fs.existsSync(path.join(rootDir, 'docker-compose.yml'));
+            const composeFile = hasAppCompose ? '/app/docker-compose.yml' : (hasRootCompose ? path.join(rootDir, 'docker-compose.yml') : null);
 
-            // Try 'docker compose' first, then 'docker-compose'
-            let baseCmd = 'docker compose';
-            try {
-                // 'which' is a reliable way to check for binary existence
-                await promisify(exec)('which docker-compose');
-                baseCmd = 'docker-compose';
-            } catch (e) {
+            let cmd = '';
+
+            if (composeFile) {
+                // Try 'docker compose' first, then 'docker-compose'
+                let baseCmd = 'docker compose';
                 try {
-                    await promisify(exec)('docker compose version');
-                    baseCmd = 'docker compose';
-                } catch (e2) {
-                    throw new Error('Neither "docker-compose" nor "docker compose" were found in the container.');
+                    // 'which' is a reliable way to check for binary existence
+                    await promisify(exec)('which docker-compose');
+                    baseCmd = 'docker-compose';
+                } catch (e) {
+                    try {
+                        await promisify(exec)('docker compose version');
+                        baseCmd = 'docker compose';
+                    } catch (e2) {
+                        throw new Error('Neither "docker-compose" nor "docker compose" were found in the container.');
+                    }
                 }
+                cmd = type === 'redeploy'
+                    ? `${baseCmd} -f ${composeFile} up -d`
+                    : `${baseCmd} -f ${composeFile} restart`;
+            } else {
+                // Fallback to pure docker commands based on typical container names
+                cmd = type === 'redeploy'
+                    // Redeploy without compose might not pick up new envs, but restarting helps 
+                    ? `docker restart sdwan-traffic-gen sdwan-voice-gen sdwan-web-ui`
+                    : `docker restart sdwan-traffic-gen sdwan-voice-gen sdwan-web-ui`;
             }
-
-            const cmd = type === 'redeploy'
-                ? `${baseCmd} -f ${composeFile} up -d`
-                : `${baseCmd} -f ${composeFile} restart`;
 
             G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Executing: ${cmd}`);
 
