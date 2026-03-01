@@ -128,7 +128,9 @@ export class VyosManager extends EventEmitter {
                 clearTimeout(timeout);
                 if (code === 0) {
                     try {
-                        const info = JSON.parse(output);
+                        const jsonStart = output.indexOf('{');
+                        const jsonStr = jsonStart !== -1 ? output.substring(jsonStart) : output;
+                        const info = JSON.parse(jsonStr);
                         resolve({
                             hostname: info.hostname || 'unknown',
                             version: info.version || 'unknown',
@@ -360,7 +362,9 @@ export class VyosManager extends EventEmitter {
             proc.on('close', (code) => {
                 if (code === 0) {
                     try {
-                        resolve(JSON.parse(output));
+                        const jsonStart = output.indexOf('{');
+                        const jsonStr = jsonStart !== -1 ? output.substring(jsonStart) : output;
+                        resolve(JSON.parse(jsonStr));
                     } catch {
                         resolve({ success: true, output });
                     }
@@ -422,7 +426,9 @@ export class VyosManager extends EventEmitter {
             proc.on('close', (code) => {
                 if (code === 0) {
                     try {
-                        resolve(JSON.parse(output));
+                        const jsonStart = output.indexOf('{');
+                        const jsonStr = jsonStart !== -1 ? output.substring(jsonStart) : output;
+                        resolve(JSON.parse(jsonStr));
                     } catch {
                         reject(new Error('Invalid JSON response'));
                     }

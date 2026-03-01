@@ -629,7 +629,7 @@ export default function App() {
       <header className="mb-8 flex justify-between items-center">
         <div>
           <div className="flex flex-col gap-0.5">
-            <h1 className="text-[42px] font-bold tracking-[-0.03em] leading-tight text-white flex items-baseline">
+            <h1 className="text-[42px] font-bold tracking-[-0.03em] leading-tight text-text-primary flex items-baseline">
               St
               <span className="relative">
                 i

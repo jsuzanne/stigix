@@ -625,7 +625,7 @@ export default function Settings({ token }: { token: string }) {
                             </div>
                         </div>
 
-                        <div className="max-w-4xl mx-auto space-y-8">
+                        <div className="max-w-5xl mx-auto space-y-8">
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-6 bg-card-secondary/30 p-6 rounded-2xl border border-border shadow-inner">
                                 <div className="space-y-2">
                                     <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">Probe Name</label>
@@ -673,7 +673,7 @@ export default function Settings({ token }: { token: string }) {
                                 </div>
                             </div>
 
-                            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-2">
                                 {customProbes.map((probe, idx) => (
                                     <div key={idx} className={cn(
                                         "group bg-card border border-border hover:border-blue-500/30 rounded-2xl p-5 pr-2 flex items-center justify-between transition-all shadow-sm",

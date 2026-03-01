@@ -314,9 +314,9 @@ export default function Vyos(props: VyosProps) {
 
         setConfirmModal({
             isOpen: true,
-            title: 'Revoke Router',
+            title: 'Remove vyos router',
             message: `Are you sure you want to delete ${router?.name || 'this router'}? All associated sequences will be affected. This action cannot be undone.`,
-            confirmText: 'Revoke Router',
+            confirmText: 'Remove vyos router',
             onConfirm: () => performDeleteRouter(router?.id || id)
         });
     };
@@ -1438,7 +1438,7 @@ export default function Vyos(props: VyosProps) {
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[110] flex items-center justify-center p-4">
                     <div className="bg-card border border-border w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
                         <div className="p-8 border-b border-border flex items-center justify-between bg-card/80 backdrop-blur-md sticky top-0 z-10">
-                            <h3 className="text-2xl font-black text-text-primary flex items-center gap-4 uppercase tracking-tighter">
+                            <h3 className="text-2xl font-black text-text-primary flex items-center gap-4 tracking-tighter">
                                 <Activity size={28} className="text-purple-500" />
                                 {editingSeq.id ? 'Mission Parameters' : 'Blueprint Mission'}
                             </h3>
@@ -2327,7 +2327,7 @@ function ConfirmModal({
             <div className="bg-card border border-border max-w-md w-full rounded-2xl shadow-2xl animate-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="p-6 border-b border-border">
-                    <h3 className="text-xl font-black text-text-primary uppercase tracking-tighter flex items-center gap-3">
+                    <h3 className="text-xl font-black text-text-primary tracking-tighter flex items-center gap-3">
                         {danger && <AlertCircle size={24} className="text-red-500 dark:text-red-400" />}
                         {title}
                     </h3>
@@ -2342,13 +2342,13 @@ function ConfirmModal({
                 <div className="p-6 border-t border-border flex gap-4">
                     <button
                         onClick={onCancel}
-                        className="flex-1 px-6 py-3 rounded-xl bg-card-secondary hover:bg-card-hover text-text-muted font-black transition-all text-xs uppercase tracking-widest border border-border/50"
+                        className="flex-1 px-6 py-3 rounded-xl bg-card-secondary hover:bg-card-hover text-text-muted font-black transition-all text-xs tracking-widest border border-border/50"
                     >
                         {cancelText}
                     </button>
                     <button
                         onClick={onConfirm}
-                        className={`flex-1 px-6 py-3 rounded-xl font-black transition-all text-xs uppercase tracking-widest shadow-lg ${danger
+                        className={`flex-1 px-6 py-3 rounded-xl font-black transition-all text-xs tracking-widest shadow-lg ${danger
                             ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/20'
                             : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20'
                             }`}

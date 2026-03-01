@@ -2726,7 +2726,7 @@ const getEnvConnectivityEndpoints = () => {
     return endpoints;
 };
 
-// Helper: Get custom endpoints from file
+// Helper: Get custom endpoints from file (used for custom added probes, plus state overrides for env/discovery probes)
 const getCustomConnectivityEndpoints = () => {
     try {
         if (!fs.existsSync(CUSTOM_CONNECTIVITY_FILE)) return [];
@@ -2766,8 +2766,17 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
         const customProbes = getCustomConnectivityEndpoints();
         const discoveredProbes = discoveryManager.getProbes();
 
+        // Merge env state with custom
+        const mergedEnvProbes = envProbes.map((p: any) => {
+            const override = customProbes.find((cp: any) => cp.name === p.name);
+            return override ? { ...p, enabled: override.enabled } : p;
+        });
+
+        // Unique custom probes
+        const pureCustom = customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+
         // Return all known probes so the frontend knows they exist (even if paused/disabled)
-        const allProbes = [...envProbes, ...customProbes, ...discoveredProbes];
+        const allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes];
 
         res.json({
             success: true,
@@ -2786,9 +2795,17 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
 app.get('/api/connectivity/test', authenticateToken, async (req, res) => {
     // console.log('[CONNECTIVITY] Starting internet connectivity test...'); // Silenced to reduce noise
 
+    const envProbes = getEnvConnectivityEndpoints();
+    const customProbes = getCustomConnectivityEndpoints();
+
+    const mergedEnvProbes = envProbes.map((p: any) => {
+        const override = customProbes.find((cp: any) => cp.name === p.name);
+        return override ? { ...p, enabled: override.enabled } : p;
+    });
+
     const testEndpoints: any[] = [
-        ...getEnvConnectivityEndpoints(),
-        ...getCustomConnectivityEndpoints().filter(p => p.enabled !== false)
+        ...mergedEnvProbes.filter((p: any) => p.enabled !== false),
+        ...customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name) && p.enabled !== false)
     ];
 
     const results = [];
@@ -2871,9 +2888,19 @@ app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
 
 // API: Get Custom Connectivity Endpoints
 app.get('/api/connectivity/custom', authenticateToken, (req, res) => {
+    const envProbes = getEnvConnectivityEndpoints();
     const custom = getCustomConnectivityEndpoints();
     const discovered = discoveryManager.getProbes();
-    res.json([...custom, ...discovered]);
+
+    // Merge custom state into env probes and serve them all
+    const mergedEnvProbes = envProbes.map((p: any) => {
+        const override = custom.find((cp: any) => cp.name === p.name);
+        return override ? { ...p, enabled: override.enabled } : p;
+    });
+
+    const pureCustom = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+
+    res.json([...mergedEnvProbes, ...pureCustom, ...discovered]);
 });
 
 // API: Update Custom Connectivity Endpoints
@@ -2881,10 +2908,12 @@ app.post('/api/connectivity/custom', authenticateToken, (req, res) => {
     const { endpoints } = req.body;
     if (!Array.isArray(endpoints)) return res.status(400).json({ error: 'Invalid format, expected array' });
 
-    const customProbes = endpoints.filter(p => p.source !== 'discovery');
+    // The UI sends back ALL endpoints (Env, Custom, Discovered).
+    // We update Discovery directly, and save everything else to custom (which now acts as state store for Env probes)
     const discoveredProbes = endpoints.filter(p => p.source === 'discovery');
+    const customAndEnvProbes = endpoints.filter(p => p.source !== 'discovery');
 
-    const customSuccess = saveCustomConnectivityEndpoints(customProbes);
+    const customSuccess = saveCustomConnectivityEndpoints(customAndEnvProbes);
     discoveryManager.updateProbesFromUI(discoveredProbes);
 
     if (customSuccess) {
@@ -2958,11 +2987,18 @@ app.get('/api/connectivity/results', authenticateToken, async (req, res) => {
 app.get('/api/connectivity/stats', authenticateToken, async (req, res) => {
     const { range } = req.query;
 
-    // Get all currently enabled probes to filter out disabled ones from stats
+    const envProbes = getEnvConnectivityEndpoints();
     const customProbes = getCustomConnectivityEndpoints();
     const discoveredProbes = discoveryManager.getProbes();
-    const allProbes = [...customProbes, ...discoveredProbes];
-    const activeProbeIds = allProbes.filter(p => p.enabled !== false).map(p => p.name.toLowerCase().replace(/\s+/g, '-'));
+
+    const mergedEnvProbes = envProbes.map((p: any) => {
+        const override = customProbes.find((cp: any) => cp.name === p.name);
+        return override ? { ...p, enabled: override.enabled } : p;
+    });
+    const pureCustom = customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+
+    const allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes];
+    const activeProbeIds = allProbes.filter((p: any) => p.enabled !== false).map((p: any) => p.name.toLowerCase().replace(/\s+/g, '-'));
 
     const stats = await connectivityLogger.getStats({ timeRange: range as string, activeProbeIds });
     res.json(stats || { globalHealth: 0 });
