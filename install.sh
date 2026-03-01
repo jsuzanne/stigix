@@ -159,6 +159,27 @@ if [ ! -f .env ]; then
     echo "✅ Created .env with auto-start traffic enabled"
 fi
 
+# Pre-flight port check for dashboard mode
+if [ "$INSTALL_MODE" != "2" ]; then
+    echo "🔍 Checking if port 8080 is available..."
+    if command -v lsof &> /dev/null; then
+        if lsof -i :8080 > /dev/null 2>&1; then
+            echo "❌ Error: Port 8080 is already in use by another application on your host."
+            echo "This can prevent the Web UI from loading correctly (e.g. 'Cannot GET /')."
+            echo "Please stop the application using port 8080 (like a local Node server) before proceeding."
+            exit 1
+        fi
+    elif command -v nc &> /dev/null; then
+        if nc -z 127.0.0.1 8080 > /dev/null 2>&1; then
+            echo "❌ Error: Port 8080 is already in use by another application on your host."
+            echo "This can prevent the Web UI from loading correctly (e.g. 'Cannot GET /')."
+            echo "Please stop the application using port 8080 before proceeding."
+            exit 1
+        fi
+    fi
+    echo "✅ Port 8080 is available."
+fi
+
 # Start services
 echo "🔧 Starting services..."
 docker compose up -d
