@@ -1,6 +1,7 @@
 import React from 'react';
 import { useFavicon } from '../hooks/useFavicon';
 import { clsx } from 'clsx';
+import { Mail, Globe } from 'lucide-react';
 
 interface FaviconProps {
     domain: string;
@@ -24,7 +25,7 @@ export const Favicon: React.FC<FaviconProps> = ({ domain, className, size = 16 }
         return colors[Math.abs(hash) % colors.length];
     };
 
-    const firstLetter = domain.replace(/^https?:\/\//, '').charAt(0).toUpperCase();
+    const isMail = domain.toLowerCase().includes('mail') || domain.toLowerCase().includes('outlook');
 
     if (loading) {
         return (
@@ -50,13 +51,17 @@ export const Favicon: React.FC<FaviconProps> = ({ domain, className, size = 16 }
     return (
         <div
             className={clsx(
-                "rounded-full flex items-center justify-center text-[10px] font-black text-white flex-shrink-0 shadow-sm",
+                "rounded-full flex items-center justify-center text-white flex-shrink-0 shadow-sm",
                 getFallbackColor(domain),
                 className
             )}
             style={{ width: size, height: size }}
         >
-            {firstLetter}
+            {isMail ? (
+                <Mail size={size * 0.6} strokeWidth={3} />
+            ) : (
+                <Globe size={size * 0.6} strokeWidth={3} />
+            )}
         </div>
     );
 };
