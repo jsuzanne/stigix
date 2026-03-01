@@ -3119,14 +3119,10 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
     const displayId = label ? `${testId} (${label})` : testId;
     const statsFile = `/tmp/convergence_stats_${testId}.json`;
 
-    // Dynamic path resolution
-    let orchestratorPath = path.join(__dirname, 'engines/convergence_orchestrator.py');
-    if (!fs.existsSync(orchestratorPath)) {
-        orchestratorPath = path.join(__dirname, 'engines/convergence_orchestrator.py');
-    }
+    const orchestratorPath = path.join(PROJECT_ROOT, 'engines', 'convergence_orchestrator.py');
 
     if (!fs.existsSync(orchestratorPath)) {
-        return res.status(500).json({ error: 'Convergence orchestrator script missing' });
+        return res.status(500).json({ error: `Convergence orchestrator script missing at ${orchestratorPath}` });
     }
 
     const args = [
