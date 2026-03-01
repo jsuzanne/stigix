@@ -789,7 +789,7 @@ export default function App() {
               <div className="flex justify-end gap-3">
                 <button
                   onClick={() => setShowIperfModal(false)}
-                  className="px-6 py-2.5 text-text-muted hover:text-text-primary font-bold transition-colors tracking-widest text-[10px]"
+                  className="px-6 py-2.5 text-text-muted hover:text-text-primary font-bold transition-colors tracking-wider text-xs"
                 >
                   Cancel
                 </button>
@@ -818,7 +818,7 @@ export default function App() {
         <button
           onClick={() => setView('dashboard')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'dashboard' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
@@ -827,7 +827,7 @@ export default function App() {
         <button
           onClick={() => setView('performance')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'performance' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
@@ -837,7 +837,7 @@ export default function App() {
           <button
             onClick={() => setView('speedtest')}
             className={cn(
-              "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
+              "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
               view === 'speedtest' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
             )}
           >
@@ -847,7 +847,7 @@ export default function App() {
         <button
           onClick={() => setView('security')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'security' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
@@ -856,7 +856,7 @@ export default function App() {
         <button
           onClick={() => setView('iot')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'iot' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
@@ -865,7 +865,7 @@ export default function App() {
         <button
           onClick={() => setView('voice')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'voice' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
@@ -874,7 +874,7 @@ export default function App() {
         <button
           onClick={() => setView('failover')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'failover' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
@@ -883,7 +883,7 @@ export default function App() {
         <button
           onClick={() => setView('vyos')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all",
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'vyos' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
@@ -894,7 +894,7 @@ export default function App() {
           <button
             onClick={() => setView('settings')}
             className={cn(
-              "px-4 py-3 flex items-center gap-2 font-bold tracking-widest text-[10px] border-b-2 transition-all relative",
+              "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all relative",
               view === 'settings' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
             )}
           >
