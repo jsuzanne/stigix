@@ -2765,7 +2765,10 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
         const envProbes = getEnvConnectivityEndpoints();
         const customProbes = getCustomConnectivityEndpoints();
         const discoveredProbes = discoveryManager.getProbes();
+
+        // Return all known probes so the frontend knows they exist (even if paused/disabled)
         const allProbes = [...envProbes, ...customProbes, ...discoveredProbes];
+
         res.json({
             success: true,
             probes: allProbes.map(p => ({
@@ -2785,7 +2788,7 @@ app.get('/api/connectivity/test', authenticateToken, async (req, res) => {
 
     const testEndpoints: any[] = [
         ...getEnvConnectivityEndpoints(),
-        ...getCustomConnectivityEndpoints()
+        ...getCustomConnectivityEndpoints().filter(p => p.enabled !== false)
     ];
 
     const results = [];
@@ -2841,6 +2844,27 @@ app.get('/api/connectivity/public-ip', authenticateToken, async (req, res) => {
             res.status(500).json({ error: 'Failed to fetch public IP' });
         }
     } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
+    try {
+        const platform = os.platform();
+        let cmd = '';
+        if (platform === 'darwin') {
+            cmd = "route -n get default | awk '/gateway/ {print $2}'";
+        } else if (platform === 'linux') {
+            cmd = "ip route | grep default | awk '{print $3}' | head -n 1";
+        } else {
+            return res.json({ ip: 'Unknown OS' });
+        }
+
+        const execPromise = promisify(exec);
+        const { stdout } = await execPromise(cmd);
+        res.json({ ip: stdout.trim() });
+    } catch (e: any) {
+        console.error('Failed to get gateway IP:', e.message);
         res.status(500).json({ error: e.message });
     }
 });
@@ -2933,7 +2957,14 @@ app.get('/api/connectivity/results', authenticateToken, async (req, res) => {
 
 app.get('/api/connectivity/stats', authenticateToken, async (req, res) => {
     const { range } = req.query;
-    const stats = await connectivityLogger.getStats({ timeRange: range as string });
+
+    // Get all currently enabled probes to filter out disabled ones from stats
+    const customProbes = getCustomConnectivityEndpoints();
+    const discoveredProbes = discoveryManager.getProbes();
+    const allProbes = [...customProbes, ...discoveredProbes];
+    const activeProbeIds = allProbes.filter(p => p.enabled !== false).map(p => p.name.toLowerCase().replace(/\s+/g, '-'));
+
+    const stats = await connectivityLogger.getStats({ timeRange: range as string, activeProbeIds });
     res.json(stats || { globalHealth: 0 });
 });
 
@@ -2946,7 +2977,7 @@ const startConnectivityMonitor = (intervalMinutes: number = 5) => {
             ...getEnvConnectivityEndpoints(),
             ...getCustomConnectivityEndpoints(),
             ...discoveryManager.getProbes()
-        ];
+        ].filter(p => p.enabled !== false); // Only run probes that are not disabled
 
         if (testEndpoints.length === 0) return;
 
@@ -4251,6 +4282,73 @@ const startSchedulers = () => {
     if (modified) saveSecurityConfig(config);
 };
 
+const performSecurityStatsReset = () => {
+    try {
+        const config = getSecurityConfig();
+        if (config) {
+            config.statistics = {
+                total_tests_run: 0,
+                url_tests_blocked: 0,
+                url_tests_allowed: 0,
+                dns_tests_blocked: 0,
+                dns_tests_sinkholed: 0,
+                dns_tests_allowed: 0,
+                threat_tests_blocked: 0,
+                threat_tests_allowed: 0,
+                last_test_time: null
+            };
+            config.test_history = [];
+            saveSecurityConfig(config);
+
+            // Also clear persistent logs via testLogger
+            testLogger.deleteAll().catch(err => console.error('Failed to clear testLogger:', err));
+
+            // Reset test counter to 0
+            try {
+                fs.writeFileSync(TEST_COUNTER_FILE, JSON.stringify({ counter: 0 }));
+                console.log('[SECURITY] Scheduled reset: Test counter reset to 0');
+            } catch (err) {
+                console.error('[SECURITY] Scheduled reset: Failed to reset test counter:', err);
+            }
+            return true;
+        }
+    } catch (e: any) {
+        console.error('[SECURITY] Scheduled reset failed:', e.message);
+    }
+    return false;
+};
+
+let dailyResetTimeout: NodeJS.Timeout | null = null;
+let dailyResetInterval: NodeJS.Timeout | null = null;
+
+const scheduleMidnightReset = () => {
+    const now = new Date();
+    const midnight = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1, // Tomorrow
+        0, 0, 0, 0 // Midnight
+    );
+
+    const msUntilMidnight = midnight.getTime() - now.getTime();
+    console.log(`[SECURITY] Next daily stats reset scheduled in ${(msUntilMidnight / 1000 / 60 / 60).toFixed(2)} hours`);
+
+    if (dailyResetTimeout) clearTimeout(dailyResetTimeout);
+    if (dailyResetInterval) clearInterval(dailyResetInterval);
+
+    // Initial timeout to hit exactly midnight
+    dailyResetTimeout = setTimeout(() => {
+        console.log('[SECURITY] Executing midnight daily security stats reset');
+        performSecurityStatsReset();
+
+        // Then set a 24-hour interval
+        dailyResetInterval = setInterval(() => {
+            console.log('[SECURITY] Executing daily security stats reset');
+            performSecurityStatsReset();
+        }, 24 * 60 * 60 * 1000);
+    }, msUntilMidnight);
+};
+
 const stopAllSchedulers = () => {
     if (urlTestInterval) { clearInterval(urlTestInterval); urlTestInterval = null; }
     if (dnsTestInterval) { clearInterval(dnsTestInterval); dnsTestInterval = null; }
@@ -4261,6 +4359,7 @@ const stopAllSchedulers = () => {
 // Start schedulers on server startup
 setTimeout(() => {
     startSchedulers();
+    scheduleMidnightReset();
 
     // VyOS Health Check (60s)
     setInterval(() => {
@@ -4406,40 +4505,11 @@ app.get('/api/security/results/stats', authenticateToken, async (req, res) => {
 
 // API: Reset Security Statistics
 app.delete('/api/security/statistics', authenticateToken, (req, res) => {
-    try {
-        const config = getSecurityConfig();
-        if (config) {
-            config.statistics = {
-                total_tests_run: 0,
-                url_tests_blocked: 0,
-                url_tests_allowed: 0,
-                dns_tests_blocked: 0,
-                dns_tests_sinkholed: 0,
-                dns_tests_allowed: 0,
-                threat_tests_blocked: 0,
-                threat_tests_allowed: 0,
-                last_test_time: null
-            };
-            config.test_history = [];
-            saveSecurityConfig(config);
-
-            // Also clear persistent logs via testLogger
-            testLogger.deleteAll().catch(err => console.error('Failed to clear testLogger:', err));
-
-            // ✅ Reset test counter to 0!
-            try {
-                fs.writeFileSync(TEST_COUNTER_FILE, JSON.stringify({ counter: 0 }));
-                console.log('[SECURITY] Test counter reset to 0');
-            } catch (err) {
-                console.error('Failed to reset test counter:', err);
-            }
-
-            res.json({ success: true });
-        } else {
-            res.status(404).json({ error: 'Config not found' });
-        }
-    } catch (e: any) {
-        res.status(500).json({ success: false, error: e.message });
+    const success = performSecurityStatsReset();
+    if (success) {
+        res.json({ success: true });
+    } else {
+        res.status(500).json({ success: false, error: 'Failed to reset statistics' });
     }
 });
 

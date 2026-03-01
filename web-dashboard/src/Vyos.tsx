@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Plus, Trash2, RefreshCw, Shield, Server, Wifi, Layout, CheckCircle, XCircle, AlertCircle, ChevronRight, ChevronUp, Search, Monitor, Cpu, Zap, Clock, Terminal, MapPin, Globe, ExternalLink, Info, Settings, Edit2, Play, Download, Upload, Pause, Square, SkipBack, RotateCcw, PlayCircle } from 'lucide-react';
+import { Activity, Plus, Trash2, RefreshCw, Shield, Server, Wifi, Layout, CheckCircle, XCircle, AlertCircle, ChevronRight, ChevronUp, Search, Monitor, Cpu, Zap, Clock, Terminal, MapPin, Globe, ExternalLink, Info, Settings, Edit2, Play, Download, Upload, Pause, Square, SkipBack, RotateCcw, PlayCircle, Copy } from 'lucide-react';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
+import { isValidIpOrFqdn } from './utils/validation';
 import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
 
@@ -30,7 +31,7 @@ function formatActionParameters(command: string, parameters: any): string {
     switch (command) {
         case 'deny-traffic':
         case 'allow-traffic':
-            return parameters.ip ? `IP: ${parameters.ip}` : '';
+            return parameters.ip ? `IP: ${parameters.ip} ` : '';
         case 'set-qos':
             const parts = [];
             if (parameters.latency) parts.push(`${parameters.latency}ms latency`);
@@ -180,16 +181,16 @@ export default function Vyos(props: VyosProps) {
     const metrics = calculateMetrics();
 
     const authHeaders = () => ({
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${token} `,
         'Content-Type': 'application/json'
     });
 
     const fetchData = async () => {
         try {
             const [rRes, sRes, hRes] = await Promise.all([
-                fetch('/api/vyos/routers', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/api/vyos/sequences', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/api/vyos/history', { headers: { 'Authorization': `Bearer ${token}` } })
+                fetch('/api/vyos/routers', { headers: { 'Authorization': `Bearer ${token} ` } }),
+                fetch('/api/vyos/sequences', { headers: { 'Authorization': `Bearer ${token} ` } }),
+                fetch('/api/vyos/history', { headers: { 'Authorization': `Bearer ${token} ` } })
             ]);
 
             const rData = await rRes.json();
@@ -243,7 +244,7 @@ export default function Vyos(props: VyosProps) {
             } else {
                 const errMsg = data.error || 'Discovery failed';
                 setError(errMsg);
-                toast.error(`❌ ${errMsg}`, { id: toastId });
+                toast.error(`❌ ${errMsg} `, { id: toastId });
             }
         } catch (e: any) {
             setError('Network error during discovery');
@@ -271,7 +272,7 @@ export default function Vyos(props: VyosProps) {
         if (!editingRouter) return;
         const toastId = toast.loading('Syncing node parameters...');
         try {
-            const res = await fetch(`/api/vyos/routers/${editingRouter.id}`, {
+            const res = await fetch(`/ api / vyos / routers / ${editingRouter.id} `, {
                 method: 'POST', // Repurposing POST for update
                 headers: authHeaders(),
                 body: JSON.stringify(editingRouter)
@@ -294,13 +295,13 @@ export default function Vyos(props: VyosProps) {
         setConfirmModal({
             isOpen: true,
             title: 'Revoke Router',
-            message: `Are you sure you want to delete ${router?.name || 'this router'}? All associated sequences will be affected. This action cannot be undone.`,
+            message: `Are you sure you want to delete ${router?.name || 'this router'}? All associated sequences will be affected.This action cannot be undone.`,
             confirmText: 'Delete Router',
             onConfirm: async () => {
                 try {
-                    const res = await fetch(`/api/vyos/routers/${id}`, {
+                    const res = await fetch(`/ api / vyos / routers / ${id} `, {
                         method: 'DELETE',
-                        headers: { 'Authorization': `Bearer ${token}` }
+                        headers: { 'Authorization': `Bearer ${token} ` }
                     });
 
                     if (res.ok) {
@@ -308,10 +309,10 @@ export default function Vyos(props: VyosProps) {
                         fetchData();
                     } else {
                         const data = await res.json();
-                        toast.error(`❌ ${data.error || 'Failed to delete router'}`);
+                        toast.error(`❌ ${data.error || 'Failed to delete router'} `);
                     }
                 } catch (e: any) {
-                    toast.error(`❌ Network error: ${e.message}`);
+                    toast.error(`❌ Network error: ${e.message} `);
                 }
                 setConfirmModal(prev => ({ ...prev, isOpen: false }));
             }
@@ -321,32 +322,32 @@ export default function Vyos(props: VyosProps) {
     const testRouter = async (id: string) => {
         const toastId = toast.loading('Testing connection...');
         try {
-            const res = await fetch(`/api/vyos/routers/test/${id}`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await fetch(`/ api / vyos / routers / test / ${id} `, { method: 'POST', headers: { 'Authorization': `Bearer ${token} ` } });
             const data = await res.json();
             if (data.success) {
                 toast.success('✓ Connection successful!', { id: toastId });
             } else {
-                toast.error(`❌ Connection failed: ${data.status}`, { id: toastId });
+                toast.error(`❌ Connection failed: ${data.status} `, { id: toastId });
             }
             fetchData();
         } catch (e: any) {
-            toast.error(`❌ Error: ${e.message}`, { id: toastId });
+            toast.error(`❌ Error: ${e.message} `, { id: toastId });
         }
     };
 
     const refreshRouterInfo = async (id: string) => {
         const toastId = toast.loading('Refreshing node info...');
         try {
-            const res = await fetch(`/api/vyos/routers/refresh/${id}`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await fetch(`/ api / vyos / routers / refresh / ${id} `, { method: 'POST', headers: { 'Authorization': `Bearer ${token} ` } });
             const data = await res.json();
             if (data.success) {
                 toast.success('✓ Node information updated (interfaces, version, hostname)', { id: toastId });
                 fetchData();
             } else {
-                toast.error(`❌ Refresh failed: ${data.error}`, { id: toastId });
+                toast.error(`❌ Refresh failed: ${data.error} `, { id: toastId });
             }
         } catch (e: any) {
-            toast.error(`❌ Error: ${e.message}`, { id: toastId });
+            toast.error(`❌ Error: ${e.message} `, { id: toastId });
         }
     };
 
@@ -364,7 +365,7 @@ export default function Vyos(props: VyosProps) {
 
         const toastId = toast.loading('Starting sequence...');
         try {
-            const res = await fetch(`/api/vyos/sequences/run/${id}`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await fetch(`/ api / vyos / sequences / run / ${id} `, { method: 'POST', headers: { 'Authorization': `Bearer ${token} ` } });
             if (res.ok) {
                 toast.success('✓ Mission sequence initiated', { id: toastId });
             } else {
@@ -382,13 +383,13 @@ export default function Vyos(props: VyosProps) {
         setConfirmModal({
             isOpen: true,
             title: 'Delete Sequence',
-            message: `Are you sure you want to delete "${sequence?.name || 'this sequence'}"? This action cannot be undone.`,
+            message: `Are you sure you want to delete "${sequence?.name || 'this sequence'}" ? This action cannot be undone.`,
             confirmText: 'Delete Sequence',
             onConfirm: async () => {
                 try {
-                    await fetch(`/api/vyos/sequences/${id}`, {
+                    await fetch(`/ api / vyos / sequences / ${id} `, {
                         method: 'DELETE',
-                        headers: { 'Authorization': `Bearer ${token}` }
+                        headers: { 'Authorization': `Bearer ${token} ` }
                     });
                     toast.success('✓ Sequence deleted');
                     fetchData();
@@ -402,7 +403,7 @@ export default function Vyos(props: VyosProps) {
 
     const openSeqModal = (seq?: VyosSequence) => {
         setEditingSeq(seq ? JSON.parse(JSON.stringify(seq)) : {
-            id: `seq-${Date.now()}`,
+            id: `seq - ${Date.now()} `,
             name: '',
             enabled: true,
             executionMode: 'CYCLE',
@@ -427,14 +428,14 @@ export default function Vyos(props: VyosProps) {
                 // Validate CIDR format
                 const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/;
                 if (!cidrRegex.test(action.parameters.ip)) {
-                    toast.error(`Invalid IP format for ${action.command}. Use CIDR notation (e.g., 8.8.8.8/32)`);
+                    toast.error(`Invalid IP format for ${action.command}.Use CIDR notation(e.g., 8.8.8.8 / 32)`);
                     return;
                 }
 
                 // Validate IP octets (0-255)
                 const octets = action.parameters.ip.split('/')[0].split('.');
                 if (octets.some((o: string) => parseInt(o) > 255 || parseInt(o) < 0)) {
-                    toast.error(`Invalid IP address in ${action.command}. Each octet must be 0-255`);
+                    toast.error(`Invalid IP address in ${action.command}. Each octet must be 0 - 255`);
                     return;
                 }
 
@@ -442,7 +443,7 @@ export default function Vyos(props: VyosProps) {
                 if (action.parameters.ip.includes('/')) {
                     const mask = parseInt(action.parameters.ip.split('/')[1]);
                     if (mask < 0 || mask > 32) {
-                        toast.error(`Invalid subnet mask in ${action.command}. Must be 0-32`);
+                        toast.error(`Invalid subnet mask in ${action.command}. Must be 0 - 32`);
                         return;
                     }
                 }
@@ -501,12 +502,12 @@ export default function Vyos(props: VyosProps) {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `vyos-sequences-${new Date().toISOString().split('T')[0]}.json`;
+            a.download = `vyos - sequences - ${new Date().toISOString().split('T')[0]}.json`;
             a.click();
             URL.revokeObjectURL(url);
             toast.success('✓ Sequences exported', { id: toastId });
         } catch (e: any) {
-            toast.error(`❌ Export failed: ${e.message}`, { id: toastId });
+            toast.error(`❌ Export failed: ${e.message} `, { id: toastId });
         }
     };
 
@@ -526,7 +527,7 @@ export default function Vyos(props: VyosProps) {
             let imported = 0;
             for (const seq of data.sequences) {
                 const newSeq = {
-                    id: `seq-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    id: `seq - ${Date.now()} -${Math.random().toString(36).substr(2, 9)} `,
                     name: seq.name || 'Imported Sequence',
                     enabled: seq.enabled ?? true,
                     cycle_duration: seq.cycle_duration || 0,
@@ -545,7 +546,7 @@ export default function Vyos(props: VyosProps) {
             fetchData();
             toast.success(`✓ Imported ${imported} sequence(s)`, { id: toastId });
         } catch (e: any) {
-            toast.error(`❌ Import failed: ${e.message}`, { id: toastId });
+            toast.error(`❌ Import failed: ${e.message} `, { id: toastId });
         }
 
         // Reset file input
@@ -557,7 +558,7 @@ export default function Vyos(props: VyosProps) {
         try {
             const res = await fetch('/api/vyos/config/export', {
                 headers: {
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token} `
                 }
             });
             if (!res.ok) throw new Error('Export failed');
@@ -566,12 +567,12 @@ export default function Vyos(props: VyosProps) {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `vyos-config-full-${new Date().toISOString().split('T')[0]}.json`;
+            a.download = `vyos - config - full - ${new Date().toISOString().split('T')[0]}.json`;
             a.click();
             URL.revokeObjectURL(url);
             toast.success('✓ Configuration exported', { id: toastId });
         } catch (e: any) {
-            toast.error(`❌ Export failed: ${e.message}`, { id: toastId });
+            toast.error(`❌ Export failed: ${e.message} `, { id: toastId });
         }
         setShowSettingsMenu(false);
     };
@@ -588,7 +589,7 @@ export default function Vyos(props: VyosProps) {
             const res = await fetch('/api/vyos/config/import', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
+                    'Authorization': `Bearer ${token} `,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(data)
@@ -602,7 +603,7 @@ export default function Vyos(props: VyosProps) {
             fetchData();
             toast.success('✓ Configuration imported successfully', { id: toastId });
         } catch (e: any) {
-            toast.error(`❌ Import failed: ${e.message}`, { id: toastId });
+            toast.error(`❌ Import failed: ${e.message} `, { id: toastId });
         }
 
         setShowSettingsMenu(false);
@@ -622,7 +623,7 @@ export default function Vyos(props: VyosProps) {
                     const res = await fetch('/api/vyos/config/reset', {
                         method: 'POST',
                         headers: {
-                            'Authorization': `Bearer ${token}`
+                            'Authorization': `Bearer ${token} `
                         }
                     });
 
@@ -631,7 +632,7 @@ export default function Vyos(props: VyosProps) {
                     fetchData();
                     toast.success('✓ Configuration reset successfully', { id: toastId });
                 } catch (e: any) {
-                    toast.error(`❌ Reset failed: ${e.message}`, { id: toastId });
+                    toast.error(`❌ Reset failed: ${e.message} `, { id: toastId });
                 }
                 setShowSettingsMenu(false);
             }
@@ -649,7 +650,7 @@ export default function Vyos(props: VyosProps) {
             });
             if (res.ok) {
                 fetchData();
-                toast.success(`✓ Sequence ${updatedSeq.enabled ? 'enabled' : 'disabled'}`, { id: toastId });
+                toast.success(`✓ Sequence ${updatedSeq.enabled ? 'enabled' : 'disabled'} `, { id: toastId });
             } else {
                 toast.error('❌ Failed to update sequence', { id: toastId });
             }
@@ -730,11 +731,11 @@ export default function Vyos(props: VyosProps) {
                                 )}
                             </div>
                             <div className="flex items-center gap-4 mt-1">
-                                <button onClick={() => setView('routers')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'routers' ? 'text-blue-500 border-b-2 border-blue-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Routers</button>
-                                <button onClick={() => setView('sequences')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'sequences' ? 'text-purple-500 border-b-2 border-purple-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Sequences</button>
-                                <button onClick={() => setView('history')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'history' ? 'text-green-500 border-b-2 border-green-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>History</button>
-                                <button onClick={() => setView('timeline')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'timeline' ? 'text-purple-500 border-b-2 border-purple-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Timeline</button>
-                                <button onClick={() => setView('metrics')} className={`text-xs font-bold tracking-wider transition-colors ${view === 'metrics' ? 'text-orange-500 border-b-2 border-orange-500 pb-1' : 'text-text-muted hover:text-text-secondary'}`}>Metrics</button>
+                                <button onClick={() => setView('routers')} className={`text - xs font - bold tracking - wider transition - colors ${view === 'routers' ? 'text-blue-500 border-b-2 border-blue-500 pb-1' : 'text-text-muted hover:text-text-secondary'} `}>Routers</button>
+                                <button onClick={() => setView('sequences')} className={`text - xs font - bold tracking - wider transition - colors ${view === 'sequences' ? 'text-purple-500 border-b-2 border-purple-500 pb-1' : 'text-text-muted hover:text-text-secondary'} `}>Sequences</button>
+                                <button onClick={() => setView('history')} className={`text - xs font - bold tracking - wider transition - colors ${view === 'history' ? 'text-green-500 border-b-2 border-green-500 pb-1' : 'text-text-muted hover:text-text-secondary'} `}>History</button>
+                                <button onClick={() => setView('timeline')} className={`text - xs font - bold tracking - wider transition - colors ${view === 'timeline' ? 'text-purple-500 border-b-2 border-purple-500 pb-1' : 'text-text-muted hover:text-text-secondary'} `}>Timeline</button>
+                                <button onClick={() => setView('metrics')} className={`text - xs font - bold tracking - wider transition - colors ${view === 'metrics' ? 'text-orange-500 border-b-2 border-orange-500 pb-1' : 'text-text-muted hover:text-text-secondary'} `}>Metrics</button>
                             </div>
                         </div>
                     </div>
@@ -767,7 +768,7 @@ export default function Vyos(props: VyosProps) {
                         <div key={router.id} className="bg-card border border-border rounded-2xl overflow-hidden group hover:border-blue-500/30 transition-all flex flex-col shadow-sm hover:shadow-md">
                             <div className="p-6 border-b border-border/50 flex items-start justify-between bg-card-secondary/30">
                                 <div className="flex items-center gap-4">
-                                    <div className={`p-3 rounded-xl ${router.status === 'online' ? 'bg-green-500/5' : 'bg-red-500/5'} border border-transparent group-hover:border-border transition-colors`}>
+                                    <div className={`p - 3 rounded - xl ${router.status === 'online' ? 'bg-green-500/5' : 'bg-red-500/5'} border border - transparent group - hover: border - border transition - colors`}>
                                         <Server size={22} className={router.status === 'online' ? 'text-green-500' : 'text-red-500'} />
                                     </div>
                                     <div>
@@ -783,7 +784,7 @@ export default function Vyos(props: VyosProps) {
                                     </div>
                                 </div>
                                 <div className="flex flex-col items-end gap-2">
-                                    <div className={`px-2 py-0.5 rounded text-[9px] font-black tracking-tighter border ${router.status === 'online' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'}`}>
+                                    <div className={`px - 2 py - 0.5 rounded text - [9px] font - black tracking - tighter border ${router.status === 'online' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'} `}>
                                         {router.status}
                                     </div>
                                     {/* Last Seen Indicator */}
@@ -961,7 +962,7 @@ export default function Vyos(props: VyosProps) {
                                                 ) : (
                                                     <>
                                                         {router?.name || '?'}
-                                                        {!['deny-traffic', 'allow-traffic', 'clear-all-blocks', 'show-denied'].includes(a.command) && `:${a.interface}`}
+                                                        {!['deny-traffic', 'allow-traffic', 'clear-all-blocks', 'show-denied'].includes(a.command) && `:${a.interface} `}
                                                     </>
                                                 )}
                                             </span>
@@ -1070,7 +1071,7 @@ export default function Vyos(props: VyosProps) {
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={() => setIsGrouped(!isGrouped)}
-                                className={`flex-1 px-4 py-2.5 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${isGrouped ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-card-secondary text-text-muted border-border hover:border-text-muted/30'}`}
+                                className={`flex - 1 px - 4 py - 2.5 rounded - xl border text - [10px] font - black uppercase tracking - widest transition - all ${isGrouped ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-card-secondary text-text-muted border-border hover:border-text-muted/30'} `}
                             >
                                 Group Runs
                             </button>
@@ -1127,7 +1128,7 @@ export default function Vyos(props: VyosProps) {
                                                     </td>
                                                 </tr>
                                                 {group.map((log, idx) => (
-                                                    <tr key={`${gIdx}-${idx}`} className="hover:bg-card-secondary/30 transition-colors group">
+                                                    <tr key={`${gIdx} -${idx} `} className="hover:bg-card-secondary/30 transition-colors group">
                                                         <td className="px-6 py-4 pl-12 border-l-2 border-border/50">
                                                             <div className="text-text-muted font-mono font-bold text-xs tracking-tight">{new Date(log.timestamp).toLocaleTimeString()}</div>
                                                         </td>
@@ -1157,7 +1158,7 @@ export default function Vyos(props: VyosProps) {
                                                         </td>
                                                         <td className="px-6 py-4 text-center">
                                                             <div className="flex justify-center">
-                                                                <div className={`flex items-center gap-2 px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${log.status === 'success' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'}`}>
+                                                                <div className={`flex items - center gap - 2 px - 3 py - 1 rounded - full border text - [9px] font - black uppercase tracking - widest ${log.status === 'success' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'} `}>
                                                                     {log.status === 'success' ? <CheckCircle size={10} /> : <AlertCircle size={10} />}
                                                                     {log.status}
                                                                 </div>
@@ -1204,7 +1205,7 @@ export default function Vyos(props: VyosProps) {
                                             </td>
                                             <td className="px-6 py-5 text-center">
                                                 <div className="flex justify-center">
-                                                    <div className={`flex items-center gap-2 px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${log.status === 'success' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'}`}>
+                                                    <div className={`flex items - center gap - 2 px - 3 py - 1 rounded - full border text - [9px] font - black uppercase tracking - widest ${log.status === 'success' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'} `}>
                                                         {log.status === 'success' ? <CheckCircle size={10} /> : <AlertCircle size={10} />}
                                                         {log.status}
                                                     </div>
@@ -1258,7 +1259,7 @@ export default function Vyos(props: VyosProps) {
             {view === 'metrics' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in zoom-in-95 duration-300">
                     <MetricCard title="Total Executions" value={metrics.total} icon={<Activity size={24} className="text-blue-500" />} />
-                    <MetricCard title="Success Rate" value={`${metrics.successRate}%`} icon={<CheckCircle size={24} className="text-green-500" />} />
+                    <MetricCard title="Success Rate" value={`${metrics.successRate}% `} icon={<CheckCircle size={24} className="text-green-500" />} />
                     <MetricCard title="Last 24 Hours" value={metrics.last24h} icon={<Clock size={24} className="text-purple-500" />} />
                     <MetricCard title="Active Sequences" value={metrics.activeSequences} icon={<Zap size={24} className="text-yellow-500" />} />
                     <MetricCard title="Failed (1h)" value={metrics.failedLastHour} icon={<XCircle size={24} className="text-red-500" />} />
@@ -1271,7 +1272,7 @@ export default function Vyos(props: VyosProps) {
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[110] flex items-center justify-center p-4">
                     <div className="bg-card border border-border w-full max-w-xl rounded-2xl shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]">
                         <div className="p-8 border-b border-border flex items-center justify-between bg-card/80 sticky top-0 z-10">
-                            <h3 className="text-2xl font-black text-text-primary flex items-center gap-3 uppercase tracking-tighter">
+                            <h3 className="text-2xl font-black text-text-primary flex items-center gap-3 tracking-tight capitalize">
                                 <Globe size={28} className="text-blue-500" /> Tactical Node Discovery
                             </h3>
                             <button onClick={() => { setShowAddModal(false); resetDiscovery(); }} className="text-text-muted hover:text-text-primary transition-all bg-card-secondary p-2 rounded-full border border-border/50">
@@ -1284,15 +1285,25 @@ export default function Vyos(props: VyosProps) {
                                 <>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         <div className="space-y-3">
-                                            <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1 flex items-center gap-2">
-                                                <ExternalLink size={10} /> Node IPv4 Address
+                                            <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] pl-1">
+                                                <ExternalLink size={10} className="text-text-muted" /> <span className="text-text-muted">Node IPv4/FQDN Address</span>
+                                                {discoveryHost && !isValidIpOrFqdn(discoveryHost) && (
+                                                    <span className="text-[9px] text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20 tracking-widest leading-none flex items-center">
+                                                        Invalid Format
+                                                    </span>
+                                                )}
                                             </label>
                                             <input
                                                 type="text"
                                                 placeholder="e.g. 192.168.122.64"
                                                 value={discoveryHost}
                                                 onChange={(e) => setDiscoveryHost(e.target.value)}
-                                                className="w-full bg-card-secondary border border-border rounded-xl px-5 py-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-mono text-sm shadow-inner transition-all"
+                                                className={cn(
+                                                    "w-full bg-card-secondary border rounded-xl px-5 py-4 text-text-primary focus:outline-none focus:ring-2 font-mono text-sm shadow-inner transition-all",
+                                                    discoveryHost && !isValidIpOrFqdn(discoveryHost)
+                                                        ? "border-red-500/50 focus:border-red-500 text-red-400 focus:ring-red-500/50"
+                                                        : "border-border focus:ring-blue-500/50"
+                                                )}
                                             />
                                         </div>
                                         <div className="space-y-3">
@@ -1402,8 +1413,8 @@ export default function Vyos(props: VyosProps) {
                             {!discoveryResult ? (
                                 <button
                                     onClick={startDiscovery}
-                                    disabled={discovering || !discoveryHost || !discoveryKey}
-                                    className="flex-2 px-10 py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black transition-all shadow-xl shadow-blue-900/40 text-xs uppercase tracking-[0.3em] disabled:opacity-20 flex items-center justify-center gap-3 active:scale-95"
+                                    disabled={discovering || !discoveryHost || !discoveryKey || !isValidIpOrFqdn(discoveryHost)}
+                                    className="flex-2 px-10 py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black transition-all shadow-xl shadow-blue-900/40 text-xs uppercase tracking-[0.3em] disabled:opacity-20 flex items-center justify-center gap-3 active:scale-95 disabled:cursor-not-allowed"
                                 >
                                     {discovering ? <RefreshCw size={20} className="animate-spin" /> : <><Globe size={20} /> INITIATE SCAN</>}
                                 </button>
@@ -1510,7 +1521,7 @@ export default function Vyos(props: VyosProps) {
                                             setEditingSeq({
                                                 ...editingSeq,
                                                 actions: [...editingSeq.actions, {
-                                                    id: `act-${Date.now()}`,
+                                                    id: `act - ${Date.now()} `,
                                                     offset_minutes: nextOffset,
                                                     router_id: routers[0]?.id || '',
                                                     interface: defaultInterface, // Will be ignored for block/unblock/clear actions
@@ -1611,7 +1622,7 @@ export default function Vyos(props: VyosProps) {
                                                             className="w-full bg-card border border-border rounded-xl px-4 py-3 text-[11px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-black uppercase appearance-none cursor-pointer transition-all"
                                                         >
                                                             {(routers.find(r => r.id === action.router_id)?.interfaces || []).map(iface => (
-                                                                <option key={iface.name} value={iface.name} title={iface.description || undefined}>{iface.name} {iface.description ? `- ${iface.description}` : ''}</option>
+                                                                <option key={iface.name} value={iface.name} title={iface.description || undefined}>{iface.name} {iface.description ? `- ${iface.description} ` : ''}</option>
                                                             ))}
                                                         </select>
                                                     </div>
@@ -1796,9 +1807,9 @@ export default function Vyos(props: VyosProps) {
                                 </div>
                                 <button
                                     onClick={() => setEditingRouter({ ...editingRouter, enabled: !editingRouter.enabled })}
-                                    className={`w-12 h-6 rounded-full transition-all relative ${editingRouter.enabled ? 'bg-orange-600' : 'bg-card-secondary border border-border'}`}
+                                    className={`w - 12 h - 6 rounded - full transition - all relative ${editingRouter.enabled ? 'bg-orange-600' : 'bg-card-secondary border border-border'} `}
                                 >
-                                    <div className={`absolute top-1 w-4 h-4 rounded-full transition-all bg-white ${editingRouter.enabled ? 'right-1' : 'left-1'}`} />
+                                    <div className={`absolute top - 1 w - 4 h - 4 rounded - full transition - all bg - white ${editingRouter.enabled ? 'right-1' : 'left-1'} `} />
                                 </button>
                             </div>
                         </div>
@@ -1858,7 +1869,7 @@ function ExecutionTimeline({
         const remainingMs = Math.max(0, nextRunMs - Date.now());
         const minutes = Math.floor(remainingMs / 60000);
         const seconds = Math.floor((remainingMs % 60000) / 1000);
-        return `${minutes}m ${seconds}s`;
+        return `${minutes}m ${seconds} s`;
     };
 
     const getLastExecution = (actionId: string, seqId: string) => {
@@ -1918,16 +1929,16 @@ function ExecutionTimeline({
     const handlePause = async () => {
         const toastId = toast.loading('Pausing sequence...');
         try {
-            const res = await fetch(`/api/vyos/sequences/pause/${sequence.id}`, {
+            const res = await fetch(`/ api / vyos / sequences / pause / ${sequence.id} `, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')} ` }
             });
             if (res.ok) {
                 toast.success('✓ Sequence paused', { id: toastId });
                 await onRefresh();  // Refresh data without page reload
             } else {
                 const data = await res.json();
-                toast.error(`❌ ${data.error}`, { id: toastId });
+                toast.error(`❌ ${data.error} `, { id: toastId });
             }
         } catch (e) {
             toast.error('❌ Network error', { id: toastId });
@@ -1937,16 +1948,16 @@ function ExecutionTimeline({
     const handleResume = async () => {
         const toastId = toast.loading('Resuming sequence...');
         try {
-            const res = await fetch(`/api/vyos/sequences/resume/${sequence.id}`, {
+            const res = await fetch(`/ api / vyos / sequences / resume / ${sequence.id} `, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')} ` }
             });
             if (res.ok) {
                 toast.success('✓ Sequence resumed', { id: toastId });
                 await onRefresh();  // Refresh data without page reload
             } else {
                 const data = await res.json();
-                toast.error(`❌ ${data.error}`, { id: toastId });
+                toast.error(`❌ ${data.error} `, { id: toastId });
             }
         } catch (e) {
             toast.error('❌ Network error', { id: toastId });
@@ -1956,16 +1967,16 @@ function ExecutionTimeline({
     const handleStop = async () => {
         const toastId = toast.loading('Stopping sequence...');
         try {
-            const res = await fetch(`/api/vyos/sequences/stop/${sequence.id}`, {
+            const res = await fetch(`/ api / vyos / sequences / stop / ${sequence.id} `, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')} ` }
             });
             if (res.ok) {
                 toast.success('✓ Sequence stopped - will restart from beginning', { id: toastId });
                 await onRefresh();  // Refresh data without page reload
             } else {
                 const data = await res.json();
-                toast.error(`❌ ${data.error}`, { id: toastId });
+                toast.error(`❌ ${data.error} `, { id: toastId });
             }
         } catch (e) {
             toast.error('❌ Network error', { id: toastId });
@@ -1982,7 +1993,7 @@ function ExecutionTimeline({
                 const updatedSeq = { ...sequence, currentStep: 0 };
                 await fetch('/api/vyos/sequences', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')} ` },
                     body: JSON.stringify(updatedSeq)
                 });
                 toast.success('🔁 Sequence looped — back to Step 1', { duration: 3000 });
@@ -1996,9 +2007,9 @@ function ExecutionTimeline({
         setIsStepRunning(true);
         const toastId = toast.loading(`Executing step ${currentStep + 1}...`);
         try {
-            const res = await fetch(`/api/vyos/sequences/step/${sequence.id}`, {
+            const res = await fetch(`/ api / vyos / sequences / step / ${sequence.id} `, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')} ` },
                 body: JSON.stringify({ stepIndex: currentStep })
             });
 
@@ -2007,7 +2018,7 @@ function ExecutionTimeline({
                 await onRefresh();
             } else {
                 const data = await res.json();
-                toast.error(`❌ Step ${currentStep + 1} failed: ${data.error}`, { id: toastId });
+                toast.error(`❌ Step ${currentStep + 1} failed: ${data.error} `, { id: toastId });
             }
         } catch (e) {
             toast.error('❌ Network error', { id: toastId });
@@ -2026,7 +2037,7 @@ function ExecutionTimeline({
             const updatedSeq = { ...sequence, currentStep: currentStep - 1 };
             const res = await fetch('/api/vyos/sequences', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')} ` },
                 body: JSON.stringify(updatedSeq)
             });
             if (res.ok) {
@@ -2042,7 +2053,7 @@ function ExecutionTimeline({
             const updatedSeq = { ...sequence, currentStep: 0 };
             const res = await fetch('/api/vyos/sequences', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')} ` },
                 body: JSON.stringify(updatedSeq)
             });
             if (res.ok) {
@@ -2065,8 +2076,8 @@ function ExecutionTimeline({
                     <div className="flex items-center gap-3">
                         <span className="text-xs text-text-muted uppercase tracking-widest">
                             {sequence.executionMode === 'CYCLE'
-                                ? `Cycle: ${sequence.cycle_duration}min`
-                                : `Step-by-Step Mode`}
+                                ? `Cycle: ${sequence.cycle_duration} min`
+                                : `Step - by - Step Mode`}
                         </span>
                         {sequence.executionMode === 'CYCLE' && currentOffset !== -1 && (
                             <span className="text-[10px] bg-card-secondary text-text-secondary px-2 py-0.5 rounded font-mono border border-border">
@@ -2164,36 +2175,36 @@ function ExecutionTimeline({
                     const state = getDotState(action.offset_minutes, currentOffset, idx);
 
                     return (
-                        <div key={idx} className={`flex items-start gap-4 transition-all duration-500 ${state === 'future' ? 'opacity-40 grayscale-[0.5]' : ''}`}>
+                        <div key={idx} className={`flex items - start gap - 4 transition - all duration - 500 ${state === 'future' ? 'opacity-40 grayscale-[0.5]' : ''} `}>
                             {/* T+ Offset Label or Step Number */}
                             <div className="flex flex-col items-center justify-center w-16">
                                 <span className="text-[8px] text-text-muted font-black uppercase tracking-tighter">
                                     {sequence.executionMode === 'CYCLE' ? 'T+MIN' : 'STEP'}
                                 </span>
-                                <span className={`font-black text-lg transition-colors ${state === 'current' ? 'text-blue-500' : 'text-purple-500'}`}>
+                                <span className={`font - black text - lg transition - colors ${state === 'current' ? 'text-blue-500' : 'text-purple-500'} `}>
                                     {sequence.executionMode === 'CYCLE' ? action.offset_minutes : idx + 1}
                                 </span>
                             </div>
 
                             {/* Status Dot */}
-                            <div className={`w-4 h-4 rounded-full border-2 ${getDotStyles(state, lastExec)} mt-2 z-10 transition-all duration-500`} />
+                            <div className={`w - 4 h - 4 rounded - full border - 2 ${getDotStyles(state, lastExec)} mt - 2 z - 10 transition - all duration - 500`} />
 
                             {/* Vertical Connecting Line (except for last item) */}
                             {idx < sequence.actions.length - 1 && (
-                                <div className={`absolute left-[87.5px] w-px h-16 translate-y-8 ${state === 'future' ? 'bg-border/30' : 'bg-border'}`} />
+                                <div className={`absolute left - [87.5px] w - px h - 16 translate - y - 8 ${state === 'future' ? 'bg-border/30' : 'bg-border'} `} />
                             )}
 
                             {/* Action Details Card */}
-                            <div className={`flex-1 bg-card-secondary/30 border rounded-xl p-4 transition-all duration-500 
+                            <div className={`flex - 1 bg - card - secondary / 30 border rounded - xl p - 4 transition - all duration - 500 
                                 ${state === 'current' ? 'border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.1)]' : 'border-border'}
                                 ${state === 'past' ? 'border-border/50' : ''}
-                            `}>
+`}>
                                 <div className="flex items-center justify-between">
                                     {/* Command + Target */}
                                     <div className="flex items-center gap-3">
                                         <div className="flex flex-col">
                                             <div className="flex items-center gap-2">
-                                                <span className={`text-sm font-black uppercase tracking-tight ${state === 'current' ? 'text-blue-500' : 'text-text-primary'}`}>
+                                                <span className={`text - sm font - black uppercase tracking - tight ${state === 'current' ? 'text-blue-500' : 'text-text-primary'} `}>
                                                     {(() => {
                                                         switch (action.command) {
                                                             case 'interface-down': return 'Shut';
@@ -2335,10 +2346,10 @@ function ConfirmModal({
                     </button>
                     <button
                         onClick={onConfirm}
-                        className={`flex-1 px-6 py-3 rounded-xl font-black transition-all text-xs uppercase tracking-widest shadow-lg ${danger
-                            ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/20'
-                            : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20'
-                            }`}
+                        className={`flex - 1 px - 6 py - 3 rounded - xl font - black transition - all text - xs uppercase tracking - widest shadow - lg ${danger
+                                ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/20'
+                                : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20'
+                            } `}
                     >
                         {confirmText}
                     </button>
@@ -2372,7 +2383,7 @@ function LiveFeed() {
     useEffect(() => {
         socket.on('vyos:sequence:step', (data) => {
             setFeed(prev => [
-                { ...data, timestamp: Date.now(), id: `${data.sequenceId}-${Date.now()}` },
+                { ...data, timestamp: Date.now(), id: `${data.sequenceId} -${Date.now()} ` },
                 ...prev.slice(0, 49) // Keep last 50
             ]);
         });
@@ -2396,10 +2407,10 @@ function LiveFeed() {
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
-                                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${item.status === 'running' ? 'bg-blue-500 animate-pulse' :
-                                    item.status === 'success' ? 'bg-green-500' :
-                                        'bg-red-500'
-                                    }`} />
+                                <div className={`w - 1.5 h - 1.5 rounded - full flex - shrink - 0 ${item.status === 'running' ? 'bg-blue-500 animate-pulse' :
+                                        item.status === 'success' ? 'bg-green-500' :
+                                            'bg-red-500'
+                                    } `} />
                                 <span className="text-text-primary font-black uppercase tracking-tight truncate">
                                     {item.sequenceId}
                                 </span>

@@ -10,6 +10,7 @@ import {
 import { toast } from 'react-hot-toast';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { isValidIpOrFqdn } from './utils/validation';
 
 /**
  * Utility for Tailwind class merging
@@ -366,16 +367,28 @@ export default function Speedtest({ token }: Props) {
 
                             <button
                                 onClick={runTest}
-                                disabled={isRunning || !targetHost}
+                                disabled={isRunning || !targetHost || !isValidIpOrFqdn(targetHost)}
                                 className={cn(
                                     "w-full py-4 rounded-xl font-black tracking-widest text-xs flex items-center justify-center gap-2 transition-all shadow-xl",
-                                    isRunning ? "bg-card-secondary text-text-muted cursor-not-allowed" : "bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:opacity-90 active:scale-[0.98]"
+                                    isRunning || !targetHost ? "bg-card-secondary text-text-muted cursor-not-allowed" :
+                                        !isValidIpOrFqdn(targetHost) ? "bg-red-500/10 text-red-500 border border-red-500/20 cursor-not-allowed" :
+                                            "bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:opacity-90 active:scale-[0.98]"
                                 )}
                             >
                                 {isRunning ? (
                                     <>
                                         <RefreshCw size={20} className="animate-spin" />
                                         Running Test...
+                                    </>
+                                ) : !targetHost ? (
+                                    <>
+                                        <Play size={20} fill="currentColor" />
+                                        Launch Speedtest
+                                    </>
+                                ) : !isValidIpOrFqdn(targetHost) ? (
+                                    <>
+                                        <AlertCircle size={20} />
+                                        Invalid Target IP/FQDN
                                     </>
                                 ) : (
                                     <>

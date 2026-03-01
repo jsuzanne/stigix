@@ -9,6 +9,7 @@ import {
     Power, Edit2
 } from 'lucide-react';
 import LogViewer from './components/LogViewer';
+import { isValidMacAddress } from './utils/validation';
 
 interface IoTDevice {
     id: string;
@@ -670,12 +671,24 @@ export default function Iot({ token }: IotProps) {
                                     </select>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold text-text-muted uppercase tracking-wider">MAC Address</label>
+                                    <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+                                        <span className="text-text-muted">MAC Address</span>
+                                        {editingDevice?.mac && !isValidMacAddress(editingDevice.mac) && (
+                                            <span className="text-[9px] text-red-500 font-black px-1.5 py-0.5 rounded border border-red-500/20 bg-red-500/10 tracking-widest">
+                                                Invalid MAC Form
+                                            </span>
+                                        )}
+                                    </label>
                                     <input
                                         type="text"
                                         required
                                         placeholder="00:11:22:33:44:55"
-                                        className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm text-foreground font-mono focus:ring-1 focus:ring-blue-500 outline-none"
+                                        className={cn(
+                                            "w-full bg-card-secondary border rounded-xl px-4 py-3 text-sm font-mono focus:ring-1 outline-none transition-all",
+                                            editingDevice?.mac && !isValidMacAddress(editingDevice.mac)
+                                                ? "border-red-500/50 focus:border-red-500 text-red-400 focus:ring-red-500/50"
+                                                : "border-border text-foreground focus:ring-blue-500"
+                                        )}
                                         value={editingDevice?.mac || ''}
                                         onChange={e => setEditingDevice(prev => ({ ...prev!, mac: e.target.value }))}
                                     />
@@ -800,7 +813,8 @@ export default function Iot({ token }: IotProps) {
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 px-4 py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-500 transition-all shadow-lg shadow-blue-900/20 uppercase tracking-widest text-xs"
+                                    disabled={!editingDevice?.mac || !isValidMacAddress(editingDevice.mac)}
+                                    className="flex-1 px-4 py-3 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-500 transition-all shadow-lg shadow-blue-900/20 uppercase tracking-widest text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     Save Configuration
                                 </button>

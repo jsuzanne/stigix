@@ -138,7 +138,7 @@ export class ConnectivityLogger {
         }
     }
 
-    async getStats(options: { timeRange?: string } = {}): Promise<any> {
+    async getStats(options: { timeRange?: string, activeProbeIds?: string[] } = {}): Promise<any> {
         // Simple 5-second cache to prevent redundant heavy computing
         const now = Date.now();
         const cacheRange = options.timeRange || '24h';
@@ -182,6 +182,7 @@ export class ConnectivityLogger {
             });
 
             const flakyEndpoints = Array.from(endpointStats.entries())
+                .filter(([id, _]) => !options.activeProbeIds || options.activeProbeIds.includes(id)) // Only consider active probes for flaky list
                 .map(([id, stats]) => ({
                     id,
                     name: stats.name,
@@ -192,15 +193,20 @@ export class ConnectivityLogger {
                 .sort((a, b) => (a.reliability + a.avgScore) - (b.reliability + b.avgScore))
                 .slice(0, 3);
 
-            const uniqueHttpEndpoints = new Set(httpResults.map(r => r.endpointId)).size;
+            // Filter httpResults to only include active probes to calculate accurate global health
+            const activeHttpResults = options.activeProbeIds
+                ? httpResults.filter(r => options.activeProbeIds!.includes(r.endpointId))
+                : httpResults;
+
+            const uniqueHttpEndpoints = new Set(activeHttpResults.map(r => r.endpointId)).size;
 
             const computedStats = {
-                globalHealth: httpResults.length > 0 ? Math.round(httpResults.reduce((acc, r) => acc + (r.score || 0), 0) / httpResults.length) : 0,
+                globalHealth: activeHttpResults.length > 0 ? Math.round(activeHttpResults.reduce((acc, r) => acc + (r.score || 0), 0) / activeHttpResults.length) : 0,
                 httpEndpoints: {
                     total: uniqueHttpEndpoints,
-                    avgScore: httpResults.length > 0 ? Math.round(httpResults.reduce((acc, r) => acc + (r.score || 0), 0) / httpResults.length) : 0,
-                    minScore: httpResults.length > 0 ? Math.min(...httpResults.map(r => r.score || 0)) : 0,
-                    maxScore: httpResults.length > 0 ? Math.max(...httpResults.map(r => r.score || 0)) : 0
+                    avgScore: activeHttpResults.length > 0 ? Math.round(activeHttpResults.reduce((acc, r) => acc + (r.score || 0), 0) / activeHttpResults.length) : 0,
+                    minScore: activeHttpResults.length > 0 ? Math.min(...activeHttpResults.map(r => r.score || 0)) : 0,
+                    maxScore: activeHttpResults.length > 0 ? Math.max(...activeHttpResults.map(r => r.score || 0)) : 0
                 },
                 flakyEndpoints,
                 lastCheckTime: allResults.length > 0 ? allResults[0].timestamp : null

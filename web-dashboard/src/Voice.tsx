@@ -3,6 +3,7 @@ import { Phone, Play, Pause, Server, BarChart2, Save, Plus, Trash2, Clock, Activ
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import toast from 'react-hot-toast';
+import { isValidIpOrFqdn } from './utils/validation';
 
 
 function cn(...inputs: (string | undefined | null | false)[]) {
@@ -278,6 +279,7 @@ export default function Voice(props: VoiceProps) {
     const addProbeFromForm = () => {
         const { host, port, codec, weight, duration } = newProbe;
         if (!host || !port) return alert("Host and Port are required");
+        if (!isValidIpOrFqdn(host)) return alert("Invalid Target Host/IP format");
 
         const newLine = `${host}:${port}|${codec}|${weight}|${duration}`;
         setIsDirty(true);
@@ -806,13 +808,25 @@ export default function Voice(props: VoiceProps) {
                                     <div className="bg-card-secondary/40 border border-border p-6 rounded-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200 shadow-sm relative overflow-hidden">
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
-                                                <label className="text-[9px] text-text-muted uppercase font-black tracking-widest">Target Host/IP</label>
+                                                <label className="flex items-center gap-2 text-[9px] text-text-muted uppercase font-black tracking-widest">
+                                                    <span>Target Host/IP</span>
+                                                    {newProbe.host && !isValidIpOrFqdn(newProbe.host) && (
+                                                        <span className="text-[9px] text-red-500 font-black px-1.5 py-0.5 rounded border border-red-500/20 bg-red-500/10 tracking-widest">
+                                                            Invalid Format
+                                                        </span>
+                                                    )}
+                                                </label>
                                                 <input
                                                     type="text"
                                                     placeholder="10.0.0.50"
                                                     value={newProbe.host}
                                                     onChange={e => setNewProbe({ ...newProbe, host: e.target.value })}
-                                                    className="w-full bg-card border border-border text-text-primary rounded-xl p-3 text-xs font-bold focus:ring-1 focus:ring-blue-500 outline-none shadow-sm"
+                                                    className={cn(
+                                                        "w-full bg-card border rounded-xl p-3 text-xs font-bold outline-none shadow-sm transition-all",
+                                                        newProbe.host && !isValidIpOrFqdn(newProbe.host)
+                                                            ? "border-red-500/50 focus:border-red-500 text-red-400 focus:ring-1 focus:ring-red-500/50"
+                                                            : "border-border text-text-primary focus:ring-1 focus:ring-blue-500"
+                                                    )}
                                                 />
                                             </div>
                                             <div className="space-y-2">
@@ -863,7 +877,8 @@ export default function Voice(props: VoiceProps) {
 
                                         <button
                                             onClick={addProbeFromForm}
-                                            className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-2"
+                                            disabled={!newProbe.host || !newProbe.port || !isValidIpOrFqdn(newProbe.host)}
+                                            className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             <Plus size={16} /> Add Voice Target
                                         </button>

@@ -108,6 +108,7 @@ export default function App() {
   const [iperfTarget, setIperfTarget] = useState('192.168.203.100');
   const [iperfServerInfo, setIperfServerInfo] = useState<any>(null);
   const [publicIp, setPublicIp] = useState<string | null>(null);
+  const [gatewayIp, setGatewayIp] = useState<string | null>(null);
 
   // Maintenance State
   const [maintenance, setMaintenance] = useState<{ updateAvailable: boolean } | null>(null);
@@ -527,6 +528,18 @@ export default function App() {
     }
   };
 
+  const fetchGatewayIp = async () => {
+    try {
+      const res = await fetch('/api/system/gateway-ip', { headers: authHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setGatewayIp(data.ip);
+      }
+    } catch (e) {
+      console.error('Failed to fetch gateway IP');
+    }
+  };
+
   const fetchMaintenance = async () => {
     if (!token) return;
     try {
@@ -557,6 +570,7 @@ export default function App() {
     fetchAppConfig();
     fetchMaintenance();
     fetchPublicIp();
+    fetchGatewayIp();
     fetchSiteInfo();
     fetchHistory();
     fetchFeatures();
@@ -576,11 +590,11 @@ export default function App() {
       }, 500);
     }
 
-    // Poll slow connectivity every 30s
     const connectivityInterval = setInterval(() => {
       fetchConnectivity();
       fetchIperfStatus();
       fetchPublicIp();
+      fetchGatewayIp();
       fetchSiteInfo();
     }, 30000);
 
@@ -971,10 +985,12 @@ export default function App() {
                   <Wifi size={20} className="text-blue-600 dark:text-blue-400" />
                   Network Status
 
-                  {/* Public IP Badge */}
-                  {publicIp && (
+                  {/* Network Badges */}
+                  {(publicIp || gatewayIp) && (
                     <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 border border-blue-500/20 rounded text-[10px] font-black text-blue-600 dark:text-blue-400 tracking-widest">
-                      <Globe size={10} /> Public IP: {publicIp}
+                      <Globe size={10} />
+                      {gatewayIp && <span className="mr-1 border-r border-blue-500/30 pr-2">GW: {gatewayIp}</span>}
+                      <span>Public IP: {publicIp}</span>
                     </div>
                   )}
 

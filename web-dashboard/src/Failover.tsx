@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Activity, Clock, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft } from 'lucide-react';
+import { isValidIpOrFqdn } from './utils/validation';
 
 interface FailoverProps {
     token: string;
@@ -74,6 +75,7 @@ export default function Failover(props: FailoverProps) {
 
     const addEndpoint = async () => {
         if (!newTarget.label || !newTarget.target) return;
+        if (!isValidIpOrFqdn(newTarget.target)) return alert("Invalid Target IP/FQDN format");
         try {
             const res = await fetch('/api/convergence/endpoints', {
                 method: 'POST',
@@ -674,13 +676,23 @@ export default function Failover(props: FailoverProps) {
                             </div>
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="col-span-2 space-y-1.5">
-                                    <label className="text-xs font-bold text-text-muted uppercase tracking-widest pl-1">IP / Hostname</label>
+                                    <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest pl-1">
+                                        <span className="text-text-muted">IP / Hostname</span>
+                                        {newTarget.target && !isValidIpOrFqdn(newTarget.target) && (
+                                            <span className="text-[9px] text-red-500 font-black px-1.5 py-0.5 rounded border border-red-500/20 bg-red-500/10 tracking-widest">
+                                                Invalid Format
+                                            </span>
+                                        )}
+                                    </label>
                                     <input
                                         type="text"
                                         placeholder="192.168.1.10"
                                         value={newTarget.target}
                                         onChange={(e) => setNewTarget({ ...newTarget, target: e.target.value })}
-                                        className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-text-primary outline-none focus:ring-1 focus:ring-blue-500 transition-all font-mono"
+                                        className={`w-full bg-card-secondary border rounded-xl px-4 py-3 text-text-primary outline-none focus:ring-1 transition-all font-mono ${newTarget.target && !isValidIpOrFqdn(newTarget.target)
+                                                ? 'border-red-500/50 focus:border-red-500 text-red-400 focus:ring-red-500/50'
+                                                : 'border-border focus:ring-blue-500'
+                                            }`}
                                     />
                                 </div>
                                 <div className="space-y-1.5">
@@ -704,7 +716,8 @@ export default function Failover(props: FailoverProps) {
                             </button>
                             <button
                                 onClick={addEndpoint}
-                                className="flex-1 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-all shadow-lg shadow-blue-900/20 text-sm"
+                                disabled={!newTarget.label || !newTarget.target || !isValidIpOrFqdn(newTarget.target)}
+                                className="flex-1 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-all shadow-lg shadow-blue-900/20 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 SAVE TARGET
                             </button>

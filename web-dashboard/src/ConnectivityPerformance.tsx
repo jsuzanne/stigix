@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, RefreshCw, Globe } from 'lucide-react';
+import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, RefreshCw, Globe, Play, Pause } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { twMerge } from 'tailwind-merge';
 
@@ -160,6 +160,32 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
             console.error("Failed to fetch connectivity data", e);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const toggleProbeStatus = async (endpoint: any, e: React.MouseEvent) => {
+        e.stopPropagation();
+        try {
+            const res = await fetch('/api/connectivity/custom', { headers: authHeaders() });
+            const allEndpoints = await res.json();
+
+            const updatedEndpoints = allEndpoints.map((p: any) => {
+                const pid = p.name.toLowerCase().replace(/\s+/g, '-');
+                if (pid === endpoint.id) {
+                    return { ...p, enabled: !endpoint.enabled };
+                }
+                return p;
+            });
+
+            await fetch('/api/connectivity/custom', {
+                method: 'POST',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ endpoints: updatedEndpoints })
+            });
+
+            fetchData();
+        } catch (err) {
+            console.error('Failed to toggle probe status', err);
         }
     };
 
@@ -609,13 +635,30 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                         <span className="text-[10px] font-bold text-text-muted uppercase tracking-tighter">{e.successRate}% Uptime</span>
                                     </div>
                                 </td>
-                                <td className="px-6 py-4 text-right px-8">
-                                    <button
-                                        onClick={() => { setSelectedEndpoint(e); setShowDetailModal(true); }}
-                                        className="p-2 hover:bg-card-hover rounded-lg text-text-muted hover:text-blue-500 transition-all border border-transparent hover:border-border"
-                                    >
-                                        <BarChart3 size={18} />
-                                    </button>
+                                <td className="px-6 py-4 px-8">
+                                    <div className="flex justify-end items-center gap-2">
+                                        {e.source !== 'env' && (
+                                            <button
+                                                onClick={(ev) => toggleProbeStatus(e, ev)}
+                                                className={cn(
+                                                    "p-2 rounded-lg transition-all border border-transparent flex items-center justify-center",
+                                                    e.enabled
+                                                        ? "text-blue-500 hover:bg-blue-500/10 hover:border-blue-500/20"
+                                                        : "text-text-muted hover:bg-card-hover hover:text-text-primary hover:border-border"
+                                                )}
+                                                title={e.enabled ? "Format Pause" : "Format Start"}
+                                            >
+                                                {e.enabled ? <Pause size={18} /> : <Play size={18} />}
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={(ev) => { ev.stopPropagation(); setSelectedEndpoint(e); setShowDetailModal(true); }}
+                                            className="p-2 hover:bg-card-hover rounded-lg text-text-muted hover:text-blue-500 transition-all border border-transparent hover:border-border"
+                                            title="View Details"
+                                        >
+                                            <BarChart3 size={18} />
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}

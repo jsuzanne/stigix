@@ -750,59 +750,58 @@ export default function Security({ token }: SecurityProps) {
                 </div>
             )}
 
-            {/* Header */}
-            <div className="bg-gradient-to-r from-red-600/10 to-orange-600/10 border border-red-500/30 rounded-2xl p-6 shadow-sm">
-                <div className="flex items-center gap-4 mb-3">
-                    <div className="p-3 bg-red-600/10 rounded-xl border border-red-500/20 text-red-600 dark:text-red-400">
-                        <Shield size={32} />
+            {/* Header - Compact Horizontal Layout */}
+            <div className="bg-gradient-to-r from-red-600/5 to-orange-600/5 border border-red-500/20 rounded-2xl p-4 shadow-sm flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                {/* Left: Title & Descriptions */}
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-red-600/10 rounded-xl border border-red-500/20 text-red-600 dark:text-red-400">
+                        <Shield size={24} />
                     </div>
                     <div>
-                        <h2 className="text-3xl font-black text-text-primary tracking-tight">Security Testing</h2>
-                        <p className="text-text-muted text-sm mt-0.5 font-medium">
-                            Test Palo Alto Networks firewall security policies: URL Filtering, DNS Security, and Threat Prevention
+                        <h2 className="text-xl font-black text-text-primary tracking-tight leading-none">Security Testing</h2>
+                        <p className="text-text-muted text-[11px] mt-1 font-medium">
+                            Test URL Filtering, DNS Security, and Threat Prevention (EICAR)
                         </p>
                     </div>
                 </div>
 
-                <div className="mt-6 bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3 shadow-sm">
-                    <AlertTriangle size={20} className="text-amber-500 mt-0.5 flex-shrink-0" />
-                    <div>
-                        <p className="text-amber-600 dark:text-amber-400 text-xs font-black tracking-widest leading-relaxed">
-                            Warning: Direct Policy Impact
-                        </p>
-                        <p className="text-text-muted text-[11px] mt-1 italic font-medium">
-                            These tests will trigger firewall security alerts and blocks. Use only in demo/POC environments to validate security efficacy.
-                        </p>
+                {/* Right: Badges & Health */}
+                <div className="flex items-center gap-3 w-full lg:w-auto overflow-hidden">
+                    <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2 flex items-center gap-2 shadow-sm min-w-max">
+                        <AlertTriangle size={14} className="text-amber-500 flex-shrink-0" />
+                        <div>
+                            <p className="text-amber-600 dark:text-amber-400 text-[10px] font-black tracking-widest leading-none">Direct Policy Impact</p>
+                            <p className="text-text-muted text-[9px] mt-0.5 italic hidden sm:block">Triggers firewall alerts</p>
+                        </div>
                     </div>
-                </div>
 
-                {/* System Health Status */}
-                {systemHealth && (
-                    <div className={`mt-4 rounded-xl p-4 flex items-start gap-3 border transition-all shadow-sm ${systemHealth.ready
-                        ? 'bg-green-600/5 border-green-500/20'
-                        : 'bg-red-600/5 border-red-500/20'
-                        }`}>
-                        {systemHealth.ready ? (
-                            <>
-                                <CheckCircle size={20} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                                <div>
-                                    <div className="text-green-600 dark:text-green-400 text-xs font-black tracking-widest">System Health: Operational</div>
-                                    <div className="text-text-muted text-[10px] mt-0.5 font-bold tracking-tight opacity-70">All required security tools available ({systemHealth.platform})</div>
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <XCircle size={20} className="text-red-500 mt-0.5 flex-shrink-0" />
-                                <div>
-                                    <div className="text-red-500 text-xs font-black tracking-widest">System Health: Degraded</div>
-                                    <div className="text-text-muted text-[10px] mt-0.5 font-bold tracking-tight opacity-70">
-                                        Missing: {Object.entries(systemHealth.commands).filter(([_, cmd]: any) => !cmd.available).map(([name]: any) => name).join(', ')}
+                    {systemHealth && (
+                        <div className={`rounded-lg px-3 py-2 flex items-center gap-2 border shadow-sm min-w-max ${systemHealth.ready
+                            ? 'bg-green-600/5 border-green-500/20'
+                            : 'bg-red-600/5 border-red-500/20'
+                            }`}>
+                            {systemHealth.ready ? (
+                                <>
+                                    <CheckCircle size={14} className="text-green-600 dark:text-green-400 flex-shrink-0" />
+                                    <div>
+                                        <div className="text-green-600 dark:text-green-400 text-[10px] font-black tracking-widest leading-none">System Health: OK</div>
+                                        <div className="text-text-muted text-[9px] mt-0.5 font-bold tracking-tight opacity-70 hidden sm:block">Tools ready ({systemHealth.platform})</div>
                                     </div>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                )}
+                                </>
+                            ) : (
+                                <>
+                                    <XCircle size={14} className="text-red-500 flex-shrink-0" />
+                                    <div>
+                                        <div className="text-red-500 text-[10px] font-black tracking-widest leading-none">System Health: Degraded</div>
+                                        <div className="text-text-muted text-[9px] mt-0.5 font-bold tracking-tight opacity-70 truncate max-w-[100px] hidden sm:block">
+                                            Missing: {Object.entries(systemHealth.commands).filter(([_, cmd]: any) => !cmd.available).map(([name]: any) => name).join(', ')}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Statistics Dashboard */}
