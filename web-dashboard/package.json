@@ -20,6 +20,7 @@
     "autoprefixer": "^10.4.22",
     "bcryptjs": "^3.0.3",
     "body-parser": "^2.2.1",
+    "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
     "concurrently": "^9.2.1",
     "cors": "^2.8.5",

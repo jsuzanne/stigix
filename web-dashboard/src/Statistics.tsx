@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { BarChart3, TrendingUp, AlertTriangle, CheckCircle, Search } from 'lucide-react';
+import { Favicon } from './components/Favicon';
 
 interface Stats {
     timestamp: number;
@@ -157,6 +158,7 @@ export default function Statistics({ stats, appConfig, onReset }: StatsProps) {
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
                                             <span className="text-text-muted font-mono text-xs">#{index + 1}</span>
+                                            <Favicon domain={app.name} size={18} />
                                             <span className="font-semibold text-text-primary">{app.name}</span>
                                         </div>
                                     </td>

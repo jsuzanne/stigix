@@ -5,6 +5,7 @@ import {
     Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { Favicon } from './components/Favicon';
 import { twMerge } from 'tailwind-merge';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
@@ -792,8 +793,11 @@ export default function Settings({ token }: { token: string }) {
                                                 const appPercent = categoryWeight > 0 ? Math.round((app.weight / categoryWeight) * 100) : 0;
                                                 return (
                                                     <div key={app.domain} className="bg-card-secondary/20 border border-border rounded-xl p-4 space-y-3">
-                                                        <div className="flex justify-between items-center">
-                                                            <span className="text-[10px] font-black text-text-primary truncate max-w-[150px]">{app.domain}</span>
+                                                        <div className="flex justify-between items-center bg-card mb-2 -mx-4 -mt-4 p-3 border-b border-border/50 rounded-t-xl">
+                                                            <div className="flex items-center gap-2 truncate">
+                                                                <Favicon domain={app.domain} size={14} />
+                                                                <span className="text-[10px] font-black text-text-primary truncate">{app.domain}</span>
+                                                            </div>
                                                             <span className="text-[10px] font-black text-blue-600">{appPercent}%</span>
                                                         </div>
                                                         <input

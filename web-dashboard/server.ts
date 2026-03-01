@@ -1,4 +1,5 @@
 import express from 'express';
+import * as cheerio from 'cheerio';
 import net from 'net';
 import cors from 'cors';
 import fs from 'fs';
@@ -216,6 +217,95 @@ const IOT_DEVICES_FILE = path.join(APP_CONFIG.configDir, 'iot-devices.json');
 // NEW Unified Configurations (v1.2.1-patch.57)
 const APPLICATIONS_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'applications-config.json');
 const VYOS_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'vyos-config.json');
+const ICON_CACHE_FILE = path.join(APP_CONFIG.configDir, 'icon-cache.json');
+
+// --- Favicon Discovery & Caching System ---
+interface IconCacheEntry {
+    domain: string;
+    faviconUrl: string;
+    lastChecked: number;
+    status: 'success' | 'failed';
+}
+
+/**
+ * Intelligent favicon discovery.
+ * Checks /favicon.ico first, then parses HTML for <link> tags.
+ */
+async function fetchFavicon(domain: string, endpoint: string = '/'): Promise<string | null> {
+    const cleanDomain = domain.replace(/^https?:\/\//, '').split('/')[0];
+    const baseUrl = `https://${cleanDomain}`;
+    const testUrl = `${baseUrl}${endpoint}`;
+
+    dbg(`[ICON] Discovering favicon for ${cleanDomain}...`);
+
+    try {
+        // Step 1: Try direct /favicon.ico (Fastest)
+        const directIco = `${baseUrl}/favicon.ico`;
+        const icoRes = await fetch(directIco, { method: 'HEAD', signal: AbortSignal.timeout(2000) });
+        if (icoRes.ok && icoRes.headers.get('content-type')?.includes('image')) {
+            return directIco;
+        }
+
+        // Step 2: Fetch HTML and parse for link tags
+        const htmlRes = await fetch(testUrl, { signal: AbortSignal.timeout(3000) });
+        if (!htmlRes.ok) return null;
+
+        const html = await htmlRes.text();
+        const $ = cheerio.load(html);
+        const iconLinks = $('link[rel*="icon"], link[rel*="shortcut"], link[rel*="apple-touch-icon"]');
+
+        let bestIcon: string | null = null;
+        let bestPriority = -1;
+
+        iconLinks.each((_, el) => {
+            const rel = $(el).attr('rel') || '';
+            const href = $(el).attr('href');
+            if (!href) return;
+
+            let priority = 0;
+            if (rel.includes('apple-touch-icon')) priority = 3;
+            else if (rel === 'icon') priority = 2;
+            else if (rel.includes('shortcut')) priority = 1;
+
+            if (priority > bestPriority) {
+                bestPriority = priority;
+                bestIcon = href;
+            }
+        });
+
+        if (bestIcon) {
+            // Resolve relative URLs
+            if (bestIcon.startsWith('//')) return `https:${bestIcon}`;
+            if (bestIcon.startsWith('/')) return `${baseUrl}${bestIcon}`;
+            if (!bestIcon.startsWith('http')) return `${baseUrl}/${bestIcon}`;
+            return bestIcon;
+        }
+
+        return null;
+    } catch (e: any) {
+        dbg(`[ICON] Error discoverng icon for ${domain}: ${e.message}`);
+        return null;
+    }
+}
+
+function getIconCache(): Record<string, IconCacheEntry> {
+    try {
+        if (fs.existsSync(ICON_CACHE_FILE)) {
+            return JSON.parse(fs.readFileSync(ICON_CACHE_FILE, 'utf-8'));
+        }
+    } catch { }
+    return {};
+}
+
+function saveIconCache(entry: IconCacheEntry) {
+    const cache = getIconCache();
+    cache[entry.domain] = entry;
+    try {
+        fs.writeFileSync(ICON_CACHE_FILE, JSON.stringify(cache, null, 2));
+    } catch (e: any) {
+        console.error(`[ICON] Failed to save cache: ${e.message}`);
+    }
+}
 
 // --- XFR Speedtest Models & Manager ---
 interface XfrTestParams {
@@ -3092,6 +3182,45 @@ app.delete('/api/convergence/counter', authenticateToken, (req, res) => {
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/icons', async (req, res) => {
+    const domain = req.query.domain as string;
+    if (!domain) return res.status(400).json({ error: 'Domain required' });
+
+    const cache = getIconCache();
+    const entry = cache[domain];
+    const TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+    if (entry && (Date.now() - entry.lastChecked < TTL) && entry.status === 'success') {
+        return res.json({ domain, faviconUrl: entry.faviconUrl });
+    }
+
+    // Try to discover
+    try {
+        const faviconUrl = await fetchFavicon(domain);
+        if (faviconUrl) {
+            const newEntry: IconCacheEntry = {
+                domain,
+                faviconUrl,
+                lastChecked: Date.now(),
+                status: 'success'
+            };
+            saveIconCache(newEntry);
+            return res.json({ domain, faviconUrl });
+        } else {
+            // Cache failure to avoid repeated hammering
+            saveIconCache({
+                domain,
+                faviconUrl: '',
+                lastChecked: Date.now(),
+                status: 'failed'
+            });
+            return res.status(404).json({ error: 'Favicon not found' });
+        }
+    } catch (e: any) {
+        return res.status(500).json({ error: e.message });
     }
 });
 
