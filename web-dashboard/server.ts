@@ -544,9 +544,14 @@ class XfrJobManager {
         job.status = 'running';
         job.started_at = new Date().toISOString();
 
-        // 1. Pre-test Connectivity Check
-        this.logToXfrFile(job, `Performing pre-test connectivity check to ${job.params.host}:${job.params.port}...`);
-        const isReachable = await this.checkReachability(job.params.host, job.params.port);
+        // 1. Pre-test Connectivity Check (TCP Only)
+        let isReachable = true;
+        if (job.params.protocol !== 'udp' && job.params.protocol !== 'quic') {
+            this.logToXfrFile(job, `Performing pre-test connectivity check to ${job.params.host}:${job.params.port}...`);
+            isReachable = await this.checkReachability(job.params.host, job.params.port);
+        } else {
+            this.logToXfrFile(job, `Skipping TCP pre-check for ${job.params.protocol.toUpperCase()}. Relying on native timeout...`);
+        }
 
         if (!isReachable) {
             job.status = 'failed';
@@ -558,7 +563,7 @@ class XfrJobManager {
             this.saveHistory();
             return;
         }
-        this.logToXfrFile(job, `Target reachable. Launching test...`);
+        this.logToXfrFile(job, `Target validation complete. Launching test...`);
 
         const args = this.buildArgs(job);
         log('XFR', `[${job.sequence_id}] Launching: ${XFR_BINARY} ${args.join(' ')}`);

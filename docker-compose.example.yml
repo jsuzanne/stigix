@@ -211,7 +211,6 @@ services:
   xfr-target:
     image: jsuzanne/xfr-target:latest
     container_name: xfr-target
-    network_mode: "host"
     restart: unless-stopped
     ports:
       - "9000:9000/udp" # For Voice Calls
@@ -220,6 +219,8 @@ services:
       - XFR_MAX_DURATION=60
       - XFR_RATE_LIMIT=2
       - XFR_ALLOW_CIDR=0.0.0.0/0
+    networks:
+      - sdwan-network
     logging:
       driver: "json-file"
       options:
