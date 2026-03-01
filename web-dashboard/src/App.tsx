@@ -624,7 +624,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground p-8">
+    <div className="min-h-screen bg-background text-foreground pt-4 pb-8 px-8">
       <Toaster position="top-right" />
       <header className="mb-8 flex justify-between items-center">
         <div>
