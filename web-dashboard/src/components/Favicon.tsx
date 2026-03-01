@@ -11,6 +11,7 @@ interface FaviconProps {
 
 export const Favicon: React.FC<FaviconProps> = ({ domain, className, size = 16 }) => {
     const { iconUrl, loading } = useFavicon(domain);
+    const [imgError, setImgError] = React.useState(false);
 
     const getFallbackColor = (str: string) => {
         const colors = [
@@ -36,14 +37,14 @@ export const Favicon: React.FC<FaviconProps> = ({ domain, className, size = 16 }
         );
     }
 
-    if (iconUrl) {
+    if (iconUrl && !imgError) {
         return (
             <img
                 src={iconUrl}
                 alt=""
                 className={clsx("rounded-sm object-contain flex-shrink-0", className)}
                 style={{ width: size, height: size }}
-                onError={(e) => (e.currentTarget.style.display = 'none')}
+                onError={() => setImgError(true)}
             />
         );
     }

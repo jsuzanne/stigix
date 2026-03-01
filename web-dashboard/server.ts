@@ -3189,6 +3189,19 @@ app.get('/api/icons', async (req, res) => {
     const domain = req.query.domain as string;
     if (!domain) return res.status(400).json({ error: 'Domain required' });
 
+    // Step 0: Check applications-config.json for manual overrides
+    try {
+        if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+            const config = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf-8'));
+            const app = config.applications?.find((a: any) => a.domain === domain);
+            if (app?.icon_url) {
+                return res.json({ domain, faviconUrl: app.icon_url });
+            }
+        }
+    } catch (e) {
+        dbg(`[ICON] Error reading app config for icon override: ${e}`);
+    }
+
     const cache = getIconCache();
     const entry = cache[domain];
     const TTL = 24 * 60 * 60 * 1000; // 24 hours
