@@ -89,7 +89,8 @@ def get_router_info(host, apikey, verify=False):
                 iface_info = {
                     'name': iface_name,
                     'description': iface_data.get('description'),
-                    'address': []
+                    'address': [],
+                    'status': 'down' if 'disable' in iface_data else 'up'
                 }
                 addr = iface_data.get('address')
                 if addr:

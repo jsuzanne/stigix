@@ -56,6 +56,7 @@ export interface VyosRouterInterface {
     name: string;
     description: string | null;
     address: string[];
+    status?: 'up' | 'down';
 }
 
 export interface VyosRouter {
@@ -911,11 +912,17 @@ export default function Vyos(props: VyosProps) {
                                         {router.interfaces.map((iface) => (
                                             <div key={iface.name} className="flex flex-col p-3 bg-card-secondary/50 border border-border/50 rounded-xl hover:border-blue-500/30 transition-all group/iface">
                                                 <div className="flex items-center justify-between mb-1">
-                                                    <span className="text-[11px] text-text-primary font-extrabold uppercase tracking-tight">{iface.name}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={cn(
+                                                            "w-1.5 h-1.5 rounded-full",
+                                                            iface.status === 'up' ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+                                                        )} />
+                                                        <span className="text-[11px] text-text-primary font-extrabold uppercase tracking-tight">{iface.name}</span>
+                                                    </div>
                                                     <span className="text-[10px] text-text-muted font-mono bg-card px-1.5 py-0.5 rounded border border-border/50">{iface.address?.[0] || 'no-ip'}</span>
                                                 </div>
                                                 {iface.description && (
-                                                    <div className="text-[10px] text-blue-500 font-bold uppercase tracking-tighter">
+                                                    <div className="text-[10px] text-blue-500 font-bold uppercase tracking-tighter pl-3.5">
                                                         {iface.description}
                                                     </div>
                                                 )}
@@ -1229,8 +1236,21 @@ export default function Vyos(props: VyosProps) {
                                                             <div className="text-text-muted font-mono font-bold text-xs tracking-tight">{new Date(log.timestamp).toLocaleTimeString()}</div>
                                                         </td>
                                                         <td className="px-6 py-4">
-                                                            <div className="flex items-center gap-3 opacity-60">
-                                                                <div className="p-1 px-2 bg-card-secondary rounded font-black text-[9px] uppercase tracking-tighter text-text-muted">Step {idx + 1}</div>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="p-1 bg-card rounded border border-border/50">
+                                                                    {getCommandIcon(log.command, 12)}
+                                                                </div>
+                                                                <div className="flex flex-col">
+                                                                    <div className="p-1 px-2 bg-card-secondary rounded font-black text-[9px] uppercase tracking-tighter text-text-muted">Step {idx + 1}</div>
+                                                                    {(() => {
+                                                                        const seq = sequences.find(s => s.id === log.sequence_id);
+                                                                        const action = seq?.actions.find(a => a.id === log.action_id);
+                                                                        if (action && seq && seq.cycle_duration > 0) {
+                                                                            return <span className="text-[8px] text-purple-500 font-black mt-0.5">T+{action.offset_minutes}M</span>;
+                                                                        }
+                                                                        return null;
+                                                                    })()}
+                                                                </div>
                                                             </div>
                                                         </td>
                                                         <td className="px-6 py-4">
@@ -1275,9 +1295,19 @@ export default function Vyos(props: VyosProps) {
                                             <td className="px-6 py-5">
                                                 <div className="flex items-center gap-3">
                                                     <div className="p-1.5 bg-purple-500/10 rounded-lg">
-                                                        <Zap size={14} className="text-purple-500" />
+                                                        {getCommandIcon(log.command, 14)}
                                                     </div>
-                                                    <span className="text-text-primary font-black uppercase tracking-tight">{log.sequence_name}</span>
+                                                    <div className="flex flex-col">
+                                                        <span className="text-text-primary font-black uppercase tracking-tight">{log.sequence_name}</span>
+                                                        {(() => {
+                                                            const seq = sequences.find(s => s.id === log.sequence_id);
+                                                            const action = seq?.actions.find(a => a.id === log.action_id);
+                                                            if (action && seq && seq.cycle_duration > 0) {
+                                                                return <span className="text-[9px] text-purple-500 font-black uppercase">T+{action.offset_minutes}m offset</span>;
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-5">
@@ -1484,12 +1514,18 @@ export default function Vyos(props: VyosProps) {
                                             {discoveryResult.interfaces?.map(iface => (
                                                 <div key={iface.name} className="flex flex-col p-4 bg-card-secondary/50 rounded-2xl border border-border/50 hover:border-blue-500/20 transition-all">
                                                     <div className="flex items-center justify-between mb-2">
-                                                        <span className="font-black text-text-primary uppercase tracking-tighter text-sm">{iface.name}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={cn(
+                                                                "w-1.5 h-1.5 rounded-full",
+                                                                iface.status === 'up' ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+                                                            )} />
+                                                            <span className="font-black text-text-primary uppercase tracking-tighter text-sm">{iface.name}</span>
+                                                        </div>
                                                         <Wifi size={14} className="text-text-muted/30" />
                                                     </div>
                                                     <div className="text-[10px] text-text-muted font-mono bg-card px-2 py-1 rounded inline-block w-fit mb-2 border border-border/50">{iface.address?.[0] || 'DHCP/NO-IP'}</div>
                                                     {iface.description && (
-                                                        <div className="text-[9px] text-blue-600 dark:text-blue-400 font-medium bg-blue-500/5 p-2 rounded-lg italic">"{iface.description}"</div>
+                                                        <div className="text-[9px] text-blue-600 dark:text-blue-400 font-medium bg-blue-500/5 p-2 rounded-lg italic pl-3.5">"{iface.description}"</div>
                                                     )}
                                                 </div>
                                             ))}
