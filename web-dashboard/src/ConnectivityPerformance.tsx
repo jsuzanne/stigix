@@ -100,7 +100,8 @@ function EndpointTypeGraph({ type, results, color }: { type: string; results: an
 export default function ConnectivityPerformance({ token, onManage }: ConnectivityPerformanceProps) {
     const [results, setResults] = useState<any[]>([]);
     const [stats, setStats] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(true);      // Phase 1: probes config (fast)
+    const [loadingStats, setLoadingStats] = useState(true); // Phase 2: stats + results (slow)
     const [timeRange, setTimeRange] = useState('24h');
     const [graphTimeRange, setGraphTimeRange] = useState('6h'); // Separate time range for graphs
     const [filterType, setFilterType] = useState('ALL');
@@ -125,29 +126,20 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
         return val < 10 ? val.toFixed(2) : val.toFixed(1);
     };
 
-    const fetchData = async () => {
+    // Phase 1: Load probes config immediately (fast endpoints < 200ms)
+    const fetchProbesConfig = async () => {
         try {
-            const [statsRes, resultsRes, activeRes, configsRes] = await Promise.all([
-                fetch(`/api/connectivity/stats?range=${timeRange}`, { headers: authHeaders() }),
-                fetch(`/api/connectivity/results?timeRange=${timeRange}&limit=500`, { headers: authHeaders() }),
+            const [activeRes, configsRes] = await Promise.all([
                 fetch('/api/connectivity/active-probes', { headers: authHeaders() }),
                 fetch('/api/connectivity/custom', { headers: authHeaders() })
             ]);
-
-            const [statsData, resultsData, activeData, configsData] = await Promise.all([
-                statsRes.json(),
-                resultsRes.json(),
+            const [activeData, configsData] = await Promise.all([
                 activeRes.json(),
                 configsRes.json()
             ]);
-
-            setStats(statsData);
-            setResults(resultsData.results || []);
             if (activeData.success) {
                 setActiveProbes(activeData.probes.map((p: any) => p.id));
             }
-
-            // Build map of endpoint configs by ID (matching server.ts line 1499)
             const configMap = new Map();
             if (Array.isArray(configsData)) {
                 configsData.forEach((config: any) => {
@@ -157,10 +149,36 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
             }
             setEndpointConfigs(configMap);
         } catch (e) {
-            console.error("Failed to fetch connectivity data", e);
+            console.error('Failed to fetch probes config', e);
         } finally {
-            setLoading(false);
+            setLoading(false); // Unblock UI after phase 1
         }
+    };
+
+    // Phase 2: Load heavy stats + results (may take several seconds on first load)
+    const fetchStatsAndResults = async () => {
+        setLoadingStats(true);
+        try {
+            const [statsRes, resultsRes] = await Promise.all([
+                fetch(`/api/connectivity/stats?range=${timeRange}`, { headers: authHeaders() }),
+                fetch(`/api/connectivity/results?timeRange=${timeRange}&limit=500`, { headers: authHeaders() })
+            ]);
+            const [statsData, resultsData] = await Promise.all([
+                statsRes.json(),
+                resultsRes.json()
+            ]);
+            setStats(statsData);
+            setResults(resultsData.results || []);
+        } catch (e) {
+            console.error('Failed to fetch stats/results', e);
+        } finally {
+            setLoadingStats(false);
+        }
+    };
+
+    const fetchData = async () => {
+        await fetchProbesConfig();
+        await fetchStatsAndResults();
     };
 
     const toggleProbeStatus = async (endpoint: any, e: React.MouseEvent) => {
@@ -206,8 +224,9 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
     };
 
     useEffect(() => {
-        fetchData();
-        const interval = setInterval(fetchData, 60000); // Optimized: 60s instead of 30s
+        fetchProbesConfig();           // Phase 1: immediate
+        fetchStatsAndResults();         // Phase 2: async
+        const interval = setInterval(fetchData, 60000); // Refresh both every 60s
         return () => clearInterval(interval);
     }, [timeRange]);
 
@@ -320,6 +339,12 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
         return results.filter(r => r.endpointType === 'UDP');
     }, [results]);
 
+    // Memoized results for the detail modal — avoids re-filtering on every parent render
+    const selectedEndpointResults = React.useMemo(() => {
+        if (!selectedEndpoint) return [];
+        return results.filter(r => r.endpointId === selectedEndpoint.id);
+    }, [results, selectedEndpoint]);
+
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* Header Analytics */}
@@ -328,9 +353,13 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                     <div className="text-text-muted text-xs font-bold mb-2 tracking-wider flex items-center gap-2">
                         <Gauge size={16} /> Global Experience
                     </div>
-                    <div className={cn("text-4xl font-black mb-1 tracking-tighter", stats?.globalHealth >= 80 ? "text-green-600 dark:text-green-400" : stats?.globalHealth >= 50 ? "text-orange-500" : "text-red-500")}>
-                        {stats?.globalHealth || 0}<span className="text-lg text-text-muted">/100</span>
-                    </div>
+                    {loadingStats ? (
+                        <div className="h-10 w-20 bg-card-secondary animate-pulse rounded-lg mb-1" />
+                    ) : (
+                        <div className={cn("text-4xl font-black mb-1 tracking-tighter", stats?.globalHealth >= 80 ? "text-green-600 dark:text-green-400" : stats?.globalHealth >= 50 ? "text-orange-500" : "text-red-500")}>
+                            {stats?.globalHealth || 0}<span className="text-lg text-text-muted">/100</span>
+                        </div>
+                    )}
                     <div className="text-[10px] text-text-muted font-bold tracking-tight opacity-70">Avg. Scoring across all probes</div>
                 </div>
 
@@ -338,9 +367,13 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                     <div className="text-text-muted text-xs font-bold mb-2 tracking-wider flex items-center gap-2">
                         <Activity size={16} /> HTTP Coverage
                     </div>
-                    <div className="text-3xl font-black text-blue-600 dark:text-blue-400 mb-1 tracking-tighter">
-                        {stats?.httpEndpoints?.total || 0}
-                    </div>
+                    {loadingStats ? (
+                        <div className="h-9 w-12 bg-card-secondary animate-pulse rounded-lg mb-1" />
+                    ) : (
+                        <div className="text-3xl font-black text-blue-600 dark:text-blue-400 mb-1 tracking-tighter">
+                            {stats?.httpEndpoints?.total || 0}
+                        </div>
+                    )}
                     <div className="text-[10px] text-text-muted font-bold tracking-tight opacity-70">Active Synthetic Endpoints</div>
                 </div>
 
@@ -349,7 +382,12 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                         <Flame size={14} className="text-orange-500" /> Flaky Endpoints
                     </div>
                     <div className="space-y-2">
-                        {stats?.flakyEndpoints?.filter((e: any) => {
+                        {loadingStats ? (
+                            <>
+                                <div className="h-7 bg-card-secondary animate-pulse rounded" />
+                                <div className="h-7 bg-card-secondary animate-pulse rounded opacity-60" />
+                            </>
+                        ) : stats?.flakyEndpoints?.filter((e: any) => {
                             if (showDeleted) return true;
                             if (activeProbes.length > 0 && !activeProbes.includes(e.id)) return false;
                             return true;
@@ -709,7 +747,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                     </div>
                                     <div className="h-[250px] w-full bg-card-secondary/20 p-4 rounded-xl border border-border shadow-inner">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <AreaChart data={results.filter(r => r.endpointId === selectedEndpoint.id).slice(0, 30).reverse().map(r => ({
+                                            <AreaChart data={selectedEndpointResults.slice(0, 30).reverse().map(r => ({
                                                 time: new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                                                 DNS: Math.round(r.metrics.dns_ms || 0),
                                                 TCP: Math.round(r.metrics.tcp_ms || 0),
@@ -776,7 +814,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border">
-                                            {results.filter(r => r.endpointId === selectedEndpoint.id).slice(0, 10).map((r, i) => (
+                                            {selectedEndpointResults.slice(0, 10).map((r, i) => (
                                                 <tr key={i} className="hover:bg-card-secondary transition-colors">
                                                     <td className="px-4 py-3 text-text-primary font-bold uppercase tracking-tighter">{formatTimestamp(r.timestamp)}</td>
                                                     <td className="px-4 py-3 text-center">

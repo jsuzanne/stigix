@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [v1.2.1-patch.129] - 2026-03-02
+### Performance
+- **Digital Experience Dashboard**: Resolved 4.35s loading bottleneck on `stats?range=24h` endpoint. 🚀
+  - **Backend**: Extended `ConnectivityLogger` stats cache from 5s to 5 minutes (aligned with probe interval). Cache is now invalidated on each `logResult()` write, guaranteeing fresh data without expensive recalculation on every page load.
+  - **Backend**: Improved `readAllResults()` early-exit logic with a stale-streak counter to stop scanning log files sooner when matching time-bound data.
+  - **Frontend**: Split data fetching into 2 non-blocking phases — fast probes config (active-probes + custom, < 200ms) loads first, then heavy stats + results load asynchronously without blocking the UI.
+  - **Frontend**: Added skeleton loading animations on KPI cards (Global Experience, HTTP Coverage, Flaky Endpoints) during phase 2 loading.
+  - **Frontend**: Added `useMemo` on detail modal results filter to avoid redundant re-computation on every parent render.
+
 ## [v1.2.1-patch.126] - 2026-03-01
 ### Added
 - **VyOS UI Enhancements**: Implemented a custom premium `ActionSelector` component utilizing Lucide icons and intelligent backdrop blur for a high-end mission control experience. 💎

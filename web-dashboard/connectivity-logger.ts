@@ -55,6 +55,8 @@ export class ConnectivityLogger {
             await this.rotateIfNeeded();
             const line = JSON.stringify(result) + '\n';
             await appendFile(this.currentLogFile, line, 'utf8');
+            // Invalidate stats cache so the next request reflects fresh data
+            this.statsCache = null;
         } catch (error) {
             console.error('[CONNECTIVITY_LOGGER] Failed to log result:', error);
         }
@@ -139,10 +141,11 @@ export class ConnectivityLogger {
     }
 
     async getStats(options: { timeRange?: string, activeProbeIds?: string[] } = {}): Promise<any> {
-        // Simple 5-second cache to prevent redundant heavy computing
+        // Cache aligned with probe interval (5 minutes) — invalidated on each logResult()
+        const STATS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
         const now = Date.now();
         const cacheRange = options.timeRange || '24h';
-        if (this.statsCache && (now - this.statsCache.timestamp < 5000) && (this.statsCache.range === cacheRange)) {
+        if (this.statsCache && (now - this.statsCache.timestamp < STATS_CACHE_TTL) && (this.statsCache.range === cacheRange)) {
             return this.statsCache.data;
         }
 
@@ -229,29 +232,31 @@ export class ConnectivityLogger {
                 .reverse(); // Newest first
 
             const allResults: ConnectivityResult[] = [];
+            // How many consecutive too-old lines before we stop scanning a file
+            const MAX_STALE_STREAK = 3;
+
             for (const file of logFiles) {
                 const content = await readFile(path.join(this.logDir, file), 'utf8');
                 const lines = content.trim().split('\n').filter((l: string) => l.length > 0).reverse(); // Newest lines first
 
+                let staleStreak = 0;
                 for (const line of lines) {
                     try {
                         const result = JSON.parse(line) as ConnectivityResult;
-                        // Skip if too old
+                        // Since lines are newest-first, first stale record means the rest are also stale
                         if (minTimestamp && result.timestamp < minTimestamp) {
-                            // Since we are reading in reverse, if we hit an old record in a reverse-sorted line list,
-                            // all subsequent lines in this file are also older.
-                            break;
+                            staleStreak++;
+                            if (staleStreak >= MAX_STALE_STREAK) break;
+                            continue;
                         }
+                        staleStreak = 0;
                         allResults.push(result);
                         if (maxResults && allResults.length >= maxResults) return allResults;
                     } catch (e) { }
                 }
 
-                // If we have a minTimestamp and we've processed a file where we hit results older than cutoff,
-                // we can stop reading older files entirely.
-                if (minTimestamp && allResults.length > 0 && allResults[allResults.length - 1].timestamp < minTimestamp) {
-                    break;
-                }
+                // If last batch of results from this file were all stale, older files will be too
+                if (minTimestamp && staleStreak >= MAX_STALE_STREAK) break;
             }
             return allResults;
         } catch (error) {
