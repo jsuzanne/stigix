@@ -413,19 +413,21 @@ export default function Voice(props: VoiceProps) {
                                 </span>
                             </div>
                             <p className="text-text-muted text-xs font-bold uppercase tracking-widest opacity-70">
-                                Real-time RTP Stream Emulation • {enabled ? `${activeCalls.length} Concurrent Streams` : "Engine Standby"}
+                                Real-time RTP Stream Emulation • {enabled ? `${activeCalls.length} Concurrent Streams` : (parsedProbes.length === 0 ? "No Targets Defined" : "Engine Standby")}
                             </p>
                         </div>
                     </div>
 
                     <button
                         onClick={handleToggle}
-                        disabled={isStartingV || isStoppingV}
+                        disabled={isStartingV || isStoppingV || (!enabled && parsedProbes.length === 0)}
                         className={cn(
                             "px-10 py-4 rounded-2xl font-black text-[11px] tracking-[0.2em] transition-all shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden",
-                            enabled
-                                ? "bg-red-600 hover:bg-red-500 text-white shadow-red-900/40"
-                                : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40",
+                            !enabled && parsedProbes.length === 0
+                                ? "bg-card-secondary text-text-muted border border-border cursor-not-allowed shadow-none"
+                                : (enabled
+                                    ? "bg-red-600 hover:bg-red-500 text-white shadow-red-900/40"
+                                    : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40"),
                             (isStartingV || isStoppingV) && "opacity-50 cursor-not-allowed"
                         )}
                     >

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [v1.2.1-patch.130] - 2026-03-02
+### Fixed
+- **Voice UI**: Disabled "Start Voice Simulation" button when no target probes are defined, preventing engine start with empty configuration. 🛡️
+- **Voice UI**: Added "No Targets Defined" status indicator for better UX when the simulation is unavailable. ✨
+
 ## [v1.2.1-patch.129] - 2026-03-02
 ### Performance
 - **Digital Experience Dashboard**: Resolved 4.35s loading bottleneck on `stats?range=24h` endpoint. 🚀
