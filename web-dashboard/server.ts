@@ -21,6 +21,7 @@ import { VyosScheduler } from './vyos-scheduler.js';
 import { SiteManager } from './site-manager.js';
 import { DiscoveryManager, DiscoveredProbe } from './discovery-manager.js';
 import { createServer } from 'http';
+import { TargetsManager } from './targets-manager.js';
 
 import { Server } from 'socket.io';
 import multer from 'multer';
@@ -78,6 +79,10 @@ const XFR_QUICK_TARGETS = QUICK_TARGETS_RAW.split(',')
         const cleanHost = host.trim().replace(/^["']|["']$/g, '');
         return { label: cleanLabel, host: cleanHost };
     });
+
+// Shared Targets Manager (config/targets.json + synthesized from legacy configs)
+const targetsManager = new TargetsManager(APP_CONFIG.configDir, XFR_QUICK_TARGETS);
+log('SYSTEM', `🎯 Targets Manager initialized`);
 
 if (DEBUG) {
     log('SYSTEM', `📂 Configuration Directory: ${APP_CONFIG.configDir}`);
@@ -1908,7 +1913,8 @@ app.post('/api/vyos/config/reset', authenticateToken, (req, res) => {
 app.get('/api/features', (req, res) => {
     res.json({
         xfr_enabled: true,
-        xfr_targets: XFR_QUICK_TARGETS
+        xfr_targets: XFR_QUICK_TARGETS,
+        targets: targetsManager.getMergedTargets()   // shared targets registry
     });
 });
 
@@ -3187,6 +3193,56 @@ app.delete('/api/convergence/counter', authenticateToken, (req, res) => {
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ─── Phase 8: Shared Targets Registry ───────────────────────────────────────
+
+/** GET /api/targets — returns merged target list (managed + synthesized) */
+app.get('/api/targets', authenticateToken, (req, res) => {
+    try {
+        res.json(targetsManager.getMergedTargets());
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to load targets', detail: e.message });
+    }
+});
+
+/** POST /api/targets — create a new managed target */
+app.post('/api/targets', authenticateToken, (req, res) => {
+    try {
+        const { name, host, enabled, capabilities, ports } = req.body;
+        if (!name || !host) return res.status(400).json({ error: 'name and host are required' });
+        const newTarget = targetsManager.createTarget({ name, host, enabled: enabled ?? true, capabilities: capabilities || { voice: false, convergence: false, xfr: false, security: false, connectivity: false }, ports });
+        log('TARGETS', `Created target: ${newTarget.name} (${newTarget.host})`);
+        res.status(201).json(newTarget);
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to create target', detail: e.message });
+    }
+});
+
+/** PUT /api/targets/:id — update an existing managed target */
+app.put('/api/targets/:id', authenticateToken, (req, res) => {
+    try {
+        const { id } = req.params;
+        const updated = targetsManager.updateTarget(id, req.body);
+        if (!updated) return res.status(404).json({ error: 'Target not found' });
+        log('TARGETS', `Updated target: ${updated.name} (${updated.host})`);
+        res.json(updated);
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to update target', detail: e.message });
+    }
+});
+
+/** DELETE /api/targets/:id — delete a managed target */
+app.delete('/api/targets/:id', authenticateToken, (req, res) => {
+    try {
+        const { id } = req.params;
+        const deleted = targetsManager.deleteTarget(id);
+        if (!deleted) return res.status(404).json({ error: 'Target not found or is synthesized (read-only)' });
+        log('TARGETS', `Deleted target ${id}`);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to delete target', detail: e.message });
     }
 });
 

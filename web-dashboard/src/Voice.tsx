@@ -76,6 +76,7 @@ export default function Voice(props: VoiceProps) {
         duration: '30'
     });
     const [showGuided, setShowGuided] = useState(true);
+    const [voiceTargets, setVoiceTargets] = useState<any[]>([]);
 
     useEffect(() => {
         if (externalStatus) {
@@ -96,6 +97,11 @@ export default function Voice(props: VoiceProps) {
         fetchConfig();
         // Config doesn't change much, poll every 30s
         const interval = setInterval(fetchConfig, 30000);
+        // Fetch voice-capable targets from the shared registry
+        fetch('/api/targets', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(data => setVoiceTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.voice)))
+            .catch(() => { });
         return () => clearInterval(interval);
     }, [token]);
 
@@ -805,6 +811,27 @@ export default function Voice(props: VoiceProps) {
                                         {showGuided ? 'Collapse' : 'Expand Editor'}
                                     </button>
                                 </div>
+
+                                {/* Registry quick-import */}
+                                {voiceTargets.length > 0 && (
+                                    <div className="bg-card-secondary/30 border border-border rounded-2xl p-4 space-y-2">
+                                        <label className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Import from Targets Registry</label>
+                                        <select
+                                            onChange={e => {
+                                                if (!e.target.value) return;
+                                                const t = voiceTargets.find((vt: any) => vt.id === e.target.value);
+                                                if (t) setNewProbe(p => ({ ...p, host: t.host, port: String(t.ports?.voice ?? 6100) }));
+                                            }}
+                                            className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black"
+                                            defaultValue=""
+                                        >
+                                            <option value="">-- Select a registry target (auto-fill host/port) --</option>
+                                            {voiceTargets.map((t: any) => (
+                                                <option key={t.id} value={t.id}>{t.name} — {t.host}:{t.ports?.voice ?? 6100}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
 
                                 {showGuided && (
                                     <div className="bg-card-secondary/40 border border-border p-6 rounded-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200 shadow-sm relative overflow-hidden">

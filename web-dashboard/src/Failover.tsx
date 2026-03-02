@@ -12,6 +12,7 @@ export default function Failover(props: FailoverProps) {
     const [endpoints, setEndpoints] = useState<any[]>([]);
     const [showAddModal, setShowAddModal] = useState(false);
     const [newTarget, setNewTarget] = useState({ label: '', target: '', port: 6200 });
+    const [convergenceTargets, setConvergenceTargets] = useState<any[]>([]);
 
     const [rate, setRate] = useState(50);
     const [selectedEndpoints, setSelectedEndpoints] = useState<string[]>([]);
@@ -65,6 +66,11 @@ export default function Failover(props: FailoverProps) {
     useEffect(() => {
         fetchEndpoints();
         fetchHistory();
+        // Fetch shared targets with convergence capability
+        fetch('/api/targets', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(data => setConvergenceTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.convergence)))
+            .catch(() => { });
         // Poll endpoints every 5s. Always poll history to pick up async enrichments (egress path).
         const interval = setInterval(() => {
             fetchEndpoints();
@@ -664,6 +670,26 @@ export default function Failover(props: FailoverProps) {
                             </button>
                         </div>
                         <div className="p-6 space-y-4">
+                            {/* Shared registry suggestions */}
+                            {convergenceTargets.length > 0 && (
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-text-muted uppercase tracking-widest pl-1">From Registry (auto-fill)</label>
+                                    <select
+                                        onChange={e => {
+                                            if (!e.target.value) return;
+                                            const t = convergenceTargets.find((ct: any) => ct.id === e.target.value);
+                                            if (t) setNewTarget({ label: t.name, target: t.host, port: t.ports?.convergence ?? 6200 });
+                                        }}
+                                        className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-text-primary outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                                        defaultValue=""
+                                    >
+                                        <option value="">-- Select from Targets Registry --</option>
+                                        {convergenceTargets.map((t: any) => (
+                                            <option key={t.id} value={t.id}>{t.name} — {t.host}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                             <div className="space-y-1.5">
                                 <label className="text-xs font-bold text-text-muted uppercase tracking-widest pl-1">Target Label</label>
                                 <input
@@ -690,8 +716,8 @@ export default function Failover(props: FailoverProps) {
                                         value={newTarget.target}
                                         onChange={(e) => setNewTarget({ ...newTarget, target: e.target.value })}
                                         className={`w-full bg-card-secondary border rounded-xl px-4 py-3 text-text-primary outline-none focus:ring-1 transition-all font-mono ${newTarget.target && !isValidIpOrFqdn(newTarget.target)
-                                                ? 'border-red-500/50 focus:border-red-500 text-red-400 focus:ring-red-500/50'
-                                                : 'border-border focus:ring-blue-500'
+                                            ? 'border-red-500/50 focus:border-red-500 text-red-400 focus:ring-red-500/50'
+                                            : 'border-border focus:ring-blue-500'
                                             }`}
                                     />
                                 </div>

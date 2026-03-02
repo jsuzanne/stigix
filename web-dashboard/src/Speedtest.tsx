@@ -80,10 +80,12 @@ export default function Speedtest({ token }: Props) {
     const authHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
 
     const [quickTargets, setQuickTargets] = useState<{ label: string, host: string }[]>([]);
+    const [sharedTargets, setSharedTargets] = useState<{ id: string; name: string; host: string; capabilities: any }[]>([]);
 
     useEffect(() => {
         fetchHistory();
         fetchFeatures();
+        fetchSharedTargets();
         const interval = setInterval(fetchHistory, 5000);
         return () => {
             if (sseRef.current) sseRef.current.close();
@@ -97,6 +99,16 @@ export default function Speedtest({ token }: Props) {
             const data = await res.json();
             if (res.ok && data.xfr_targets) {
                 setQuickTargets(data.xfr_targets);
+            }
+        } catch (e) { }
+    };
+
+    const fetchSharedTargets = async () => {
+        try {
+            const res = await fetch('/api/targets', { headers: authHeaders });
+            if (res.ok) {
+                const data = await res.json();
+                setSharedTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.xfr));
             }
         } catch (e) { }
     };
@@ -259,11 +271,13 @@ export default function Speedtest({ token }: Props) {
                                         className="w-full bg-card-secondary border border-border rounded-xl pl-10 pr-4 py-3 text-sm focus:border-blue-500 outline-none transition-all"
                                     />
                                 </div>
-                                {quickTargets.length > 0 && (
+                                {/* Quick Targets — env-var entries + shared targets with xfr capability */}
+                                {(quickTargets.length > 0 || sharedTargets.length > 0) && (
                                     <div className="mt-3 flex flex-wrap gap-2">
+                                        {/* Legacy XFR_QUICK_TARGETS env-var pills */}
                                         {quickTargets.map((t, i) => (
                                             <button
-                                                key={i}
+                                                key={`env-${i}`}
                                                 onClick={() => setTargetHost(t.host)}
                                                 className={cn(
                                                     "px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all duration-200 flex items-center gap-2",
@@ -272,13 +286,29 @@ export default function Speedtest({ token }: Props) {
                                                         : "bg-blue-600/5 text-blue-500 border-blue-500/10 hover:bg-blue-600/10 hover:border-blue-500/30"
                                                 )}
                                             >
-                                                <div className={cn(
-                                                    "w-1 h-1 rounded-full",
-                                                    targetHost === t.host ? "bg-white" : "bg-blue-500"
-                                                )}></div>
+                                                <div className={cn("w-1 h-1 rounded-full", targetHost === t.host ? "bg-white" : "bg-blue-500")}></div>
                                                 {t.label}
                                             </button>
                                         ))}
+                                        {/* Shared Targets (registry) with xfr capability */}
+                                        {sharedTargets
+                                            .filter(st => !quickTargets.some(qt => qt.host === st.host))
+                                            .map((t) => (
+                                                <button
+                                                    key={`tgt-${t.id}`}
+                                                    onClick={() => setTargetHost(t.host)}
+                                                    className={cn(
+                                                        "px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all duration-200 flex items-center gap-2",
+                                                        targetHost === t.host
+                                                            ? "bg-emerald-600 text-white border-emerald-600 shadow-lg shadow-emerald-600/20 scale-[1.02]"
+                                                            : "bg-emerald-600/5 text-emerald-500 border-emerald-500/10 hover:bg-emerald-600/10 hover:border-emerald-500/30"
+                                                    )}
+                                                >
+                                                    <div className={cn("w-1 h-1 rounded-full", targetHost === t.host ? "bg-white" : "bg-emerald-500")}></div>
+                                                    {t.name}
+                                                </button>
+                                            ))
+                                        }
                                     </div>
                                 )}
                             </div>

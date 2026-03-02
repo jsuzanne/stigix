@@ -164,6 +164,7 @@ export default function Security({ token }: SecurityProps) {
 
     // EICAR endpoint input
     const [eicarEndpoint, setEicarEndpoint] = useState('http://192.168.203.100/eicar.com.txt');
+    const [securityTargets, setSecurityTargets] = useState<any[]>([]);
 
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
@@ -216,6 +217,11 @@ export default function Security({ token }: SecurityProps) {
         fetchConfig();
         fetchResults();
         fetchHealth();
+        // Fetch shared targets with security capability
+        fetch('/api/targets', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(data => setSecurityTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.security)))
+            .catch(() => { });
 
         // Background polling for statistics (refreshes counters from scheduled tests)
         const pollInterval = setInterval(() => {
@@ -1248,6 +1254,26 @@ export default function Security({ token }: SecurityProps) {
 
                             <div className="space-y-3">
                                 <div>
+                                    {/* Target picker from shared registry */}
+                                    {securityTargets.length > 0 && (
+                                        <div className="mb-3">
+                                            <label className="block text-[10px] font-bold text-text-muted mb-1.5 uppercase tracking-widest">Quick Target from Registry</label>
+                                            <select
+                                                onChange={e => {
+                                                    if (!e.target.value) return;
+                                                    const t = securityTargets.find((st: any) => st.id === e.target.value);
+                                                    if (t) setEicarEndpoint(`http://${t.host}:${t.ports?.http ?? 8082}/eicar.com.txt`);
+                                                }}
+                                                className="w-full bg-card-secondary border border-border text-text-primary rounded-lg px-4 py-2 focus:border-red-500 outline-none text-sm"
+                                                defaultValue=""
+                                            >
+                                                <option value="">-- Select a Site (auto-fill URL) --</option>
+                                                {securityTargets.map((t: any) => (
+                                                    <option key={t.id} value={t.id}>{t.name} — {t.host}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
                                     <label className="block text-sm font-medium text-text-secondary mb-2">
                                         EICAR Endpoint URL
                                     </label>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     RefreshCw, Download, AlertCircle, CheckCircle, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
-    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2
+    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Favicon } from './components/Favicon';
@@ -49,6 +49,43 @@ interface UpgradeStatus {
     startTime: number | null;
 }
 
+// ─── Targets Registry ────────────────────────────────────────────────────────
+type TargetCapability = {
+    voice: boolean;
+    convergence: boolean;
+    xfr: boolean;
+    security: boolean;
+    connectivity: boolean;
+};
+
+type TargetDefinition = {
+    id: string;
+    name: string;
+    host: string;
+    enabled: boolean;
+    capabilities: TargetCapability;
+    ports?: {
+        voice?: number;
+        convergence?: number;
+        iperf?: number;
+        http?: number;
+        xfr?: number;
+    };
+    source?: 'managed' | 'synthesized';
+};
+
+const EMPTY_TARGET_CAPS: TargetCapability = {
+    voice: false, convergence: false, xfr: false, security: false, connectivity: false,
+};
+
+const EMPTY_TARGET: Omit<TargetDefinition, 'id' | 'source'> = {
+    name: '',
+    host: '',
+    enabled: true,
+    capabilities: { ...EMPTY_TARGET_CAPS },
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 const BetaBadge = ({ className }: { className?: string }) => (
     <span className={cn(
         "px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30",
@@ -59,7 +96,7 @@ const BetaBadge = ({ className }: { className?: string }) => (
 );
 
 export default function Settings({ token }: { token: string }) {
-    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system'>('probes');
+    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets'>('probes');
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -82,6 +119,13 @@ export default function Settings({ token }: { token: string }) {
 
     // System Info State
     const [systemInfo, setSystemInfo] = useState<any>(null);
+
+    // Targets State
+    const [targets, setTargets] = useState<TargetDefinition[]>([]);
+    const [newTarget, setNewTarget] = useState<Omit<TargetDefinition, 'id' | 'source'>>(EMPTY_TARGET);
+    const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
+    const [showTargetPorts, setShowTargetPorts] = useState(false);
+    const [targetError, setTargetError] = useState<string | null>(null);
 
     const showSuccess = (msg: string) => {
         setSuccessMsg(msg);
@@ -114,6 +158,12 @@ export default function Settings({ token }: { token: string }) {
 
             setLoading(false);
         }).catch(() => setLoading(false));
+
+        // Targets
+        fetch('/api/targets', { headers: authHeaders })
+            .then(r => r.json())
+            .then(data => setTargets(Array.isArray(data) ? data : []))
+            .catch(() => { });
 
         // System/Maintenance data - Decoupled to avoid blocking initial load
         fetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
@@ -405,8 +455,9 @@ export default function Settings({ token }: { token: string }) {
                 showSuccess('Applications imported successfully');
                 setTimeout(() => window.location.reload(), 1500);
             } else {
-                const err = await res.json();
-                throw new Error(err.error || 'Server error');
+                let errMsg = `HTTP ${res.status}`;
+                try { const b = await res.json(); errMsg = b.error || b.detail || errMsg; } catch { }
+                throw new Error(errMsg);
             }
         } catch (e) { alert('Import failed: ' + (e as Error).message); }
     };
@@ -452,11 +503,81 @@ export default function Settings({ token }: { token: string }) {
 
     if (loading) return <div className="p-8 text-center text-text-muted animate-pulse font-bold tracking-widest text-xs">Loading Settings...</div>;
 
+    // ─── Target CRUD Handlers ────────────────────────────────────────────────
+    const fetchTargets = () => fetch('/api/targets', { headers: authHeaders })
+        .then(r => r.json()).then(d => setTargets(Array.isArray(d) ? d : []));
+
+    const saveTarget = async () => {
+        setTargetError(null);
+        if (!newTarget.name.trim() || !newTarget.host.trim()) {
+            setTargetError('Name and host (IP or FQDN) are required');
+            return;
+        }
+        try {
+            let res;
+            if (editingTargetId) {
+                res = await fetch(`/api/targets/${editingTargetId}`, {
+                    method: 'PUT', headers: authHeaders, body: JSON.stringify(newTarget)
+                });
+            } else {
+                res = await fetch('/api/targets', {
+                    method: 'POST', headers: authHeaders, body: JSON.stringify(newTarget)
+                });
+            }
+            if (!res.ok) {
+                let errMsg = `HTTP ${res.status}`;
+                try { const body = await res.json(); errMsg = body.error || body.detail || errMsg; } catch { }
+                throw new Error(errMsg);
+            }
+            showSuccess(editingTargetId ? 'Target updated' : 'Target added');
+            setNewTarget({ ...EMPTY_TARGET, capabilities: { ...EMPTY_TARGET_CAPS } });
+            setEditingTargetId(null);
+            setShowTargetPorts(false);
+            fetchTargets();
+        } catch (e: any) { setTargetError(e.message); }
+    };
+
+    const startEditTarget = (t: TargetDefinition) => {
+        setEditingTargetId(t.id);
+        setNewTarget({ name: t.name, host: t.host, enabled: t.enabled, capabilities: { ...t.capabilities }, ports: t.ports ? { ...t.ports } : undefined });
+        setTargetError(null);
+    };
+
+    const cancelEditTarget = () => {
+        setEditingTargetId(null);
+        setNewTarget({ ...EMPTY_TARGET, capabilities: { ...EMPTY_TARGET_CAPS } });
+        setTargetError(null);
+    };
+
+    const deleteTarget = async (id: string) => {
+        if (!confirm('Delete this target?')) return;
+        const res = await fetch(`/api/targets/${id}`, { method: 'DELETE', headers: authHeaders });
+        if (res.ok) { showSuccess('Target deleted'); fetchTargets(); }
+    };
+
+    const toggleTargetEnabled = async (t: TargetDefinition) => {
+        await fetch(`/api/targets/${t.id}`, {
+            method: 'PUT', headers: authHeaders, body: JSON.stringify({ ...t, enabled: !t.enabled })
+        });
+        fetchTargets();
+    };
+
+    const CAP_LABELS: { key: keyof TargetCapability; label: string; color: string }[] = [
+        { key: 'voice', label: 'Voice', color: 'blue' },
+        { key: 'convergence', label: 'Convergence', color: 'purple' },
+        { key: 'xfr', label: 'XFR', color: 'cyan' },
+        { key: 'security', label: 'Security', color: 'red' },
+        { key: 'connectivity', label: 'Connectivity', color: 'green' },
+    ];
+    // ─────────────────────────────────────────────────────────────────────────
+
+
     const tabs = [
         { id: 'probes', label: 'Synthetic Probes' },
         { id: 'distribution', label: 'Traffic Distribution' },
         { id: 'system', label: 'System Info' },
         { id: 'maintenance', label: 'System Maintenance' },
+        { id: 'targets', label: 'Targets' },
     ];
 
     return (
@@ -1113,6 +1234,199 @@ export default function Settings({ token }: { token: string }) {
                     </div>
                 )}
             </div>
+
+            {/* ─── Targets Tab ────────────────────────────────────────────── */}
+            {activeTab === 'targets' && (
+                <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-emerald-600/10 rounded-lg text-emerald-600 dark:text-emerald-400">
+                            <MapPin size={20} />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-black text-text-primary tracking-tight">Targets Registry</h2>
+                            <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Shared sdwan-voice-echo / stigix sites — reused across Speedtest, Voice, Security &amp; Failover</p>
+                        </div>
+                    </div>
+
+                    {/* ── Add / Edit Form ── */}
+                    <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-5 shadow-inner">
+                        <h3 className="text-[10px] font-black text-text-muted tracking-[0.2em] uppercase">
+                            {editingTargetId ? '✏️ Edit Target' : '➕ New Target'}
+                        </h3>
+                        {targetError && (
+                            <div className="flex items-center gap-2 text-red-500 text-[10px] font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">
+                                <AlertCircle size={12} />{targetError}
+                            </div>
+                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em]">Site Name</label>
+                                <input
+                                    type="text"
+                                    placeholder="DC1, Branch-Paris…"
+                                    value={newTarget.name}
+                                    onChange={e => setNewTarget({ ...newTarget, name: e.target.value })}
+                                    className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-emerald-500 text-[11px] font-black tracking-wider shadow-sm"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em]">IP Address or FQDN</label>
+                                <input
+                                    type="text"
+                                    placeholder="192.168.1.100 or mysite.example.com"
+                                    value={newTarget.host}
+                                    onChange={e => setNewTarget({ ...newTarget, host: e.target.value })}
+                                    className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-emerald-500 text-[11px] font-black font-mono tracking-wider shadow-sm"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Capability Toggles */}
+                        <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-text-muted tracking-[0.2em]">Capabilities</label>
+                            <div className="flex flex-wrap gap-2">
+                                {CAP_LABELS.map(({ key, label, color }) => (
+                                    <button
+                                        key={key}
+                                        onClick={() => setNewTarget(t => ({ ...t, capabilities: { ...t.capabilities, [key]: !t.capabilities[key] } }))}
+                                        className={cn(
+                                            "px-3 py-1.5 rounded-lg text-[10px] font-black border transition-all",
+                                            newTarget.capabilities[key]
+                                                ? `bg-${color}-600/10 text-${color}-500 border-${color}-500/30`
+                                                : "bg-card text-text-muted border-border hover:border-text-muted"
+                                        )}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Port Overrides (collapsed) */}
+                        <div>
+                            <button
+                                onClick={() => setShowTargetPorts(p => !p)}
+                                className="text-[9px] font-black text-text-muted tracking-widest flex items-center gap-1.5 hover:text-text-primary transition-colors"
+                            >
+                                {showTargetPorts ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                PORT OVERRIDES (OPTIONAL)
+                            </button>
+                            {showTargetPorts && (
+                                <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3">
+                                    {[
+                                        { key: 'voice', label: 'Voice', placeholder: '6100' },
+                                        { key: 'convergence', label: 'Conv.', placeholder: '6200' },
+                                        { key: 'iperf', label: 'Iperf', placeholder: '5201' },
+                                        { key: 'http', label: 'HTTP', placeholder: '8082' },
+                                        { key: 'xfr', label: 'XFR', placeholder: '5201' },
+                                    ].map(({ key, label, placeholder }) => (
+                                        <div key={key} className="space-y-1">
+                                            <label className="text-[9px] font-black text-text-muted">{label}</label>
+                                            <input
+                                                type="number"
+                                                placeholder={placeholder}
+                                                value={(newTarget.ports as any)?.[key] ?? ''}
+                                                onChange={e => setNewTarget(t => ({
+                                                    ...t,
+                                                    ports: { ...t.ports, [key]: e.target.value ? parseInt(e.target.value) : undefined }
+                                                }))}
+                                                className="w-full bg-card border border-border text-text-primary rounded-lg px-3 py-2 text-[10px] font-mono outline-none focus:ring-1 focus:ring-emerald-500"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex gap-2 justify-end">
+                            {editingTargetId && (
+                                <button onClick={cancelEditTarget} className="px-4 py-2 text-text-muted hover:text-text-primary text-[10px] font-black tracking-widest transition-colors">
+                                    Cancel
+                                </button>
+                            )}
+                            <button
+                                onClick={saveTarget}
+                                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
+                            >
+                                <Plus size={14} />
+                                {editingTargetId ? 'Update Target' : 'Add Target'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* ── Targets List ── */}
+                    <div className="space-y-3">
+                        {targets.length === 0 && (
+                            <div className="text-center text-text-muted text-[10px] font-bold tracking-widest py-12 border border-dashed border-border rounded-2xl opacity-50">
+                                No targets defined yet. Add one above.
+                            </div>
+                        )}
+                        {targets.map(t => (
+                            <div
+                                key={t.id}
+                                className={cn(
+                                    "group bg-card border border-border hover:border-emerald-500/30 rounded-2xl p-5 flex items-center justify-between transition-all shadow-sm",
+                                    !t.enabled && "opacity-50"
+                                )}
+                            >
+                                <div className="flex items-center gap-4 min-w-0">
+                                    <div className="w-10 h-10 rounded-xl bg-emerald-600/10 text-emerald-500 flex items-center justify-center shrink-0">
+                                        <MapPin size={18} />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[11px] font-black text-text-primary tracking-tight">{t.name}</span>
+                                            {t.source === 'synthesized' && (
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                                    Legacy
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="text-[10px] text-text-muted font-mono tracking-tighter opacity-70">{t.host}</div>
+                                        <div className="flex flex-wrap gap-1 mt-1.5">
+                                            {CAP_LABELS.filter(c => t.capabilities[c.key]).map(({ key, label, color }) => (
+                                                <span key={key} className={`px-1.5 py-0.5 rounded text-[8px] font-black tracking-widest bg-${color}-500/10 text-${color}-500 border border-${color}-500/20`}>
+                                                    {label}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-1.5 px-2 shrink-0">
+                                    {t.source !== 'synthesized' && (
+                                        <>
+                                            <button
+                                                onClick={() => toggleTargetEnabled(t)}
+                                                className={cn(
+                                                    "p-2 rounded-xl transition-all",
+                                                    t.enabled ? "text-green-500 hover:bg-green-500/10" : "text-text-muted hover:bg-card-hover"
+                                                )}
+                                                title="Toggle"
+                                            >
+                                                <Power size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => startEditTarget(t)}
+                                                className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
+                                                title="Edit"
+                                            >
+                                                <Edit2 size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => deleteTarget(t.id)}
+                                                className="p-2 hover:bg-red-600/10 rounded-xl text-text-muted hover:text-red-500 transition-all"
+                                                title="Delete"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
