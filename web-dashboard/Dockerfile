@@ -53,6 +53,7 @@ RUN npm install tsx --no-save
 
 COPY --from=builder /app/dist ./dist
 COPY web-dashboard/server.ts ./
+COPY web-dashboard/targets-manager.ts ./
 COPY web-dashboard/test-logger.ts ./
 COPY web-dashboard/connectivity-logger.ts ./
 COPY web-dashboard/iot-manager.ts ./
@@ -62,6 +63,7 @@ COPY web-dashboard/site-manager.ts ./
 COPY web-dashboard/discovery-manager.ts ./
 COPY web-dashboard/shared ./shared
 COPY web-dashboard/utils ./utils
+COPY web-dashboard/src/types ./src/types
 COPY web-dashboard/tsconfig.json ./
 
 # Copy VERSION file from builder (already in web-dashboard/)
