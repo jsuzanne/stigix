@@ -59,7 +59,7 @@ const BetaBadge = ({ className }: { className?: string }) => (
 );
 
 export default function Settings({ token }: { token: string }) {
-    const [activeTab, setActiveTab] = useState<'interfaces' | 'probes' | 'distribution' | 'maintenance' | 'power' | 'backup' | 'system'>('interfaces');
+    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system'>('probes');
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -453,13 +453,10 @@ export default function Settings({ token }: { token: string }) {
     if (loading) return <div className="p-8 text-center text-text-muted animate-pulse font-bold tracking-widest text-xs">Loading Settings...</div>;
 
     const tabs = [
-        { id: 'interfaces', label: 'Network Interfaces' },
         { id: 'probes', label: 'Synthetic Probes' },
         { id: 'distribution', label: 'Traffic Distribution' },
         { id: 'system', label: 'System Info' },
         { id: 'maintenance', label: 'System Maintenance' },
-        { id: 'power', label: 'Power & Restart' },
-        { id: 'backup', label: 'Configuration Backup' },
     ];
 
     return (
@@ -513,74 +510,7 @@ export default function Settings({ token }: { token: string }) {
 
             {/* Active Tab Content */}
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {activeTab === 'interfaces' && (
-                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
-                                <Network size={20} />
-                            </div>
-                            <div>
-                                <h2 className="text-lg font-black text-text-primary tracking-tight">Network Interfaces</h2>
-                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Physical interfaces for traffic egress</p>
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col gap-6">
-                            <div className="flex gap-4 items-center">
-                                <input
-                                    type="text"
-                                    placeholder="inject interface name (e.g. eth0)..."
-                                    className="flex-1 bg-card-secondary/50 border border-border text-[11px] font-black tracking-widest text-text-primary rounded-xl px-5 py-3 outline-none focus:ring-1 focus:ring-purple-500 transition-all shadow-inner"
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            const val = e.currentTarget.value.trim();
-                                            if (val && !interfaces.includes(val)) {
-                                                toggleInterface(val);
-                                                e.currentTarget.value = '';
-                                            }
-                                        }
-                                    }}
-                                />
-                                <button
-                                    onClick={(e) => {
-                                        const input = e.currentTarget.previousElementSibling as HTMLInputElement;
-                                        const val = input.value.trim();
-                                        if (val && !interfaces.includes(val)) {
-                                            toggleInterface(val);
-                                            input.value = '';
-                                        }
-                                    }}
-                                    className="bg-purple-600 hover:bg-purple-500 text-white px-8 py-3 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center gap-2 shadow-lg shadow-purple-900/20"
-                                >
-                                    <Plus size={16} />
-                                    Register
-                                </button>
-                            </div>
-
-                            <div className="flex flex-wrap gap-2.5">
-                                {availableInterfaces.map(iface => {
-                                    const isSelected = interfaces.includes(iface);
-                                    return (
-                                        <button
-                                            key={iface}
-                                            onClick={() => toggleInterface(iface)}
-                                            className={cn(
-                                                "px-4 py-2 rounded-xl text-[10px] font-black border transition-all flex items-center gap-3 tracking-widest shadow-sm",
-                                                isSelected
-                                                    ? "bg-purple-600/10 border-purple-500/30 text-purple-600 dark:text-purple-400"
-                                                    : "bg-card-secondary/30 border-border text-text-muted hover:border-text-muted/30"
-                                            )}
-                                        >
-                                            <div className={cn("w-1.5 h-1.5 rounded-full", isSelected ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" : "bg-text-muted/30")} />
-                                            {iface}
-                                            {isSelected && <CheckCircle2 size={12} />}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                )}
+                {/* Interfaces removed as standalone tab */}
 
                 {activeTab === 'probes' && (
                     <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
@@ -821,7 +751,7 @@ export default function Settings({ token }: { token: string }) {
                 {activeTab === 'maintenance' && (
                     <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
                         <div className="flex items-center gap-3">
-                            <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400">
+                            <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 font-bold">
                                 <RefreshCw size={24} className={upgrading ? "animate-spin" : ""} />
                             </div>
                             <div>
@@ -878,130 +808,128 @@ export default function Settings({ token }: { token: string }) {
                                 </div>
                             </div>
                         )}
-                    </div>
-                )}
 
-                {activeTab === 'power' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-6">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-amber-600/10 rounded-lg text-amber-600 font-bold">
-                                    <Terminal size={24} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-black text-text-primary tracking-tight">Service Restart</h2>
-                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Soft reload of internal components</p>
-                                </div>
-                            </div>
-                            <p className="text-xs text-text-muted font-bold italic opacity-60">Memory cleanup and internal state reset. Fast completion.</p>
-                            <button
-                                onClick={() => handleRestart('restart')}
-                                disabled={upgrading}
-                                className="w-full py-4 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black tracking-widest transition-all shadow-sm"
-                            >
-                                <RefreshCw size={16} className="inline mr-2" />
-                                Restart Containers
-                            </button>
-                        </div>
-
-                        <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-6">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-red-600/10 rounded-lg text-red-600 font-bold">
-                                    <Cpu size={24} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-black text-text-primary tracking-tight">System Redeploy</h2>
-                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Full stack container recreation</p>
-                                </div>
-                            </div>
-                            <p className="text-xs text-text-muted font-bold italic opacity-60">Applies docker-compose and environment changes. Temporary downtime.</p>
-                            <button
-                                onClick={() => handleRestart('redeploy')}
-                                disabled={upgrading}
-                                className="w-full py-4 bg-red-600/10 hover:bg-red-600/20 border border-red-500/30 text-red-600 rounded-xl text-[10px] font-black tracking-widest transition-all shadow-sm"
-                            >
-                                <Power size={16} className="inline mr-2" />
-                                Redepoy Stack
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'backup' && (
-                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-green-600/10 rounded-lg text-green-600 font-bold">
-                                <Database size={24} />
-                            </div>
-                            <div>
-                                <h2 className="text-lg font-black text-text-primary tracking-tight">Configuration Backup</h2>
-                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Import/Export system state and settings</p>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-4">
-                                <h3 className="text-[11px] font-black tracking-[0.2em] text-text-primary">Export Engine State</h3>
-                                <p className="text-xs text-text-muted font-bold opacity-60">Download a secure JSON bundle containing all your rules and account data.</p>
-                                <button
-                                    onClick={async () => {
-                                        try {
-                                            const res = await fetch('/api/admin/config/export', { headers: { 'Authorization': `Bearer ${token}` } });
-                                            if (res.ok) {
-                                                const data = await res.json();
-                                                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                                                const url = window.URL.createObjectURL(blob);
-                                                const a = document.createElement('a');
-                                                a.href = url;
-                                                a.download = `stigix-backup-${new Date().toISOString().split('T')[0]}.json`;
-                                                a.click();
-                                            }
-                                        } catch (e) { alert('Export failed'); }
-                                    }}
-                                    className="px-6 py-3 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2"
-                                >
-                                    <Download size={16} />
-                                    Download Bundle
-                                </button>
-                            </div>
-
-                            <div className="space-y-4">
-                                <h3 className="text-[11px] font-black tracking-[0.2em] text-text-primary">Restore State</h3>
-                                <p className="text-xs text-text-muted font-bold opacity-60">Upload a previously exported bundle to overwrite the current system configuration.</p>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="file"
-                                        id="restore-upload"
-                                        className="hidden"
-                                        accept=".json"
-                                        onChange={async (e) => {
-                                            const file = e.target.files?.[0];
-                                            if (!file || !confirm('OVERWRITE SYSTEM STATE? This action cannot be undone.')) return;
-                                            const reader = new FileReader();
-                                            reader.onload = async (ev) => {
-                                                try {
-                                                    const bundle = JSON.parse(ev.target?.result as string);
-                                                    const res = await fetch('/api/admin/config/import', {
-                                                        method: 'POST',
-                                                        headers: authHeaders,
-                                                        body: JSON.stringify({ bundle })
-                                                    });
-                                                    if (res.ok) {
-                                                        showSuccess('Restore success! Reloading...');
-                                                        setTimeout(() => window.location.reload(), 2000);
-                                                    }
-                                                } catch (err) { alert('Invalid file'); }
-                                            };
-                                            reader.readAsText(file);
-                                        }}
-                                    />
+                        <div className="pt-8 border-t border-border/50">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-amber-600/10 rounded-lg text-amber-600 font-bold">
+                                            <Terminal size={24} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-lg font-black text-text-primary tracking-tight">Service Restart</h2>
+                                            <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Soft reload of internal components</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-text-muted font-bold italic opacity-60">Memory cleanup and internal state reset. Fast completion.</p>
                                     <button
-                                        onClick={() => document.getElementById('restore-upload')?.click()}
-                                        className="px-6 py-3 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 text-blue-600 rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2"
+                                        onClick={() => handleRestart('restart')}
+                                        disabled={upgrading}
+                                        className="w-full py-4 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black tracking-widest transition-all shadow-sm"
                                     >
-                                        <Upload size={16} />
-                                        Restore Bundle
+                                        <RefreshCw size={16} className="inline mr-2" />
+                                        Restart Containers
                                     </button>
+                                </div>
+
+                                <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-red-600/10 rounded-lg text-red-600 font-bold">
+                                            <Cpu size={24} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-lg font-black text-text-primary tracking-tight">System Redeploy</h2>
+                                            <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Full stack container recreation</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-text-muted font-bold italic opacity-60">Applies docker-compose and environment changes. Temporary downtime.</p>
+                                    <button
+                                        onClick={() => handleRestart('redeploy')}
+                                        disabled={upgrading}
+                                        className="w-full py-4 bg-red-600/10 hover:bg-red-600/20 border border-red-500/30 text-red-600 rounded-xl text-[10px] font-black tracking-widest transition-all shadow-sm"
+                                    >
+                                        <Power size={16} className="inline mr-2" />
+                                        Redepoy Stack
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="pt-8 border-t border-border/50">
+                            <div className="flex items-center gap-3 mb-8">
+                                <div className="p-2 bg-green-600/10 rounded-lg text-green-600 font-bold">
+                                    <Database size={24} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-black text-text-primary tracking-tight">Configuration Backup</h2>
+                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Import/Export system state and settings</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div className="space-y-4">
+                                    <h3 className="text-[11px] font-black tracking-[0.2em] text-text-primary">Export Engine State</h3>
+                                    <p className="text-xs text-text-muted font-bold opacity-60">Download a secure JSON bundle containing all your rules and account data.</p>
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                const res = await fetch('/api/admin/config/export', { headers: { 'Authorization': `Bearer ${token}` } });
+                                                if (res.ok) {
+                                                    const data = await res.json();
+                                                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                                                    const url = window.URL.createObjectURL(blob);
+                                                    const a = document.createElement('a');
+                                                    a.href = url;
+                                                    a.download = `stigix-backup-${new Date().toISOString().split('T')[0]}.json`;
+                                                    a.click();
+                                                }
+                                            } catch (e) { alert('Export failed'); }
+                                        }}
+                                        className="px-6 py-3 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2"
+                                    >
+                                        <Download size={16} />
+                                        Download Bundle
+                                    </button>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <h3 className="text-[11px] font-black tracking-[0.2em] text-text-primary">Restore State</h3>
+                                    <p className="text-xs text-text-muted font-bold opacity-60">Upload a previously exported bundle to overwrite the current system configuration.</p>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="file"
+                                            id="restore-upload"
+                                            className="hidden"
+                                            accept=".json"
+                                            onChange={async (e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file || !confirm('OVERWRITE SYSTEM STATE? This action cannot be undone.')) return;
+                                                const reader = new FileReader();
+                                                reader.onload = async (ev) => {
+                                                    try {
+                                                        const bundle = JSON.parse(ev.target?.result as string);
+                                                        const res = await fetch('/api/admin/config/import', {
+                                                            method: 'POST',
+                                                            headers: authHeaders,
+                                                            body: JSON.stringify({ bundle })
+                                                        });
+                                                        if (res.ok) {
+                                                            showSuccess('Restore success! Reloading...');
+                                                            setTimeout(() => window.location.reload(), 2000);
+                                                        }
+                                                    } catch (err) { alert('Invalid file'); }
+                                                };
+                                                reader.readAsText(file);
+                                            }}
+                                        />
+                                        <button
+                                            onClick={() => document.getElementById('restore-upload')?.click()}
+                                            className="px-6 py-3 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 text-blue-600 rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2"
+                                        >
+                                            <Upload size={16} />
+                                            Restore Bundle
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1009,112 +937,183 @@ export default function Settings({ token }: { token: string }) {
                 )}
 
                 {activeTab === 'system' && (
-                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 animate-in fade-in duration-500">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
-                                <Server size={24} />
+                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-12 animate-in fade-in duration-500">
+                        {/* Network Interfaces (Moved from its own tab) */}
+                        <div className="space-y-8">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
+                                    <Network size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-black text-text-primary tracking-tight">Network Interfaces</h2>
+                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Physical interfaces for traffic egress</p>
+                                </div>
                             </div>
-                            <div>
-                                <h2 className="text-lg font-black text-text-primary tracking-tight">System Information</h2>
-                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Hardware metrics and execution context</p>
+
+                            <div className="flex flex-col gap-6">
+                                <div className="flex gap-4 items-center">
+                                    <input
+                                        type="text"
+                                        placeholder="inject interface name (e.g. eth0)..."
+                                        className="flex-1 bg-card-secondary/50 border border-border text-[11px] font-black tracking-widest text-text-primary rounded-xl px-5 py-3 outline-none focus:ring-1 focus:ring-purple-500 transition-all shadow-inner"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                const val = e.currentTarget.value.trim();
+                                                if (val && !interfaces.includes(val)) {
+                                                    toggleInterface(val);
+                                                    e.currentTarget.value = '';
+                                                }
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        onClick={(e) => {
+                                            const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                            const val = input.value.trim();
+                                            if (val && !interfaces.includes(val)) {
+                                                toggleInterface(val);
+                                                input.value = '';
+                                            }
+                                        }}
+                                        className="bg-purple-600 hover:bg-purple-500 text-white px-8 py-3 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center gap-2 shadow-lg shadow-purple-900/20"
+                                    >
+                                        <Plus size={16} />
+                                        Register
+                                    </button>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2.5">
+                                    {availableInterfaces.map(iface => {
+                                        const isSelected = interfaces.includes(iface);
+                                        return (
+                                            <button
+                                                key={iface}
+                                                onClick={() => toggleInterface(iface)}
+                                                className={cn(
+                                                    "px-4 py-2 rounded-xl text-[10px] font-black border transition-all flex items-center gap-3 tracking-widest shadow-sm",
+                                                    isSelected
+                                                        ? "bg-purple-600/10 border-purple-500/30 text-purple-600 dark:text-purple-400"
+                                                        : "bg-card-secondary/30 border-border text-text-muted hover:border-text-muted/30"
+                                                )}
+                                            >
+                                                <div className={cn("w-1.5 h-1.5 rounded-full", isSelected ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" : "bg-text-muted/30")} />
+                                                {iface}
+                                                {isSelected && <CheckCircle2 size={12} />}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
 
-                        {!systemInfo ? (
-                            <div className="text-center text-text-muted text-xs font-bold tracking-widest animate-pulse py-12">Gathering system metrics...</div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {/* Execution Context */}
-                                <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-4 shadow-sm flex flex-col justify-center items-center h-48">
-                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] mb-2">Execution Context</div>
-                                    <div className={cn(
-                                        "px-6 py-3 rounded-2xl text-sm font-black tracking-widest uppercase border border-border shadow-inner flex items-center gap-3 transition-colors duration-500",
-                                        systemInfo.mode === 'Host Mode' ? "bg-amber-500/10 text-amber-500 border-amber-500/30" : "bg-blue-600/10 text-blue-500 border-blue-500/30"
-                                    )}>
-                                        <Server size={18} />
-                                        {systemInfo.mode}
-                                    </div>
-                                    <div className="text-center text-[10px] text-text-muted mt-2 px-8 leading-relaxed font-bold opacity-60">
-                                        {systemInfo.mode === 'Host Mode'
-                                            ? 'Containers share the host networking namespace directly. High throughput natively.'
-                                            : 'Containers are isolated on an internal bridge network. Standard Docker environment.'}
-                                    </div>
+                        <div className="pt-8 border-t border-border/50">
+                            <div className="flex items-center gap-3 mb-8">
+                                <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
+                                    <Server size={24} />
                                 </div>
-
-                                {/* Network I/O */}
-                                <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-6 shadow-sm flex flex-col justify-center h-48">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-lg bg-green-500/10 text-green-500 flex items-center justify-center">
-                                            <Network size={16} />
-                                        </div>
-                                        <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">Network I/O</div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4 h-full">
-                                        <div className="bg-card p-4 rounded-xl border border-border flex flex-col justify-center">
-                                            <div className="text-[9px] font-black text-text-muted tracking-widest uppercase mb-1 flex items-center gap-1.5"><Download size={10} className="text-green-500" /> Received</div>
-                                            <div className="font-mono text-lg font-black text-text-primary">{(systemInfo.networkSpeed?.rx || 0).toFixed(2)} <span className="text-[10px] text-text-muted">Mb/s</span></div>
-                                        </div>
-                                        <div className="bg-card p-4 rounded-xl border border-border flex flex-col justify-center">
-                                            <div className="text-[9px] font-black text-text-muted tracking-widest uppercase mb-1 flex items-center gap-1.5"><Upload size={10} className="text-blue-500" /> Transmitted</div>
-                                            <div className="font-mono text-lg font-black text-text-primary">{(systemInfo.networkSpeed?.tx || 0).toFixed(2)} <span className="text-[10px] text-text-muted">Mb/s</span></div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Memory */}
-                                <div className="bg-card border border-border rounded-2xl p-6 space-y-6 shadow-sm md:col-span-2">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
-                                                <Cpu size={16} />
-                                            </div>
-                                            <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">System Memory (RAM)</div>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="font-mono text-sm font-black text-indigo-400">
-                                                {((systemInfo.memory?.used || 0) / 1024 / 1024 / 1024).toFixed(1)} GB / {((systemInfo.memory?.total || 0) / 1024 / 1024 / 1024).toFixed(1)} GB
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="h-3 w-full bg-card-secondary rounded-full overflow-hidden border border-border">
-                                        <div
-                                            className="h-full bg-indigo-500 transition-all duration-1000 shadow-[0_0_10px_rgba(99,102,241,0.5)]"
-                                            style={{ width: `${Math.min(100, ((systemInfo.memory?.used || 0) / (systemInfo.memory?.total || 1)) * 100)}%` }}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Disk */}
-                                <div className="bg-card border border-border rounded-2xl p-6 space-y-6 shadow-sm md:col-span-2">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-lg bg-pink-500/10 text-pink-500 flex items-center justify-center">
-                                                <Database size={16} />
-                                            </div>
-                                            <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">Host Disk Space</div>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="font-mono text-sm font-black text-pink-400">
-                                                {((systemInfo.disk?.used || 0) / 1024 / 1024 / 1024).toFixed(1)} GB / {((systemInfo.disk?.total || 0) / 1024 / 1024 / 1024).toFixed(1)} GB
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="h-3 w-full bg-card-secondary rounded-full overflow-hidden border border-border">
-                                        <div
-                                            className="h-full bg-pink-500 transition-all duration-1000 shadow-[0_0_10px_rgba(236,72,153,0.5)]"
-                                            style={{ width: `${systemInfo.disk?.usagePercent || 0}%` }}
-                                        />
-                                    </div>
-                                    <div className="flex justify-between text-[9px] font-black tracking-widest text-text-muted uppercase">
-                                        <span>Used: {systemInfo.disk?.usagePercent || 0}%</span>
-                                        <span>Free: {((systemInfo.disk?.free || 0) / 1024 / 1024 / 1024).toFixed(1)} GB</span>
-                                    </div>
+                                <div>
+                                    <h2 className="text-lg font-black text-text-primary tracking-tight">System Information</h2>
+                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Hardware metrics and execution context</p>
                                 </div>
                             </div>
-                        )}
+
+                            {!systemInfo ? (
+                                <div className="text-center text-text-muted text-xs font-bold tracking-widest animate-pulse py-12">Gathering system metrics...</div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Execution Context */}
+                                    <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-4 shadow-sm flex flex-col justify-center items-center h-48">
+                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] mb-2">Execution Context</div>
+                                        <div className={cn(
+                                            "px-6 py-3 rounded-2xl text-sm font-black tracking-widest uppercase border border-border shadow-inner flex items-center gap-3 transition-colors duration-500",
+                                            systemInfo.mode === 'Host Mode' ? "bg-amber-500/10 text-amber-500 border-amber-500/30" : "bg-blue-600/10 text-blue-500 border-blue-500/30"
+                                        )}>
+                                            <Server size={18} />
+                                            {systemInfo.mode}
+                                        </div>
+                                        <div className="text-center text-[10px] text-text-muted mt-2 px-8 leading-relaxed font-bold opacity-60">
+                                            {systemInfo.mode === 'Host Mode'
+                                                ? 'Containers share the host networking namespace directly. High throughput natively.'
+                                                : 'Containers are isolated on an internal bridge network. Standard Docker environment.'}
+                                        </div>
+                                    </div>
+
+                                    {/* Network I/O */}
+                                    <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-6 shadow-sm flex flex-col justify-center h-48">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-lg bg-green-500/10 text-green-500 flex items-center justify-center">
+                                                <Network size={16} />
+                                            </div>
+                                            <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">Network I/O</div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4 h-full">
+                                            <div className="bg-card p-4 rounded-xl border border-border flex flex-col justify-center">
+                                                <div className="text-[9px] font-black text-text-muted tracking-widest uppercase mb-1 flex items-center gap-1.5"><Download size={10} className="text-green-500" /> Received</div>
+                                                <div className="font-mono text-lg font-black text-text-primary">{(systemInfo.networkSpeed?.rx || 0).toFixed(2)} <span className="text-[10px] text-text-muted">Mb/s</span></div>
+                                            </div>
+                                            <div className="bg-card p-4 rounded-xl border border-border flex flex-col justify-center">
+                                                <div className="text-[9px] font-black text-text-muted tracking-widest uppercase mb-1 flex items-center gap-1.5"><Upload size={10} className="text-blue-500" /> Transmitted</div>
+                                                <div className="font-mono text-lg font-black text-text-primary">{(systemInfo.networkSpeed?.tx || 0).toFixed(2)} <span className="text-[10px] text-text-muted">Mb/s</span></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Memory */}
+                                    <div className="bg-card border border-border rounded-2xl p-6 space-y-6 shadow-sm md:col-span-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                                                    <Cpu size={16} />
+                                                </div>
+                                                <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">System Memory (RAM)</div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="font-mono text-sm font-black text-indigo-400">
+                                                    {((systemInfo.memory?.used || 0) / 1024 / 1024 / 1024).toFixed(1)} GB / {((systemInfo.memory?.total || 0) / 1024 / 1024 / 1024).toFixed(1)} GB
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="h-3 w-full bg-card-secondary rounded-full overflow-hidden border border-border">
+                                            <div
+                                                className="h-full bg-indigo-500 transition-all duration-1000 shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+                                                style={{ width: `${Math.min(100, ((systemInfo.memory?.used || 0) / (systemInfo.memory?.total || 1)) * 100)}%` }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Disk */}
+                                    <div className="bg-card border border-border rounded-2xl p-6 space-y-6 shadow-sm md:col-span-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-pink-500/10 text-pink-500 flex items-center justify-center">
+                                                    <Database size={16} />
+                                                </div>
+                                                <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">Host Disk Space</div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="font-mono text-sm font-black text-pink-400">
+                                                    {((systemInfo.disk?.used || 0) / 1024 / 1024 / 1024).toFixed(1)} GB / {((systemInfo.disk?.total || 0) / 1024 / 1024 / 1024).toFixed(1)} GB
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="h-3 w-full bg-card-secondary rounded-full overflow-hidden border border-border">
+                                            <div
+                                                className="h-full bg-pink-500 transition-all duration-1000 shadow-[0_0_10px_rgba(236,72,153,0.5)]"
+                                                style={{ width: `${systemInfo.disk?.usagePercent || 0}%` }}
+                                            />
+                                        </div>
+                                        <div className="flex justify-between text-[9px] font-black tracking-widest text-text-muted uppercase">
+                                            <span>Used: {systemInfo.disk?.usagePercent || 0}%</span>
+                                            <span>Free: {((systemInfo.disk?.free || 0) / 1024 / 1024 / 1024).toFixed(1)} GB</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
         </div>
     );
 }
+
