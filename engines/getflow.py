@@ -143,6 +143,12 @@ Examples:
     )
 
     parser.add_argument(
+        '--debug-topo',
+        action='store_true',
+        help='Enable verbose dumping of VPN overlay statuses during topology generation'
+    )
+
+    parser.add_argument(
         '--page-size',
         type=int,
         default=1,
@@ -850,6 +856,8 @@ def get_bulk_topology(sdk, all_site_ids, debug=False):
             res = sdk._session.get(url, timeout=10)
             if res.status_code == 200:
                 sdata = res.json()
+                if debug_topo:
+                    print(f"[DEBUG-TOPO] Raw VPN Link Status payload for {vid}:\n{json.dumps(sdata, indent=2)}", file=sys.stderr)
                 return vid, {
                     'active': sdata.get('state') == 'active' or sdata.get('active', False),
                     'state': sdata.get('state', 'unknown'),
@@ -919,9 +927,9 @@ def get_operational_ips(sdk, all_site_ids, debug=False):
 
 
 
-def build_full_topology(sdk, sites, debug=False):
+def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_topo: bool = False):
     """
-    Build a full topology for all sites.
+    Builds the full topology JSON structure given all sites' metadata.
     Returns a list of site dicts, each containing:
     - site metadata (name, id, role, address)
     - devices with LAN and WAN interfaces
@@ -930,7 +938,7 @@ def build_full_topology(sdk, sites, debug=False):
     result_sites = []
 
     # --- Step 1: Build lookup maps ---
-    site_id_to_obj = {s.get('id'): s for s in sites}
+    site_id_to_obj = {s.get('id'): s for s in sites_data}
     all_site_ids = list(site_id_to_obj.keys())
 
     # Fetch all WAN networks to map network_id to name (ISP)
@@ -949,7 +957,7 @@ def build_full_topology(sdk, sites, debug=False):
             print(f" [TOPO] Error fetching WAN networks: {e}", file=sys.stderr)
 
     if debug:
-        print(f" [TOPO] Processing {len(all_site_ids)} sites...", file=sys.stderr)
+        print(f"[TOPO] Constructing final topology dictionary for {len(sites_data)} sites...", file=sys.stderr)
 
     # --- Step 2: All elements (ION devices) ---
     try:
