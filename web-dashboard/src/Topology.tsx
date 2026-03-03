@@ -886,6 +886,7 @@ export default function Topology({ token }: TopologyProps) {
                                                                     const vpns = c.vpnlinks?.length > 0 ? c.vpnlinks : [{ status: c.status === 'UP' ? 'up' : 'down', active: false, usable: false, state: 'unknown' }];
                                                                     vpns.forEach((v: any) => {
                                                                         paths.push({
+                                                                            sourceDevice: d.device_name || selectedObject.name,
                                                                             peer: c.peer_site_name,
                                                                             network: w.wan_network || 'UNKNOWN',
 
@@ -934,7 +935,7 @@ export default function Topology({ token }: TopologyProps) {
                                                             return (
                                                                 <div key={idx} className="flex flex-col bg-card/60 rounded-xl border border-border/40 p-3 overflow-hidden group hover:border-border transition-colors">
                                                                     <div className="flex justify-between items-center mb-2">
-                                                                        <span className="font-black text-text-primary tracking-tight text-xs">{selectedObject.name}</span>
+                                                                        <span className="font-black text-text-primary tracking-tight text-xs">{p.sourceDevice}</span>
                                                                         <span className="font-black text-text-primary tracking-tight text-xs">{p.peer}</span>
                                                                     </div>
 
