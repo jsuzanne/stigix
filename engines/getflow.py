@@ -774,7 +774,7 @@ def format_path_name(flow, topology, wan_if_lookup, debug=False):
     return f"{path_type} (Path ID: {path_id})"
 
 
-def get_bulk_topology(sdk, all_site_ids, debug=False):
+def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
     """
     Fetch VPN topology for all sites using individual calls (the API rejects multi-node).
     Returns connections_by_site: site_id -> list of outbound connection dicts.
@@ -786,7 +786,13 @@ def get_bulk_topology(sdk, all_site_ids, debug=False):
     for site_id in all_site_ids:
         try:
             payload = {"type": "basenet", "nodes": [site_id]}
+            if debug_topo:
+                print(f"[DEBUG-TOPO] POST {url}\nPayload: {json.dumps(payload)}", file=sys.stderr)
             resp = sdk._session.post(url, json=payload, timeout=30)
+            
+            if debug_topo and resp.status_code == 200:
+                print(f"[DEBUG-TOPO] Topology Response for site {site_id}:\n{json.dumps(resp.json(), indent=2)[:1000]}... (truncated)", file=sys.stderr)
+                
             if resp.status_code != 200:
                 if debug:
                     print(f" [TOPO] {site_id}: API returned {resp.status_code}", file=sys.stderr)
@@ -862,7 +868,8 @@ def get_bulk_topology(sdk, all_site_ids, debug=False):
                     'active': sdata.get('state') == 'active' or sdata.get('active', False),
                     'state': sdata.get('state', 'unknown'),
                     'link_up': sdata.get('up', sdata.get('link_up', False)),
-                    'status': sdata.get('status', 'down')
+                    'status': sdata.get('status', 'down'),
+                    'usable': sdata.get('usable', False)
                 }
         except Exception:
             pass
@@ -990,7 +997,9 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
             pass
 
     # --- Step 4: Bulk topology (VPN connections) ---
-    connections_by_site = get_bulk_topology(sdk, all_site_ids, debug=debug)
+    if debug:
+        print(" [TOPO] Fetching VPN connections (this is the slowest step)...", file=sys.stderr)
+    connections_by_site = get_bulk_topology(sdk, all_site_ids, debug=debug, debug_topo=debug_topo)
 
     # --- Step 5: Operational Bulk IPs (for DHCP) ---
     op_ip_map = get_operational_ips(sdk, all_site_ids, debug=debug)
