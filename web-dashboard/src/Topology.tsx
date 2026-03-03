@@ -888,9 +888,11 @@ export default function Topology({ token }: TopologyProps) {
                                                                         paths.push({
                                                                             peer: c.peer_site_name,
                                                                             network: w.wan_network || 'UNKNOWN',
-                                                                            // A tunnel is considered "Active" if it's explicitly active OR marked as usable by SASE CLI concepts
-                                                                            isActive: v.active || v.usable,
-                                                                            isUp: v.status === 'up' || v.link_up,
+
+                                                                            // Core routing logic mapping from Prisma SD-WAN
+                                                                            isRoutingActive: v.active,
+                                                                            isRoutingUsable: v.usable,
+                                                                            isLinkUp: v.status === 'up' || v.link_up,
                                                                             vpState: v.state
                                                                         });
                                                                     });
@@ -903,7 +905,7 @@ export default function Topology({ token }: TopologyProps) {
                                                         }
 
                                                         // Sort paths by Peer Name, then by Activity
-                                                        paths.sort((a, b) => a.peer.localeCompare(b.peer) || (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1));
+                                                        paths.sort((a, b) => a.peer.localeCompare(b.peer));
 
                                                         return paths.map((p: any, idx: number) => {
                                                             // Logic for CSS styling based on state
@@ -912,21 +914,21 @@ export default function Topology({ token }: TopologyProps) {
                                                             let tagText = "text-text-muted";
                                                             let label = "UNKNOWN";
 
-                                                            if (!p.isUp) {
-                                                                lineStyle = "border-t-2 border-red-500";
-                                                                tagBg = "bg-red-500/10";
-                                                                tagText = "text-red-500";
-                                                                label = "DOWN";
-                                                            } else if (p.isActive) {
+                                                            if (p.isRoutingActive) {
                                                                 lineStyle = "border-t-2 border-solid border-green-500";
                                                                 tagBg = "bg-green-500/10";
                                                                 tagText = "text-green-500";
                                                                 label = "ACTIVE";
-                                                            } else {
+                                                            } else if (p.isRoutingUsable || p.isLinkUp) {
                                                                 lineStyle = "border-t-2 border-dashed border-blue-500/70";
                                                                 tagBg = "bg-blue-500/10";
                                                                 tagText = "text-blue-500";
                                                                 label = "BACKUP";
+                                                            } else {
+                                                                lineStyle = "border-t-2 border-red-500";
+                                                                tagBg = "bg-red-500/10";
+                                                                tagText = "text-red-500";
+                                                                label = "DOWN";
                                                             }
 
                                                             return (
