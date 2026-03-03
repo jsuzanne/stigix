@@ -58,6 +58,20 @@ function findProjectRoot() {
 const PROJECT_ROOT = findProjectRoot();
 log('SYSTEM', `🚀 Project Root: ${PROJECT_ROOT}`);
 
+/**
+ * Get the path to the Python interpreter.
+ * Prefers the virtual environment in engines/.venv if it exists.
+ */
+function getPythonPath() {
+    const venvPath = path.join(PROJECT_ROOT, 'engines', '.venv', 'bin', 'python3');
+    if (fs.existsSync(venvPath)) {
+        return venvPath;
+    }
+    return 'python3';
+}
+const PYTHON_PATH = getPythonPath();
+log('SYSTEM', `🐍 Python Path: ${PYTHON_PATH}`);
+
 // Configuration Paths - Environment aware
 const APP_CONFIG = {
     // Check for config in PROJECT_ROOT/config
@@ -141,7 +155,7 @@ async function runGetflow(siteName: string, sourcePort: number, dstIp: string): 
                 '--json'
             ];
             dbg(`[CONV] [DEBUG] Spawning: python3 ${args.join(' ')}`);
-            const proc = spawn('python3', args, { timeout: 30_000 });
+            const proc = spawn(PYTHON_PATH, args, { timeout: 30_000 });
             let stdout = '';
             let stderr = '';
             proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
@@ -2031,7 +2045,9 @@ app.get('/api/config/ui', (req, res) => {
 
 // API: Get Site Information (Prisma SD-WAN)
 app.get('/api/siteinfo', authenticateToken, (req, res) => {
-    res.json(siteManager.getSiteInfo());
+    const info = siteManager.getSiteInfo();
+    const hasCredentials = !!process.env.PRISMA_SDWAN_CLIENT_ID && !!process.env.PRISMA_SDWAN_CLIENT_SECRET;
+    res.json({ ...info, hasCredentials });
 });
 
 // API: Refresh Site Information (Prisma SD-WAN)
@@ -2041,6 +2057,77 @@ app.post('/api/siteinfo/refresh', authenticateToken, async (req, res) => {
         res.json(result);
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// --- Topology API ---
+let topologyCache: { data: any, timestamp: number } | null = null;
+const TOPO_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+app.get('/api/topology', authenticateToken, async (req, res) => {
+    const now = Date.now();
+    if (topologyCache && (now - topologyCache.timestamp < TOPO_CACHE_TTL)) {
+        dbg(`[TOPO] Returning cached topology (${Math.round((now - topologyCache.timestamp) / 1000)}s old)`);
+        return res.json(topologyCache.data);
+    }
+
+    try {
+        const scriptPath = path.join(PROJECT_ROOT, 'engines', 'getflow.py');
+        const enginesDir = path.join(PROJECT_ROOT, 'engines');
+
+        // Check Env
+        const hasId = !!process.env.PRISMA_SDWAN_CLIENT_ID;
+        const hasSecret = !!process.env.PRISMA_SDWAN_CLIENT_SECRET;
+        const hasTsg = !!process.env.PRISMA_SDWAN_TSG_ID;
+        log('TOPO', `Spawn Env Check - ID: ${hasId}, Secret: ${hasSecret}, TSG: ${hasTsg}`);
+
+        log('TOPO', `Spawning ${PYTHON_PATH} ${scriptPath} --build-topology --json`);
+
+        const args = [scriptPath, '--build-topology', '--json'];
+        const proc = spawn(PYTHON_PATH, args, {
+            cwd: enginesDir,
+            timeout: 120_000,
+            env: { ...process.env, PYTHONUNBUFFERED: '1' }
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        proc.stdout.on('data', (d) => {
+            stdout += d.toString();
+        });
+        proc.stderr.on('data', (d) => {
+            stderr += d.toString();
+            console.error(`[TOPO-STDERR] ${d.toString().trim()}`);
+        });
+
+        proc.on('close', (code) => {
+            if (code === 0) {
+                try {
+                    const data = JSON.parse(stdout);
+                    topologyCache = { data, timestamp: Date.now() };
+                    res.json(data);
+                } catch (e) {
+                    console.error('[TOPO] Failed to parse JSON:', e, 'STDOUT length:', stdout.length);
+                    res.status(500).json({ error: 'Failed to parse topology data' });
+                }
+            } else {
+                console.error(`[TOPO] getflow.py exited with code ${code}. Stderr: ${stderr}`);
+                res.status(500).json({
+                    error: 'Failed to build topology',
+                    details: stderr || 'Check server logs for silent failure'
+                });
+            }
+        });
+
+        proc.on('error', (err) => {
+            console.error('[TOPO] Failed to spawn process:', err);
+            res.status(500).json({ error: 'Internal server error spawning topology builder' });
+        });
+
+    } catch (err: any) {
+        console.error('[TOPO] Exception:', err);
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -3343,7 +3430,7 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
     console.log(`[${testId}] [${timestamp}] 🚀 Executing: ${cmdStr}`);
 
     try {
-        const proc = spawn('python3', args, { env: { ...process.env, PYTHONUNBUFFERED: '1' } });
+        const proc = spawn(PYTHON_PATH, args, { env: { ...process.env, PYTHONUNBUFFERED: '1' } });
         convergenceProcesses.set(testId, proc);
         convergencePPS.set(testId, requestedPPS);
 

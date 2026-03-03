@@ -11,13 +11,12 @@ Enhancement:
 
 import json
 import argparse
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import sys
 import socket
 import ipaddress
 import os
 from typing import Optional, Dict, Any
-import concurrent.futures
 
 from prisma_sase import API, jd
 
@@ -72,12 +71,6 @@ Examples:
         '--list-dc-lan-interfaces',
         action='store_true',
         help='List all Data Center (HUB) LAN interfaces (used_for=private) with static IPv4 and exit'
-    )
-
-    parser.add_argument(
-        '--build-topology',
-        action='store_true',
-        help='Export full site topology JSON: device names, LAN IPs, WAN circuits/IPs, VPN peer connections'
     )
 
     parser.add_argument(
@@ -768,394 +761,6 @@ def format_path_name(flow, topology, wan_if_lookup, debug=False):
     return f"{path_type} (Path ID: {path_id})"
 
 
-def get_bulk_topology(sdk, all_site_ids, debug=False):
-    """
-    Fetch VPN topology for all sites using individual calls (the API rejects multi-node).
-    Returns connections_by_site: site_id -> list of outbound connection dicts.
-    """
-    connections_by_site = {}
-
-    url = "https://api.sase.paloaltonetworks.com/sdwan/v3.6/api/topology"
-
-    for site_id in all_site_ids:
-        try:
-            payload = {"type": "basenet", "nodes": [site_id]}
-            resp = sdk._session.post(url, json=payload, timeout=30)
-            if resp.status_code != 200:
-                if debug:
-                    print(f" [TOPO] {site_id}: API returned {resp.status_code}", file=sys.stderr)
-                continue
-
-            links = resp.json().get('links', [])
-            if debug:
-                print(f" [TOPO] {site_id}: {len(links)} links", file=sys.stderr)
-
-            for link in links:
-                src_site = link.get('source_node_id')
-                tgt_site = link.get('target_node_id')
-                src_wan = link.get('source_wan_if_id')
-                tgt_wan = link.get('target_wan_if_id')
-                status = link.get('status', 'UNKNOWN')
-                ltype = link.get('type', 'VPN')
-                sub_type = link.get('sub_type', '')
-                vpnlinks_raw = link.get('vpnlinks', [])
-
-                # Forward direction
-                connections_by_site.setdefault(src_site, []).append({
-                    'peer_site_id': tgt_site,
-                    'source_wan_if_id': src_wan,
-                    'peer_wan_if_id': tgt_wan,
-                    'status': status,
-                    'type': ltype,
-                    'sub_type': sub_type,
-                    'vpnlinks': vpnlinks_raw
-                })
-                # Reverse direction
-                connections_by_site.setdefault(tgt_site, []).append({
-                    'peer_site_id': src_site,
-                    'source_wan_if_id': tgt_wan,
-                    'peer_wan_if_id': src_wan,
-                    'status': status,
-                    'type': ltype,
-                    'sub_type': sub_type,
-                    'vpnlinks': vpnlinks_raw
-                })
-
-        except Exception as e:
-            if debug:
-                print(f" [TOPO] {site_id}: Error: {e}", file=sys.stderr)
-
-    # Deduplicate connections per site (same peer may appear via multiple site queries)
-    deduped = {}
-    for site_id, conns in connections_by_site.items():
-        seen = set()
-        unique = []
-        for c in conns:
-            key = (c['peer_site_id'], c['source_wan_if_id'], c['peer_wan_if_id'])
-            if key not in seen:
-                seen.add(key)
-                unique.append(c)
-        deduped[site_id] = unique
-    # Process unique links to hydrate their vpnlinks metadata if present
-    all_vpns = set()
-    for conns in deduped.values():
-        for c in conns:
-            for vid in c.get('vpnlinks', []):
-                all_vpns.add(vid)
-
-    vpn_cache = {}
-    def fetch_vpnstatus(vid):
-        try:
-            url = f"https://api.sase.paloaltonetworks.com/sdwan/v2.2/api/vpnlinks/{vid}/status"
-            res = sdk._session.get(url, timeout=10)
-            if res.status_code == 200:
-                sdata = res.json()
-                return vid, {
-                    'active': sdata.get('state') == 'active' or sdata.get('active', False),
-                    'state': sdata.get('state', 'unknown'),
-                    'link_up': sdata.get('up', sdata.get('link_up', False)),
-                    'status': sdata.get('status', 'down')
-                }
-        except Exception:
-            pass
-        return vid, None
-
-    if all_vpns:
-        if debug:
-            print(f" [TOPO] Fetching {len(all_vpns)} detailed VPN link states...", file=sys.stderr)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-            future_to_vid = {executor.submit(fetch_vpnstatus, vid): vid for vid in all_vpns}
-            for future in concurrent.futures.as_completed(future_to_vid):
-                vid, data = future.result()
-                if data:
-                    vpn_cache[vid] = data
-
-    for conns in deduped.values():
-        for c in conns:
-            hydrated_vpnlinks = []
-            for vid in c.get('vpnlinks', []):
-                if vid in vpn_cache:
-                    vdata = vpn_cache[vid].copy()
-                    vdata['id'] = vid
-                    hydrated_vpnlinks.append(vdata)
-            c['vpnlinks'] = hydrated_vpnlinks
-
-    return deduped
-
-
-def get_operational_ips(sdk, all_site_ids, debug=False):
-    """
-    Fetch operational status for all interfaces in bulk.
-    Returns a lookup dict: (element_id, interface_id) -> list of IPs.
-    """
-    op_map = {}
-    try:
-        # A site_id filter with all IDs is usually supported by the query API
-        data = {
-            "filters": {"site_id": list(all_site_ids)},
-            "limit": 1000
-        }
-        if debug:
-            print(f" [TOPO] Querying operational interface status for {len(all_site_ids)} sites (limit=1000)...", file=sys.stderr)
-
-        resp = sdk.post.interfaces_status_query(data=data)
-        if resp.cgx_status:
-            items = resp.cgx_content.get('items', [])
-            if debug:
-                print(f" [TOPO] Received {len(items)} operational status entries", file=sys.stderr)
-            for item in items:
-                eid = item.get('element_id')
-                name = item.get('name')
-                ips = item.get('ipv4_addresses')
-                if eid and name and ips:
-                    op_map[(eid, name)] = ips
-        else:
-            if debug:
-                print(f" [TOPO] Warning: interfaces_status_query returned {resp.status_code}", file=sys.stderr)
-    except Exception as e:
-        if debug:
-            print(f" [TOPO] Error fetching operational IPs: {e}", file=sys.stderr)
-    return op_map
-
-
-
-def build_full_topology(sdk, sites, debug=False):
-    """
-    Build a full topology for all sites.
-    Returns a list of site dicts, each containing:
-    - site metadata (name, id, role, address)
-    - devices with LAN and WAN interfaces
-    - WAN connections to peer sites
-    """
-    result_sites = []
-
-    # --- Step 1: Build lookup maps ---
-    site_id_to_obj = {s.get('id'): s for s in sites}
-    all_site_ids = list(site_id_to_obj.keys())
-
-    # Fetch all WAN networks to map network_id to name (ISP)
-    wan_net_id_to_name = {}
-    try:
-        if debug:
-            print(" [TOPO] Fetching WAN networks...", file=sys.stderr)
-        wn_resp = sdk.get.wannetworks()
-        if wn_resp.cgx_status:
-            wn_items = wn_resp.cgx_content.get('items', [])
-            wan_net_id_to_name = {n['id']: n['name'] for n in wn_items}
-            if debug:
-                print(f" [TOPO] Found {len(wan_net_id_to_name)} WAN networks", file=sys.stderr)
-    except Exception as e:
-        if debug:
-            print(f" [TOPO] Error fetching WAN networks: {e}", file=sys.stderr)
-
-    if debug:
-        print(f" [TOPO] Processing {len(all_site_ids)} sites...", file=sys.stderr)
-
-    # --- Step 2: All elements (ION devices) ---
-    try:
-        elements_resp = sdk.get.elements()
-        all_elements = elements_resp.cgx_content.get('items', []) if elements_resp.cgx_status else []
-    except Exception as e:
-        if debug:
-            print(f" [TOPO] Error fetching elements: {e}", file=sys.stderr)
-        all_elements = []
-
-    # Group elements by site
-    elements_by_site = {}
-    for el in all_elements:
-        sid = el.get('site_id')
-        if sid:
-            elements_by_site.setdefault(sid, []).append(el)
-
-    # --- Step 3: All WAN interfaces per site ---
-    wan_if_by_site = {}   # site_id -> list of waninterface objects
-    wan_if_by_id = {}     # wan_if_id -> waninterface object + site_id
-    for site_id in all_site_ids:
-        try:
-            resp = sdk.get.waninterfaces(site_id=site_id)
-            if resp.cgx_status:
-                items = resp.cgx_content.get('items', [])
-                wan_if_by_site[site_id] = items
-                for w in items:
-                    wan_if_by_id[w.get('id')] = {**w, '_site_id': site_id}
-        except Exception:
-            pass
-
-    # --- Step 4: Bulk topology (VPN connections) ---
-    connections_by_site = get_bulk_topology(sdk, all_site_ids, debug=debug)
-
-    # --- Step 5: Operational Bulk IPs (for DHCP) ---
-    op_ip_map = get_operational_ips(sdk, all_site_ids, debug=debug)
-
-    # --- Step 6: Assemble per-site output ---
-    for site_id in all_site_ids:
-        site_obj = site_id_to_obj[site_id]
-        site_name = site_obj.get('name', 'Unknown')
-        site_role = site_obj.get('element_cluster_role', 'UNKNOWN')
-        address = site_obj.get('address') or {}
-
-        devices_out = []
-
-        for element in elements_by_site.get(site_id, []):
-            el_id = element.get('id')
-            el_name = element.get('name', 'Unknown')
-            el_model = element.get('model_name', element.get('model', None))
-            el_sw = element.get('software_version', None)
-
-            lan_interfaces = []
-            wan_interface_details = []
-
-            # --- LAN interfaces for this element ---
-            try:
-                intf_resp = sdk.get.interfaces(site_id=site_id, element_id=el_id)
-                interfaces = intf_resp.cgx_content.get('items', []) if intf_resp.cgx_status else []
-            except Exception:
-                interfaces = []
-
-            # Collect site_wan_interface_ids seen on this element to map WAN IFs
-            element_wan_if_ids = set()
-
-            for intf in interfaces:
-                used_for = (intf.get('used_for') or '').lower()
-                ipv4_cfg = intf.get('ipv4_config') or {}
-
-                # Collect WAN interface IDs this element references
-                swi_ids = intf.get('site_wan_interface_ids') or []
-                for swi in swi_ids:
-                    element_wan_if_ids.add(swi)
-
-                # LAN: used_for=lan OR used_for=private (DC), static IP
-                if used_for in ('lan', 'private') and ipv4_cfg.get('type') == 'static':
-                    # Exclude overlay/circuit-linked interfaces
-                    if used_for == 'private' and (swi_ids or intf.get('label_id') or intf.get('wan_network_id')):
-                        continue
-
-                    static = ipv4_cfg.get('static_config') or {}
-                    ip_raw = static.get('address')
-                    if not ip_raw:
-                        continue
-                    try:
-                        if '/' in ip_raw:
-                            iface_obj = ipaddress.IPv4Interface(ip_raw)
-                        else:
-                            nm = static.get('netmask')
-                            if not nm:
-                                continue
-                            iface_obj = ipaddress.IPv4Interface(f"{ip_raw}/{nm}")
-
-                        intf_desc = get_interface_description(intf)
-                        lan_interfaces.append({
-                            'interface_name': intf.get('name'),
-                            'interface_description': intf_desc,
-                            'interface_label': format_interface_label(intf.get('name', ''), intf_desc),
-                            'used_for': used_for,
-                            'ip': str(iface_obj.ip),
-                            'network': str(iface_obj.network),
-                        })
-                    except Exception:
-                        pass
-
-            # --- WAN interfaces for this site ---
-            site_wan_ifs = wan_if_by_site.get(site_id, [])
-
-            # Find connections for this site from topology
-            site_connections = connections_by_site.get(site_id, [])
-
-            for wan_if in site_wan_ifs:
-                wan_if_id = wan_if.get('id')
-                wan_name = wan_if.get('name', 'Unknown')
-                circuit_label = wan_if.get('label') or wan_if.get('name')
-                network_name = wan_if.get('network_id')  # will be an ID — we resolve if possible
-                bw_down = wan_if.get('bw_config', {}).get('bwc_down_kbps') if wan_if.get('bw_config') else None
-                bw_up = wan_if.get('bw_config', {}).get('bwc_up_kbps') if wan_if.get('bw_config') else None
-
-                # WAN IP (from bound interface's ipv4_config)
-                wan_ip = None
-                wan_network = None
-                for intf in interfaces:
-                    swi_ids = intf.get('site_wan_interface_ids') or []
-                    if wan_if_id in swi_ids:
-                        ipv4_cfg = intf.get('ipv4_config') or {}
-                        cfg_type = ipv4_cfg.get('type')
-                        if cfg_type == 'static':
-                            st = ipv4_cfg.get('static_config') or {}
-                            ip_raw = st.get('address')
-                            if ip_raw:
-                                try:
-                                    if '/' in ip_raw:
-                                        iface_obj = ipaddress.IPv4Interface(ip_raw)
-                                    else:
-                                        nm = st.get('netmask')
-                                        iface_obj = ipaddress.IPv4Interface(f"{ip_raw}/{nm}") if nm else None
-                                    if iface_obj:
-                                        wan_ip = str(iface_obj.ip)
-                                        wan_network = str(iface_obj.network)
-                                except Exception:
-                                    pass
-                        elif cfg_type == 'dhcp' or cfg_type == 'pppoe':
-                            # Try resolving from operational status using name (since status IDs often mismatch config IDs)
-                            op_ips = op_ip_map.get((el_id, intf.get('name')), [])
-                            if op_ips:
-                                wan_ip = op_ips[0].split('/')[0]
-                            else:
-                                wan_ip = 'DHCP (Lease Pending)' if cfg_type == 'dhcp' else 'PPPoE (Lease Pending)'
-                        break
-
-                # VPN connections on this WAN interface
-                connections_out = []
-                for conn in site_connections:
-                    if conn.get('source_wan_if_id') != wan_if_id:
-                        continue
-                    peer_site_id = conn.get('peer_site_id')
-                    peer_site_name = site_id_to_obj.get(peer_site_id, {}).get('name', peer_site_id)
-                    peer_wan_obj = wan_if_by_id.get(conn.get('peer_wan_if_id'), {})
-                    peer_wan_name = peer_wan_obj.get('name', conn.get('peer_wan_if_id', 'Unknown'))
-                    connections_out.append({
-                        'peer_site_id': peer_site_id,
-                        'peer_site_name': peer_site_name,
-                        'peer_wan_interface': peer_wan_name,
-                        'status': conn.get('status', 'UNKNOWN'),
-                        'type': conn.get('type', 'VPN'),
-                        'sub_type': conn.get('sub_type', ''),
-                    })
-
-                wan_interface_details.append({
-                    'wan_if_id': wan_if_id,
-                    'name': wan_name,
-                    'circuit_label': circuit_label,
-                    'wan_network': wan_net_id_to_name.get(wan_if.get('network_id'), 'Unknown'),
-                    'ip': wan_ip,
-                    'network': wan_network,
-                    'bw_down_kbps': bw_down,
-                    'bw_up_kbps': bw_up,
-                    'connections': connections_out,
-                })
-
-            devices_out.append({
-                'device_id': el_id,
-                'device_name': el_name,
-                'model': el_model,
-                'software_version': el_sw,
-                'lan_interfaces': lan_interfaces,
-                'wan_interfaces': wan_interface_details,
-            })
-
-        result_sites.append({
-            'site_id': site_id,
-            'site_name': site_name,
-            'site_role': site_role,
-            'address': {
-                'city': address.get('city'),
-                'country': address.get('country'),
-                'street': address.get('street'),
-                'post_code': address.get('post_code'),
-            },
-            'devices': devices_out,
-        })
-
-    return result_sites
-
-
 def main():
     args = parse_arguments()
     json_mode = args.json
@@ -1287,19 +892,6 @@ def main():
         log_output("\n" + "=" * 60, json_mode)
         sys.exit(0)
 
-    # Build full topology
-    if args.build_topology:
-        log_output("\n🌐 Building full site topology (this may take a minute)...", json_mode)
-        topo_sites = build_full_topology(sdk, sites, debug=args.debug)
-        output = {
-            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "site_count": len(topo_sites),
-            "sites": topo_sites
-        }
-        print(json.dumps(output, indent=2))
-        log_output("\n" + "=" * 60, json_mode)
-        sys.exit(0)
-
     # Auto-detect site if requested
     target_site_id = None
     target_site_name = None
@@ -1414,7 +1006,7 @@ def main():
         if args.debug:
             log_output("\n⚡ Fast mode enabled - skipping topology lookup", json_mode)
 
-    end_time = datetime.now(timezone.utc)
+    end_time = datetime.utcnow()
 
     if args.minutes:
         start_time = end_time - timedelta(minutes=args.minutes)
@@ -1509,7 +1101,7 @@ def main():
                 "success": True,
                 "site_name": target_site_name,
                 "site_id": target_site_id,
-                "query_time": datetime.now(timezone.utc).isoformat() + "Z",
+                "query_time": datetime.utcnow().isoformat() + "Z",
                 "flows": []
             }
 

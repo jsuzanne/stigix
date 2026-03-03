@@ -9,6 +9,9 @@
 !tsconfig.node.json
 !logs/stats.json
 
+# Credentials Prisma SD-WAN
+credentials.json
+**/credentials.json
 
 # Roadmap
 ROADMAP

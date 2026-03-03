@@ -10,6 +10,7 @@ import Failover from './Failover';
 import Iot from './Iot';
 import Vyos from './Vyos';
 import Speedtest from './Speedtest';
+import Topology from './Topology';
 import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -52,7 +53,7 @@ interface SiteInfo {
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
-  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest'>(
+  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence'>(
     (localStorage.getItem('activeView') as any) || 'performance'
   );
 
@@ -833,6 +834,7 @@ export default function App() {
         >
           <Gauge size={18} /> Digital Experience
         </button>
+
         {features.xfr_enabled && (
           <button
             onClick={() => setView('speedtest')}
@@ -872,13 +874,22 @@ export default function App() {
           <Phone size={18} /> VoIP
         </button>
         <button
-          onClick={() => setView('failover')}
+          onClick={() => setView('convergence')}
           className={cn(
             "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
-            view === 'failover' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
+            view === 'convergence' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
-          <Zap size={18} /> Convergence
+          <Zap size={18} /> Convergence <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">Alpha</span>
+        </button>
+        <button
+          onClick={() => setView('topology')}
+          className={cn(
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
+            view === 'topology' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
+          )}
+        >
+          <Network size={18} /> Topology <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">Beta</span>
         </button>
         <button
           onClick={() => setView('vyos')}
@@ -1390,6 +1401,8 @@ export default function App() {
           </>
         ) : view === 'performance' ? (
           <ConnectivityPerformance token={token!} onManage={() => setView('settings')} />
+        ) : view === 'topology' ? (
+          <Topology token={token!} />
         ) : view === 'security' ? (
           <Security token={token!} />
         ) : view === 'vyos' ? (
