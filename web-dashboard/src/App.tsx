@@ -1411,7 +1411,7 @@ export default function App() {
           <Iot token={token!} />
         ) : view === 'voice' ? (
           <Voice token={token!} externalStatus={globalVoiceStatus} />
-        ) : view === 'failover' ? (
+        ) : view === 'failover' || view === 'convergence' ? (
           <Failover token={token!} externalStatus={globalConvStatus} />
         ) : view === 'settings' ? (
           <SettingsComponent token={token!} />
