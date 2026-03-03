@@ -684,7 +684,7 @@ export default function Failover(props: FailoverProps) {
                                         defaultValue=""
                                     >
                                         <option value="">-- Select from Targets Registry --</option>
-                                        {convergenceTargets.map((t: any) => (
+                                        {convergenceTargets.filter((t: any) => !endpoints.some(e => e.target === t.host)).map((t: any) => (
                                             <option key={t.id} value={t.id}>{t.name} — {t.host}</option>
                                         ))}
                                     </select>

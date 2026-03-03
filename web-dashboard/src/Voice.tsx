@@ -826,7 +826,7 @@ export default function Voice(props: VoiceProps) {
                                             defaultValue=""
                                         >
                                             <option value="">-- Select a registry target (auto-fill host/port) --</option>
-                                            {voiceTargets.map((t: any) => (
+                                            {voiceTargets.filter((t: any) => !parsedProbes.some(p => p.host === t.host)).map((t: any) => (
                                                 <option key={t.id} value={t.id}>{t.name} — {t.host}:{t.ports?.voice ?? 6100}</option>
                                             ))}
                                         </select>
