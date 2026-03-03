@@ -986,9 +986,10 @@ export default function App() {
                   Network Status
 
                   {/* Network Badges */}
-                  {(publicIp || gatewayIp) && (
+                  {(publicIp || gatewayIp || siteInfo?.local_ip) && (
                     <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 border border-blue-500/20 rounded text-[10px] font-black text-blue-600 dark:text-blue-400 tracking-widest">
                       <Globe size={10} />
+                      {siteInfo?.local_ip && <span className="mr-1 border-r border-blue-500/30 pr-2">IP: {siteInfo.local_ip}</span>}
                       {gatewayIp && <span className="mr-1 border-r border-blue-500/30 pr-2">GW: {gatewayIp}</span>}
                       <span>Public IP: {publicIp}</span>
                     </div>

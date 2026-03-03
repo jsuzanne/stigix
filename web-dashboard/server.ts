@@ -624,6 +624,8 @@ class XfrJobManager {
                 if (job.status === 'completed' && job.summary) {
                     const res = job.summary;
                     log('XFR', `[${job.sequence_id}] completed: ${res.received_mbps.toFixed(2)} Mbps | Loss: ${res.loss_percent.toFixed(2)}% | RTT: ${res.rtt_ms_avg.toFixed(1)}ms`);
+                } else if (job.status === 'failed' && !job.summary) {
+                    log('XFR', `[${job.sequence_id}] ⚠️  No data received from ${job.params.host}:${job.params.port} (exit code ${code}) — target may not be responding on this port/protocol`, 'warn');
                 } else {
                     log('XFR', `[${job.sequence_id}] finished with status ${job.status} ${job.error ? `(${job.error})` : ''}`);
                 }
@@ -5671,11 +5673,19 @@ app.get('/api/admin/system/info', authenticateToken, async (req, res) => {
             mode = 'Host Mode';
         }
 
+        // 5. Per-interface IPv4 addresses for Settings UI
+        const interfaceIps: Record<string, string> = {};
+        for (const [name, addrs] of Object.entries(nets)) {
+            const ipv4 = addrs?.find(a => a.family === 'IPv4' && !a.internal);
+            if (ipv4) interfaceIps[name] = ipv4.address;
+        }
+
         res.json({
             memory: { total: totalMem, used: usedMem, free: freeMem },
             disk,
             network,
-            mode
+            mode,
+            interfaceIps
         });
     } catch (e: any) {
         console.error('[API] /api/admin/system/info error:', e.message);

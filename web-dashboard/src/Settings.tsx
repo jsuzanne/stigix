@@ -1118,7 +1118,10 @@ export default function Settings({ token }: { token: string }) {
                                                 )}
                                             >
                                                 <div className={cn("w-1.5 h-1.5 rounded-full", isSelected ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" : "bg-text-muted/30")} />
-                                                {iface}
+                                                <span>{iface}</span>
+                                                {isSelected && systemInfo?.interfaceIps?.[iface] && (
+                                                    <span className="opacity-60 font-mono text-[9px]">{systemInfo.interfaceIps[iface]}</span>
+                                                )}
                                                 {isSelected && <CheckCircle2 size={12} />}
                                             </button>
                                         );
