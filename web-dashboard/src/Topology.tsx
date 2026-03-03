@@ -883,12 +883,13 @@ export default function Topology({ token }: TopologyProps) {
                                                             d.wan_interfaces?.forEach((w: any) => {
                                                                 w.connections?.forEach((c: any) => {
                                                                     // Extract VPN links or default to a single path if none found
-                                                                    const vpns = c.vpnlinks?.length > 0 ? c.vpnlinks : [{ status: c.status === 'UP' ? 'up' : 'down', active: false, state: 'unknown' }];
+                                                                    const vpns = c.vpnlinks?.length > 0 ? c.vpnlinks : [{ status: c.status === 'UP' ? 'up' : 'down', active: false, usable: false, state: 'unknown' }];
                                                                     vpns.forEach((v: any) => {
                                                                         paths.push({
                                                                             peer: c.peer_site_name,
                                                                             network: w.wan_network || 'UNKNOWN',
-                                                                            isActive: v.active,
+                                                                            // A tunnel is considered "Active" if it's explicitly active OR marked as usable by SASE CLI concepts
+                                                                            isActive: v.active || v.usable,
                                                                             isUp: v.status === 'up' || v.link_up,
                                                                             vpState: v.state
                                                                         });
