@@ -791,7 +791,8 @@ def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
             resp = sdk._session.post(url, json=payload, timeout=30)
             
             if debug_topo and resp.status_code == 200:
-                print(f"[DEBUG-TOPO] Topology Response for site {site_id}:\n{json.dumps(resp.json(), indent=2)[:1000]}... (truncated)", file=sys.stderr)
+                js_str = json.dumps(resp.json(), indent=2)
+                print(f"[DEBUG-TOPO] Topology Response for site {site_id}:\n{js_str[:4000]}... (truncated)", file=sys.stderr)
                 
             if resp.status_code != 200:
                 if debug:
@@ -1134,6 +1135,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                         'status': conn.get('status', 'UNKNOWN'),
                         'type': conn.get('type', 'VPN'),
                         'sub_type': conn.get('sub_type', ''),
+                        'vpnlinks': conn.get('vpnlinks', []),
                     })
 
                 wan_interface_details.append({
@@ -1307,7 +1309,7 @@ def main():
     # Build full topology
     if args.build_topology:
         log_output("\n🌐 Building full site topology (this may take a minute)...", json_mode)
-        topo_sites = build_full_topology(sdk, sites, debug=args.debug)
+        topo_sites = build_full_topology(sdk, sites, debug=args.debug, debug_topo=args.debug_topo)
         output = {
             "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "site_count": len(topo_sites),
