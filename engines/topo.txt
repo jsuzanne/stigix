@@ -1,0 +1,4548 @@
+============================================================
+Prisma SD-WAN Flow Browser Query (Official SDK)
+============================================================
+
+🔐 Authenticating...
+✓ Authenticated successfully
+
+📍 Retrieving sites...
+✓ Found 11 sites
+
+🌐 Building full site topology (this may take a minute)...
+{
+  "generated_at": "2026-03-04T08:18:40Z",
+  "site_count": 11,
+  "sites": [
+    {
+      "site_id": "1747402668277002545",
+      "site_name": "BR1",
+      "site_role": "SPOKE",
+      "address": {
+        "city": "Paris",
+        "country": "France",
+        "street": null,
+        "post_code": null
+      },
+      "devices": [
+        {
+          "device_id": "1711389728258005345",
+          "device_name": "BR1",
+          "model": "ion 3102v",
+          "software_version": "6.5.3-i-b7",
+          "lan_interfaces": [
+            {
+              "interface_name": "1",
+              "interface_description": null,
+              "interface_label": "1",
+              "used_for": "lan",
+              "ip": "192.168.207.1",
+              "network": "192.168.207.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1747402670559018145",
+              "name": "BR1-INET",
+              "circuit_label": "BR1-INET",
+              "wan_network": "OBS",
+              "ip": "192.168.227.1",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1677771407541006145",
+                  "peer_site_name": "DC1",
+                  "peer_wan_interface": "DC1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404412394010545"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404412268009445"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771600296024245",
+                  "peer_site_name": "DC2",
+                  "peer_wan_interface": "DC2-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404412674011745"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1760689629177006245"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1760689629269007345"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1771341380619025545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677832572693001445",
+                  "peer_site_name": "DC4-AZURE-FR",
+                  "peer_wan_interface": "DC4-AZUR-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1677834914883008445",
+                  "peer_site_name": "DC5-AZURE-UK",
+                  "peer_wan_interface": "DC5-UK-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1678200679045000945",
+                  "peer_site_name": "DC3-AWS-US",
+                  "peer_wan_interface": "DC3-AWS-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404412927019645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404411372016045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747408649477018545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET2",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747408660494004645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1768899608084001045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1771102512117006345"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "wan_if_id": "1747402670847018845",
+              "name": "BR1-MPLS",
+              "circuit_label": "BR1-MPLS",
+              "wan_network": "MPLS",
+              "ip": "DHCP (Lease Pending)",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1677771407541006145",
+                  "peer_site_name": "DC1",
+                  "peer_wan_interface": "DC1-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404389867010045"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404389776008945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771600296024245",
+                  "peer_site_name": "DC2",
+                  "peer_wan_interface": "DC2-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404390130010245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1769189612510022445"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1769189612404021345"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1771341392532006745"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site_id": "1677771821244000545",
+      "site_name": "BR2",
+      "site_role": "SPOKE",
+      "address": {
+        "city": null,
+        "country": "France",
+        "street": null,
+        "post_code": null
+      },
+      "devices": [
+        {
+          "device_id": "1678094181439014345",
+          "device_name": "BR2-R2",
+          "model": "ion 3102v",
+          "software_version": "6.3.6-b3",
+          "lan_interfaces": [
+            {
+              "interface_name": "1",
+              "interface_description": null,
+              "interface_label": "1",
+              "used_for": "lan",
+              "ip": "192.168.216.1",
+              "network": "192.168.216.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1677771821837014645",
+              "name": "BR2-INET",
+              "circuit_label": "BR2-INET",
+              "wan_network": "OBS",
+              "ip": "192.168.226.2",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1760689629177006245"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1760689629269007345"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771407541006145",
+                  "peer_site_name": "DC1",
+                  "peer_wan_interface": "DC1-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1683200659255004045"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1683200659366005145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094267222024945"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131321339022045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771600296024245",
+                  "peer_site_name": "DC2",
+                  "peer_wan_interface": "DC2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094267747007245"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1678131321740020245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757595256174000445"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757595255987024945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1726060422748013445"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1726060422900014545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677832572693001445",
+                  "peer_site_name": "DC4-AZURE-FR",
+                  "peer_wan_interface": "DC4-AZUR-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131320602008945"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094265980019145"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677834914883008445",
+                  "peer_site_name": "DC5-AZURE-UK",
+                  "peer_wan_interface": "DC5-UK-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131321133020245"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094266393014545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678200679045000945",
+                  "peer_site_name": "DC3-AWS-US",
+                  "peer_wan_interface": "DC3-AWS-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678200777270013545"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678200777447014645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1737536066069021445"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066334022545"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066226012845"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1768899607726022345"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1768899607593021245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1771102511852012145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1771102511769011045"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "wan_if_id": "1677771822478007245",
+              "name": "BR2-MPLS",
+              "circuit_label": "BR2-MPLS",
+              "wan_network": "MPLS",
+              "ip": "192.168.196.2",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1769189612510022445"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1769189612404021345"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771407541006145",
+                  "peer_site_name": "DC1",
+                  "peer_wan_interface": "DC1-MPLS",
+                  "status": "up",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131320922013145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094266695006945"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1683200621444018645"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1683200621361017545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771600296024245",
+                  "peer_site_name": "DC2",
+                  "peer_wan_interface": "DC2-MPLS",
+                  "status": "up",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1678131321545005945"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094267497010745"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757596286899014445"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757596287057015545"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "device_id": "1678131227719010345",
+          "device_name": "BR2-R1",
+          "model": "ion 3102v",
+          "software_version": "6.3.6-b3",
+          "lan_interfaces": [
+            {
+              "interface_name": "1",
+              "interface_description": null,
+              "interface_label": "1",
+              "used_for": "lan",
+              "ip": "192.168.216.1",
+              "network": "192.168.216.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1677771821837014645",
+              "name": "BR2-INET",
+              "circuit_label": "BR2-INET",
+              "wan_network": "OBS",
+              "ip": "192.168.226.1",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1760689629177006245"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1760689629269007345"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771407541006145",
+                  "peer_site_name": "DC1",
+                  "peer_wan_interface": "DC1-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1683200659255004045"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1683200659366005145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094267222024945"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131321339022045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771600296024245",
+                  "peer_site_name": "DC2",
+                  "peer_wan_interface": "DC2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094267747007245"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1678131321740020245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757595256174000445"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757595255987024945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1726060422748013445"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1726060422900014545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677832572693001445",
+                  "peer_site_name": "DC4-AZURE-FR",
+                  "peer_wan_interface": "DC4-AZUR-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131320602008945"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094265980019145"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677834914883008445",
+                  "peer_site_name": "DC5-AZURE-UK",
+                  "peer_wan_interface": "DC5-UK-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131321133020245"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094266393014545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678200679045000945",
+                  "peer_site_name": "DC3-AWS-US",
+                  "peer_wan_interface": "DC3-AWS-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678200777270013545"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678200777447014645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1737536066069021445"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066334022545"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066226012845"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1768899607726022345"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1768899607593021245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1771102511852012145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1771102511769011045"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "wan_if_id": "1677771822478007245",
+              "name": "BR2-MPLS",
+              "circuit_label": "BR2-MPLS",
+              "wan_network": "MPLS",
+              "ip": "192.168.196.1",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1769189612510022445"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1769189612404021345"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771407541006145",
+                  "peer_site_name": "DC1",
+                  "peer_wan_interface": "DC1-MPLS",
+                  "status": "up",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131320922013145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094266695006945"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1683200621444018645"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1683200621361017545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771600296024245",
+                  "peer_site_name": "DC2",
+                  "peer_wan_interface": "DC2-MPLS",
+                  "status": "up",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1678131321545005945"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094267497010745"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757596286899014445"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757596287057015545"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site_id": "1677773054497020145",
+      "site_name": "BR3",
+      "site_role": "SPOKE",
+      "address": {
+        "city": null,
+        "country": "France",
+        "street": null,
+        "post_code": null
+      },
+      "devices": [
+        {
+          "device_id": "1677768427487011545",
+          "device_name": "BR3",
+          "model": "ion 3102v",
+          "software_version": "6.5.1-b5",
+          "lan_interfaces": [
+            {
+              "interface_name": "1",
+              "interface_description": null,
+              "interface_label": "1",
+              "used_for": "lan",
+              "ip": "192.168.210.1",
+              "network": "192.168.210.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1677773055131010945",
+              "name": "BR3-INET",
+              "circuit_label": "BR3-INET",
+              "wan_network": "OBS",
+              "ip": "192.168.220.1",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1771341380619025545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757595256174000445"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757595255987024945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771407541006145",
+                  "peer_site_name": "DC1",
+                  "peer_wan_interface": "DC1-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757595257272010045"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757595257186008945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771600296024245",
+                  "peer_site_name": "DC2",
+                  "peer_wan_interface": "DC2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757595257553003645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677832572693001445",
+                  "peer_site_name": "DC4-AZURE-FR",
+                  "peer_wan_interface": "DC4-AZUR-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1677834914883008445",
+                  "peer_site_name": "DC5-AZURE-UK",
+                  "peer_wan_interface": "DC5-UK-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1678200679045000945",
+                  "peer_site_name": "DC3-AWS-US",
+                  "peer_wan_interface": "DC3-AWS-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757595257769001945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757595255984025145"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757595255987006045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1768899605926018245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1771102511094002945"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "wan_if_id": "1677773055761016245",
+              "name": "BR3-MPLS",
+              "circuit_label": "BR3-MPLS",
+              "wan_network": "MPLS",
+              "ip": "192.168.190.163",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1771341392532006745"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757596286899014445"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757596287057015545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771407541006145",
+                  "peer_site_name": "DC1",
+                  "peer_wan_interface": "DC1-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757596288171012145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757596287986011045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771600296024245",
+                  "peer_site_name": "DC2",
+                  "peer_wan_interface": "DC2-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757596288669005445"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site_id": "1678133262499003945",
+      "site_name": "BR5",
+      "site_role": "SPOKE",
+      "address": {
+        "city": null,
+        "country": "France",
+        "street": null,
+        "post_code": null
+      },
+      "devices": [
+        {
+          "device_id": "1678132913994006445",
+          "device_name": "BR5",
+          "model": "ion 2000",
+          "software_version": "6.5.3-i-b7",
+          "lan_interfaces": [
+            {
+              "interface_name": "2",
+              "interface_description": "Connected to raspi2K",
+              "interface_label": "2 (Connected to raspi2K)",
+              "used_for": "lan",
+              "ip": "192.168.218.254",
+              "network": "192.168.218.0/24"
+            },
+            {
+              "interface_name": "3.217",
+              "interface_description": null,
+              "interface_label": "3.217",
+              "used_for": "lan",
+              "ip": "192.168.217.254",
+              "network": "192.168.217.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1678133263176017145",
+              "name": "BR5-INET",
+              "circuit_label": "BR5-INET",
+              "wan_network": "OBS",
+              "ip": "192.168.1.235",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747408649477018545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1737536066069021445"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066334022545"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066226012845"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757595255987006045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771407541006145",
+                  "peer_site_name": "DC1",
+                  "peer_wan_interface": "DC1-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066632013145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1737536066546012045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771600296024245",
+                  "peer_site_name": "DC2",
+                  "peer_wan_interface": "DC2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066585007645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677832572693001445",
+                  "peer_site_name": "DC4-AZURE-FR",
+                  "peer_wan_interface": "DC4-AZUR-INET",
+                  "status": "init",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1677834914883008445",
+                  "peer_site_name": "DC5-AZURE-UK",
+                  "peer_wan_interface": "DC5-UK-INET",
+                  "status": "init",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1756604444328008245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678200679045000945",
+                  "peer_site_name": "DC3-AWS-US",
+                  "peer_wan_interface": "DC3-AWS-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1737536066624017545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1768899606494013345"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1771102511530006245"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "wan_if_id": "1681303054026019045",
+              "name": "BR5-INET2",
+              "circuit_label": "BR5-INET2",
+              "wan_network": "SFR",
+              "ip": "192.168.1.238",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747408660494004645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771407541006145",
+                  "peer_site_name": "DC1",
+                  "peer_wan_interface": "DC1-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1737536066966004845"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536067070005945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771600296024245",
+                  "peer_site_name": "DC2",
+                  "peer_wan_interface": "DC2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066998022145"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677832572693001445",
+                  "peer_site_name": "DC4-AZURE-FR",
+                  "peer_wan_interface": "DC4-AZUR-INET",
+                  "status": "init",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1677834914883008445",
+                  "peer_site_name": "DC5-AZURE-UK",
+                  "peer_wan_interface": "DC5-UK-INET",
+                  "status": "init",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1678200679045000945",
+                  "peer_site_name": "DC3-AWS-US",
+                  "peer_wan_interface": "DC3-AWS-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1737536067124021045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1756604443294022545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1768899606914012345"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1771102510499003045"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site_id": "1762789322097022245",
+      "site_name": "BR8",
+      "site_role": "SPOKE",
+      "address": {
+        "city": "Paris",
+        "country": "France",
+        "street": null,
+        "post_code": null
+      },
+      "devices": [
+        {
+          "device_id": "1762786642386009845",
+          "device_name": "BR8",
+          "model": "ion 1200-s",
+          "software_version": "6.5.3-i-b7",
+          "lan_interfaces": [
+            {
+              "interface_name": "Users",
+              "interface_description": null,
+              "interface_label": "Users",
+              "used_for": "lan",
+              "ip": "192.168.219.254",
+              "network": "192.168.219.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1762789323376009945",
+              "name": "BR8-INET1",
+              "circuit_label": "BR8-INET1",
+              "wan_network": "A_ISP1",
+              "ip": "DHCP (Lease Pending)",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1768899608084001045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1768899607726022345"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1768899607593021245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1768899605926018245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1768899606494013345"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1768899606914012345"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771407541006145",
+                  "peer_site_name": "DC1",
+                  "peer_wan_interface": "DC1-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1762789921588020545"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1762789921682021645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771600296024245",
+                  "peer_site_name": "DC2",
+                  "peer_wan_interface": "DC2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1762789922027002545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677832572693001445",
+                  "peer_site_name": "DC4-AZURE-FR",
+                  "peer_wan_interface": "DC4-AZUR-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1677834914883008445",
+                  "peer_site_name": "DC5-AZURE-UK",
+                  "peer_wan_interface": "DC5-UK-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1678200679045000945",
+                  "peer_site_name": "DC3-AWS-US",
+                  "peer_wan_interface": "DC3-AWS-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1762789922300019945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1768899030061002445"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "wan_if_id": "1762789323374020945",
+              "name": "BR8-INET2",
+              "circuit_label": "BR8-INET2",
+              "wan_network": "A_ISP2",
+              "ip": "DHCP (Lease Pending)",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1771102512117006345"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1771102511852012145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1771102511769011045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1771102511094002945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1771102510499003045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "on-demand",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1771102511530006245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771407541006145",
+                  "peer_site_name": "DC1",
+                  "peer_wan_interface": "DC1-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1762789923162021545"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1762789923250022645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771600296024245",
+                  "peer_site_name": "DC2",
+                  "peer_wan_interface": "DC2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1762789923568005545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677832572693001445",
+                  "peer_site_name": "DC4-AZURE-FR",
+                  "peer_wan_interface": "DC4-AZUR-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1677834914883008445",
+                  "peer_site_name": "DC5-AZURE-UK",
+                  "peer_wan_interface": "DC5-UK-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1678200679045000945",
+                  "peer_site_name": "DC3-AWS-US",
+                  "peer_wan_interface": "DC3-AWS-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1762789923806023545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1768899030059010245"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site_id": "1680008216747011045",
+      "site_name": "BRGW7",
+      "site_role": "SPOKE",
+      "address": {
+        "city": null,
+        "country": "France",
+        "street": null,
+        "post_code": null
+      },
+      "devices": [
+        {
+          "device_id": "1680007784320017145",
+          "device_name": "BRGW7",
+          "model": "ion 3102v",
+          "software_version": "6.5.3-i-b7",
+          "lan_interfaces": [
+            {
+              "interface_name": "1",
+              "interface_description": null,
+              "interface_label": "1",
+              "used_for": "lan",
+              "ip": "192.168.204.254",
+              "network": "192.168.204.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1680008312370022645",
+              "name": "BRGW7-INET",
+              "circuit_label": "BRGW7-INET",
+              "wan_network": "FREE",
+              "ip": "192.168.100.8",
+              "network": "192.168.100.0/24",
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404411372016045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1726060422748013445"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1726060422900014545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757595255984025145"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1756604444328008245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1756604443294022545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1768899030061002445"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1768899030059010245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771407541006145",
+                  "peer_site_name": "DC1",
+                  "peer_wan_interface": "DC1-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1680008767888024045"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1683200659250013145"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771600296024245",
+                  "peer_site_name": "DC2",
+                  "peer_wan_interface": "DC2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1680008768073003445"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677832572693001445",
+                  "peer_site_name": "DC4-AZURE-FR",
+                  "peer_wan_interface": "DC4-AZUR-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1680008767265017145"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677834914883008445",
+                  "peer_site_name": "DC5-AZURE-UK",
+                  "peer_wan_interface": "DC5-UK-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1680008767471002645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678200679045000945",
+                  "peer_site_name": "DC3-AWS-US",
+                  "peer_wan_interface": "DC3-AWS-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1680008768271017145"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site_id": "1677771407541006145",
+      "site_name": "DC1",
+      "site_role": "HUB",
+      "address": {
+        "city": null,
+        "country": "France",
+        "street": null,
+        "post_code": null
+      },
+      "devices": [
+        {
+          "device_id": "1677768431389008545",
+          "device_name": "DC1-R2",
+          "model": "ion 3102v",
+          "software_version": "6.3.6-b3",
+          "lan_interfaces": [
+            {
+              "interface_name": "1",
+              "interface_description": null,
+              "interface_label": "1",
+              "used_for": "private",
+              "ip": "192.168.201.5",
+              "network": "192.168.201.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1677771408128010145",
+              "name": "DC1-INET",
+              "circuit_label": "DC1-INET",
+              "wan_network": "OBS",
+              "ip": "192.168.221.2",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404412394010545"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404412268009445"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1683200659255004045"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1683200659366005145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094267222024945"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131321339022045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757595257272010045"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757595257186008945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066632013145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1737536066546012045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1737536066966004845"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536067070005945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1762789921588020545"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1762789921682021645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1762789923162021545"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1762789923250022645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1680008767888024045"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1683200659250013145"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "wan_if_id": "1677771408614022345",
+              "name": "DC1-MPLS",
+              "circuit_label": "DC1-MPLS",
+              "wan_network": "MPLS",
+              "ip": "192.168.191.3",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404389867010045"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404389776008945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-MPLS",
+                  "status": "up",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131320922013145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094266695006945"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1683200621444018645"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1683200621361017545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757596288171012145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757596287986011045"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "device_id": "1677770383436024545",
+          "device_name": "DC1-R1",
+          "model": "ion 3102v",
+          "software_version": "6.3.6-b3",
+          "lan_interfaces": [
+            {
+              "interface_name": "1",
+              "interface_description": null,
+              "interface_label": "1",
+              "used_for": "private",
+              "ip": "192.168.201.3",
+              "network": "192.168.201.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1677771408128010145",
+              "name": "DC1-INET",
+              "circuit_label": "DC1-INET",
+              "wan_network": "OBS",
+              "ip": "192.168.221.1",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404412394010545"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404412268009445"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1683200659255004045"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1683200659366005145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094267222024945"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131321339022045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757595257272010045"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757595257186008945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066632013145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1737536066546012045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1737536066966004845"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536067070005945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1762789921588020545"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1762789921682021645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1762789923162021545"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1762789923250022645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1680008767888024045"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1683200659250013145"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "wan_if_id": "1677771408614022345",
+              "name": "DC1-MPLS",
+              "circuit_label": "DC1-MPLS",
+              "wan_network": "MPLS",
+              "ip": "192.168.191.1",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404389867010045"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404389776008945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-MPLS",
+                  "status": "up",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131320922013145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094266695006945"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1683200621444018645"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1683200621361017545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757596288171012145"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757596287986011045"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site_id": "1677771600296024245",
+      "site_name": "DC2",
+      "site_role": "HUB",
+      "address": {
+        "city": null,
+        "country": "France",
+        "street": null,
+        "post_code": null
+      },
+      "devices": [
+        {
+          "device_id": "1677771201923017745",
+          "device_name": "DC2-R1",
+          "model": "ion 3102v",
+          "software_version": "6.3.6-b3",
+          "lan_interfaces": [
+            {
+              "interface_name": "1",
+              "interface_description": null,
+              "interface_label": "1",
+              "used_for": "private",
+              "ip": "192.168.202.4",
+              "network": "192.168.202.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1677771600871015645",
+              "name": "DC2-INET",
+              "circuit_label": "DC2-INET",
+              "wan_network": "OBS",
+              "ip": "192.168.222.1",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404412674011745"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094267747007245"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1678131321740020245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757595257553003645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066585007645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066998022145"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1762789922027002545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1762789923568005545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1680008768073003445"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "wan_if_id": "1677771601384017845",
+              "name": "DC2-MPLS",
+              "circuit_label": "DC2-MPLS",
+              "wan_network": "MPLS",
+              "ip": "192.168.192.1",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404390130010245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-MPLS",
+                  "status": "up",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1678131321545005945"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094267497010745"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757596288669005445"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "device_id": "1772537950367011845",
+          "device_name": "DC2-R2",
+          "model": "ion 3102v",
+          "software_version": "6.5.1-b5",
+          "lan_interfaces": [
+            {
+              "interface_name": "1",
+              "interface_description": null,
+              "interface_label": "1",
+              "used_for": "private",
+              "ip": "192.168.202.5",
+              "network": "192.168.202.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1677771600871015645",
+              "name": "DC2-INET",
+              "circuit_label": "DC2-INET",
+              "wan_network": "OBS",
+              "ip": "DHCP (Lease Pending)",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404412674011745"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094267747007245"
+                    },
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1678131321740020245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757595257553003645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066585007645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1737536066998022145"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1762789922027002545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1762789923568005545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "up",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1680008768073003445"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "wan_if_id": "1677771601384017845",
+              "name": "DC2-MPLS",
+              "circuit_label": "DC2-MPLS",
+              "wan_network": "MPLS",
+              "ip": "DHCP (Lease Pending)",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404390130010245"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-MPLS",
+                  "status": "up",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1678131321545005945"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": true,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094267497010745"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-MPLS",
+                  "status": "down",
+                  "type": "private-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": true,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": true,
+                      "id": "1757596288669005445"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site_id": "1678200679045000945",
+      "site_name": "DC3-AWS-US",
+      "site_role": "HUB",
+      "address": {
+        "city": null,
+        "country": "United Kingdom",
+        "street": null,
+        "post_code": null
+      },
+      "devices": [
+        {
+          "device_id": "1678200477053015445",
+          "device_name": "DC3-AWS",
+          "model": "ion 3102v",
+          "software_version": "6.5.1-b5",
+          "lan_interfaces": [
+            {
+              "interface_name": "2",
+              "interface_description": null,
+              "interface_label": "2",
+              "used_for": "private",
+              "ip": "172.16.2.243",
+              "network": "172.16.2.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1678200679657004945",
+              "name": "DC3-AWS-INET",
+              "circuit_label": "DC3-AWS-INET",
+              "wan_network": "AWS",
+              "ip": "172.16.1.84",
+              "network": null,
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1747404412927019645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678200777270013545"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678200777447014645"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1757595257769001945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET2",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1737536067124021045"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1737536066624017545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1762789922300019945"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1762789923806023545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1680008768271017145"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site_id": "1677832572693001445",
+      "site_name": "DC4-AZURE-FR",
+      "site_role": "HUB",
+      "address": {
+        "city": null,
+        "country": "France",
+        "street": null,
+        "post_code": null
+      },
+      "devices": [
+        {
+          "device_id": "1677832382537003945",
+          "device_name": "DC4-Azure-FR",
+          "model": "ion 7108v",
+          "software_version": "6.3.2-b5",
+          "lan_interfaces": [
+            {
+              "interface_name": "2",
+              "interface_description": "10.0.1.1",
+              "interface_label": "2 (10.0.1.1)",
+              "used_for": "private",
+              "ip": "10.0.1.5",
+              "network": "10.0.1.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1677832573300009645",
+              "name": "DC4-AZUR-INET",
+              "circuit_label": "DC4-AZUR-INET",
+              "wan_network": "OBS",
+              "ip": "10.0.3.10",
+              "network": "10.0.3.0/24",
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131320602008945"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094265980019145"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "init",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET2",
+                  "status": "init",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1680008767265017145"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site_id": "1677834914883008445",
+      "site_name": "DC5-AZURE-UK",
+      "site_role": "HUB",
+      "address": {
+        "city": null,
+        "country": "Ireland",
+        "street": null,
+        "post_code": null
+      },
+      "devices": [
+        {
+          "device_id": "1677834732030019445",
+          "device_name": "DC5-Azure-UK",
+          "model": "ion 7108v",
+          "software_version": "6.3.2-b5",
+          "lan_interfaces": [
+            {
+              "interface_name": "2",
+              "interface_description": "10.0.100.1",
+              "interface_label": "2 (10.0.100.1)",
+              "used_for": "private",
+              "ip": "10.0.100.4",
+              "network": "10.0.100.0/24"
+            }
+          ],
+          "wan_interfaces": [
+            {
+              "wan_if_id": "1677834915606021445",
+              "name": "DC5-UK-INET",
+              "circuit_label": "DC5-UK-INET",
+              "wan_network": "AZURE",
+              "ip": "10.0.3.10",
+              "network": "10.0.3.0/24",
+              "bw_down_kbps": null,
+              "bw_up_kbps": null,
+              "connections": [
+                {
+                  "peer_site_id": "1747402668277002545",
+                  "peer_site_name": "BR1",
+                  "peer_wan_interface": "BR1-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1677771821244000545",
+                  "peer_site_name": "BR2",
+                  "peer_wan_interface": "BR2-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678131321133020245"
+                    },
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1678094266393014545"
+                    }
+                  ]
+                },
+                {
+                  "peer_site_id": "1677773054497020145",
+                  "peer_site_name": "BR3",
+                  "peer_wan_interface": "BR3-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET",
+                  "status": "init",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1678133262499003945",
+                  "peer_site_name": "BR5",
+                  "peer_wan_interface": "BR5-INET2",
+                  "status": "init",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET1",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1762789322097022245",
+                  "peer_site_name": "BR8",
+                  "peer_wan_interface": "BR8-INET2",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": []
+                },
+                {
+                  "peer_site_id": "1680008216747011045",
+                  "peer_site_name": "BRGW7",
+                  "peer_wan_interface": "BRGW7-INET",
+                  "status": "down",
+                  "type": "public-anynet",
+                  "sub_type": "auto",
+                  "vpnlinks": [
+                    {
+                      "active": false,
+                      "state": "unknown",
+                      "link_up": false,
+                      "status": "down",
+                      "usable": false,
+                      "id": "1680008767471002645"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+============================================================
