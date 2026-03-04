@@ -876,8 +876,10 @@ def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
                     'status': 'UP' if is_up else 'DOWN', # Strict up/down mapping based requested logic
                     'usable': sdata.get('usable', False),
                     # Element IDs for precise mapping
-                    'ep1_element_id': sdata.get('ep1_element_id'),
-                    'ep2_element_id': sdata.get('ep2_element_id'),
+                    'ep1_element_id': sdata.get('ep1_element_id') or sdata.get('element1_id'),
+                    'ep2_element_id': sdata.get('ep2_element_id') or sdata.get('element2_id'),
+                    'ep1_site_id': sdata.get('ep1_site_id') or sdata.get('site1_id'),
+                    'ep2_site_id': sdata.get('ep2_site_id') or sdata.get('site2_id'),
                     # IPs for debugging - be extremely robust with keys
                     'source_ip': (sdata.get('local_ip') or sdata.get('source_ip') or 
                                  sdata.get('src_ip') or sdata.get('local_address') or 'N/A'),
@@ -941,8 +943,12 @@ def get_operational_ips(sdk, all_site_ids, debug=False):
                 eid = item.get('element_id')
                 name = item.get('name')
                 ips = item.get('ipv4_addresses')
-                if eid and name and ips:
-                    op_map[(eid, name)] = ips
+                if eid and name:
+                    op_map[(eid, name)] = {
+                        'ips': ips or [],
+                        'link_up': item.get('link_up'),
+                        'admin_up': item.get('admin_up')
+                    }
         else:
             if debug:
                 print(f" [TOPO] Warning: interfaces_status_query returned {resp.status_code}", file=sys.stderr)
@@ -1123,6 +1129,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                             iface_obj = ipaddress.IPv4Interface(f"{ip_raw}/{nm}")
 
                         intf_desc = get_interface_description(intf)
+                        op_status = op_ip_map.get((el_id, intf.get('name')), {})
                         lan_interfaces.append({
                             'interface_name': intf.get('name'),
                             'interface_description': intf_desc,
@@ -1130,6 +1137,8 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                             'used_for': used_for,
                             'ip': str(iface_obj.ip),
                             'network': str(iface_obj.network),
+                            'admin_up': intf.get('admin_up'),
+                            'link_up': op_status.get('link_up') if isinstance(op_status, dict) else None,
                         })
                     except Exception:
                         pass
@@ -1151,9 +1160,16 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 # WAN IP (from bound interface's ipv4_config)
                 wan_ip = None
                 wan_network = None
+                wan_admin_up = True
+                wan_link_up = True
                 for intf in interfaces:
                     swi_ids = intf.get('site_wan_interface_ids') or []
                     if wan_if_id in swi_ids:
+                        wan_admin_up = intf.get('admin_up', True)
+                        op_status = op_ip_map.get((el_id, intf.get('name')), {})
+                        if isinstance(op_status, dict) and op_status.get('link_up') is not None:
+                            wan_link_up = op_status.get('link_up')
+
                         ipv4_cfg = intf.get('ipv4_config') or {}
                         cfg_type = ipv4_cfg.get('type')
                         if cfg_type == 'static':
@@ -1173,7 +1189,8 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                                     pass
                         elif cfg_type == 'dhcp' or cfg_type == 'pppoe':
                             # Try resolving from operational status using name (since status IDs often mismatch config IDs)
-                            op_ips = op_ip_map.get((el_id, intf.get('name')), [])
+                            op_st = op_ip_map.get((el_id, intf.get('name')), {})
+                            op_ips = op_st.get('ips', []) if isinstance(op_st, dict) else op_st
                             if op_ips:
                                 wan_ip = op_ips[0].split('/')[0]
                             else:
@@ -1203,10 +1220,10 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                             vlink_peer_ip = vl.get('remote_ip') or vl.get('peer_address')
 
                         # Determine which endpoint is Local vs Peer based on Site ID
-                        ep1_site = vl.get('ep1_site_id')
-                        ep1_id = vl.get('ep1_element_id')
-                        ep2_site = vl.get('ep2_site_id')
-                        ep2_id = vl.get('ep2_element_id')
+                        ep1_site = vl.get('ep1_site_id') or vl.get('site1_id')
+                        ep1_id = vl.get('ep1_element_id') or vl.get('element1_id')
+                        ep2_site = vl.get('ep2_site_id') or vl.get('site2_id')
+                        ep2_id = vl.get('ep2_element_id') or vl.get('element2_id')
 
                         local_element_id = None
                         peer_element_id = None
@@ -1264,6 +1281,8 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                     'network': wan_network,
                     'bw_down_kbps': bw_down,
                     'bw_up_kbps': bw_up,
+                    'admin_up': wan_admin_up,
+                    'link_up': wan_link_up,
                     'connections': connections_out,
                 })
 

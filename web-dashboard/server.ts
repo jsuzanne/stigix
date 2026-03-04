@@ -2066,7 +2066,9 @@ const TOPO_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 app.get('/api/topology', authenticateToken, async (req, res) => {
     const now = Date.now();
-    if (topologyCache && (now - topologyCache.timestamp < TOPO_CACHE_TTL)) {
+    const force = req.query.force === 'true';
+
+    if (!force && topologyCache && (now - topologyCache.timestamp < TOPO_CACHE_TTL)) {
         dbg(`[TOPO] Returning cached topology (${Math.round((now - topologyCache.timestamp) / 1000)}s old)`);
         return res.json(topologyCache.data);
     }

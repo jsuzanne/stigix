@@ -114,7 +114,7 @@ const Port = ({ num, label, status = 'unknown' }: { num: string, label?: string,
                 {num}
             </div>
             {label && (
-                <div className="absolute top-[26px] whitespace-nowrap bg-card/80 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-mono font-bold text-text-muted uppercase tracking-tighter shadow-sm border border-border/50 max-w-[80px] overflow-hidden text-ellipsis text-center">
+                <div className="absolute top-[26px] whitespace-nowrap bg-card/80 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-mono font-bold text-text-muted uppercase tracking-tighter shadow-sm border border-border/50 text-center">
                     {label}
                 </div>
             )}
@@ -188,6 +188,13 @@ const SiteNode = ({ data }: any) => {
                                 type="source"
                                 position={isHub ? Position.Bottom : Position.Top}
                                 id={`circuit:${w.devName}:${w.name}`}
+                                className="!w-full !h-1 !opacity-0"
+                            />
+                            {/* Hidden target handle for direct site-to-site overlay edges. Terminate at BOTTOM for Hubs too. */}
+                            <Handle
+                                type="target"
+                                position={Position.Bottom}
+                                id={`target-circuit:${w.devName}:${w.name}`}
                                 className="!w-full !h-1 !opacity-0"
                             />
                         </div>
@@ -406,11 +413,13 @@ interface TopologyProps {
 
 export default function Topology({ token }: TopologyProps) {
     const [topology, setTopology] = useState<any>(null);
+    const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selectedObject, setSelectedObject] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [pathFilter, setPathFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN' | 'HUB'>('ALL');
+    const [logicalViewSiteId, setLogicalViewSiteId] = useState<string | null>(null);
 
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -425,6 +434,7 @@ export default function Topology({ token }: TopologyProps) {
             const data = await res.json();
             if (data.error) throw new Error(data.error);
             setTopology(data);
+            setLastRefresh(new Date());
             processTopology(data);
         } catch (e: any) {
             setError(e.message);
@@ -469,13 +479,12 @@ export default function Topology({ token }: TopologyProps) {
         const HUB_Y = -850;
         const CLOUD_Y = 0;
         const SPOKE_Y = 850;
-        const HORIZONTAL_GAP_PX = 150; // Roughly ~2cm on a screen, perfectly spaces edges
+        const HORIZONTAL_GAP_PX = 150;
 
         const getSiteWidth = (site: any) => {
             const numDevices = site.devices?.length || 1;
-            const devicesWidth = numDevices * 208 + Math.max(0, numDevices - 1) * 64; // w-52 + gap-16
-            // Minimum container width is 400px plus some breathing room
-            return Math.max(400, devicesWidth + 96); // p-12 padding (48x2)
+            const devicesWidth = numDevices * 208 + Math.max(0, numDevices - 1) * 64;
+            return Math.max(400, devicesWidth + 96);
         };
 
         const layoutRow = (sites: any[], yPos: number, role: string) => {
@@ -497,77 +506,128 @@ export default function Topology({ token }: TopologyProps) {
             });
         };
 
-        // 1. Layout Hub Nodes (Top)
+        // --- NODES ARE ALWAYS IN THE SAME POSITION ---
         layoutRow(hubs, HUB_Y, 'HUB');
 
-        // 2. Layout Cloud Nodes (Middle)
-        // Public/Internet Cloud (Left)
-        const INTERNET_X = -200;
-        if (publicWanNetworks.size > 0) {
-            newNodes.push({
-                id: `cloud:INTERNET`,
-                type: 'cloud',
-                position: { x: INTERNET_X, y: CLOUD_Y },
-                data: { name: 'INTERNET' },
+        // Clouds only visible in PHYSICAL map
+        if (!logicalViewSiteId) {
+            const INTERNET_X = -200;
+            if (publicWanNetworks.size > 0) {
+                newNodes.push({
+                    id: `cloud:INTERNET`,
+                    type: 'cloud',
+                    position: { x: INTERNET_X, y: CLOUD_Y },
+                    data: { name: 'INTERNET' },
+                });
+            }
+
+            const privates = Array.from(privateWanNetworks);
+            privates.forEach((cloudName, i) => {
+                const x = 200 + (i * 250);
+                newNodes.push({
+                    id: `cloud:${cloudName}`,
+                    type: 'cloud',
+                    position: { x, y: CLOUD_Y },
+                    data: { name: cloudName },
+                });
             });
         }
 
-        // Private/MPLS Clouds (Right)
-        const privates = Array.from(privateWanNetworks);
-        privates.forEach((cloudName, i) => {
-            const x = 200 + (i * 250);
-            newNodes.push({
-                id: `cloud:${cloudName}`,
-                type: 'cloud',
-                position: { x, y: CLOUD_Y },
-                data: { name: cloudName },
-            });
-        });
-
-        // 3. Layout Spoke Nodes (Bottom)
         layoutRow(spokes, SPOKE_Y, 'SPOKE');
 
-        // 4. Create Edges (Site to Cloud)
-        data.sites.forEach((site: any) => {
-            const isHub = hubs.includes(site);
+        // --- EDGES CHANGE BASED ON MODE ---
+        if (logicalViewSiteId) {
+            // mode LOGICAL: Draw direct site-to-site tunnels for the selected site
+            const centerSite = data.sites.find((s: any) => s.site_id === logicalViewSiteId);
+            if (centerSite) {
+                centerSite.devices?.forEach((d: any) => {
+                    d.wan_interfaces?.forEach((w: any) => {
+                        w.connections?.forEach((c: any, cIdx: number) => {
+                            // Phase 1 Simplification: Only show tunnels to Hub sites
+                            const peerSite = data.sites.find((s: any) => s.site_id === c.peer_site_id);
+                            const peerIsHub = peerSite && (
+                                peerSite.element_cluster_role === 'HUB' ||
+                                peerSite.site_name.includes('DC') ||
+                                peerSite.site_name.includes('BRGW') ||
+                                peerSite.site_name.toLowerCase().includes('azure') ||
+                                peerSite.site_name.toLowerCase().includes('aws')
+                            );
 
-            site.devices?.forEach((device: any) => {
-                device.wan_interfaces?.forEach((wan: any) => {
-                    if (wan.wan_network) {
-                        const isUp = wan.ip && !wan.ip.includes('Pending');
-                        const isPrivate = privateWanNetworks.has(wan.wan_network);
-                        const targetCloudId = isPrivate ? `cloud:${wan.wan_network}` : `cloud:INTERNET`;
+                            if (!peerIsHub) return;
 
-                        newEdges.push({
-                            id: `edge:${site.site_id}:${device.device_name}:${wan.name}`,
-                            type: 'site',
-                            source: `site:${site.site_id}`,
-                            target: targetCloudId,
-                            sourceHandle: `circuit:${device.device_name}:${wan.name}`,
-                            targetHandle: isHub ? 'target-top' : 'target-bottom',
-                            animated: isUp && !isPrivate,
-                            data: {
-                                ...wan,
-                                site_name: site.site_name,
-                                device_name: device.device_name,
-                                hideLabel: true // User requested clean external links
+                            const isUp = c.status === 'UP' || c.active || c.usable;
+                            let strokeColor = '#64748b';
+                            let strokeClass = '';
+                            let animated = false;
+
+                            if (c.active) {
+                                strokeColor = '#22c55e'; // Green
+                                animated = true;
+                            } else if (c.usable) {
+                                strokeColor = '#3b82f6'; // Blue
+                                strokeClass = '5,5'; // Dashed
+                            } else if (c.status === 'DOWN') {
+                                strokeColor = '#ef4444'; // Red
                             }
+
+                            newEdges.push({
+                                id: `logical-edge-${centerSite.site_id}-${c.peer_site_id}-${d.device_name}-${w.name}-${cIdx}`,
+                                source: `site:${centerSite.site_id}`,
+                                target: `site:${c.peer_site_id}`,
+                                sourceHandle: `circuit:${d.device_name}:${w.name}`,
+                                targetHandle: `target-circuit:${c.peer_device_name}:${c.peer_wan_interface}`,
+                                type: 'default',
+                                animated,
+                                style: { stroke: strokeColor, strokeWidth: c.active ? 3 : 2, strokeDasharray: strokeClass },
+                                data: { ...c, hideLabel: true }
+                            });
                         });
-                    }
+                    });
+                });
+            }
+        } else {
+            // mode PHYSICAL: Draw site-to-cloud edges
+            data.sites.forEach((site: any) => {
+                const isHub = hubs.includes(site);
+                site.devices?.forEach((device: any) => {
+                    device.wan_interfaces?.forEach((wan: any) => {
+                        if (wan.wan_network) {
+                            const isUp = wan.ip && !wan.ip.includes('Pending');
+                            const isPrivate = privateWanNetworks.has(wan.wan_network);
+                            const targetCloudId = isPrivate ? `cloud:${wan.wan_network}` : `cloud:INTERNET`;
+
+                            newEdges.push({
+                                id: `edge:${site.site_id}:${device.device_name}:${wan.name}`,
+                                type: 'site',
+                                source: `site:${site.site_id}`,
+                                target: targetCloudId,
+                                sourceHandle: `circuit:${device.device_name}:${wan.name}`,
+                                targetHandle: isHub ? 'target-top' : 'target-bottom',
+                                animated: isUp && !isPrivate,
+                                data: {
+                                    ...wan,
+                                    site_name: site.site_name,
+                                    device_name: device.device_name,
+                                    hideLabel: true
+                                }
+                            });
+                        }
+                    });
                 });
             });
-        });
+        }
 
         setNodes(newNodes);
         setEdges(newEdges);
     };
 
     useEffect(() => {
-        // Only fetch if we haven't loaded anything yet
         if (!topology) {
             fetchTopology();
+        } else {
+            processTopology(topology);
         }
-    }, []);
+    }, [topology, logicalViewSiteId]);
 
     const onNodeClick = useCallback((_: any, node: Node) => {
         setSelectedObject({ type: 'node', ...node.data });
@@ -588,6 +648,7 @@ export default function Topology({ token }: TopologyProps) {
             const data = await res.json();
             if (data.error) throw new Error(data.error);
             setTopology(data);
+            setLastRefresh(new Date());
             processTopology(data);
         } catch (e: any) {
             setError(e.message);
@@ -771,9 +832,27 @@ export default function Topology({ token }: TopologyProps) {
                                     <Share2 size={18} />
                                 </div>
                                 <div className="pr-4">
-                                    <h1 className="text-sm font-black text-text-primary uppercase tracking-tight">Site Topology</h1>
+                                    <h1 className="text-sm font-black text-text-primary uppercase tracking-tight flex items-center gap-2">
+                                        {logicalViewSiteId ? 'Logical Overlay View' : 'Site Topology'}
+                                    </h1>
                                     <p className="text-[10px] text-text-muted font-bold tracking-widest">{topology?.site_count || 0} SITES DETECTED</p>
+                                    {lastRefresh && (
+                                        <p className="text-[8px] text-blue-500/80 font-black tracking-widest uppercase mt-0.5 font-mono">
+                                            {lastRefresh.toLocaleString()}
+                                        </p>
+                                    )}
                                 </div>
+                                {logicalViewSiteId && (
+                                    <>
+                                        <div className="h-8 w-px bg-border mx-2" />
+                                        <button
+                                            onClick={() => setLogicalViewSiteId(null)}
+                                            className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all flex items-center gap-2"
+                                        >
+                                            <X size={12} /> Exit Overlay View
+                                        </button>
+                                    </>
+                                )}
                                 <div className="h-8 w-px bg-border mx-2" />
                                 <div className="relative">
                                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -822,18 +901,34 @@ export default function Topology({ token }: TopologyProps) {
                         <Panel position="bottom-left" className="font-sans">
                             <div className="bg-card/80 backdrop-blur-md border border-border p-4 rounded-2xl shadow-xl flex flex-col gap-2 min-w-[150px]">
                                 <div className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em] mb-1">Topology Legend</div>
-                                <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
-                                    <div className="w-2.5 h-2.5 rounded bg-blue-500/20 border border-blue-500/50" /> Hub / Data Center
-                                </div>
-                                <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
-                                    <div className="w-2.5 h-2.5 rounded bg-card border border-border" /> Spoke Site
-                                </div>
-                                <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
-                                    <div className="w-6 h-0.5 bg-blue-500" /> Public Internet
-                                </div>
-                                <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
-                                    <div className="w-6 h-0.5 bg-purple-500" /> Private WAN (MPLS)
-                                </div>
+                                {logicalViewSiteId ? (
+                                    <>
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
+                                            <div className="w-6 h-1 bg-green-500 rounded-full" /> Overlay: Active
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
+                                            <div className="w-6 h-1 bg-blue-500 border-t border-dashed rounded-full" /> Overlay: Backup
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
+                                            <div className="w-6 h-1 bg-red-500 rounded-full" /> Overlay: Down
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
+                                            <div className="w-2.5 h-2.5 rounded bg-blue-500/20 border border-blue-500/50" /> Hub / Data Center
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
+                                            <div className="w-2.5 h-2.5 rounded bg-card border border-border" /> Spoke Site
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
+                                            <div className="w-6 h-0.5 bg-blue-500" /> Public Internet
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-bold text-text-secondary">
+                                            <div className="w-6 h-0.5 bg-purple-500" /> Private WAN (MPLS)
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </Panel>
                     </ReactFlow>
@@ -868,6 +963,22 @@ export default function Topology({ token }: TopologyProps) {
                                 <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin scrollbar-thumb-border">
                                     {selectedObject.type === 'node' ? (
                                         <>
+                                            {/* Logical View Toggle */}
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => setLogicalViewSiteId(logicalViewSiteId === selectedObject.site_id ? null : selectedObject.site_id)}
+                                                    className={cn(
+                                                        "flex-1 py-3 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-2",
+                                                        logicalViewSiteId === selectedObject.site_id
+                                                            ? "bg-purple-500 hover:bg-purple-600 border border-purple-400 text-white shadow-purple-500/20"
+                                                            : "bg-blue-500 hover:bg-blue-600 border border-blue-400 text-white shadow-blue-500/20"
+                                                    )}
+                                                >
+                                                    <Network size={16} />
+                                                    {logicalViewSiteId === selectedObject.site_id ? 'Show Physical View' : `Show Overlay for ${selectedObject.name}`}
+                                                </button>
+                                            </div>
+
                                             <div className="space-y-3">
                                                 <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
                                                     <Network size={12} /> WAN Interfaces
