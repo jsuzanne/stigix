@@ -562,6 +562,7 @@ export default function Topology({ token }: TopologyProps) {
 
                             if (c.active) {
                                 strokeColor = '#22c55e'; // Green
+                                strokeClass = '2,6'; // Dotted
                                 animated = true;
                             } else if (c.usable) {
                                 strokeColor = '#3b82f6'; // Blue
@@ -578,7 +579,7 @@ export default function Topology({ token }: TopologyProps) {
                                 targetHandle: `target-circuit:${c.peer_device_name}:${c.peer_wan_interface}`,
                                 type: 'default',
                                 animated,
-                                style: { stroke: strokeColor, strokeWidth: c.active ? 3 : 2, strokeDasharray: strokeClass },
+                                style: { stroke: strokeColor, strokeWidth: c.active ? 5 : 2, strokeDasharray: strokeClass },
                                 data: { ...c, hideLabel: true }
                             });
                         });
