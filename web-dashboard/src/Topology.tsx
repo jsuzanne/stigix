@@ -903,28 +903,24 @@ export default function Topology({ token }: TopologyProps) {
                                                                 selectedObject.devices?.forEach((d: any) => {
                                                                     d.wan_interfaces?.forEach((w: any) => {
                                                                         w.connections?.forEach((c: any) => {
-                                                                            // Extract VPN links or default to a single path if none found
-                                                                            const vpns = c.vpnlinks?.length > 0 ? c.vpnlinks : [{ status: c.status === 'UP' ? 'up' : 'down', active: false, usable: false, state: 'unknown' }];
-                                                                            vpns.forEach((v: any) => {
-                                                                                paths.push({
-                                                                                    sourceSite: selectedObject.name,
-                                                                                    sourceDevice: d.device_name || 'ION',
-                                                                                    sourceCircuit: w.name || 'WAN',
-                                                                                    peerSite: c.peer_site_name,
-                                                                                    peerDevice: c.peer_device_name || 'ION',
-                                                                                    destCircuit: c.peer_wan_interface || 'WAN',
-                                                                                    network: w.wan_network || 'UNKNOWN',
-                                                                                    // Debugging fields
-                                                                                    vpnId: c.debug_vpn_id,
-                                                                                    srcIp: c.debug_source_ip,
-                                                                                    dstIp: c.debug_peer_ip,
+                                                                            paths.push({
+                                                                                sourceSite: selectedObject.name,
+                                                                                sourceDevice: c.source_device_name || 'ION',
+                                                                                sourceCircuit: w.name || 'WAN',
+                                                                                peerSite: c.peer_site_name,
+                                                                                peerDevice: c.peer_device_name || 'ION',
+                                                                                destCircuit: c.peer_wan_interface || 'WAN',
+                                                                                network: w.wan_network || 'UNKNOWN',
+                                                                                // Debugging fields
+                                                                                vpnId: c.debug_vpn_id,
+                                                                                srcIp: c.debug_source_ip,
+                                                                                dstIp: c.debug_peer_ip,
 
-                                                                                    // Core routing logic mapping from Prisma SD-WAN (now per-session)
-                                                                                    isRoutingActive: c.active,
-                                                                                    isRoutingUsable: c.usable,
-                                                                                    isLinkUp: c.link_up,
-                                                                                    vpState: c.vpState
-                                                                                });
+                                                                                // Core routing logic mapping from Prisma SD-WAN (now per-session)
+                                                                                isRoutingActive: c.active,
+                                                                                isRoutingUsable: c.usable,
+                                                                                isLinkUp: c.link_up,
+                                                                                vpState: c.vpState
                                                                             });
                                                                         });
                                                                     });

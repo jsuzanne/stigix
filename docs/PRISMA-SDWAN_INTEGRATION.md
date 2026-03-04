@@ -99,6 +99,23 @@ When configured, the application unlocks:
 
 ---
 
+## 🌐 Live VPN Topology Overlay
+
+### Overview
+In v1.2.1, the dashboard includes a real-time visualization of the SD-WAN VPN Topology directly in the Site Entity detail view. This allows you to see the health and status of every tunnel from the selected site to its peers.
+
+### Features
+- **Real-time Status**: Tunnels are categorized as `ACTIVE` (routing traffic), `BACKUP` (usable but idle), or `DOWN` (link failure).
+- **Intelligent Peer Mapping**: Automatically resolves peer device names (e.g., `DC1-R1`) by matching element IDs from the VPN status API.
+- **HUB Filtering**: A dedicated **HUB** toggle allows you to isolate tunnels connected to Data Centers (`DC`) or Branch Gateways (`BRGW`), excluding standard branch-to-branch mesh links.
+
+### Data Flow
+1. The UI calls the backend which spawns `getflow.py --build-topology`.
+2. The script queries `elements` and `vpnlinks/status` from the Prisma API.
+3. The results are unified into a list of overlay paths displayed in a high-precision vertical table.
+
+---
+
 ## 🛣️ Egress Path Enrichment
 
 ### Overview
@@ -215,8 +232,9 @@ pip3 install prisma-sase
 | Command | Description |
 |---|---|
 | `--list-sites` | List all SD-WAN sites in the tenant |
-| `--list-lan-interfaces` | List all LAN subnets across all branches |
+| `--list- lan-interfaces` | List all LAN subnets across all branches |
 | `--list-dc-lan-interfaces` | List only DC/Hub LAN interfaces (for targets) |
+| `--build-topology` | Perform a complete crawl of VPN status for a site (used by UI Topology) |
 | `--auto-detect` | Detect local site based on container IP |
 | `--site-name <name>` | Target a specific site by name |
 | `--udp-src-port <port>` | Filter flows by UDP source port |
