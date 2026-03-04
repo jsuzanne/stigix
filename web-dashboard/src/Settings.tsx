@@ -576,7 +576,7 @@ export default function Settings({ token }: { token: string }) {
         { id: 'probes', label: 'Synthetic Probes' },
         { id: 'distribution', label: 'Traffic Distribution' },
         { id: 'system', label: 'System Info' },
-        { id: 'maintenance', label: 'System Maintenance' },
+        { id: 'maintenance', label: 'System Maintenance', beta: true },
         { id: 'targets', label: 'Targets' },
     ];
 
@@ -600,13 +600,14 @@ export default function Settings({ token }: { token: string }) {
                                         key={tab.id}
                                         onClick={() => setActiveTab(tab.id as any)}
                                         className={cn(
-                                            "text-xs font-bold tracking-wider transition-colors pt-1",
+                                            "text-xs font-bold tracking-wider transition-colors pt-1 flex items-center gap-1.5",
                                             activeTab === tab.id
                                                 ? "text-purple-500 border-b-2 border-purple-500 pb-1"
                                                 : "text-text-muted hover:text-text-secondary"
                                         )}
                                     >
                                         {tab.label}
+                                        {tab.beta && <BetaBadge />}
                                     </button>
                                 ))}
                             </div>

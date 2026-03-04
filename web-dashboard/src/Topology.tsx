@@ -676,18 +676,42 @@ export default function Topology({ token }: TopologyProps) {
                     <p className="text-text-muted text-xs font-bold mt-2 tracking-widest animate-pulse">Querying Prisma SASE Systems...</p>
                 </div>
             ) : error ? (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-red-500/5 backdrop-blur-sm">
-                    <div className="p-4 bg-red-500/20 rounded-2xl text-red-500 mb-4 border border-red-500/30">
-                        <AlertCircle size={48} />
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-card/80 backdrop-blur-md p-8">
+                    <div className="max-w-xl w-full bg-card border border-border rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center">
+                        <div className="p-4 bg-blue-500/10 rounded-2xl text-blue-500 mb-6 border border-blue-500/20">
+                            <Network size={48} />
+                        </div>
+                        <h2 className="text-2xl font-black text-text-primary tracking-tight mb-2">Topology Not Configured</h2>
+                        <p className="text-text-muted text-sm mb-6 leading-relaxed">
+                            To enable the Live VPN Topology Overlay, you must provide Prisma SD-WAN API credentials. Ensure the following environment variables are set in your <code className="bg-card-secondary px-1.5 py-0.5 rounded text-blue-400 font-mono text-xs">docker-compose.yml</code> file:
+                        </p>
+
+                        <div className="w-full bg-card-secondary/50 border border-border rounded-xl p-4 mb-6 text-left">
+                            <div className="flex flex-col gap-2 font-mono text-[11px] text-text-secondary">
+                                <span className="text-text-muted"># Prisma SD-WAN API Credentials</span>
+                                <div><span className="text-purple-400">PRISMA_SDWAN_REGION</span><span className="text-text-muted">=us</span> <span className="text-text-muted/50 italic">// Optional (default: de)</span></div>
+                                <div><span className="text-purple-400">PRISMA_SDWAN_TSGID</span><span className="text-text-muted">=YOUR_TSGID</span></div>
+                                <div><span className="text-purple-400">PRISMA_SDWAN_CLIENT_ID</span><span className="text-text-muted">=YOUR_CLIENT_ID</span></div>
+                                <div><span className="text-purple-400">PRISMA_SDWAN_CLIENT_SECRET</span><span className="text-text-muted">=YOUR_CLIENT_SECRET</span></div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-amber-500 bg-amber-500/10 px-4 py-2.5 rounded-xl border border-amber-500/20 mb-8 w-full">
+                            <AlertCircle size={14} className="shrink-0" />
+                            <span>After updating the file, run <code className="bg-amber-500/20 px-1 py-0.5 rounded text-amber-400 font-mono border border-amber-500/30">docker compose up -d</code> to apply changes.</span>
+                        </div>
+
+                        <div className="text-[10px] text-text-muted italic opacity-70 mb-6">
+                            Technical Detail: {error}
+                        </div>
+
+                        <button
+                            onClick={fetchTopology}
+                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-xl border border-blue-500 font-black uppercase text-xs tracking-widest transition-all shadow-lg shadow-blue-500/20"
+                        >
+                            <RefreshCw size={14} /> Check Connection
+                        </button>
                     </div>
-                    <h2 className="text-xl font-black text-red-500 uppercase tracking-tighter">Connection Failed</h2>
-                    <p className="text-text-muted text-sm mt-2 max-w-md text-center font-medium italic">{error}</p>
-                    <button
-                        onClick={fetchTopology}
-                        className="mt-6 flex items-center gap-2 bg-card hover:bg-card-hover text-text-primary px-6 py-2.5 rounded-xl border border-border font-bold uppercase text-xs tracking-widest transition-all"
-                    >
-                        <RefreshCw size={14} /> Retry Sync
-                    </button>
                 </div>
             ) : (
                 <>
