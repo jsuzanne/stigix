@@ -853,8 +853,11 @@ def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
     all_vpns = set()
     for conns in deduped.values():
         for c in conns:
-            for vid in c.get('vpnlinks', []):
-                all_vpns.add(vid)
+            for vlink in c.get('vpnlinks', []):
+                # Topology API v3.x returns vpnlinks as a list of objects
+                vid = vlink.get('id') if isinstance(vlink, dict) else vlink
+                if vid:
+                    all_vpns.add(vid)
 
     vpn_cache = {}
     def fetch_vpnstatus(vid):
@@ -865,12 +868,21 @@ def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
                 sdata = res.json()
                 if debug_topo:
                     print(f"[DEBUG-TOPO] Raw VPN Link Status payload for {vid}:\n{json.dumps(sdata, indent=2)}", file=sys.stderr)
+                is_up = sdata.get('up', sdata.get('link_up', False))
                 return vid, {
                     'active': sdata.get('state') == 'active' or sdata.get('active', False),
                     'state': sdata.get('state', 'unknown'),
-                    'link_up': sdata.get('up', sdata.get('link_up', False)),
-                    'status': sdata.get('status', 'down'),
-                    'usable': sdata.get('usable', False)
+                    'link_up': is_up,
+                    'status': 'UP' if is_up else 'DOWN', # Strict up/down mapping based requested logic
+                    'usable': sdata.get('usable', False),
+                    # Element IDs for precise mapping
+                    'ep1_element_id': sdata.get('ep1_element_id'),
+                    'ep2_element_id': sdata.get('ep2_element_id'),
+                    # IPs for debugging - be extremely robust with keys
+                    'source_ip': (sdata.get('local_ip') or sdata.get('source_ip') or 
+                                 sdata.get('src_ip') or sdata.get('local_address') or 'N/A'),
+                    'peer_ip': (sdata.get('remote_ip') or sdata.get('peer_ip') or 
+                               sdata.get('dst_ip') or sdata.get('peer_address') or 'N/A')
                 }
         except Exception:
             pass
@@ -889,10 +901,16 @@ def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
     for conns in deduped.values():
         for c in conns:
             hydrated_vpnlinks = []
-            for vid in c.get('vpnlinks', []):
+            for vlink in c.get('vpnlinks', []):
+                vid = vlink.get('id') if isinstance(vlink, dict) else vlink
                 if vid in vpn_cache:
                     vdata = vpn_cache[vid].copy()
                     vdata['id'] = vid
+                    # Preserve topology-level fields if vlink was a dict
+                    if isinstance(vlink, dict):
+                        for k, v in vlink.items():
+                            if k not in vdata:
+                                vdata[k] = v
                     hydrated_vpnlinks.append(vdata)
             c['vpnlinks'] = hydrated_vpnlinks
 
@@ -976,12 +994,55 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
             print(f" [TOPO] Error fetching elements: {e}", file=sys.stderr)
         all_elements = []
 
-    # Group elements by site
     elements_by_site = {}
     for el in all_elements:
         sid = el.get('site_id')
         if sid:
             elements_by_site.setdefault(sid, []).append(el)
+
+    # --- Step 2.5: Build global mappings (parallel) ---
+    wan_to_el_name = {}
+    ip_to_el_name = {}  # Global map of IP address -> element name
+    id_to_el_name = {el.get('id'): el.get('name') or el.get('hostname') or 'ION' for el in all_elements if el.get('id')}
+    
+    if debug:
+        print(f" [TOPO] Building global WAN/IP-to-element mapping for all elements...", file=sys.stderr)
+    
+    def fetch_el_data(el):
+        eid = el.get('id')
+        sid = el.get('site_id')
+        ename = el.get('name') or el.get('hostname') or 'ION'
+        if not eid or not sid: return []
+        try:
+            resp = sdk.get.interfaces(site_id=sid, element_id=eid)
+            if resp.cgx_status:
+                data_list = []
+                for item in resp.cgx_content.get('items', []) or []:
+                    swi_ids = item.get('site_wan_interface_ids') or []
+                    ipv4_addr = item.get('ipv4_address') # Static IP
+                    # Also try to find IP from dynamic config if static is None
+                    if not ipv4_addr:
+                        ipv4_config = item.get('ipv4_config') or {}
+                        ipv4_addr = ipv4_config.get('ip')
+                    
+                    data_list.append((ename, swi_ids, ipv4_addr))
+                return data_list
+        except Exception:
+            pass
+        return []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
+        results = list(executor.map(fetch_el_data, all_elements))
+        for res_list in results:
+            for ename, swi_ids, ip_addr in res_list:
+                # Map WAN IDs
+                for swid in swi_ids:
+                    if swid:
+                        wan_to_el_name[swid] = ename
+                # Map IP Addresses (strip subnet)
+                if ip_addr:
+                    clean_ip = ip_addr.split('/')[0]
+                    ip_to_el_name[clean_ip] = ename
 
     # --- Step 3: All WAN interfaces per site ---
     wan_if_by_site = {}   # site_id -> list of waninterface objects
@@ -1126,17 +1187,73 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                         continue
                     peer_site_id = conn.get('peer_site_id')
                     peer_site_name = site_id_to_obj.get(peer_site_id, {}).get('name', peer_site_id)
-                    peer_wan_obj = wan_if_by_id.get(conn.get('peer_wan_if_id'), {})
-                    peer_wan_name = peer_wan_obj.get('name', conn.get('peer_wan_if_id', 'Unknown'))
-                    connections_out.append({
-                        'peer_site_id': peer_site_id,
-                        'peer_site_name': peer_site_name,
-                        'peer_wan_interface': peer_wan_name,
-                        'status': conn.get('status', 'UNKNOWN'),
-                        'type': conn.get('type', 'VPN'),
-                        'sub_type': conn.get('sub_type', ''),
-                        'vpnlinks': conn.get('vpnlinks', []),
-                    })
+                    peer_wan_id = conn.get('peer_wan_if_id')
+                    peer_wan_obj = wan_if_by_id.get(peer_wan_id, {})
+                    peer_wan_name = peer_wan_obj.get('name', peer_wan_id or 'Unknown')
+                    
+                    vlinks = conn.get('vpnlinks') or []
+                    # Baseline resolution via WAN ID
+                    peer_device_name = wan_to_el_name.get(peer_wan_id, 'Unknown')
+                    source_device_name = site_wan_ifs[0].get('element_name', 'Unknown') if site_wan_ifs else 'Unknown'
+                    
+                    for vl in vlinks:
+                        # Extract IP for debugging and fallback
+                        vlink_peer_ip = vl.get('peer_ip')
+                        if not vlink_peer_ip or vlink_peer_ip == 'N/A':
+                            vlink_peer_ip = vl.get('remote_ip') or vl.get('peer_address')
+
+                        # Determine which endpoint is Local vs Peer based on Site ID
+                        ep1_site = vl.get('ep1_site_id')
+                        ep1_id = vl.get('ep1_element_id')
+                        ep2_site = vl.get('ep2_site_id')
+                        ep2_id = vl.get('ep2_element_id')
+
+                        local_element_id = None
+                        peer_element_id = None
+
+                        if ep1_site == site_id:
+                            local_element_id = ep1_id
+                            peer_element_id = ep2_id
+                        elif ep2_site == site_id:
+                            local_element_id = ep2_id
+                            peer_element_id = ep1_id
+
+                        # 1. Resolve peer device using explicit Element ID first
+                        vlink_peer_device = peer_device_name 
+                        if peer_element_id and peer_element_id in id_to_el_name:
+                            vlink_peer_device = id_to_el_name[peer_element_id]
+                        else:
+                            # 2. Fallback to IP matching if Element ID is missing
+                            if vlink_peer_ip and vlink_peer_ip in ip_to_el_name:
+                                vlink_peer_device = ip_to_el_name[vlink_peer_ip]
+                                
+                        # 3. Resolve source device similarly for completeness
+                        vlink_source_device = source_device_name
+                        if local_element_id and local_element_id in id_to_el_name:
+                            vlink_source_device = id_to_el_name[local_element_id]
+                        
+                        # Apply strict UP/DOWN status from hydration logic
+                        strict_status = vl.get('status', 'UNKNOWN')
+                        
+                        connections_out.append({
+                            'peer_site_id': peer_site_id,
+                            'peer_site_name': peer_site_name,
+                            'peer_device_name': vlink_peer_device,
+                            'source_device_name': vlink_source_device, # Pass explicit source device mapping
+                            'peer_wan_interface': peer_wan_name,
+                            'status': strict_status,
+                            'type': conn.get('type', 'VPN'),
+                            'sub_type': conn.get('sub_type', ''),
+                            # For the UI state logic, pass vpnlink-level booleans
+                            'active': vl.get('active', False),
+                            'usable': vl.get('usable', False),
+                            'link_up': vl.get('link_up', False),
+                            'vpState': vl.get('state', 'unknown'),
+                            # Debugging fields requested by user
+                            'debug_vpn_id': vl.get('id', 'N/A'),
+                            'debug_source_ip': vl.get('source_ip') or vl.get('local_ip', 'N/A'),
+                            'debug_peer_ip': vlink_peer_ip or 'N/A',
+                        })
 
                 wan_interface_details.append({
                     'wan_if_id': wan_if_id,

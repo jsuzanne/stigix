@@ -382,8 +382,8 @@ const CloudNode = ({ data }: any) => {
                 <Cloud size={28} />
             </div>
             <div className="text-center">
-                <div className="text-sm font-black text-text-primary tracking-[0.1em] uppercase">{data.name}</div>
-                <div className="text-[10px] text-text-muted font-bold tracking-[0.3em] mt-1.5 opacity-40">NETWORK DOMAIN</div>
+                <div className="text-lg font-black text-text-primary tracking-tight uppercase leading-none">{data.wan_network}</div>
+                <div className="text-[10px] text-text-muted font-bold tracking-[0.2em] mt-2">UNDERLAY</div>
             </div>
         </div>
     );
@@ -410,6 +410,7 @@ export default function Topology({ token }: TopologyProps) {
     const [error, setError] = useState<string | null>(null);
     const [selectedObject, setSelectedObject] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [pathFilter, setPathFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN' | 'HUB'>('ALL');
 
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -815,7 +816,7 @@ export default function Topology({ token }: TopologyProps) {
 
                     {/* Site Details Side Panel */}
                     <div className={cn(
-                        "absolute top-4 bottom-4 right-4 w-96 bg-card/95 backdrop-blur-xl border border-border rounded-3xl shadow-2xl transition-all duration-500 z-50 overflow-hidden transform",
+                        "absolute top-4 bottom-4 right-4 w-[450px] bg-card/95 backdrop-blur-xl border border-border rounded-3xl shadow-2xl transition-all duration-500 z-50 overflow-hidden transform",
                         selectedObject ? "translate-x-0 opacity-100" : "translate-x-[calc(100%+20px)] opacity-0"
                     )}>
                         {selectedObject && (
@@ -855,7 +856,7 @@ export default function Topology({ token }: TopologyProps) {
                                                                     <div className="text-xs font-bold text-text-primary uppercase tracking-tight">
                                                                         {selectedObject.devices.length > 1 ? `${d.device_name}: ${w.name}` : w.name}
                                                                     </div>
-                                                                    <div className="text-[10px] text-text-muted font-mono mt-0.5">{w.ip || 'DHCP (Pending)'}</div>
+                                                                    <div className="text-[10px] text-text-secondary font-mono mt-0.5">{w.ip || 'DHCP (Pending)'}</div>
                                                                 </div>
                                                                 <div className={cn(
                                                                     "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter border",
@@ -872,89 +873,151 @@ export default function Topology({ token }: TopologyProps) {
                                             </div>
 
                                             <div className="space-y-3">
-                                                <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
-                                                    <Share2 size={12} /> Detailed Overlay Paths
+                                                <div className="flex justify-between items-center">
+                                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
+                                                        <Share2 size={12} /> Detailed Overlay Paths
+                                                    </div>
+                                                    <div className="flex gap-1">
+                                                        {(['ALL', 'ACTIVE', 'BACKUP', 'DOWN', 'HUB'] as const).map(f => (
+                                                            <button
+                                                                key={f}
+                                                                onClick={(e) => { e.stopPropagation(); setPathFilter(f); }}
+                                                                className={cn(
+                                                                    "px-1.5 py-0.5 rounded text-[8px] font-black tracking-tighter transition-all border",
+                                                                    pathFilter === f
+                                                                        ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20"
+                                                                        : "bg-card-secondary/40 border-border/40 text-text-muted hover:text-text-primary"
+                                                                )}
+                                                            >
+                                                                {f}
+                                                            </button>
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                                <div className="grid gap-3 text-[10px]">
-                                                    {(() => {
-                                                        // Aggregate all connections across all devices and interfaces into a rich format
-                                                        const paths: any[] = [];
-                                                        selectedObject.devices?.forEach((d: any) => {
-                                                            d.wan_interfaces?.forEach((w: any) => {
-                                                                w.connections?.forEach((c: any) => {
-                                                                    // Extract VPN links or default to a single path if none found
-                                                                    const vpns = c.vpnlinks?.length > 0 ? c.vpnlinks : [{ status: c.status === 'UP' ? 'up' : 'down', active: false, usable: false, state: 'unknown' }];
-                                                                    vpns.forEach((v: any) => {
-                                                                        paths.push({
-                                                                            sourceDevice: d.device_name || selectedObject.name,
-                                                                            peer: c.peer_site_name,
-                                                                            network: w.wan_network || 'UNKNOWN',
+                                                <div className="w-full overflow-x-auto pb-2">
+                                                    <table className="w-full text-left border-separate" style={{ borderSpacing: '0 4px' }}>
+                                                        <tbody className="text-[10px]">
+                                                            {(() => {
+                                                                // Aggregate all connections across all devices and interfaces into a rich format
+                                                                const paths: any[] = [];
+                                                                selectedObject.devices?.forEach((d: any) => {
+                                                                    d.wan_interfaces?.forEach((w: any) => {
+                                                                        w.connections?.forEach((c: any) => {
+                                                                            // Extract VPN links or default to a single path if none found
+                                                                            const vpns = c.vpnlinks?.length > 0 ? c.vpnlinks : [{ status: c.status === 'UP' ? 'up' : 'down', active: false, usable: false, state: 'unknown' }];
+                                                                            vpns.forEach((v: any) => {
+                                                                                paths.push({
+                                                                                    sourceSite: selectedObject.name,
+                                                                                    sourceDevice: d.device_name || 'ION',
+                                                                                    sourceCircuit: w.name || 'WAN',
+                                                                                    peerSite: c.peer_site_name,
+                                                                                    peerDevice: c.peer_device_name || 'ION',
+                                                                                    destCircuit: c.peer_wan_interface || 'WAN',
+                                                                                    network: w.wan_network || 'UNKNOWN',
+                                                                                    // Debugging fields
+                                                                                    vpnId: c.debug_vpn_id,
+                                                                                    srcIp: c.debug_source_ip,
+                                                                                    dstIp: c.debug_peer_ip,
 
-                                                                            // Core routing logic mapping from Prisma SD-WAN
-                                                                            isRoutingActive: v.active,
-                                                                            isRoutingUsable: v.usable,
-                                                                            isLinkUp: v.status === 'up' || v.link_up,
-                                                                            vpState: v.state
+                                                                                    // Core routing logic mapping from Prisma SD-WAN (now per-session)
+                                                                                    isRoutingActive: c.active,
+                                                                                    isRoutingUsable: c.usable,
+                                                                                    isLinkUp: c.link_up,
+                                                                                    vpState: c.vpState
+                                                                                });
+                                                                            });
                                                                         });
                                                                     });
                                                                 });
-                                                            });
-                                                        });
 
-                                                        if (paths.length === 0) {
-                                                            return <div className="text-text-muted italic opacity-50">No logical overlay peers discovered</div>;
-                                                        }
+                                                                // Apply Filter
+                                                                const filteredPaths = paths.filter(p => {
+                                                                    if (pathFilter === 'ALL') return true;
+                                                                    if (pathFilter === 'ACTIVE') return p.isRoutingActive;
+                                                                    if (pathFilter === 'BACKUP') return (p.isRoutingUsable || p.isLinkUp) && !p.isRoutingActive;
+                                                                    if (pathFilter === 'DOWN') return !p.isRoutingActive && !p.isRoutingUsable && !p.isLinkUp;
+                                                                    if (pathFilter === 'HUB') return p.peerSite.startsWith('DC') || p.peerSite.startsWith('BRGW') || p.peerDevice.startsWith('DC') || p.peerDevice.startsWith('BRGW');
+                                                                    return true;
+                                                                });
 
-                                                        // Sort paths by Peer Name, then by Activity
-                                                        paths.sort((a, b) => a.peer.localeCompare(b.peer));
+                                                                if (filteredPaths.length === 0) {
+                                                                    return <tr><td colSpan={5} className="text-text-muted italic opacity-50 py-4 text-center">No matching overlay peers discovered</td></tr>;
+                                                                }
 
-                                                        return paths.map((p: any, idx: number) => {
-                                                            // Logic for CSS styling based on state
-                                                            let lineStyle = "border-t-2 border-dashed border-text-muted/30"; // Default unknown
-                                                            let tagBg = "bg-card-secondary/20";
-                                                            let tagText = "text-text-muted";
-                                                            let label = "UNKNOWN";
+                                                                // Sort paths by Peer Name, then by Activity
+                                                                filteredPaths.sort((a, b) => a.peerSite.localeCompare(b.peerSite));
 
-                                                            if (p.isRoutingActive) {
-                                                                lineStyle = "border-t-2 border-solid border-green-500";
-                                                                tagBg = "bg-green-500/10";
-                                                                tagText = "text-green-500";
-                                                                label = "ACTIVE";
-                                                            } else if (p.isRoutingUsable || p.isLinkUp) {
-                                                                lineStyle = "border-t-2 border-dashed border-blue-500/70";
-                                                                tagBg = "bg-blue-500/10";
-                                                                tagText = "text-blue-500";
-                                                                label = "BACKUP";
-                                                            } else {
-                                                                lineStyle = "border-t-2 border-red-500";
-                                                                tagBg = "bg-red-500/10";
-                                                                tagText = "text-red-500";
-                                                                label = "DOWN";
-                                                            }
+                                                                return filteredPaths.map((p: any, idx: number) => {
+                                                                    // Logic for CSS styling based on state
+                                                                    let lineStyle = "border-t border-dashed border-text-muted/30"; // Default unknown
+                                                                    let tagBg = "bg-card-secondary/20";
+                                                                    let tagText = "text-text-muted";
+                                                                    let label = "UNKNOWN";
 
-                                                            return (
-                                                                <div key={idx} className="flex flex-col bg-card/60 rounded-xl border border-border/40 p-3 overflow-hidden group hover:border-border transition-colors">
-                                                                    <div className="flex justify-between items-center mb-2">
-                                                                        <span className="font-black text-text-primary tracking-tight text-xs">{p.sourceDevice}</span>
-                                                                        <span className="font-black text-text-primary tracking-tight text-xs">{p.peer}</span>
-                                                                    </div>
+                                                                    if (p.isRoutingActive) {
+                                                                        lineStyle = "border-t border-solid border-green-500/50";
+                                                                        tagBg = "bg-green-500/10";
+                                                                        tagText = "text-green-500";
+                                                                        label = "ACTIVE";
+                                                                    } else if (p.isRoutingUsable || p.isLinkUp) {
+                                                                        lineStyle = "border-t border-dashed border-blue-500/50";
+                                                                        tagBg = "bg-blue-500/10";
+                                                                        tagText = "text-blue-500";
+                                                                        label = "BACKUP";
+                                                                    } else {
+                                                                        lineStyle = "border-t border-solid border-red-500/50";
+                                                                        tagBg = "bg-red-500/10";
+                                                                        label = "DOWN";
+                                                                    }
 
-                                                                    {/* CSS Visual Line representing the tunnel state */}
-                                                                    <div className="relative flex items-center justify-center py-2">
-                                                                        <div className={`absolute w-full ${lineStyle}`}></div>
+                                                                    return (
+                                                                        <tr key={idx} className="group hover:bg-card/40 transition-colors">
 
-                                                                        {/* The Network Pill in the middle of the line */}
-                                                                        <div className="relative z-10 bg-card px-2 flex flex-col items-center gap-1">
-                                                                            <span className="text-[9px] font-black text-text-secondary uppercase tracking-[0.2em]">{p.network}</span>
-                                                                            <span className={cn("px-1.5 py-0.5 rounded-[4px] font-black text-[8px] tracking-wider", tagBg, tagText)}>
-                                                                                {label}
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        });
-                                                    })()}
+                                                                            {/* Source Site & Device */}
+                                                                            <td className="py-2 pl-3 rounded-l-lg border-y border-l bg-card/20 border-border/20 group-hover:border-border/60 text-right whitespace-nowrap min-w-[50px]">
+                                                                                <div className="flex items-center justify-end gap-1 text-[9px] font-mono">
+                                                                                    <span className="text-text-primary hidden lg:inline">{p.sourceSite}</span>
+                                                                                    <span className="text-text-muted/50 hidden lg:inline">:</span>
+                                                                                    <span className="text-blue-500 font-bold">{p.sourceDevice}</span>
+                                                                                </div>
+                                                                            </td>
+
+                                                                            {/* Source Circuit */}
+                                                                            <td className="py-2 px-1 border-y bg-card/20 border-border/20 group-hover:border-border/60 text-right whitespace-nowrap w-[1%]">
+                                                                                <span className="text-[9px] font-mono text-text-secondary bg-card-secondary/50 px-1 py-0.5 rounded uppercase tracking-tighter inline-block">{p.sourceCircuit}</span>
+                                                                            </td>
+
+                                                                            {/* Center Status Arrow */}
+                                                                            <td className="py-2 px-2 border-y bg-card/20 border-border/20 group-hover:border-border/60 text-center whitespace-nowrap w-[1%]">
+                                                                                <div className="flex justify-center items-center opacity-90 pb-[1px]">
+                                                                                    <span className="text-[9px] font-mono text-text-muted tracking-tighter hidden sm:inline">&lt;=</span>
+                                                                                    <span className={cn("px-1.5 py-[1px] mx-1 rounded font-black text-[8px] tracking-wider text-center border min-w-[45px]", tagBg, tagText, p.isRoutingActive ? "border-green-500/20" : p.isRoutingUsable ? "border-blue-500/20" : "border-red-500/20")}>
+                                                                                        {label}
+                                                                                    </span>
+                                                                                    <span className="text-[9px] font-mono text-text-muted tracking-tighter hidden sm:inline">=&gt;</span>
+                                                                                </div>
+                                                                            </td>
+
+                                                                            {/* Dest Circuit */}
+                                                                            <td className="py-2 px-1 border-y bg-card/20 border-border/20 group-hover:border-border/60 text-left whitespace-nowrap w-[1%]">
+                                                                                <span className="text-[9px] font-mono text-text-secondary bg-card-secondary/50 px-1 py-0.5 rounded uppercase tracking-tighter inline-block">{p.destCircuit}</span>
+                                                                            </td>
+
+                                                                            {/* Dest Device & Site */}
+                                                                            <td className="py-2 pr-3 rounded-r-lg border-y border-r bg-card/20 border-border/20 group-hover:border-border/60 text-left whitespace-nowrap min-w-[50px]">
+                                                                                <div className="flex items-center justify-start gap-1 text-[9px] font-mono">
+                                                                                    <span className="text-blue-500 font-bold">{p.peerDevice}</span>
+                                                                                    <span className="text-text-muted/50 hidden lg:inline">:</span>
+                                                                                    <span className="text-text-primary hidden lg:inline">{p.peerSite}</span>
+                                                                                </div>
+                                                                            </td>
+
+                                                                        </tr>
+                                                                    );
+                                                                });
+                                                            })()}
+                                                        </tbody>
+                                                    </table>
                                                 </div>
                                             </div>
 
@@ -986,7 +1049,7 @@ export default function Topology({ token }: TopologyProps) {
                                                 </div>
                                                 <div className="bg-card-secondary/30 p-4 rounded-xl border border-border space-y-1">
                                                     <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Interface IP</div>
-                                                    <div className="text-xs font-mono font-bold text-text-primary">{selectedObject.ip || 'DHCP'}</div>
+                                                    <div className="text-xs font-mono font-bold text-text-secondary">{selectedObject.ip || 'DHCP'}</div>
                                                 </div>
                                             </div>
 
