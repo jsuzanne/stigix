@@ -476,7 +476,7 @@ export default function Topology({ token }: TopologyProps) {
             });
         });
 
-        const HUB_Y = -400;
+        const HUB_Y = -500;
         const CLOUD_Y = 0;
         const SPOKE_Y = 400;
         const HORIZONTAL_GAP_PX = 100;
