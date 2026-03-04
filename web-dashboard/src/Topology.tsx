@@ -476,10 +476,10 @@ export default function Topology({ token }: TopologyProps) {
             });
         });
 
-        const HUB_Y = -850;
+        const HUB_Y = -450;
         const CLOUD_Y = 0;
-        const SPOKE_Y = 850;
-        const HORIZONTAL_GAP_PX = 150;
+        const SPOKE_Y = 450;
+        const HORIZONTAL_GAP_PX = 100;
 
         const getSiteWidth = (site: any) => {
             const numDevices = site.devices?.length || 1;
