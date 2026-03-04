@@ -1194,7 +1194,7 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                     vlinks = conn.get('vpnlinks') or []
                     # Baseline resolution via WAN ID
                     peer_device_name = wan_to_el_name.get(peer_wan_id, 'Unknown')
-                    source_device_name = site_wan_ifs[0].get('element_name', 'Unknown') if site_wan_ifs else 'Unknown'
+                    source_device_name = wan_to_el_name.get(wan_if_id, 'Unknown')
                     
                     for vl in vlinks:
                         # Extract IP for debugging and fallback
