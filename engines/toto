@@ -19610,3 +19610,728 @@ Prisma SD-WAN Flow Browser Query (Official SDK)
 [0m[1][0m [11:32:54] [CONNECTIVITY] Salesforce France status: connected (96/100)
 [0m[1][0m [11:32:54] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
 [0m[1][0m [11:32:56] [SEQ-4188] act-1769985787266 DENY-TRAFFIC vyoslandc1:eth0 | ip=10.1.1.1 | SUCCESS (15783ms)
+[0m[1][0m [11:33:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:33:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:33:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:33:49] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:33:49] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:33:49] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:33:49] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:33:49] [CONNECTIVITY] teams microsoft status: connected (95/100)
+[0m[1][0m [11:33:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:33:55] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[0][0m [2m11:33:57[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css[22m
+[0m[1][0m [11:34:00] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:34:10] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:34:10] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:34:10] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:34:10] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:34:10] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [11:34:10] [CONNECTIVITY] PayFit status: connected (96/100)
+[0m[1][0m [11:34:10] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [11:34:10] [CONNECTIVITY] Salesforce France status: connected (96/100)
+[0m[1][0m [11:34:10] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
+[0m[1][0m [11:34:10] [MAINTENANCE] Detected Version: v1.2.1-patch.140 (from /Users/jsuzanne/Github/stigix/web-dashboard/VERSION)
+[0m[1][0m [11:34:18] [SYSTEM] Running health check...
+[0m[1][0m [11:34:18] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:34:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:34:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:34:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:34:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:34:50] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:34:50] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:34:50] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:34:50] [CONNECTIVITY] Google Search status: connected (98/100)
+[0m[1][0m [11:34:50] [CONNECTIVITY] teams microsoft status: connected (94/100)
+[0m[1][0m [11:34:55] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:35:00] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:35:10] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:35:10] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:35:10] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:35:10] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:35:10] [CONNECTIVITY] OVHcloud France status: connected (97/100)
+[0m[1][0m [11:35:11] [CONNECTIVITY] PayFit status: connected (95/100)
+[0m[1][0m [11:35:11] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [11:35:11] [CONNECTIVITY] Salesforce France status: connected (97/100)
+[0m[1][0m [11:35:11] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
+[0m[1][0m [11:35:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:35:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:35:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:35:49] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:35:50] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:35:50] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:35:50] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:35:50] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:35:50] [CONNECTIVITY] teams microsoft status: connected (94/100)
+[0m[1][0m [11:35:55] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:36:00] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:36:10] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:36:10] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:36:10] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:36:10] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:36:10] [CONNECTIVITY] OVHcloud France status: connected (97/100)
+[0m[1][0m [11:36:40] [CONNECTIVITY] PayFit status: connected (96/100)
+[0m[1][0m [11:36:41] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [11:36:41] [CONNECTIVITY] Salesforce France status: connected (97/100)
+[0m[1][0m [11:36:41] [CONNECTIVITY] Google Workspace FR status: connected (99/100)
+[0m[1][0m [11:36:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:36:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:36:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:36:49] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:36:50] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:37:20] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:37:20] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:37:20] [CONNECTIVITY] Google Search status: connected (98/100)
+[0m[1][0m [11:37:20] [CONNECTIVITY] teams microsoft status: connected (94/100)
+[0m[1][0m [11:37:25] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:37:30] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:37:40] [VYOS] Full command: vyos_sdwan_ctl.py --host 192.168.122.254 --key SUPERSEC... clear-qos --iface eth3
+[0m[1][0m [11:37:40] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:37:40] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:37:40] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:37:40] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:37:40] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [11:37:41] [CONNECTIVITY] Google Workspace FR status: connected (97/100)
+[0m[1][0m [11:37:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:37:46] [SEQ-4189] act-1769985875264 CLEAR-QOS vyosrouter:eth3 |  | SUCCESS (6462ms)
+[0m[1][0m [11:37:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:37:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:37:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:38:10] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [11:38:10] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [11:38:11] [CONNECTIVITY] Salesforce France status: connected (97/100)
+[0m[1][0m [11:38:20] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:38:20] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:38:20] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:38:20] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:38:20] [CONNECTIVITY] teams microsoft status: connected (94/100)
+[0m[1][0m [11:38:25] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:38:30] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:38:40] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:38:40] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:38:40] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:38:40] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:38:40] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [11:38:41] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
+[0m[1][0m [11:38:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:38:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:38:49] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:38:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:39:10] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [11:39:11] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [11:39:11] [CONNECTIVITY] Salesforce France status: connected (97/100)
+[0m[1][0m [11:39:20] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:39:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:39:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:39:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:39:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:39:50] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:39:50] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:39:50] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:39:50] [CONNECTIVITY] teams microsoft status: connected (95/100)
+[0m[1][0m [11:39:55] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:40:00] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:40:10] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:40:10] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:40:10] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:40:10] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:40:10] [CONNECTIVITY] OVHcloud France status: connected (97/100)
+[0m[1][0m [11:40:11] [CONNECTIVITY] Salesforce France status: connected (68/100)
+[0m[1][0m [11:40:12] [CONNECTIVITY] Google Workspace FR status: connected (97/100)
+[0m[1][0m [11:40:20] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:40:30] [SYSTEM] Running health check...
+[0m[1][0m [11:40:30] [MAINTENANCE] Detected Version: v1.2.1-patch.140 (from /Users/jsuzanne/Github/stigix/web-dashboard/VERSION)
+[0m[1][0m [11:40:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:40:40] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [11:40:40] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [11:40:41] [CONNECTIVITY] Salesforce France status: connected (96/100)
+[0m[1][0m [11:40:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:40:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:40:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:40:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:41:00] [SYSTEM] Running health check...
+[0m[1][0m [11:41:00] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:41:00] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:41:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:41:00] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:41:00] [CONNECTIVITY] teams microsoft status: connected (94/100)
+[0m[1][0m [11:41:05] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:41:10] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:41:20] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:41:20] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:41:20] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:41:20] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:41:21] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [11:41:21] [CONNECTIVITY] Aircall status: connected (96/100)
+[0m[1][0m [11:41:21] [CONNECTIVITY] Google Workspace FR status: connected (99/100)
+[0m[1][0m [11:41:30] [SYSTEM] Running health check...
+[0m[1][0m [11:41:30] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:41:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:41:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:41:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:41:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:41:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:41:50] [CONNECTIVITY] PayFit status: connected (99/100)
+[0m[1][0m [11:41:51] [CONNECTIVITY] Salesforce France status: connected (96/100)
+[0m[1][0m [11:42:00] [SYSTEM] Running health check...
+[0m[1][0m [11:42:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:42:30] [SYSTEM] Running health check...
+[0m[1][0m [11:42:30] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:42:30] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:42:30] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:42:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:42:30] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:42:30] [CONNECTIVITY] teams microsoft status: connected (94/100)
+[0m[1][0m [11:42:35] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:42:40] [VYOS] Full command: vyos_sdwan_ctl.py --host 192.168.122.210 --key SUPERSEC... simple-unblock --ip 10.1.1.1
+[0m[1][0m [11:42:40] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:42:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:42:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:42:49] [VYOS] Router vyoslandc1 (192.168.122.210) is offline: Process exited with code 1
+[0m[1][0m [11:42:49] [VYOS] Router vyoslandc1 updated (Location: Vyos DC1)
+[0m[1][0m [11:42:49] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:42:50] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:42:50] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:42:50] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:42:50] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:42:51] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:42:51] [CONNECTIVITY] OVHcloud France status: connected (97/100)
+[0m[1][0m [11:42:51] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [11:42:51] [CONNECTIVITY] Aircall status: connected (96/100)
+[0m[1][0m [11:42:51] [CONNECTIVITY] Salesforce France status: connected (96/100)
+[0m[1][0m [11:42:51] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
+[0m[1][0m [11:42:57] [SEQ-4190] act-1770768845884 ALLOW-TRAFFIC vyoslandc1:eth0 | ip=10.1.1.1 | SUCCESS (17396ms)
+[0m[1][0m [11:43:00] [SYSTEM] Running health check...
+[0m[1][0m [11:43:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:43:01] [CONNECTIVITY] teams microsoft status: connected (74/100)
+[0m[1][0m [11:43:30] [SYSTEM] Running health check...
+[0m[1][0m [11:43:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:43:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:43:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:43:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:43:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:44:00] [SYSTEM] Running health check...
+[0m[1][0m [11:44:00] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:44:00] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:44:00] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:44:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:44:00] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:44:05] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:44:10] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:44:20] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:44:20] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:44:20] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:44:20] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:44:21] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [11:44:21] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [11:44:21] [CONNECTIVITY] Aircall status: connected (97/100)
+[0m[1][0m [11:44:21] [CONNECTIVITY] Salesforce France status: connected (97/100)
+[0m[1][0m [11:44:21] [CONNECTIVITY] Google Workspace FR status: connected (99/100)
+[0m[1][0m [11:44:30] [SYSTEM] Running health check...
+[0m[1][0m [11:44:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:44:30] [CONNECTIVITY] teams microsoft status: connected (96/100)
+[0m[1][0m [11:44:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:44:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:44:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:44:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:45:00] [SYSTEM] Running health check...
+[0m[1][0m [11:45:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:45:21] [CONNECTIVITY] OVHcloud France status: connected (97/100)
+[0m[1][0m [11:45:21] [CONNECTIVITY] Salesforce France status: connected (90/100)
+[0m[1][0m [11:45:21] [CONNECTIVITY] Google Workspace FR status: connected (99/100)
+[0m[1][0m [11:45:30] [SYSTEM] Running health check...
+[0m[1][0m [11:45:30] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:45:30] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:45:30] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:45:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:45:30] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:45:30] [CONNECTIVITY] teams microsoft status: connected (93/100)
+[0m[1][0m [11:45:35] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:45:40] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:45:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:45:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:45:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:45:49] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:45:50] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:45:50] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:45:50] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:45:50] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:45:51] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [11:45:51] [CONNECTIVITY] Aircall status: connected (98/100)
+[0m[1][0m [11:46:00] [SYSTEM] Running health check...
+[0m[1][0m [11:46:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:46:30] [SYSTEM] Running health check...
+[0m[1][0m [11:46:30] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:46:30] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:46:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:46:30] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:46:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:46:46] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:46:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:46:49] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:46:50] [CONNECTIVITY] OVHcloud France status: connected (97/100)
+[0m[1][0m [11:46:51] [CONNECTIVITY] Salesforce France status: connected (93/100)
+[0m[1][0m [11:46:51] [CONNECTIVITY] Google Workspace FR status: connected (99/100)
+[0m[1][0m [11:47:00] [SYSTEM] Running health check...
+[0m[1][0m [11:47:00] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:47:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:47:00] [CONNECTIVITY] teams microsoft status: connected (94/100)
+[0m[1][0m [11:47:05] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:47:10] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:47:20] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:47:20] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:47:20] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:47:20] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:47:21] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [11:47:21] [CONNECTIVITY] Aircall status: connected (97/100)
+[0m[1][0m [11:47:30] [SYSTEM] Running health check...
+[0m[1][0m [11:47:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:47:40] [VYOS] Full command: vyos_sdwan_ctl.py --host 192.168.122.254 --key SUPERSEC... set-qos --ms 250 --iface eth0
+[0m[1][0m [11:47:43] [SEQ-4191] act-1770768954040 SET-QOS vyosrouter:eth0 | latency=250 | SUCCESS (2947ms)
+[0m[1][0m [11:47:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:47:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:47:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:47:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:47:50] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [11:47:51] [CONNECTIVITY] Google Workspace FR status: connected (99/100)
+[0m[1][0m [11:48:00] [SYSTEM] Running health check...
+[0m[1][0m [11:48:00] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:48:00] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:48:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:48:00] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:48:10] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:48:21] [CONNECTIVITY] Salesforce France status: connected (97/100)
+[0m[1][0m [11:48:30] [SYSTEM] Running health check...
+[0m[1][0m [11:48:30] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:48:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:48:30] [CONNECTIVITY] teams microsoft status: connected (95/100)
+[0m[1][0m [11:48:35] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:48:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:48:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:48:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:48:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:48:50] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:48:50] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:48:50] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:48:50] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:48:51] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [11:48:51] [CONNECTIVITY] Aircall status: connected (98/100)
+[0m[1][0m [11:49:00] [SYSTEM] Running health check...
+[0m[1][0m [11:49:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:49:11] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:49:21] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [11:49:21] [CONNECTIVITY] Salesforce France status: connected (94/100)
+[0m[1][0m [11:49:21] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
+[0m[1][0m [11:49:30] [SYSTEM] Running health check...
+[0m[1][0m [11:49:30] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:49:30] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:49:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:49:30] [CONNECTIVITY] Google Search status: connected (98/100)
+[0m[1][0m [11:49:30] [CONNECTIVITY] teams microsoft status: connected (95/100)
+[0m[1][0m [11:49:35] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:49:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:49:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:49:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:49:49] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:49:50] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:49:50] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:49:50] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:49:50] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:49:51] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [11:49:51] [CONNECTIVITY] Aircall status: connected (98/100)
+[0m[1][0m [11:50:00] [SYSTEM] Running health check...
+[0m[1][0m [11:50:00] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:50:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:50:30] [SYSTEM] Running health check...
+[0m[1][0m [11:50:30] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:50:30] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:50:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:50:30] [CONNECTIVITY] Google Search status: connected (98/100)
+[0m[1][0m [11:50:40] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:50:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:50:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:50:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:50:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:50:50] [CONNECTIVITY] OVHcloud France status: connected (96/100)
+[0m[1][0m [11:50:51] [CONNECTIVITY] PayFit status: connected (95/100)
+[0m[1][0m [11:50:51] [CONNECTIVITY] Aircall status: connected (97/100)
+[0m[1][0m [11:50:51] [CONNECTIVITY] Salesforce France status: connected (96/100)
+[0m[1][0m [11:50:51] [CONNECTIVITY] Google Workspace FR status: connected (99/100)
+[0m[1][0m [11:51:00] [SYSTEM] Running health check...
+[0m[1][0m [11:51:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:51:00] [CONNECTIVITY] teams microsoft status: connected (96/100)
+[0m[1][0m [11:51:05] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:51:20] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:51:20] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:51:20] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:51:20] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:51:21] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [11:51:30] [SYSTEM] Running health check...
+[0m[1][0m [11:51:30] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:51:30] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:51:30] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:51:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:51:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:51:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:51:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:51:49] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:52:00] [SYSTEM] Running health check...
+[0m[1][0m [11:52:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:52:00] [CONNECTIVITY] Google Search status: connected (98/100)
+[0m[1][0m [11:52:00] [CONNECTIVITY] teams microsoft status: connected (95/100)
+[0m[1][0m [11:52:05] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:52:10] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:52:20] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:52:20] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:52:20] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:52:20] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:52:21] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [11:52:21] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [11:52:21] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [11:52:21] [CONNECTIVITY] Salesforce France status: connected (95/100)
+[0m[1][0m [11:52:21] [CONNECTIVITY] Google Workspace FR status: connected (99/100)
+[0m[1][0m [11:52:30] [SYSTEM] Running health check...
+[0m[1][0m [11:52:30] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:52:30] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:52:30] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:52:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:52:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:52:46] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:52:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:52:49] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:53:00] [SYSTEM] Running health check...
+[0m[1][0m [11:53:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:53:00] [CONNECTIVITY] Google Search status: connected (98/100)
+[0m[1][0m [11:53:30] [SYSTEM] Running health check...
+[0m[1][0m [11:53:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:53:30] [CONNECTIVITY] teams microsoft status: connected (94/100)
+[0m[1][0m [11:53:35] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:53:40] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:53:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:53:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:53:49] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:53:50] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:53:50] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:53:50] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:53:50] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:53:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:53:50] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [11:53:51] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [11:53:51] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [11:53:51] [CONNECTIVITY] Salesforce France status: connected (95/100)
+[0m[1][0m [11:53:51] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
+[0m[1][0m [11:54:00] [SYSTEM] Running health check...
+[0m[1][0m [11:54:00] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:54:00] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:54:00] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:54:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:54:00] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:54:30] [SYSTEM] Running health check...
+[0m[1][0m [11:54:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:54:30] [CONNECTIVITY] teams microsoft status: connected (94/100)
+[0m[1][0m [11:54:35] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:54:40] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:54:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:54:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:54:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:54:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:54:50] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:54:50] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:54:50] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:54:50] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:54:51] [CONNECTIVITY] OVHcloud France status: connected (97/100)
+[0m[1][0m [11:54:51] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [11:54:51] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [11:54:51] [CONNECTIVITY] Salesforce France status: connected (96/100)
+[0m[1][0m [11:54:51] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
+[0m[1][0m [11:55:00] [SYSTEM] Running health check...
+[0m[1][0m [11:55:00] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:55:00] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:55:00] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:55:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:55:00] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:55:30] [SYSTEM] Running health check...
+[0m[1][0m [11:55:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:55:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:55:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:55:49] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:55:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:56:00] [SYSTEM] Running health check...
+[0m[1][0m [11:56:00] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:56:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:56:00] [CONNECTIVITY] teams microsoft status: connected (94/100)
+[0m[1][0m [11:56:05] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:56:10] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:56:20] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:56:20] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:56:20] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:56:20] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:56:21] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [11:56:21] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [11:56:21] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [11:56:21] [CONNECTIVITY] Salesforce France status: connected (97/100)
+[0m[1][0m [11:56:21] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
+[0m[1][0m [11:56:30] [SYSTEM] Running health check...
+[0m[1][0m [11:56:30] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:56:30] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:56:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:56:30] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:56:32] [CONNECTIVITY] teams microsoft status: connected (72/100)
+[0m[1][0m [11:56:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:56:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:56:49] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:56:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:57:00] [SYSTEM] Running health check...
+[0m[1][0m [11:57:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:57:00] [CONNECTIVITY] teams microsoft status: connected (95/100)
+[0m[1][0m [11:57:30] [SYSTEM] Running health check...
+[0m[1][0m [11:57:30] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:57:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:57:35] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:57:40] [VYOS] Full command: vyos_sdwan_ctl.py --host 192.168.122.254 --key SUPERSEC... shut --iface eth3
+[0m[1][0m [11:57:40] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:57:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:57:46] [SEQ-4192] act-1769983563808 INTERFACE-DOWN vyosrouter:eth3 |  | SUCCESS (6137ms)
+[0m[1][0m [11:57:47] [VYOS] Router vyosrouter: Interface configuration changed
+[0m[1][0m [11:57:47] [VYOS] Router vyosrouter updated (Location: Vyosrouter underlay)
+[0m[1][0m [11:57:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:57:49] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:57:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:57:50] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:57:50] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:57:50] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:57:50] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:57:50] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [11:57:51] [CONNECTIVITY] PayFit status: connected (96/100)
+[0m[1][0m [11:57:51] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [11:57:51] [CONNECTIVITY] Salesforce France status: connected (96/100)
+[0m[1][0m [11:57:51] [CONNECTIVITY] Google Workspace FR status: connected (99/100)
+[0m[1][0m [11:58:00] [SYSTEM] Running health check...
+[0m[1][0m [11:58:00] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:58:00] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:58:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:58:00] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [11:58:00] [CONNECTIVITY] teams microsoft status: connected (94/100)
+[0m[1][0m [11:58:30] [SYSTEM] Running health check...
+[0m[1][0m [11:58:30] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [11:58:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:58:40] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [11:58:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:58:46] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:58:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:58:49] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [11:58:50] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [11:58:50] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [11:58:50] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [11:58:50] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [11:58:50] [CONNECTIVITY] OVHcloud France status: connected (97/100)
+[0m[1][0m [11:58:51] [CONNECTIVITY] PayFit status: connected (96/100)
+[0m[1][0m [11:58:51] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [11:58:51] [CONNECTIVITY] Salesforce France status: connected (83/100)
+[0m[1][0m [11:58:51] [CONNECTIVITY] Google Workspace FR status: connected (99/100)
+[0m[1][0m [11:59:00] [SYSTEM] Running health check...
+[0m[1][0m [11:59:00] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [11:59:00] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [11:59:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:59:00] [CONNECTIVITY] Google Search status: connected (98/100)
+[0m[1][0m [11:59:05] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [11:59:30] [SYSTEM] Running health check...
+[0m[1][0m [11:59:30] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [11:59:30] [CONNECTIVITY] teams microsoft status: connected (96/100)
+[0m[1][0m [11:59:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [11:59:47] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [11:59:48] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [11:59:50] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [12:00:00] [SYSTEM] Running health check...
+[0m[1][0m [12:00:00] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [12:00:00] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [12:00:00] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [12:00:05] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [12:00:10] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [12:00:20] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [12:00:20] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [12:00:20] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [12:00:20] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [12:00:21] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [12:00:21] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [12:00:21] [CONNECTIVITY] Aircall status: connected (20/100)
+[0m[1][0m [12:00:21] [CONNECTIVITY] Salesforce France status: connected (96/100)
+[0m[1][0m [12:00:21] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
+[0m[1][0m [12:00:31] [SYSTEM] Running health check...
+[0m[1][0m [12:00:31] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [12:00:31] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [12:00:31] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [12:00:31] [CONNECTIVITY] teams microsoft status: connected (96/100)
+[0m[1][0m [12:00:45] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [12:00:47] [VYOS] Discovering router at 192.168.122.210...
+^C[0m[0][0m [0mvite exited with code SIGINT[0m
+[0m[1][0m [0mtsx watch server.ts exited with code 130[0m
+⠙[1G[0K[1m[7m%[27m[1m[0m                                                                                                                                                                                                                  ]7;file://Mac-mini-de-jsuzanne.local/Users/jsuzanne/Github/stigix/web-dashboard[0m[27m[24m[Jjsuzanne@Mac-mini-de-jsuzanne web-dashboard % [K[?2004hnpm run dev[?2004l
+
+> web-dashboard@1.2.1-patch.133 dev
+> concurrently "vite" "tsx watch server.ts"
+
+[0m[0][0m 
+[0m[0][0m   [32m[1mVITE[22m v7.2.7[39m  [2mready in [0m[1m147[22m[2m[0m ms[22m
+[0m[0][0m 
+[0m[0][0m   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+[0m[0][0m [2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[0m[1][0m [12:02:22] [SYSTEM] 🚀 Project Root: /Users/jsuzanne/Github/stigix
+[0m[1][0m [12:02:22] [SYSTEM] 🐍 Python Path: /Users/jsuzanne/Github/stigix/engines/.venv/bin/python3
+[0m[1][0m [12:02:22] [SYSTEM] 🎯 Targets Manager initialized
+[0m[1][0m [12:02:22] [IOT] Manager initialized on interface: en0
+[0m[1][0m [12:02:22] [VYOS] Manager initialized. File: /Users/jsuzanne/Github/stigix/config/vyos-config.json
+[0m[1][0m [12:02:22] [VYOS-SCHED] Starting cyclic sequence "Wan Scenario" (60min cycle)
+[0m[1][0m [12:02:22] [VYOS] Full command: vyos_sdwan_ctl.py --host 192.168.122.254 --key SUPERSEC... shut --iface eth3
+[0m[1][0m [12:02:22] [INIT] Found existing interfaces.txt: en0
+[0m[1][0m [IOT-INIT] Syncing manager with primary interface: en0
+[0m[1][0m Using config: {
+[0m[1][0m   configDir: [32m'/Users/jsuzanne/Github/stigix/config'[39m,
+[0m[1][0m   logDir: [32m'/Users/jsuzanne/Github/stigix/logs'[39m
+[0m[1][0m }
+[0m[1][0m [DEM] Starting background connectivity monitoring (every 5m)
+[0m[1][0m ⚠️  WARNING: "ping" command not found. ICMP tests will fail.
+[0m[1][0m ⚠️  WARNING: "nc" (netcat) command not found. TCP port tests will fail.
+[0m[1][0m 🚀 SD-WAN Traffic Generator v1.2.1-patch.140
+[0m[1][0m [LOG_CLEANUP] Next cleanup scheduled for 2026-03-05T01:00:00.000Z
+[0m[1][0m Backend running at http://localhost:8080
+[0m[1][0m [12:02:25] [SEQ-4193] act-1769983563808 INTERFACE-DOWN vyosrouter:eth3 |  | SUCCESS (2269ms)
+[0m[1][0m [12:02:27] [SYSTEM] Running health check...
+[0m[1][0m [12:02:27] [MAINTENANCE] Detected Version: v1.2.1-patch.140 (from /Users/jsuzanne/Github/stigix/web-dashboard/VERSION)
+[0m[1][0m [SECURITY] Next daily stats reset scheduled in 11.96 hours
+[0m[1][0m [12:02:28] [SYSTEM] Health check complete: DEGRADED
+[0m[1][0m [12:02:32] [TOPO] Spawn Env Check - ID: false, Secret: false, TSG: false
+[0m[1][0m [12:02:32] [TOPO] Spawning /Users/jsuzanne/Github/stigix/engines/.venv/bin/python3 /Users/jsuzanne/Github/stigix/engines/getflow.py --build-topology --json
+[0m[1][0m [12:03:02] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [12:03:02] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [12:03:02] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [12:03:02] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [12:03:02] [CONNECTIVITY] teams microsoft status: connected (96/100)
+[0m[1][0m [12:03:07] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [12:03:12] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [12:03:22] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [12:03:23] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [12:03:23] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [12:03:23] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [12:03:23] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [12:03:23] [CONNECTIVITY] PayFit status: connected (96/100)
+[0m[1][0m [12:03:23] [CONNECTIVITY] Aircall status: connected (98/100)
+[0m[1][0m [12:03:23] [CONNECTIVITY] Salesforce France status: connected (95/100)
+[0m[1][0m [12:03:23] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
+[0m[1][0m [12:03:27] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [12:03:29] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [12:03:31] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [12:03:33] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [12:04:02] [CONNECTIVITY] teams microsoft status: connected (94/100)
+[0m[1][0m [12:04:07] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [12:04:12] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [12:04:23] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [12:04:23] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [12:04:23] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [12:04:23] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [12:04:23] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [12:04:23] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [12:04:23] [CONNECTIVITY] Aircall status: connected (98/100)
+[0m[1][0m [12:04:23] [CONNECTIVITY] Salesforce France status: connected (96/100)
+[0m[1][0m [12:04:27] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [12:04:29] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [12:04:31] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [12:04:32] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [12:04:32] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [12:04:32] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [12:04:32] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [12:04:33] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [12:04:53] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
+[0m[1][0m [12:05:02] [CONNECTIVITY] teams microsoft status: connected (93/100)
+[0m[1][0m [12:05:07] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [12:05:13] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [12:05:23] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [12:05:23] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [12:05:23] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [12:05:23] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [12:05:23] [CONNECTIVITY] OVHcloud France status: connected (97/100)
+[0m[1][0m [12:05:23] [CONNECTIVITY] PayFit status: connected (96/100)
+[0m[1][0m [12:05:23] [CONNECTIVITY] Aircall status: connected (96/100)
+[0m[1][0m [12:05:23] [CONNECTIVITY] Salesforce France status: connected (96/100)
+[0m[1][0m [12:05:27] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [12:05:30] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [12:05:31] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [12:05:32] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [12:05:32] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [12:05:32] [CONNECTIVITY] Google Search status: connected (87/100)
+[0m[1][0m [12:05:33] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [12:05:53] [CONNECTIVITY] Google Workspace FR status: connected (99/100)
+[0m[1][0m [12:06:02] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [12:06:02] [CONNECTIVITY] teams microsoft status: connected (93/100)
+[0m[1][0m [12:06:08] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [12:06:13] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [12:06:23] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [12:06:23] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [12:06:23] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [12:06:23] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [12:06:27] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [12:06:29] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [12:06:30] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [12:06:32] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [12:06:53] [CONNECTIVITY] OVHcloud France status: connected (97/100)
+[0m[1][0m [12:06:53] [CONNECTIVITY] PayFit status: connected (96/100)
+[0m[1][0m [12:06:53] [CONNECTIVITY] Aircall status: connected (96/100)
+[0m[1][0m [12:06:53] [CONNECTIVITY] Salesforce France status: connected (96/100)
+[0m[1][0m [12:07:02] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [12:07:02] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [12:07:02] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [12:07:02] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [12:07:03] [CONNECTIVITY] teams microsoft status: connected (79/100)
+[0m[1][0m [12:07:08] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [12:07:13] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [12:07:23] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [12:07:23] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [12:07:23] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [12:07:23] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [12:07:23] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
+[0m[1][0m [12:07:28] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [12:07:29] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [12:07:31] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [12:07:32] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [12:08:03] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [12:08:03] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [12:08:03] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [12:08:03] [CONNECTIVITY] Google Search status: connected (98/100)
+[0m[1][0m [12:08:03] [CONNECTIVITY] teams microsoft status: connected (95/100)
+[0m[1][0m [12:08:08] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [12:08:13] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [12:08:23] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [12:08:23] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [12:08:23] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [12:08:23] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [12:08:23] [CONNECTIVITY] OVHcloud France status: connected (98/100)
+[0m[1][0m [12:08:23] [CONNECTIVITY] PayFit status: connected (97/100)
+[0m[1][0m [12:08:23] [CONNECTIVITY] Aircall status: connected (97/100)
+[0m[1][0m [12:08:23] [CONNECTIVITY] Salesforce France status: connected (96/100)
+[0m[1][0m [12:08:23] [CONNECTIVITY] Google Workspace FR status: connected (99/100)
+[0m[1][0m [12:08:28] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [12:08:29] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [12:08:31] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [12:08:32] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [12:09:28] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [12:09:29] [VYOS] Discovering router at 192.168.122.210...
+[0m[1][0m [12:09:30] [VYOS] Discovering router at 192.168.122.211...
+[0m[1][0m [12:09:32] [VYOS] Discovering router at 192.168.122.64...
+[0m[1][0m [12:09:44] [CONNECTIVITY] Cloudflare ICMP status: failed (0/100)
+[0m[1][0m [12:09:44] [CONNECTIVITY] Google ICMP status: failed (0/100)
+[0m[1][0m [12:09:44] [CONNECTIVITY] Google DNS Res status: connected (100/100)
+[0m[1][0m [12:09:44] [CONNECTIVITY] Google Search status: connected (97/100)
+[0m[1][0m [12:09:44] [CONNECTIVITY] teams microsoft status: connected (94/100)
+[0m[1][0m [12:09:49] [CONNECTIVITY] Slow App DC1 status: failed (0/100)
+[0m[1][0m [12:09:54] [CONNECTIVITY] Slow App DC1 TEST status: failed (0/100)
+[0m[1][0m [12:10:04] [CONNECTIVITY] Slow App DC1 v2 status: failed (0/100)
+[0m[1][0m [12:10:04] [CONNECTIVITY] DC1 status: failed (0/100)
+[0m[1][0m [12:10:04] [CONNECTIVITY] ash.speedtest status: failed (0/100)
+[0m[1][0m [12:10:04] [CONNECTIVITY] 142.132.193.157 status: failed (0/100)
+[0m[1][0m [12:10:07] [CONNECTIVITY] OVHcloud France status: connected (69/100)
+[0m[1][0m [12:10:07] [CONNECTIVITY] PayFit status: connected (95/100)
+[0m[1][0m [12:10:07] [CONNECTIVITY] Aircall status: connected (97/100)
+[0m[1][0m [12:10:07] [CONNECTIVITY] Salesforce France status: connected (95/100)
+[0m[1][0m [12:10:07] [CONNECTIVITY] Google Workspace FR status: connected (98/100)
+[0m[1][0m [12:10:28] [VYOS] Discovering router at 192.168.122.254...
+[0m[1][0m [12:10:29] [VYOS] Discovering router at 192.168.122.210...

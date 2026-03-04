@@ -75,6 +75,7 @@ This project is my way to turn all that lab and demo experience into an open-sou
 ### 📊 Monitoring & Analytics
 - **Real-time Logs** - Live log streaming with WebSocket updates
 - **Statistics Dashboard** - Success/failure rates, latency metrics, bandwidth tracking
+- **Live VPN Topology Overlay** - Real-time visualization of SD-WAN tunnels with path status (Active/Backup/Down) and HUB-specific filtering.
 - **Persistent Logging** - JSONL storage with 7-day retention and auto-rotation
 - **Search & Filter** - Find specific tests quickly with powerful search
 - **Export Capabilities** - Download results in JSON, CSV, or JSONL format
@@ -104,6 +105,7 @@ The project is evolving rapidly with new features and refinements added in every
 - **Favicon System**: Automated discovery and caching of SaaS application icons with intelligent fallback UI for enhanced dashboard visibility. 🌐✨
 - **Speedtest (XFR)**: High-performance throughput and latency validation with real-time telemetry and searchable history.
 - **IoT Security Testing**: Bad behavior simulation for IoT devices (DNS Flood, C2 Beacon, Port Scan).
+- **Live VPN Topology**: Real-time visualization of SD-WAN overlay paths with intelligent peer device mapping and HUB filtering.
 - **Site Discovery**: Automatic discovery of Prisma SD-WAN LAN interfaces for path validation.
 - **Traffic Volume History**: Persistent metrics storage and historical visualization in the dashboard.
 

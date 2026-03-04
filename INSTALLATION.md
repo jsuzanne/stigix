@@ -165,7 +165,7 @@ environment:
 
 ### 6. Prisma SD-WAN Integration
 
-To enable site auto-detection and flow validation, add your Prisma credentials to `docker-compose.yml` or your `.env` file:
+To enable **Site Auto-Detection**, **Flow Validation**, and the **Live VPN Topology Overlay**, add your Prisma credentials to `docker-compose.yml` or your `.env` file:
 
 ```yaml
 environment:
