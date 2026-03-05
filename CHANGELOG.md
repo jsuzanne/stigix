@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [v1.2.1-patch.150] - 2026-03-05
+### Added
+- **Topology Overlay**: Implemented **Bidirectional Hub Tunnels**. Selecting a Hub or DC in Logical Overlay now displays all incoming tunnels from all branches, providing a complete "Hub-Spoke" visibility. 🛣️
+- **Infrastructure**: Unified version synchronization across all root and sub-component `VERSION` files, `package.json`, and security documentation. 🏗️
+### Fixed
+- **Topology Performance**: Resolved infinite re-render loops and viewport centering issues. Transitioned to `ReactFlowProvider` with a debounced imperative `fitView` for perfect mathematical centering on every load. 📐
+- **Layout**: Optimized vertical spacing (`HUB_Y: -700`, `SPOKE_Y: 700`) and centered all node origins for a cleaner, balanced aesthetic. ✨
+- **UX**: Moved search/filter widget to a compact, vertical middle-left panel to prevent overlap with Hub nodes. ⚙️
+
+## [v1.2.1-patch.140] - 2026-03-04
+### Added
+- **Prisma Access (SSE) View**: Initial release of the "PRISMA ACCESS" logical overlay. 📡
+  - **Logic**: Dynamic "POP" cloud node generation based on real-time Prisma service endpoints.
+  - **Visuals**: Status-aware bespoke edges (Green/Solid for Up, Blue/Dotted for Standby, Red for Down) connecting sites directly to Prisma POPs.
+  - **UI**: Added "[SITE] OVERLAY" button in site details for on-demand SD-WAN logical tunnel inspection. 🔍
+### Fixed
+- **Backend**: Implemented robust fallback for `prisma_sase` SDK missing `servicelinks` methods using raw `rest_call` logic. 🛡️
+
 ## [v1.2.1-patch.130] - 2026-03-02
 ### Fixed
 - **Voice UI**: Disabled "Start Voice Simulation" button when no target probes are defined, preventing engine start with empty configuration. 🛡️
