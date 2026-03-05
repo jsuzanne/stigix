@@ -82,7 +82,7 @@ services:
 
   # Voice Echo Server (Local target for testing)
   voice-echo:
-    image: jsuzanne/sdwan-voice-echo:latest
+    image: jsuzanne/sdwan-voice-echo:stable
     container_name: sdwan-voice-echo
     network_mode: host
     restart: unless-stopped
@@ -94,7 +94,7 @@ services:
 
   # XFR Speedtest Target (Local target for testing)
   xfr-target:
-    image: jsuzanne/xfr-target:latest
+    image: jsuzanne/xfr-target:stable
     container_name: xfr-target
     network_mode: host
     restart: unless-stopped

@@ -49,11 +49,42 @@ graph LR
 
 ---
 
+## 📦 Container 1: `sdwan-web-ui` — Frontend + Backend + All Active Tests
+
+| Attribute | Value |
+|-----------|-------|
+| **Image** | `jsuzanne/sdwan-web-ui:stable` |
+| **Language** | Node.js / TypeScript backend (`server.ts`) + React 19 frontend (compiled static files) |
+| **Exposed Port** | **8080** (HTTP — dashboard UI + all API endpoints) |
+| **Network Mode** | Host |
+| **Dashboard Menu** | **All menus** — this container IS the dashboard |
+
+> [!IMPORTANT]
+> This **single container** runs TWO things simultaneously:
+> - **Frontend**: The React SPA (pre-compiled to static files, served by Express)
+> - **Backend**: The Node.js/Express server (`server.ts`) that handles all logic
+>
+> The React frontend **never** spawns scripts directly. It only calls the backend via HTTP API.  
+> It is the **backend** (`server.ts`) that spawns Python processes, issues SSH commands, and executes all measurements.
+
+**Request chain for any active test:**
+```
+🖥️  Browser (React frontend)
+      ↓  HTTP API call (e.g., POST /api/convergence/start)
+⚙️  Node.js backend — server.ts (inside same sdwan-web-ui container)
+      ↓  child_process.spawn()
+🐍  Python engine (e.g., convergence_orchestrator.py)
+      ↓  UDP/TCP traffic
+🎯  Target container (sdwan-voice-echo / xfr-target)
+```
+
+---
+
 ## 📦 Container 2: `sdwan-traffic-gen` — Background Traffic Generator
 
 | Attribute | Value |
 |-----------|-------|
-| **Image** | `jsuzanne/sdwan-traffic-gen:latest` |
+| **Image** | `jsuzanne/sdwan-traffic-gen:stable` |
 | **Language** | Bash (`traffic-generator.sh`) |
 | **Network Mode** | Host (uses physical interfaces directly) |
 | **Dashboard Menu** | **Traffic Distribution** (app weights & enable/disable) · **Statistics** (charts & per-app stats) |
@@ -93,36 +124,6 @@ User clicks "Start Traffic" in the header or Traffic Distribution tab
 - **Home / Traffic Distribution tab**: Start/stop, adjust app weights per category
 - **Statistics tab**: Live charts of request rates, per-app breakdown, success/error rates
 
----
-
-## 📦 Container 1: `sdwan-web-ui` — Frontend + Backend + All Active Tests
-
-| Attribute | Value |
-|-----------|-------|
-| **Image** | `jsuzanne/sdwan-web-ui:latest` |
-| **Language** | Node.js / TypeScript backend (`server.ts`) + React 19 frontend (compiled static files) |
-| **Exposed Port** | **8080** (HTTP — dashboard UI + all API endpoints) |
-| **Network Mode** | Host |
-| **Dashboard Menu** | **All menus** — this container IS the dashboard |
-
-> [!IMPORTANT]
-> This **single container** runs TWO things simultaneously:
-> - **Frontend**: The React SPA (pre-compiled to static files, served by Express)
-> - **Backend**: The Node.js/Express server (`server.ts`) that handles all logic
->
-> The React frontend **never** spawns scripts directly. It only calls the backend via HTTP API.  
-> It is the **backend** (`server.ts`) that spawns Python processes, issues SSH commands, and executes all measurements.
-
-**Request chain for any active test:**
-```
-🖥️  Browser (React frontend)
-      ↓  HTTP API call (e.g., POST /api/convergence/start)
-⚙️  Node.js backend — server.ts (inside same sdwan-web-ui container)
-      ↓  child_process.spawn()
-🐍  Python engine (e.g., convergence_orchestrator.py)
-      ↓  UDP/TCP traffic
-🎯  Target container (sdwan-voice-echo / xfr-target)
-```
 
 ### Sub-features and their traffic flows
 
@@ -364,7 +365,7 @@ User enters router IP, SSH username/key, clicks "Test Connectivity"
 
 | Attribute | Value |
 |-----------|-------|
-| **Image** | `jsuzanne/sdwan-voice-echo:latest` |
+| **Image** | `jsuzanne/sdwan-voice-echo:stable` |
 | **Language** | Python |
 | **Network Mode** | Host |
 
@@ -395,7 +396,7 @@ User enters router IP, SSH username/key, clicks "Test Connectivity"
 
 | Attribute | Value |
 |-----------|-------|
-| **Image** | `jsuzanne/xfr-target:latest` |
+| **Image** | `jsuzanne/xfr-target:stable` |
 | **Language** | Go |
 | **Network Mode** | Host |
 | **Port** | **9000** (TCP / UDP / QUIC) |

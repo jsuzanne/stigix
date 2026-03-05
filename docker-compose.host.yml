@@ -111,7 +111,7 @@ services:
     profiles: [ "demo" ] # Optional: only starts with --profile demo
 
   xfr-target:
-    image: jsuzanne/xfr-target:latest
+    image: jsuzanne/xfr-target:stable
     container_name: xfr-target
     network_mode: "host"
     restart: unless-stopped

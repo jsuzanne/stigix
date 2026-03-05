@@ -26,7 +26,7 @@ services:
         max-file: "3"
 
   xfr-target:
-    image: jsuzanne/xfr-target:latest
+    image: jsuzanne/xfr-target:stable
     container_name: xfr-target
     network_mode: "host"
     restart: unless-stopped
