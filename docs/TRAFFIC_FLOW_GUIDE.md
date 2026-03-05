@@ -98,17 +98,34 @@ sdwan-web-ui
 
 ---
 
-## 📦 Container 2: `sdwan-web-ui` — Control Plane & All Active Tests
+## 📦 Container 2: `sdwan-web-ui` — Frontend + Backend + All Active Tests
 
 | Attribute | Value |
 |-----------|-------|
 | **Image** | `jsuzanne/sdwan-web-ui:latest` |
-| **Language** | Node.js / TypeScript (Express backend) + React 19 (frontend) |
-| **Exposed Port** | **8080** (HTTP — dashboard UI) |
+| **Language** | Node.js / TypeScript backend (`server.ts`) + React 19 frontend (compiled static files) |
+| **Exposed Port** | **8080** (HTTP — dashboard UI + all API endpoints) |
 | **Network Mode** | Host |
 | **Dashboard Menu** | **All menus** — this container IS the dashboard |
 
-This is the most critical container. The backend (`server.ts`) orchestrates every active test by spawning Python child processes and issuing SSH commands. The frontend (React SPA) is served from port 8080.
+> [!IMPORTANT]
+> This **single container** runs TWO things simultaneously:
+> - **Frontend**: The React SPA (pre-compiled to static files, served by Express)
+> - **Backend**: The Node.js/Express server (`server.ts`) that handles all logic
+>
+> The React frontend **never** spawns scripts directly. It only calls the backend via HTTP API.  
+> It is the **backend** (`server.ts`) that spawns Python processes, issues SSH commands, and executes all measurements.
+
+**Request chain for any active test:**
+```
+🖥️  Browser (React frontend)
+      ↓  HTTP API call (e.g., POST /api/convergence/start)
+⚙️  Node.js backend — server.ts (inside same sdwan-web-ui container)
+      ↓  child_process.spawn()
+🐍  Python engine (e.g., convergence_orchestrator.py)
+      ↓  UDP/TCP traffic
+🎯  Target container (sdwan-voice-echo / xfr-target)
+```
 
 ### Sub-features and their traffic flows
 
