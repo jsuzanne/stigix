@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.1-patch.151] - 2026-03-05
+### Added
+- **Convergence Thresholds**: Implemented dynamic, configurable thresholds (Good, Degraded, Bad, Critical) via a new "Convergence" settings tab. ⚡
+- **Failover Logic**: Refined failover status logic to support a 4-zone classification (Good/Degraded/Bad/Critical) with dynamic polling and instant UI updates. 📊
+- **UX**: Refined VyOS router edit modal with premium purple theme, descriptive labels, and simplified impairment targeting language. 🎨
+- **Infrastructure**: Added backend persistence for convergence thresholds using dedicated `convergence-config.json` management. 🏗️
+
 ## [v1.2.1-patch.150] - 2026-03-05
 ### Added
 - **Topology Overlay**: Implemented **Bidirectional Hub Tunnels**. Selecting a Hub or DC in Logical Overlay now displays all incoming tunnels from all branches, providing a complete "Hub-Spoke" visibility. 🛣️

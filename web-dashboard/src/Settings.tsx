@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     RefreshCw, Download, AlertCircle, CheckCircle, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
-    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin
+    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Favicon } from './components/Favicon';
@@ -96,7 +96,7 @@ const BetaBadge = ({ className }: { className?: string }) => (
 );
 
 export default function Settings({ token }: { token: string }) {
-    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets'>('probes');
+    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence'>('distribution');
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -126,6 +126,9 @@ export default function Settings({ token }: { token: string }) {
     const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
     const [showTargetPorts, setShowTargetPorts] = useState(false);
     const [targetError, setTargetError] = useState<string | null>(null);
+
+    // Convergence State
+    const [convergenceThresholds, setConvergenceThresholds] = useState({ good: 1, degraded: 5, critical: 10 });
 
     const showSuccess = (msg: string) => {
         setSuccessMsg(msg);
@@ -203,6 +206,16 @@ export default function Settings({ token }: { token: string }) {
         };
         fetchSystemInfo();
         const sysInfoInterval = setInterval(fetchSystemInfo, 5000);
+
+        // Fetch Convergence Thresholds
+        fetch('/api/config/convergence', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(data => {
+                if (data && typeof data === 'object' && 'good' in data) {
+                    setConvergenceThresholds(data);
+                }
+            })
+            .catch(() => { });
 
         return () => clearInterval(sysInfoInterval);
 
@@ -501,6 +514,29 @@ export default function Settings({ token }: { token: string }) {
         } catch (e) { setUpgrading(false); }
     };
 
+    const saveConvergenceThresholds = async () => {
+        setSaving(true);
+        try {
+            const res = await fetch('/api/config/convergence', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(convergenceThresholds)
+            });
+            if (res.ok) {
+                showSuccess('Convergence thresholds saved');
+            } else {
+                setErrorMsg('Failed to save thresholds');
+            }
+        } catch (e) {
+            setErrorMsg('Network error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     if (loading) return <div className="p-8 text-center text-text-muted animate-pulse font-bold tracking-widest text-xs">Loading Settings...</div>;
 
     // ─── Target CRUD Handlers ────────────────────────────────────────────────
@@ -573,8 +609,9 @@ export default function Settings({ token }: { token: string }) {
 
 
     const tabs = [
-        { id: 'probes', label: 'Synthetic Probes' },
         { id: 'distribution', label: 'Traffic Distribution' },
+        { id: 'probes', label: 'Synthetic Probes' },
+        { id: 'convergence', label: 'Convergence' },
         { id: 'system', label: 'System Info' },
         { id: 'maintenance', label: 'System Maintenance', beta: true },
         { id: 'targets', label: 'Targets' },
@@ -633,6 +670,91 @@ export default function Settings({ token }: { token: string }) {
             {/* Active Tab Content */}
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                 {/* Interfaces removed as standalone tab */}
+
+                {activeTab === 'convergence' && (
+                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
+                                <Zap size={20} />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-text-primary tracking-tight">Convergence Thresholds</h2>
+                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Define failover performance criteria</p>
+                            </div>
+                        </div>
+
+                        <div className="max-w-2xl space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {[
+                                    { key: 'good', label: 'Good Threshold', color: 'text-green-500', icon: CheckCircle2 },
+                                    { key: 'degraded', label: 'Degraded Threshold', color: 'text-orange-500', icon: AlertCircle },
+                                    { key: 'critical', label: 'Critical Threshold', color: 'text-red-500', icon: Shield },
+                                ].map(({ key, label, color, icon: Icon }) => (
+                                    <div key={key} className="space-y-2">
+                                        <div className="flex items-center gap-2 pl-1">
+                                            <Icon size={12} className={color} />
+                                            <label className="text-[9px] font-black text-text-muted uppercase tracking-widest">{label}</label>
+                                        </div>
+                                        <div className="relative group">
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                max="100"
+                                                value={(convergenceThresholds as any)[key]}
+                                                onChange={e => {
+                                                    const val = Math.max(1, Math.min(100, parseInt(e.target.value) || 1));
+                                                    setConvergenceThresholds(prev => ({ ...prev, [key]: val }));
+                                                }}
+                                                className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 text-sm font-black outline-none focus:ring-1 focus:ring-purple-500 transition-all shadow-inner"
+                                            />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-text-muted opacity-40">SEC</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="p-4 bg-purple-600/5 border border-purple-500/20 rounded-xl space-y-3">
+                                <div className="flex items-center gap-2 text-purple-500 dark:text-purple-400">
+                                    <Info size={14} />
+                                    <span className="text-[10px] font-black uppercase tracking-widest">Threshold Logic</span>
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2 text-[10px]">
+                                        <div className="w-2 h-2 rounded-full bg-green-500" />
+                                        <span className="font-bold text-text-secondary">Good:</span>
+                                        <span className="text-text-muted">Max blackout is less than <span className="text-text-primary font-black">{convergenceThresholds.good}s</span></span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px]">
+                                        <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                                        <span className="font-bold text-text-secondary">Degraded:</span>
+                                        <span className="text-text-muted">Max blackout is between <span className="text-text-primary font-black">{convergenceThresholds.good}s</span> and <span className="text-text-primary font-black">{convergenceThresholds.degraded}s</span></span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px]">
+                                        <div className="w-2 h-2 rounded-full bg-orange-500" />
+                                        <span className="font-bold text-text-secondary">Bad:</span>
+                                        <span className="text-text-muted">Max blackout is between <span className="text-text-primary font-black">{convergenceThresholds.degraded}s</span> and <span className="text-text-primary font-black">{convergenceThresholds.critical}s</span></span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px]">
+                                        <div className="w-2 h-2 rounded-full bg-red-500" />
+                                        <span className="font-bold text-text-secondary">Critical:</span>
+                                        <span className="text-text-muted">Max blackout exceeds <span className="text-text-primary font-black">{convergenceThresholds.critical}s</span></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end pt-4">
+                                <button
+                                    onClick={saveConvergenceThresholds}
+                                    disabled={saving}
+                                    className="px-8 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center gap-2 shadow-lg shadow-purple-900/40 disabled:opacity-50"
+                                >
+                                    {saving ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                                    {saving ? 'SAVING...' : 'SAVE CONVERGENCE CONFIG'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {activeTab === 'probes' && (
                     <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">

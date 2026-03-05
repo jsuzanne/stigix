@@ -1399,7 +1399,7 @@ export default function Vyos(props: VyosProps) {
                     <div className="bg-card border border-border w-full max-w-xl rounded-2xl shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]">
                         <div className="p-8 border-b border-border flex items-center justify-between bg-card/80 sticky top-0 z-10">
                             <h3 className="text-2xl font-black text-text-primary flex items-center gap-3 capitalize">
-                                <Globe size={28} className="text-blue-500" /> Tactical Node Discovery
+                                <Globe size={28} className="text-blue-500" /> Add vyos router
                             </h3>
                             <button onClick={() => { setShowAddModal(false); resetDiscovery(); }} className="text-text-muted hover:text-text-primary transition-all bg-card-secondary p-2 rounded-full border border-border/50">
                                 <XCircle size={24} />
@@ -1891,7 +1891,7 @@ export default function Vyos(props: VyosProps) {
                     <div className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col">
                         <div className="p-8 border-b border-border flex items-center justify-between">
                             <h3 className="text-xl font-black text-text-primary flex items-center gap-3 uppercase tracking-tighter">
-                                <Settings size={24} className="text-orange-500" /> Node Parameters: {editingRouter.name}
+                                <Settings size={24} className="text-purple-500" /> Node Parameters: {editingRouter.name}
                             </h3>
                             <button onClick={() => setShowEditRouterModal(false)} className="text-text-muted hover:text-text-primary transition-all bg-card-secondary p-1.5 rounded-full border border-border/50">
                                 <XCircle size={20} />
@@ -1911,23 +1911,23 @@ export default function Vyos(props: VyosProps) {
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black text-text-muted uppercase tracking-widest pl-1">Tactical Location</label>
+                                <label className="text-[10px] font-black text-text-muted uppercase tracking-widest pl-1">Description</label>
                                 <input
                                     type="text"
                                     value={editingRouter.location || ''}
                                     onChange={(e) => setEditingRouter({ ...editingRouter, location: e.target.value })}
-                                    className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm font-black text-text-primary uppercase tracking-tight focus:ring-1 focus:ring-orange-500/50 outline-none transition-all shadow-inner"
+                                    className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm font-bold text-text-primary tracking-tight focus:ring-1 focus:ring-purple-500/50 outline-none transition-all shadow-inner"
                                 />
                             </div>
 
                             <div className="flex items-center justify-between p-4 bg-card-secondary/50 rounded-xl border border-border">
                                 <div>
-                                    <h4 className="text-xs font-black text-text-primary uppercase tracking-widest">Node Power State</h4>
-                                    <p className="text-[10px] text-text-muted uppercase font-bold">ENABLE/DISABLE AUTOMATED IMPAIRMENT TARGETING</p>
+                                    <h4 className="text-xs font-black text-text-primary uppercase tracking-widest">Vyos Status</h4>
+                                    <p className="text-[10px] text-text-muted font-bold">Active for mission sequences</p>
                                 </div>
                                 <button
                                     onClick={() => setEditingRouter({ ...editingRouter, enabled: !editingRouter.enabled })}
-                                    className={`w-12 h-6 rounded-full transition-all relative ${editingRouter.enabled ? 'bg-orange-600' : 'bg-card-secondary border border-border'}`}
+                                    className={`w-12 h-6 rounded-full transition-all relative ${editingRouter.enabled ? 'bg-purple-600' : 'bg-card-secondary border border-border'}`}
                                 >
                                     <div className={`absolute top-1 w-4 h-4 rounded-full transition-all bg-white ${editingRouter.enabled ? 'right-1' : 'left-1'}`} />
                                 </button>
@@ -1936,7 +1936,7 @@ export default function Vyos(props: VyosProps) {
 
                         <div className="p-8 border-t border-border bg-card/50 flex gap-4">
                             <button onClick={() => setShowEditRouterModal(false)} className="flex-1 px-6 py-3 rounded-xl bg-card-secondary border border-border/50 text-text-muted font-black text-xs uppercase tracking-widest shadow-inner transition-all hover:bg-card-hover">ABORT</button>
-                            <button onClick={saveRouterChanges} className="flex-2 px-6 py-3 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-900/20 transition-all active:scale-95">SYNC Node</button>
+                            <button onClick={saveRouterChanges} className="flex-2 px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs uppercase tracking-widest shadow-lg shadow-purple-900/20 transition-all active:scale-95">SYNC Node</button>
                         </div>
                     </div>
                 </div>

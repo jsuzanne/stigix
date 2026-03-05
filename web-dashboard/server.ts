@@ -236,6 +236,7 @@ const IOT_DEVICES_FILE = path.join(APP_CONFIG.configDir, 'iot-devices.json');
 // NEW Unified Configurations (v1.2.1-patch.57)
 const APPLICATIONS_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'applications-config.json');
 const VYOS_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'vyos-config.json');
+const CONVERGENCE_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'convergence-config.json');
 const ICON_CACHE_FILE = path.join(APP_CONFIG.configDir, 'icon-cache.json');
 
 // --- Favicon Discovery & Caching System ---
@@ -292,7 +293,7 @@ async function fetchFavicon(domain: string, endpoint: string = '/'): Promise<str
             }
         });
 
-        if (bestIcon) {
+        if (typeof bestIcon === 'string') {
             // Resolve relative URLs
             if (bestIcon.startsWith('//')) return `https:${bestIcon}`;
             if (bestIcon.startsWith('/')) return `${baseUrl}${bestIcon}`;
@@ -3555,6 +3556,36 @@ app.get('/api/convergence/history', authenticateToken, (req, res) => {
         res.json(history);
     } catch (e) {
         res.status(500).json({ error: 'Failed to read history' });
+    }
+});
+
+// API: GET Convergence Configuration
+app.get('/api/config/convergence', authenticateToken, (req, res) => {
+    try {
+        if (!fs.existsSync(CONVERGENCE_CONFIG_FILE)) {
+            const defaults = { good: 1, degraded: 5, critical: 10 };
+            return res.json(defaults);
+        }
+        const data = JSON.parse(fs.readFileSync(CONVERGENCE_CONFIG_FILE, 'utf8'));
+        res.json(data);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to read convergence config' });
+    }
+});
+
+// API: POST Convergence Configuration
+app.post('/api/config/convergence', authenticateToken, (req, res) => {
+    try {
+        const { good, degraded, critical } = req.body;
+        const config = {
+            good: Math.max(1, Math.min(100, parseInt(good) || 1)),
+            degraded: Math.max(1, Math.min(100, parseInt(degraded) || 5)),
+            critical: Math.max(1, Math.min(100, parseInt(critical) || 10))
+        };
+        fs.writeFileSync(CONVERGENCE_CONFIG_FILE, JSON.stringify(config, null, 2));
+        res.json({ success: true, config });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to save convergence config' });
     }
 });
 

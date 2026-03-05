@@ -10,6 +10,7 @@ interface FailoverProps {
 export default function Failover(props: FailoverProps) {
     const { token, externalStatus } = props;
     const [endpoints, setEndpoints] = useState<any[]>([]);
+    const [thresholds, setThresholds] = useState({ good: 1000, degraded: 5000, critical: 10000 });
     const [showAddModal, setShowAddModal] = useState(false);
     const [newTarget, setNewTarget] = useState({ label: '', target: '', port: 6200 });
     const [convergenceTargets, setConvergenceTargets] = useState<any[]>([]);
@@ -66,6 +67,24 @@ export default function Failover(props: FailoverProps) {
     useEffect(() => {
         fetchEndpoints();
         fetchHistory();
+        // Fetch Thresholds
+        const fetchThresholds = async () => {
+            try {
+                const res = await fetch('/api/config/convergence', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (data && typeof data === 'object' && 'good' in data) {
+                    setThresholds({
+                        good: (data.good || 1) * 1000,
+                        degraded: (data.degraded || 5) * 1000,
+                        critical: (data.critical || 10) * 1000
+                    });
+                }
+            } catch (e) { }
+        };
+        fetchThresholds();
+
         // Fetch shared targets with convergence capability
         fetch('/api/targets', { headers: authHeaders() })
             .then(r => r.json())
@@ -75,6 +94,7 @@ export default function Failover(props: FailoverProps) {
         const interval = setInterval(() => {
             fetchEndpoints();
             fetchHistory();
+            fetchThresholds();
         }, 5000);
         return () => clearInterval(interval);
     }, []);
@@ -175,8 +195,9 @@ export default function Failover(props: FailoverProps) {
 
     const getVerdict = (maxBlackout: number) => {
         if (maxBlackout === 0) return { label: 'PERFECT', color: 'text-green-400', bg: 'bg-green-400/10', desc: 'No packet loss detected.' };
-        if (maxBlackout < 1000) return { label: 'GOOD', color: 'text-green-400', bg: 'bg-green-400/10', desc: 'Typical SD-WAN failover range. Sessions usually stay up.' };
-        if (maxBlackout < 5000) return { label: 'DEGRADED', color: 'text-orange-400', bg: 'bg-orange-400/10', desc: 'Extended outage. Voice calls will likely drop.' };
+        if (maxBlackout < thresholds.good) return { label: 'GOOD', color: 'text-green-400', bg: 'bg-green-400/10', desc: 'Typical SD-WAN failover range. Sessions usually stay up.' };
+        if (maxBlackout < thresholds.degraded) return { label: 'DEGRADED', color: 'text-yellow-400', bg: 'bg-yellow-400/10', desc: 'Noticeable outage. Video freeze and voice drops expected.' };
+        if (maxBlackout < thresholds.critical) return { label: 'BAD', color: 'text-orange-400', bg: 'bg-orange-400/10', desc: 'High convergence time. Application health impacted.' };
         return { label: 'CRITICAL', color: 'text-red-400', bg: 'bg-red-400/10', desc: 'Major blackout. Application sessions will disconnect.' };
     };
 
@@ -618,9 +639,10 @@ export default function Failover(props: FailoverProps) {
                     </h3>
                     <div className="grid grid-cols-1 gap-3">
                         {[
-                            { color: 'text-green-600 dark:text-green-400', label: 'GOOD', range: '< 1s', desc: 'Typical SD-WAN sub-second or near-second convergence.' },
-                            { color: 'text-orange-500', label: 'DEGRADED', range: '1s - 5s', desc: 'Noticeable outage. Video freeze and voice drops expected.' },
-                            { color: 'text-red-500', label: 'CRITICAL', range: '> 5s', desc: 'Major network blackout. Application session risk.' }
+                            { color: 'text-green-600 dark:text-green-400', label: 'GOOD', range: `< ${thresholds.good / 1000}s`, desc: 'Typical SD-WAN sub-second or near-second convergence.' },
+                            { color: 'text-yellow-500', label: 'DEGRADED', range: `${thresholds.good / 1000}s - ${thresholds.degraded / 1000}s`, desc: 'Noticeable outage. Video freeze and voice drops expected.' },
+                            { color: 'text-orange-500', label: 'BAD', range: `${thresholds.degraded / 1000}s - ${thresholds.critical / 1000}s`, desc: 'High convergence time. Application health impacted.' },
+                            { color: 'text-red-500', label: 'CRITICAL', range: `> ${thresholds.critical / 1000}s`, desc: 'Major network blackout. Application session risk.' }
                         ].map(v => (
                             <div key={v.label} className="bg-card-secondary border border-border p-3 rounded-xl flex gap-3 shadow-sm">
                                 <div className={`font-bold text-[10px] min-w-[60px] ${v.color}`}>{v.label}</div>

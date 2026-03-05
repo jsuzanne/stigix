@@ -86,15 +86,22 @@ The history view provides detailed directional metrics:
 
 ---
 
-## ⚖️ Scoring & Verdicts
+## ⚖️ Scoring & Verdicts (Dynamic)
 
-The "Verdict" of a test is determined by the **Maximum Blackout Duration** recorded during the session.
+The "Verdict" of a test is determined by the **Maximum Blackout Duration** relative to the user-configured thresholds in **Settings > Convergence**. 
 
-| Verdict | Blackout Time | Meaning |
-|:-------:|:-------------:|:--------|
-| **EXCELLENT** | 0ms | No measurable sequence gaps detected. |
-| **GOOD** | < 1,000ms | Failover occurred within standard SD-WAN sub-second thresholds. |
-| **CRITICAL** | > 5,000ms | Significant outage detected; circuit transition failed or was severely delayed. |
+The system uses a 4-zone classification:
+
+| Verdict | Color | Range | Meaning |
+|:-------:|:-----:|:-----:|:--------|
+| **EXCELLENT** | Green | 0ms | No measurable sequence gaps detected. |
+| **GOOD** | Green | < T1 | Typical sub-second or near-second convergence. |
+| **DEGRADED** | Yellow | T1 - T2 | Noticeable outage. Video freeze / voice drops possible. |
+| **BAD** | Orange | T2 - T3 | Significant outage. Application health impacted. |
+| **CRITICAL** | Red | > T3 | Major blackout. Application sessions will disconnect. |
+
+> [!TIP]
+> **T1, T2, and T3** are configurable (1-100s) in the **Convergence Settings** submenu. By default, these are set to **1s**, **5s**, and **100s**.
 
 > [!NOTE]
 > Even if total packet loss is low, a single high "Max Blackout" indicates a specific event (like a hard circuit failover) that impacted the real-time flow.
