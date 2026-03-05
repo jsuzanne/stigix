@@ -14,7 +14,9 @@ import {
     Position,
     getBezierPath,
     EdgeLabelRenderer,
-    BaseEdge
+    BaseEdge,
+    ReactFlowProvider,
+    useReactFlow
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -411,7 +413,15 @@ interface TopologyProps {
     token: string;
 }
 
-export default function Topology({ token }: TopologyProps) {
+export default function Topology(props: TopologyProps) {
+    return (
+        <ReactFlowProvider>
+            <TopologyContent {...props} />
+        </ReactFlowProvider>
+    );
+}
+
+function TopologyContent({ token }: TopologyProps) {
     const [topology, setTopology] = useState<any>(null);
     const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
     const [loading, setLoading] = useState(true);
@@ -423,27 +433,9 @@ export default function Topology({ token }: TopologyProps) {
 
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+    const { fitView } = useReactFlow();
 
-    const fetchTopology = async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const res = await fetch('/api/topology', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await res.json();
-            if (data.error) throw new Error(data.error);
-            setTopology(data);
-            setLastRefresh(new Date());
-            processTopology(data);
-        } catch (e: any) {
-            setError(e.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const processTopology = (data: any) => {
+    const processTopology = useCallback((data: any) => {
         if (!data.sites) return;
 
         const newNodes: Node[] = [];
@@ -476,9 +468,9 @@ export default function Topology({ token }: TopologyProps) {
             });
         });
 
-        const HUB_Y = -500;
+        const HUB_Y = -700;
         const CLOUD_Y = 0;
-        const SPOKE_Y = 400;
+        const SPOKE_Y = 700;
         const HORIZONTAL_GAP_PX = 100;
 
         const getSiteWidth = (site: any) => {
@@ -501,6 +493,7 @@ export default function Topology({ token }: TopologyProps) {
                     id: `site:${site.site_id}`,
                     type: 'site',
                     position: { x, y: yPos },
+                    origin: [0.5, 0.5],
                     data: { ...site, name: site.site_name, role },
                 });
             });
@@ -517,6 +510,7 @@ export default function Topology({ token }: TopologyProps) {
                     id: `cloud:INTERNET`,
                     type: 'cloud',
                     position: { x: INTERNET_X, y: CLOUD_Y },
+                    origin: [0.5, 0.5],
                     data: { name: 'INTERNET' },
                 });
             }
@@ -528,6 +522,7 @@ export default function Topology({ token }: TopologyProps) {
                     id: `cloud:${cloudName}`,
                     type: 'cloud',
                     position: { x, y: CLOUD_Y },
+                    origin: [0.5, 0.5],
                     data: { name: cloudName },
                 });
             });
@@ -537,23 +532,46 @@ export default function Topology({ token }: TopologyProps) {
 
         // --- EDGES CHANGE BASED ON MODE ---
         if (logicalViewSiteId) {
-            // mode LOGICAL: Draw direct site-to-site tunnels for the selected site
-            const centerSite = data.sites.find((s: any) => s.site_id === logicalViewSiteId);
-            if (centerSite) {
-                centerSite.devices?.forEach((d: any) => {
+            const selectedSite = data.sites.find((s: any) => s.site_id === logicalViewSiteId);
+            const isSelectedSiteHub = selectedSite && (
+                selectedSite.element_cluster_role === 'HUB' ||
+                selectedSite.site_name.includes('DC') ||
+                selectedSite.site_name.includes('BRGW') ||
+                selectedSite.site_name.toLowerCase().includes('azure') ||
+                selectedSite.site_name.toLowerCase().includes('aws')
+            );
+
+            // mode LOGICAL: Draw direct site-to-site tunnels relative to selected site
+            data.sites.forEach((site: any) => {
+                site.devices?.forEach((d: any) => {
                     d.wan_interfaces?.forEach((w: any) => {
                         w.connections?.forEach((c: any, cIdx: number) => {
-                            // Phase 1 Simplification: Only show tunnels to Hub sites
-                            const peerSite = data.sites.find((s: any) => s.site_id === c.peer_site_id);
-                            const peerIsHub = peerSite && (
-                                peerSite.element_cluster_role === 'HUB' ||
-                                peerSite.site_name.includes('DC') ||
-                                peerSite.site_name.includes('BRGW') ||
-                                peerSite.site_name.toLowerCase().includes('azure') ||
-                                peerSite.site_name.toLowerCase().includes('aws')
-                            );
+                            const isSourceSelected = site.site_id === logicalViewSiteId;
+                            const isTargetSelected = c.peer_site_id === logicalViewSiteId;
 
-                            if (!peerIsHub) return;
+                            // If this isn't a connection to or from our selected site, skip it
+                            if (!isSourceSelected && !isTargetSelected) return;
+
+                            // If we selected a SPOKE, only show connections to HUBS
+                            if (!isSelectedSiteHub) {
+                                const peerSiteId = isSourceSelected ? c.peer_site_id : site.site_id;
+                                const peerSite = data.sites.find((s: any) => s.site_id === peerSiteId);
+                                const isPeerHub = peerSite && (
+                                    peerSite.element_cluster_role === 'HUB' ||
+                                    peerSite.site_name.includes('DC') ||
+                                    peerSite.site_name.includes('BRGW') ||
+                                    peerSite.site_name.toLowerCase().includes('azure') ||
+                                    peerSite.site_name.toLowerCase().includes('aws')
+                                );
+                                if (!isPeerHub) return;
+                            }
+
+                            // Prevent edge duplication: Only draw from the "source" side if it's the selected site,
+                            // OR draw from the Spoke to the Hub if the Hub is selected (to show branches).
+                            // A simple way to avoid duplicates is to always draw if we are at the source site.
+                            // But since connections are usually duplicated in the data (both sides have it),
+                            // we only care about connections OWNED by the site we are iterating over.
+                            if (!isSourceSelected && !isSelectedSiteHub) return;
 
                             const isUp = c.status === 'UP' || c.active || c.usable;
                             let strokeColor = '#64748b';
@@ -572,8 +590,8 @@ export default function Topology({ token }: TopologyProps) {
                             }
 
                             newEdges.push({
-                                id: `logical-edge-${centerSite.site_id}-${c.peer_site_id}-${d.device_name}-${w.name}-${cIdx}`,
-                                source: `site:${centerSite.site_id}`,
+                                id: `logical-edge-${site.site_id}-${c.peer_site_id}-${d.device_name}-${w.name}-${cIdx}`,
+                                source: `site:${site.site_id}`,
                                 target: `site:${c.peer_site_id}`,
                                 sourceHandle: `circuit:${d.device_name}:${w.name}`,
                                 targetHandle: `target-circuit:${c.peer_device_name}:${c.peer_wan_interface}`,
@@ -585,7 +603,7 @@ export default function Topology({ token }: TopologyProps) {
                         });
                     });
                 });
-            }
+            });
         } else {
             // mode PHYSICAL: Draw site-to-cloud edges
             data.sites.forEach((site: any) => {
@@ -620,7 +638,26 @@ export default function Topology({ token }: TopologyProps) {
 
         setNodes(newNodes);
         setEdges(newEdges);
-    };
+    }, [logicalViewSiteId, setNodes, setEdges]);
+
+    const fetchTopology = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/topology', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            setTopology(data);
+            setLastRefresh(new Date());
+            processTopology(data);
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [token, processTopology]);
 
     useEffect(() => {
         if (!topology) {
@@ -628,7 +665,7 @@ export default function Topology({ token }: TopologyProps) {
         } else {
             processTopology(topology);
         }
-    }, [topology, logicalViewSiteId]);
+    }, [topology, logicalViewSiteId, fetchTopology, processTopology]);
 
     const onNodeClick = useCallback((_: any, node: Node) => {
         setSelectedObject({ type: 'node', ...node.data });
@@ -722,6 +759,15 @@ export default function Topology({ token }: TopologyProps) {
             };
         });
     }, [edges, searchQuery]);
+
+    useEffect(() => {
+        if (filteredNodes.length > 0) {
+            const timer = setTimeout(() => {
+                fitView({ padding: 0.25, duration: 800 });
+            }, 300);
+            return () => clearTimeout(timer);
+        }
+    }, [filteredNodes.length, logicalViewSiteId, fitView]);
 
     return (
         <div className="h-[calc(100vh-140px)] w-full relative bg-black/20 rounded-3xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-500">
@@ -820,7 +866,6 @@ export default function Topology({ token }: TopologyProps) {
                         onEdgeClick={onEdgeClick}
                         nodeTypes={nodeTypes}
                         edgeTypes={edgeTypes}
-                        fitView
                         className="bg-slate-950/40"
                     >
                         <Background color="#1e293b" gap={20} size={1} />
@@ -854,17 +899,6 @@ export default function Topology({ token }: TopologyProps) {
                                         </button>
                                     </>
                                 )}
-                                <div className="h-8 w-px bg-border mx-2" />
-                                <div className="relative">
-                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                                    <input
-                                        type="text"
-                                        placeholder="Filter nodes..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="bg-card-secondary border border-border text-[11px] font-bold pl-9 pr-3 py-1.5 rounded-xl w-48 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
-                                    />
-                                </div>
                             </div>
                         </Panel>
 
@@ -895,6 +929,25 @@ export default function Topology({ token }: TopologyProps) {
                                 >
                                     <RefreshCw size={16} />
                                 </button>
+                            </div>
+                        </Panel>
+
+                        {/* Middle-Left Compact Search Widget */}
+                        <Panel position="top-left" className="!top-1/2 -translate-y-1/2 !left-4 mt-20">
+                            <div className="bg-card/90 backdrop-blur-md border border-border p-1.5 rounded-2xl shadow-2xl flex flex-col items-center gap-3 group transition-all duration-300 hover:p-2">
+                                <div className="p-2.5 bg-card-secondary rounded-xl text-text-muted group-hover:bg-blue-500 group-hover:text-white transition-all shadow-inner">
+                                    <Search size={18} />
+                                </div>
+                                <div className="flex flex-col gap-2 overflow-hidden w-10 group-hover:w-48 transition-all duration-500 ease-in-out">
+                                    <input
+                                        type="text"
+                                        placeholder="Filter nodes..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="bg-transparent border-none text-[11px] font-bold py-1 px-1 focus:outline-none placeholder:text-text-muted/50 w-full"
+                                    />
+                                    <div className="h-px bg-gradient-to-r from-blue-500/50 to-transparent w-full scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-500" />
+                                </div>
                             </div>
                         </Panel>
 
@@ -1223,8 +1276,7 @@ export default function Topology({ token }: TopologyProps) {
                         )}
                     </div>
                 </>
-            )
-            }
-        </div >
+            )}
+        </div>
     );
 }

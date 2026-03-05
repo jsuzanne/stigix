@@ -555,11 +555,11 @@ IOT_DATABASE = {
 
 
 def generate_mac(prefix: str, counter: int) -> str:
-    """Generate a pseudo-unique MAC address based on prefix and counter."""
-    high = (counter // 256) & 0xFF
-    low = counter & 0xFF
-    return f"{prefix}:{high:02x}:{low:02x}"
-
+    """Generate a pseudo-unique MAC address based on prefix and counter (prefix must be 3 octets)."""
+    b1 = (counter >> 16) & 0xFF
+    b2 = (counter >> 8) & 0xFF
+    b3 = counter & 0xFF
+    return f"{prefix}:{b1:02x}:{b2:02x}:{b3:02x}"
 
 def generate_dhcp_fingerprint(category, vendor, model):
     """Generate DHCP fingerprint for a device based on category and vendor."""
