@@ -49,7 +49,7 @@ graph LR
 
 ---
 
-## 📦 Container 1 : `sdwan-traffic-gen` — Background Traffic Generator
+## 📦 Container 2 : `sdwan-traffic-gen` — Background Traffic Generator
 
 | Attribute | Value |
 |-----------|-------|
@@ -95,7 +95,7 @@ User clicks "Start Traffic" in the header or Traffic Distribution tab
 
 ---
 
-## 📦 Container 2: `sdwan-web-ui` — Frontend + Backend + All Active Tests
+## 📦 Container 1 : `sdwan-web-ui` — Frontend + Backend + All Active Tests
 
 | Attribute | Value |
 |-----------|-------|
