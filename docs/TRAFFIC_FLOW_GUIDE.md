@@ -69,20 +69,17 @@ Simulates realistic enterprise user traffic by continuously sending HTTPS reques
 
 ### How the full chain works
 
+**Full chain — Start/Stop Traffic:**
 ```
-Browser (UI) → sdwan-web-ui
-    → POST /api/traffic/start (enable traffic)
-    → Writes control file to shared volume
-
-sdwan-traffic-gen (Bash loop)
-    → Reads control file from shared volume
-    → Selects: random interface + random user-agent + weighted app
-    → curl --interface eth0 https://teams.microsoft.com (HTTPS 443)
-    → Writes result to traffic.log and stats.json (shared volume)
-
-sdwan-web-ui
-    → Reads traffic.log and stats.json
-    → Streams live stats to browser via Socket.IO
+User clicks "Start Traffic" in the header or Traffic Distribution tab
+    ↓ Browser (React) → POST /api/traffic/start
+    ↓ server.ts (Node.js backend) writes control signal to shared Docker volume
+    ↓ sdwan-traffic-gen (Bash loop) reads the control signal from shared volume
+    ↓ Selects: random interface (eth0/eth1) + random user-agent + weighted SaaS app
+    ↓ Runs: curl --interface eth0 --max-time 10 https://teams.microsoft.com  [HTTPS:443]
+    ↓ Writes result to traffic.log + stats.json (shared volume)
+    ↓ server.ts reads stats.json on each browser poll → GET /api/stats
+    ↓ Browser receives live stats via Socket.IO → updates charts
 ```
 
 ### Key config files (shared volume)
@@ -203,11 +200,15 @@ User configures codec (G.711/G.729/Opus) and clicks "Start"
 
 **Full chain:**
 ```
-User selects protocol (TCP/UDP/QUIC), direction, and bitrate, clicks "Run"
-  → Browser → POST /api/tests/xfr → server.ts
-  → server.ts spawns XFR client connecting to xfr-target:9000
-  → Live telemetry streamed via Server-Sent Events (SSE)
-  → Browser shows real-time Mbps graph, RTT, packet loss
+User selects protocol (TCP/UDP/QUIC), direction, bitrate, target IP, clicks "Run"
+    ↓ Browser (React) → POST /api/tests/xfr
+                        { host, port:9000, protocol:"tcp", direction:"download", bitrate:"200M", duration:30 }
+    ↓ server.ts (backend) spawns XFR client binary targeting xfr-target:9000
+    ↓ XFR client sends TCP/UDP/QUIC traffic to xfr-target  [port 9000]
+    ↓ xfr-target measures and reflects traffic back
+    ↓ Client reports live telemetry (Mbps, RTT, loss) to server.ts
+    ↓ server.ts streams telemetry via GET /api/tests/xfr/:id/stream (SSE)
+    ↓ Browser receives SSE events → renders real-time throughput graph
 ```
 
 ---
@@ -223,14 +224,39 @@ User selects protocol (TCP/UDP/QUIC), direction, and bitrate, clicks "Run"
 | EICAR Threat | HTTP | **8082** → `sdwan-voice-echo` | IPS/Threat Prevention block |
 | EDL Test | HTTP/HTTPS/ICMP | various | Bulk IP/URL/DNS policy validation |
 
-**Full chain (URL Filtering example):**
+**Full chain — URL Filtering:**
 ```
-User enables URL categories and clicks "Run All"
-  → Browser → POST /api/security/url-test-batch → server.ts
-  → server.ts runs: curl --max-time 10 https://urlfiltering.paloaltonetworks.com/test-malware
-  → If NGFW blocks → curl gets HTTP 4xx or timeout → status: "blocked" ✅
-  → If NGFW allows → curl gets 200 → status: "allowed" ⚠️
-  → Results logged and displayed in history table
+User enables URL categories in Security tab, clicks "Run All"
+    ↓ Browser (React) → POST /api/security/url-test-batch
+                        { tests: [ { url: "https://urlfiltering.paloaltonetworks.com/test-malware", category: "Malware" } ] }
+    ↓ server.ts (backend) runs: curl --max-time 10 -o /dev/null -w '%{http_code}' <url>
+    ↓ If NGFW / SD-WAN blocks → curl returns HTTP 4xx or timeout → result: "blocked" ✅
+    ↓ If traffic passes through → curl returns HTTP 200 → result: "allowed" ⚠️
+    ↓ server.ts logs result to security-tests.json + updates statistics
+    ↓ Browser polls /api/security/results → renders history table with blocked/allowed badges
+```
+
+**Full chain — DNS Security:**
+```
+User enables DNS test domains, clicks "Test All DNS"
+    ↓ Browser (React) → POST /api/security/dns-test-batch
+                        { tests: [ { domain: "test-malware.testpanw.com", testName: "Malware" } ] }
+    ↓ server.ts (backend) runs: nslookup test-malware.testpanw.com  [UDP:53]
+    ↓ If DNS sinkhole → response contains NXDOMAIN → result: "blocked" ✅
+    ↓ If domain resolves → result: "allowed" ⚠️
+    ↓ Results stored and displayed in history table
+```
+
+**Full chain — EICAR Threat Prevention:**
+```
+User sets target IP, clicks "Test Threat Prevention"
+    ↓ Browser (React) → POST /api/security/threat-test
+                        { endpoints: [ "http://192.168.x.x:8082/eicar.com.txt" ] }
+    ↓ server.ts (backend) runs: curl --max-time 20 http://192.168.x.x:8082/eicar.com.txt [TCP:8082]
+    ↓ sdwan-voice-echo serves the EICAR test string
+    ↓ If IPS / Threat Prevention blocks the download → curl fails → result: "blocked" ✅
+    ↓ If file downloads successfully → result: "allowed" ⚠️
+    ↓ Temp file auto-deleted; result displayed in Security tab
 ```
 
 ---
@@ -249,10 +275,21 @@ User enables URL categories and clicks "Run All"
 
 **Full chain:**
 ```
-Dashboard refreshes on a configurable interval
-  → server.ts runs background probes (ping, curl, TCP connect, iperf3)
-  → Browser receives aggregated results as JSON
-  → Connectivity dashboard shows: RTT, status, trend graph per target
+User opens Connectivity Performance tab (auto-refreshes)
+    ↓ Browser (React) → GET /api/connectivity/test  (on load and on interval)
+    ↓ server.ts (backend) runs multiple probes in parallel:
+        • ping -c 3 <target>            → ICMP RTT  [ICMP]
+        • curl --connect-timeout 5 ...  → HTTP response time  [TCP:80/443]
+        • TCP connect timing            → SYN→SYN-ACK roundtrip  [TCP:varies]
+        • iperf3 -c <target> -t 5       → Bandwidth  [TCP/UDP:5201] to sdwan-voice-echo
+        • nslookup <domain>             → DNS resolution time  [UDP:53]
+    ↓ Results aggregated and returned as JSON
+    ↓ Browser renders per-probe status cards with RTT trend graphs
+
+Container resource monitoring:
+    ↓ Browser (React) → GET /api/connectivity/docker-stats
+    ↓ server.ts runs: docker stats --no-stream --format json
+    ↓ Returns CPU%, memory, and network counters per container
 ```
 
 ---
@@ -269,13 +306,18 @@ Dashboard refreshes on a configurable interval
 
 **Full chain:**
 ```
-User adds IoT devices and clicks "Start All"
-  → Browser → POST /api/iot/start-batch → server.ts
-  → server.ts spawns: python3 (Scapy-based IoT engine)
-      with raw socket access (requires host network mode)
-  → Python crafts L2/L3 packets per device type (Philips Hue, Nest, Cisco IP Phone...)
-  → Packets injected directly on physical interface
-  → No destination port needed — L2 broadcast/multicast traffic
+User adds IoT devices (e.g., "Philips Hue", "Cisco IP Phone"), clicks "Start All"
+    ↓ Browser (React) → POST /api/iot/start-batch
+    ↓ server.ts (backend) spawns: python3 engines/iot_sim.py --device philips_hue --interface eth0
+        (requires host network mode for raw socket access)
+    ↓ Python (Scapy) crafts Layer 2/3 packets for the selected device type:
+        • ARP announcement  [L2 broadcast]
+        • mDNS query (Philips Hue → _hue._tcp.local)  [UDP:5353 multicast]
+        • SSDP discovery (e.g., Amazon Echo)  [UDP:1900 multicast]
+        • DHCP Discover/Offer/Request/ACK cycle with device's spoofed MAC  [UDP:67/68]
+        • Simulated cloud telemetry (e.g., TCP to smart home cloud endpoint)  [TCP:443]
+    ↓ Packets injected directly onto the physical interface (no routing needed)
+    ↓ server.ts polls simulation stats → Browser shows active device list and packet counters
 ```
 
 ---
@@ -288,17 +330,30 @@ User adds IoT devices and clicks "Start All"
 |-----------|----------|------|-------------|
 | GUI → Router | SSH | **22** | server.ts connects via SSH to VyOS |
 
-**Full chain:**
+**Full chain — Run a Sequence:**
 ```
-User configures a Sequence (e.g., "Failover Simulation")
-  → Each step: interface-down, wait 30s, interface-up
-User clicks "Run Sequence" (CYCLE mode, every 5 min)
-  → Browser → POST /api/vyos/sequences/run/:id → server.ts
-  → server.ts (vyos-manager.ts) SSHs into VyOS router on port 22
-  → Runs VyOS CLI commands: set interfaces ethernet eth1 disable
-  → Waits for configured duration
-  → Runs: delete interfaces ethernet eth1 disable
-  → Logs action to history with success/fail status
+User sets up a Sequence (e.g., "Failover Simulation"):
+    Step 1: interface-down eth1   (simulate WAN link failure)
+    Step 2: wait 30 seconds
+    Step 3: interface-up eth1     (restore link)
+User clicks "Run Sequence" in CYCLE mode (repeats every 5 min)
+    ↓ Browser (React) → POST /api/vyos/sequences/run/:id
+    ↓ server.ts → vyos-manager.ts initiates SSH connection to VyOS on port 22
+    ↓ SSH: set interfaces ethernet eth1 disable         [TCP:22]
+    ↓ SSH session kept alive, waits for configured duration (30s)
+    ↓ SSH: delete interfaces ethernet eth1 disable      [TCP:22]
+    ↓ Action logged to vyos-config.json with timestamp and success/fail status
+    ↓ (In CYCLE mode) Timer waits for next cycle → repeats automatically
+    ↓ Browser polls /api/vyos/history → renders execution timeline + dot indicators
+```
+
+**Full chain — Add/Test a Router:**
+```
+User enters router IP, SSH username/key, clicks "Test Connectivity"
+    ↓ Browser (React) → POST /api/vyos/routers/test/:id
+    ↓ server.ts → vyos-manager.ts opens SSH to VyOS IP:22
+    ↓ Runs: show interfaces  (VyOS CLI command)
+    ↓ Returns interface list to UI → displayed in Router detail panel
 ```
 
 ---
