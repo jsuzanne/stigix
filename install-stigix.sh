@@ -81,7 +81,7 @@ if [ -t 0 ] && [ "$INSTALL_MODE" == "both" ] && [[ ! " $@ " =~ " --mode " ]]; th
 fi
 
 echo "🎯 Selected Mode: $INSTALL_MODE"
-INSTALL_DIR="stigix-aio"
+INSTALL_DIR="stigix"
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
@@ -156,5 +156,5 @@ else
     echo "📊 Dashboard: http://localhost:8080"
     echo "🔑 Login: admin / admin"
 fi
-echo "📝 Check logs: cd stigix-aio && docker compose logs -f"
+echo "📝 Check logs: cd stigix && docker compose logs -f"
 echo "=========================================="
