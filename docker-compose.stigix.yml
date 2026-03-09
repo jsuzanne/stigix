@@ -1,0 +1,23 @@
+services:
+  stigix:
+    build:
+      context: .
+      dockerfile: stigix-all-in-one/Dockerfile
+    container_name: stigix
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config
+      - ./logs:/var/log/sdwan-traffic-gen
+    environment:
+      - PORT=8080
+      - JWT_SECRET=${JWT_SECRET:-change-this-in-production}
+      - PRISMA_SDWAN_REGION=${PRISMA_SDWAN_REGION:-}
+      - PRISMA_SDWAN_TSGID=${PRISMA_SDWAN_TSGID:-}
+      - PRISMA_SDWAN_CLIENT_ID=${PRISMA_SDWAN_CLIENT_ID:-}
+      - PRISMA_SDWAN_CLIENT_SECRET=${PRISMA_SDWAN_CLIENT_SECRET:-}
+      - SLEEP_BETWEEN_REQUESTS=${SLEEP_BETWEEN_REQUESTS:-1}
+      - XFR_PORT=9000

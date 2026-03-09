@@ -1,0 +1,116 @@
+name: Build and Push Stigix All-in-One
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version_to_stable:
+        description: 'Version to promote to stable (e.g. 1.1.0-patch.25)'
+        required: false
+        default: ''
+      build_full:
+        description: 'Build for ALL platforms (AMD64 + ARM64)? Slow!'
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: jsuzanne/stigix
+
+jobs:
+  promote-to-stable:
+    name: Promote Stigix to Stable
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.version_to_stable != ''
+    steps:
+      - name: Checkout target version
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ github.event.inputs.version_to_stable }}
+      
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Stigix All-in-One (Stable)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: stigix-all-in-one/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:stable,${{ env.IMAGE_NAME }}:${{ github.event.inputs.version_to_stable }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ github.event.inputs.version_to_stable }}
+
+  build:
+    name: Build Stigix Image
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.version_to_stable == '')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Determine Tags
+        id: tags
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+            echo "tags=${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:$VERSION" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          elif [[ $GITHUB_REF == refs/heads/main ]]; then
+            echo "tags=${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
+            echo "version=latest" >> $GITHUB_OUTPUT
+          else
+            BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')
+            echo "tags=${{ env.IMAGE_NAME }}:$BRANCH_NAME" >> $GITHUB_OUTPUT
+            echo "version=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine Platforms
+        id: plat
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.build_full }}" == "true" ]]; then
+            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
+          else
+            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push Stigix All-in-One
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: stigix-all-in-one/Dockerfile
+          platforms: ${{ steps.plat.outputs.platforms }}
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ steps.tags.outputs.version }}

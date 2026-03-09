@@ -5,7 +5,7 @@ on:
     branches:
       - main           # Triggers on push to main (latest)
     tags:
-      - 'v*.*.*'       # Triggers on version tags (v1.1.0, etc.)
+      - 'v*'       # Triggers on all version tags (v1.1.0, v1.2.1-patch.152, etc.)
   workflow_dispatch:   # Allows manual trigger and promotion
     inputs:
       version_to_stable:
