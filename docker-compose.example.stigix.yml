@@ -1,47 +1,55 @@
+# SD-WAN Traffic Generator - All-in-One Deployment
+# This configuration runs EVERYTHING (Dashboard, Traffic Gen, Voice, Echo, XFR, MCP) 
+# inside a single container.
+#
+# Usage: 
+#   docker-compose -f docker-compose.example.stigix.yml up -d
+
 services:
   stigix:
-    build:
-      context: .
-      dockerfile: stigix-all-in-one/Dockerfile
+    image: jsuzanne/stigix:stable
     container_name: stigix
     network_mode: host
     cap_add:
       - NET_ADMIN
       - NET_RAW
     restart: unless-stopped
+    
+    # Volumes for persistence
     volumes:
       - ./config:/app/config
       - ./logs:/var/log/sdwan-traffic-gen
       - ./mcp-data:/app/mcp-data
+      
     environment:
       # --- General & Web UI ---
       - PORT=8080
-      - JWT_SECRET=${JWT_SECRET:-change-this-in-production}
+      - JWT_SECRET=${JWT_SECRET:-your-secure-secret-here}
       - DEBUG=${DEBUG:-false}
       
-      # --- Prisma SD-WAN API ---
+      # --- Prisma SD-WAN API Credentials ---
       - PRISMA_SDWAN_REGION=${PRISMA_SDWAN_REGION:-}
       - PRISMA_SDWAN_TSGID=${PRISMA_SDWAN_TSGID:-}
       - PRISMA_SDWAN_CLIENT_ID=${PRISMA_SDWAN_CLIENT_ID:-}
       - PRISMA_SDWAN_CLIENT_SECRET=${PRISMA_SDWAN_CLIENT_SECRET:-}
 
-      # --- Traffic Generator ---
+      # --- Traffic Generator Settings ---
       - AUTO_START_TRAFFIC=${AUTO_START_TRAFFIC:-true}
       - SLEEP_BETWEEN_REQUESTS=${SLEEP_BETWEEN_REQUESTS:-1}
       - CLIENT_ID=${CLIENT_ID:-client01}
 
-      # --- XFR Target ---
+      # --- XFR Bandwidth Target ---
       - XFR_PORT=${XFR_PORT:-9000}
       - XFR_MAX_DURATION=${XFR_MAX_DURATION:-60}
       - XFR_RATE_LIMIT=${XFR_RATE_LIMIT:-2}
       - XFR_ALLOW_CIDR=${XFR_ALLOW_CIDR:-0.0.0.0/0}
 
-      # --- Voice / Echo ---
+      # --- Target Ports ---
       - TARGET_HTTP_PORT=8082
 
     healthcheck:
       test: [ "CMD-SHELL", "test -f /app/config/applications-config.json -o -f /app/config/applications.txt" ]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s

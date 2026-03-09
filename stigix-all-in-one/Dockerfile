@@ -7,7 +7,7 @@ COPY web-dashboard/ ./
 RUN npm run build
 
 # Final Stage
-FROM public.ecr.aws/docker/library/python:3.11-slim
+FROM public.ecr.aws/docker/library/python:3.12-slim
 
 WORKDIR /app
 
@@ -68,11 +68,12 @@ COPY --from=builder /app/VERSION ./VERSION
 COPY engines ./engines
 COPY vyos ./vyos
 COPY iot ./iot
+COPY mcp-server /app/mcp-server
 COPY traffic-generator.sh ./
 COPY stigix-all-in-one ./stigix-all-in-one
 
 # Install Python dependencies
-RUN pip3 install --no-cache-dir scapy flask prisma-sase -r iot/requirements.txt --break-system-packages || true
+RUN pip3 install --no-cache-dir scapy flask prisma-sase -r iot/requirements.txt -r mcp-server/requirements.txt --break-system-packages || true
 
 # Final preparations
 RUN chmod +x /app/traffic-generator.sh \
@@ -80,9 +81,10 @@ RUN chmod +x /app/traffic-generator.sh \
     /app/stigix-all-in-one/entrypoint.sh \
     && dos2unix /app/traffic-generator.sh /app/stigix-all-in-one/entrypoint.sh
 
-# Create log directory
-RUN mkdir -p /var/log/sdwan-traffic-gen
+# Path Bridging (Ensure all scripts find config/logs in consistent locations)
+RUN mkdir -p /var/log/sdwan-traffic-gen /opt/sdwan-traffic-gen /app/mcp-data && \
+    ln -s /app/config /opt/sdwan-traffic-gen/config
 
-EXPOSE 8080 6100/udp 6101/udp 6200/udp 5201/tcp 5201/udp 8082/tcp 9000/tcp
+EXPOSE 8080 6100/udp 6101/udp 6200/udp 5201/tcp 5201/udp 8082/tcp 9000/tcp 3100
 
 ENTRYPOINT ["/app/stigix-all-in-one/entrypoint.sh"]

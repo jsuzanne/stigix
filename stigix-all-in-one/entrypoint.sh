@@ -4,6 +4,7 @@ set -e
 # Create necessary directories
 mkdir -p /var/log/sdwan-traffic-gen
 mkdir -p /app/config
+mkdir -p /app/mcp-data
 
 # Set default values for XFR if not provided
 export XFR_PORT=${XFR_PORT:-9000}
