@@ -1579,12 +1579,39 @@ export default function Settings({ token }: { token: string }) {
                                             </tbody>
                                         </table>
                                     ) : (
-                                        <div className="h-full flex flex-col items-center justify-center space-y-4 opacity-70">
-                                            <Network size={48} className="text-text-muted opacity-20" />
-                                            <div className="text-center space-y-1">
-                                                <p className="text-[11px] font-black text-text-muted uppercase tracking-widest">Peer Discovery active</p>
-                                                <p className="text-[9px] text-text-muted font-bold max-w-[240px] leading-relaxed">
-                                                    Peers discovered by this instance are listed in the <span className="text-emerald-500">Targets</span> tab under 'Auto' badge.
+                                        <div className="h-full flex flex-col items-center justify-center space-y-8 py-10">
+                                            <div className="relative">
+                                                <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full animate-pulse" />
+                                                <Server size={64} className="text-blue-500 relative" />
+                                                <div className="absolute -top-2 -right-2 p-1 bg-green-500 rounded-full border-4 border-card shadow-lg">
+                                                    <Activity size={16} className="text-white" />
+                                                </div>
+                                            </div>
+
+                                            <div className="text-center space-y-5 max-w-sm">
+                                                <div className="space-y-1">
+                                                    <p className="text-[12px] font-black text-text-muted uppercase tracking-[0.3em]">Active Local Leader</p>
+                                                    <h4 className="text-2xl font-black text-text-primary tracking-tight">
+                                                        {registryStatus?.leader_info?.id || 'Leader Found'}
+                                                    </h4>
+                                                </div>
+
+                                                <div className="p-4 bg-card-secondary/50 border border-border rounded-2xl space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[9px] font-black text-text-muted uppercase">Leader IP</span>
+                                                        <span className="font-mono text-xs font-bold text-blue-500">{registryStatus?.leader_info?.ip || 'Connecting...'}</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[9px] font-black text-text-muted uppercase">Sync Status</span>
+                                                        <span className="text-[9px] font-black text-green-500 uppercase flex items-center gap-1.5">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                                            Connected
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <p className="text-[10px] text-text-muted font-bold leading-relaxed opacity-60">
+                                                    This node is discovery-delegated. Peers discovered via the leader are automatically synchronized in your <span className="text-emerald-500">Targets</span> dashboard.
                                                 </p>
                                             </div>
                                         </div>

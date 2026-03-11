@@ -207,7 +207,8 @@ export class StigixRegistryClient {
                 headers: this.getHeaders(),
                 body: JSON.stringify({
                     poc_id: this.config.pocId,
-                    leader_ip: localIp
+                    leader_ip: localIp,
+                    leader_id: this.config.instanceId
                 })
             });
             return res.ok;
@@ -230,7 +231,11 @@ export class StigixRegistryClient {
 
             if (!res.ok) return null;
             const data = await res.json();
-            return data.leader_ip || null;
+            if (!data.leader_ip) return null;
+            return {
+                ip: data.leader_ip,
+                id: data.leader_id || 'unknown'
+            };
         } catch (e) {
             console.error(`[REGISTRY] Failed to find leader:`, e);
             return null;

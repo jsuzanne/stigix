@@ -12,6 +12,7 @@ export class RegistryManager {
     private discoveryInterval: NodeJS.Timeout | null = null;
     private discoveredPeers: RegistryInstance[] = [];
     private currentIp: string = '127.0.0.1';
+    private leaderInfo: { ip: string, id: string } | null = null;
 
     constructor(configDir: string) {
         this.client = StigixRegistryClient.fromEnv();
@@ -48,9 +49,10 @@ export class RegistryManager {
             this.client.setLocalRegistry('127.0.0.1');
         } else {
             // Peer Mode: Try to find local leader via Bootstrap
-            const leaderIp = await this.client.findLeader();
-            if (leaderIp) {
-                this.client.setLocalRegistry(leaderIp);
+            const leader = await this.client.findLeader();
+            if (leader) {
+                this.leaderInfo = leader;
+                this.client.setLocalRegistry(leader.ip);
             } else {
                 console.log(`[REGISTRY] No local leader found. Using remote bootstrap for now.`);
             }
@@ -76,9 +78,10 @@ export class RegistryManager {
 
         // 1. Peer Recovery: If using Remote, try to find a Local Leader
         if (mode === 'peer' && config.registryUrl === config.remoteUrl) {
-            const leaderIp = await this.client.findLeader();
-            if (leaderIp) {
-                this.client.setLocalRegistry(leaderIp);
+            const leader = await this.client.findLeader();
+            if (leader) {
+                this.leaderInfo = leader;
+                this.client.setLocalRegistry(leader.ip);
             }
         }
 
@@ -127,7 +130,8 @@ export class RegistryManager {
             peer_count: this.discoveredPeers.length,
             detected_ip: this.currentIp,
             registry_url: config.registryUrl,
-            remote_url: config.remoteUrl
+            remote_url: config.remoteUrl,
+            leader_info: this.leaderInfo
         };
     }
 

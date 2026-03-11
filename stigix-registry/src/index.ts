@@ -72,17 +72,29 @@ async function handleGetLeader(request: Request, env: Env): Promise<Response> {
         return jsonResponse({ status: 'error', error: 'forbidden' }, 403);
     }
 
-    const leaderIp = await env.STIGIX_REGISTRY.get(`leader:${poc_id}`);
-    if (!leaderIp) {
+    const leaderVal = await env.STIGIX_REGISTRY.get(`leader:${poc_id}`);
+    if (!leaderVal) {
         return jsonResponse({ status: 'error', error: 'not_found', details: 'No leader announced for this PoC' }, 404);
     }
 
-    return jsonResponse({ status: 'ok', poc_id, leader_ip: leaderIp });
+    try {
+        const leader = JSON.parse(leaderVal);
+        return jsonResponse({
+            status: 'ok',
+            poc_id,
+            leader_ip: leader.ip,
+            leader_id: leader.id,
+            last_announced: leader.last_announced
+        });
+    } catch (e) {
+        // Fallback for legacy IP-only storage
+        return jsonResponse({ status: 'ok', poc_id, leader_ip: leaderVal });
+    }
 }
 
 // --- POST /leader (Leader Announcement) ---
 async function handleSetLeader(request: Request, env: Env): Promise<Response> {
-    let payload: { poc_id: string; leader_ip: string };
+    let payload: { poc_id: string; leader_ip: string; leader_id?: string };
     try {
         payload = await request.json();
     } catch (e) {
@@ -106,12 +118,18 @@ async function handleSetLeader(request: Request, env: Env): Promise<Response> {
         return jsonResponse({ status: 'error', error: 'forbidden' }, 403);
     }
 
-    // Save leader IP with a long TTL (900s = 15 min)
-    await env.STIGIX_REGISTRY.put(`leader:${payload.poc_id}`, payload.leader_ip, {
+    // Save leader info with a long TTL (900s = 15 min)
+    const leaderInfo = {
+        ip: payload.leader_ip,
+        id: payload.leader_id || 'unknown',
+        last_announced: new Date().toISOString()
+    };
+
+    await env.STIGIX_REGISTRY.put(`leader:${payload.poc_id}`, JSON.stringify(leaderInfo), {
         expirationTtl: 900
     });
 
-    console.log(`[BOOTSTRAP] Leader announced for PoC ${payload.poc_id}: ${payload.leader_ip}`);
+    console.log(`[BOOTSTRAP] Leader announced for PoC ${payload.poc_id}: ${payload.leader_ip} (${leaderInfo.id})`);
     return jsonResponse({ status: 'ok' });
 }
 
