@@ -70,9 +70,16 @@ export class StigixRegistryClient {
      * Factory method to create a client from environment variables.
      */
     static fromEnv(): StigixRegistryClient {
-        const enabled = process.env.STIGIX_REGISTRY_ENABLED === 'true';
-        const registryUrl = process.env.STIGIX_REGISTRY_URL || 'https://stigix-registry.jlsuzanne.workers.dev';
         const pocId = process.env.PRISMA_SDWAN_TSGID || null;
+        const clientId = process.env.PRISMA_SDWAN_CLIENT_ID;
+
+        // Auto-enable logic:
+        // Enabled if explicitly set to 'true' OR (TSG_ID and CLIENT_ID are present and not explicitly false)
+        const explicitToggle = process.env.STIGIX_REGISTRY_ENABLED;
+        const enabled = explicitToggle === 'true' ||
+            (explicitToggle !== 'false' && !!pocId && !!clientId);
+
+        const registryUrl = process.env.STIGIX_REGISTRY_URL || 'https://stigix-registry.jlsuzanne.workers.dev';
 
         // Identity fallback logic:
         // 1. STIGIX_INSTANCE_ID (Technical UID)
