@@ -92,7 +92,7 @@ async function handleGetLeader(request: Request, env: Env): Promise<Response> {
     }
 }
 
-// --- POST /leader (Leader Announcement) ---
+// --- POST /leader (Leader Announcement / Election) ---
 async function handleSetLeader(request: Request, env: Env): Promise<Response> {
     let payload: { poc_id: string; leader_ip: string; leader_id?: string };
     try {
@@ -106,31 +106,55 @@ async function handleSetLeader(request: Request, env: Env): Promise<Response> {
     }
 
     // Auth Check
-    const storedPocKey = await env.STIGIX_REGISTRY.get(`auth:poc:${payload.poc_id}`);
+    const authKey = `auth:poc:${payload.poc_id}`;
+    let storedPocKey = await env.STIGIX_REGISTRY.get(authKey);
     const providedPocKey = request.headers.get('X-PoC-Key');
 
     // First registration of a PoC via /leader is also allowed (auto-enrollment)
     if (!storedPocKey) {
-        const newKey = providedPocKey || crypto.randomUUID();
-        await env.STIGIX_REGISTRY.put(`auth:poc:${payload.poc_id}`, newKey);
+        storedPocKey = providedPocKey || crypto.randomUUID();
+        await env.STIGIX_REGISTRY.put(authKey, storedPocKey);
         console.log(`[AUTH] Enrolled PoC via /leader: ${payload.poc_id}`);
     } else if (providedPocKey !== storedPocKey) {
         return jsonResponse({ status: 'error', error: 'forbidden' }, 403);
     }
 
+    // --- LEASE MECHANISM (Race Condition Protection) ---
+    const leaderKey = `leader:${payload.poc_id}`;
+    const existingLeaderVal = await env.STIGIX_REGISTRY.get(leaderKey);
+    const requesterId = payload.leader_id || 'unknown';
+
+    if (existingLeaderVal) {
+        try {
+            const existing = JSON.parse(existingLeaderVal);
+            // If another leader is already active and NOT EXPIRED, reject this one
+            if (existing.id && existing.id !== requesterId) {
+                console.warn(`[ELECTION] Blocked race condition: ${requesterId} tried to hijack leader from ${existing.id}`);
+                return jsonResponse({
+                    status: 'error',
+                    error: 'conflict',
+                    details: 'A valid leader lease already exists for this PoC',
+                    active_leader: existing.id
+                }, 409);
+            }
+        } catch (e) {
+            // If parse fails (legacy data), we overwrite below
+        }
+    }
+
     // Save leader info with a long TTL (900s = 15 min)
     const leaderInfo = {
         ip: payload.leader_ip,
-        id: payload.leader_id || 'unknown',
+        id: requesterId,
         last_announced: new Date().toISOString()
     };
 
-    await env.STIGIX_REGISTRY.put(`leader:${payload.poc_id}`, JSON.stringify(leaderInfo), {
+    await env.STIGIX_REGISTRY.put(leaderKey, JSON.stringify(leaderInfo), {
         expirationTtl: 900
     });
 
-    console.log(`[BOOTSTRAP] Leader announced for PoC ${payload.poc_id}: ${payload.leader_ip} (${leaderInfo.id})`);
-    return jsonResponse({ status: 'ok' });
+    console.log(`[BOOTSTRAP] Leader lease granted/refreshed for PoC ${payload.poc_id}: ${payload.leader_ip} (ID: ${requesterId})`);
+    return jsonResponse({ status: 'ok', lease_expiration: 900 });
 }
 
 // --- POST /register ---

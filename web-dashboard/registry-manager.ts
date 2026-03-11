@@ -11,7 +11,7 @@ export class RegistryManager {
     private client: StigixRegistryClient;
     private heartbeatInterval: NodeJS.Timeout | null = null;
     private discoveryInterval: NodeJS.Timeout | null = null;
-    private discoveredPeers: RegistryInstance[] = [];
+    private peerCache: Map<string, { instance: RegistryInstance, lastSeen: number }> = new Map();
     private currentIp: string = '127.0.0.1';
     private leaderInfo: { ip: string, id: string } | null = null;
     private detectedRole: string | null = null;
@@ -181,11 +181,31 @@ export class RegistryManager {
 
     private async performDiscovery() {
         const instances = await this.client.fetchInstances();
-        this.discoveredPeers = instances;
+        if (instances && Array.isArray(instances)) {
+            const now = Date.now();
+            for (const inst of instances) {
+                this.peerCache.set(inst.instance_id, {
+                    instance: inst,
+                    lastSeen: now
+                });
+            }
+        }
     }
 
     getPeers(): RegistryInstance[] {
-        return this.discoveredPeers;
+        const now = Date.now();
+        const GRACE_PERIOD_MS = 15 * 60 * 1000; // 15 minutes
+
+        const activePeers: RegistryInstance[] = [];
+        for (const [id, entry] of this.peerCache.entries()) {
+            if (now - entry.lastSeen < GRACE_PERIOD_MS) {
+                activePeers.push(entry.instance);
+            } else {
+                // Cleanup old entries
+                this.peerCache.delete(id);
+            }
+        }
+        return activePeers;
     }
 
     getStatus() {
@@ -196,7 +216,7 @@ export class RegistryManager {
             instance_id: config.instanceId,
             poc_key: config.pocKey,
             is_registered: !!config.pocKey,
-            peer_count: this.discoveredPeers.length,
+            peer_count: this.getPeers().length,
             detected_ip: this.currentIp,
             registry_url: config.registryUrl,
             remote_url: config.remoteUrl,
