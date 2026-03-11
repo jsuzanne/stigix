@@ -92,7 +92,6 @@ export class StigixRegistryClient {
         const region = process.env.PRISMA_SDWAN_REGION;
         const instanceType = process.env.STIGIX_INSTANCE_TYPE || 'docker';
         const apiKey = process.env.STIGIX_REGISTRY_API_KEY;
-        const clientId = process.env.PRISMA_SDWAN_CLIENT_ID;
 
         return new StigixRegistryClient({
             enabled,
