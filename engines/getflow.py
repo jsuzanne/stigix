@@ -1532,12 +1532,21 @@ def main():
         log_output(" Scanning LAN interfaces across all sites...", json_mode)
 
         site_lan_map = get_all_lan_interfaces(sdk, sites, debug=args.debug)
+        site_dc_lan_map = get_all_dc_lan_interfaces(sdk, sites, debug=args.debug)
+        
+        # Merge the two maps
+        for sid, info in site_dc_lan_map.items():
+            if sid not in site_lan_map:
+                site_lan_map[sid] = info
+            else:
+                site_lan_map[sid]['networks'].extend(info.get('networks', []))
+
         if not site_lan_map:
-            error_msg = {"error": "Could not retrieve LAN interfaces from any site"}
+            error_msg = {"error": "Could not retrieve LAN or DC LAN interfaces from any site"}
             if json_mode:
                 print(json.dumps(error_msg, indent=2))
             else:
-                log_output("❌ Could not retrieve LAN interfaces", json_mode, is_error=True)
+                log_output("❌ Could not retrieve any LAN interfaces", json_mode, is_error=True)
             sys.exit(1)
 
         target_site_name, target_site_id, matched_network, target_site_role, target_site_bg = find_site_by_ip(local_ip, site_lan_map, debug=args.debug)
