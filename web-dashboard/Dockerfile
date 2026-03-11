@@ -61,6 +61,9 @@ COPY web-dashboard/vyos-manager.ts ./
 COPY web-dashboard/vyos-scheduler.ts ./
 COPY web-dashboard/site-manager.ts ./
 COPY web-dashboard/discovery-manager.ts ./
+COPY web-dashboard/registry-manager.ts ./
+COPY web-dashboard/stigix-registry-client.ts ./
+COPY web-dashboard/local-registry-server.ts ./
 COPY web-dashboard/shared ./shared
 COPY web-dashboard/utils ./utils
 COPY web-dashboard/src/types ./src/types
