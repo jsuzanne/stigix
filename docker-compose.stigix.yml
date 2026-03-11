@@ -39,6 +39,11 @@ services:
       # --- Voice / Echo ---
       - TARGET_HTTP_PORT=8082
 
+      # --- Registry & Discovery (Optional Overrides) ---
+      # - STIGIX_REGISTRY_ENABLED=${STIGIX_REGISTRY_ENABLED:-true}
+      # - STIGIX_SITE_NAME=${STIGIX_SITE_NAME:-}
+      # - STIGIX_INSTANCE_ID=${STIGIX_INSTANCE_ID:-}
+
     healthcheck:
       test: [ "CMD-SHELL", "test -f /app/config/applications-config.json -o -f /app/config/applications.txt" ]
       interval: 5s
