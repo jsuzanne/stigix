@@ -257,18 +257,32 @@ docker ps
 
 ## 🚀 Quick Start
 
-### Option 1: One-Liner Install (Linux/macOS) ⭐
+### One-Liner Install (Linux/macOS) ⭐
 
 **Requirements:** Docker must be running (see [Prerequisites](#-prerequisites) above)
 
-**Full Dashboard (Default):**
+We provide an interactive installation script that configures the **Stigix All-in-One** container for your environment.
+
 ```bash
-curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install-stigix.sh | bash
 ```
 
-**Target Site Only:**
-```bash
-curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash -s -- --target
+**What to expect:**
+```text
+🚀 Stigix (All-in-One) - Installation
+==========================================
+✅ Docker is running.
+🐧 Platform: Native Linux detected. (Using host mode for full features)
+
+📌 Choose Deployment Mode:
+1) Both (Source + Target) [Default] - Runs Dashboard, Traffic Gen, and Echo targets
+2) Target Only - Deploys only the Echo/XFR targets
+3) Source Only - Deploys only the Dashboard and Traffic Gen
+Select an option [1-3] (Default: 1): 1
+🎯 Selected Mode: both
+📦 Downloading Base Configuration from GitHub...
+✅ Files prepared in /path/to/stigix
+🔧 Pulling images and starting Stigix All-in-One...
 ```
 
 **What to expect (macOS Example):**
@@ -302,59 +316,45 @@ curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | ba
 
 This will:
 - ✅ Check if Docker is installed and running
-- ✅ Let you choose between **Full Dashboard** or **Target Site**
-- ✅ Download the correct docker-compose.yml
-- ✅ Pull pre-built images from Docker Hub
-- ✅ Start services automatically
+- ✅ Detect your OS to configure networking (Host for Linux, Bridge for Mac/WSL)
+- ✅ Let you choose your deployment mode (Interactive)
+- ✅ Pull the single, optimized `jsuzanne/stigix:stable` image
+- ✅ Start all necessary services automatically
 - ✅ Auto-generate configuration
 
 **Access:** http://localhost:8080  
 **Credentials:** `admin` / `admin` (change after first login)
 
-> **Note:** This method is not supported on Windows. Windows users should use Option 2 below or follow the [Windows Installation Guide](docs/WINDOWS_INSTALL.md).
+> **Advanced flags:** You can bypass interactivity using `--mode <both|source|target>` or simulate the install with `--dry-run`. Example:
+> `curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install-stigix.sh | bash -s -- --mode target`
+
+> **Windows Users:** The one-liner installation script is not supported in PowerShell. Please follow the **[Windows Installation Guide](docs/WINDOWS_INSTALL.md)** for step-by-step instructions.
 
 ---
 
-### Option 2a: Manual Install (Linux)
+### Manual Install (Advanced)
 
-**Full Dashboard (Interactive):**
+If you prefer not to use the install script, you can download the compose file manually.
+
+**Linux (Host Mode):**
 ```bash
-# Download docker-compose.yml
-curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.host.yml
-
-# Start services
+mkdir -p stigix && cd stigix
+curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.example.stigix.yml
 docker compose up -d
-
-# Access dashboard
 open http://localhost:8080
 ```
 
-### Option 2b: Manual Install (Mac in docker bridge mode)
+**macOS/WSL (Bridge Mode):**
 ```bash
-# Download docker-compose.yml
-curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.example.yml
-
-# Start services
+mkdir -p stigix && cd stigix
+curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.example.bridge.yml
 docker compose up -d
-
-# Access dashboard
 open http://localhost:8080
 ```
 
-**Target Site Only:**
-```bash
-# Create directory
-mkdir -p stigix-target && cd stigix-target
+> **Legacy Separated Containers:** Stigix is now distributed as a single All-in-One image (`jsuzanne/stigix`) managed by supervisord. The legacy separated images (`sdwan-web-ui`, `sdwan-voice`, etc.) and the old `install.sh` script are deprecated but still available in the repository for advanced/legacy use cases.
 
-# Download target docker-compose.yml
-curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.target.yml
 
-# Start services
-docker compose up -d
-
-# Verify (Echo responder on port 6200/UDP)
-docker compose ps
-```
 
 **Windows (PowerShell):**
 ```powershell
@@ -362,14 +362,11 @@ docker compose ps
 mkdir C:\stigix
 cd C:\stigix
 
-# Download docker-compose.yml (note: curl.exe, not curl)
-curl.exe -L https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.example.yml -o docker-compose.yml
+# Download bridge mode compose file
+curl.exe -L https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.example.bridge.yml -o docker-compose.yml
 
 # Start services
 docker compose up -d
-
-# Access dashboard in browser
-# http://localhost:8080
 ```
 
 **Default credentials:** `admin` / `admin`
@@ -738,14 +735,18 @@ The Stigix has **two separate systems**:
 
 ## 📦 Docker Images
 
-Pre-built images are available on Docker Hub:
+### Main Image (All-in-One)
+The recommended deployment method uses a single unified image encompassing all components:
+- **Stigix All-in-One:** [`jsuzanne/stigix:stable`](https://hub.docker.com/r/jsuzanne/stigix)
 
+### Legacy Images (Separated Components)
+For advanced use cases or deployments needing isolated scaling, the original separated images remain available:
 - **Web UI:** [`jsuzanne/sdwan-web-ui:stable`](https://hub.docker.com/r/jsuzanne/sdwan-web-ui)
 - **Traffic Generator:** [`jsuzanne/sdwan-traffic-gen:stable`](https://hub.docker.com/r/jsuzanne/sdwan-traffic-gen)
 - **Voice Generator:** [`jsuzanne/sdwan-voice-gen:stable`](https://hub.docker.com/r/jsuzanne/sdwan-voice-gen)
 - **Voice Echo:** [`jsuzanne/sdwan-voice-echo:stable`](https://hub.docker.com/r/jsuzanne/sdwan-voice-echo)
 
-Images are automatically built for **AMD64** and **ARM64** architectures.
+All images are automatically built for **AMD64** and **ARM64** architectures.
 
 ---
 
