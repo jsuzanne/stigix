@@ -17,6 +17,8 @@ export interface RegistryConfig {
     apiKey?: string; // Global shared key (optional)
     clientId?: string; // Prisma Client ID (shared secret for hash)
     pocKey?: string; // PoC-specific key (derived or received)
+    heartbeatIntervalSec?: number;
+    discoveryIntervalSec?: number;
 }
 
 export interface RegistryInstance {
@@ -102,7 +104,9 @@ export class StigixRegistryClient {
             region,
             instanceType,
             apiKey,
-            clientId
+            clientId,
+            heartbeatIntervalSec: parseInt(process.env.STIGIX_REGISTRY_HEARTBEAT_SEC || '300'),
+            discoveryIntervalSec: parseInt(process.env.STIGIX_REGISTRY_DISCOVERY_SEC || '120')
         });
     }
 
