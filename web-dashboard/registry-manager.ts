@@ -83,6 +83,7 @@ export class RegistryManager {
             enabled: config.enabled,
             poc_id: config.pocId,
             instance_id: config.instanceId,
+            poc_key: config.pocKey,
             is_registered: !!config.pocKey,
             peer_count: this.discoveredPeers.length,
             detected_ip: this.currentIp
