@@ -244,8 +244,9 @@ export class StigixRegistryClient {
         }
     }
 
-    setLocalRegistry(leaderIp: string, port: number = 5000) {
-        this.config.registryUrl = `http://${leaderIp}:${port}/api/registry`;
+    setLocalRegistry(leaderIp: string, port?: number) {
+        const targetPort = port || process.env.PORT || 8080;
+        this.config.registryUrl = `http://${leaderIp}:${targetPort}/api/registry`;
         console.log(`[REGISTRY] Switched to Local Leader: ${this.config.registryUrl}`);
     }
 
