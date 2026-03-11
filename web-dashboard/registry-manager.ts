@@ -44,8 +44,8 @@ export class RegistryManager {
         await this.performHeartbeat();
 
         // 2. Setup Loops
-        this.heartbeatInterval = setInterval(() => this.performHeartbeat(), 60000); // 1 min heartbeat
-        this.discoveryInterval = setInterval(() => this.performDiscovery(), 30000); // 30s discovery
+        this.heartbeatInterval = setInterval(() => this.performHeartbeat(), 300000); // 5 min heartbeat (Cloudflare Free Tier friendly)
+        this.discoveryInterval = setInterval(() => this.performDiscovery(), 120000); // 2 min discovery
 
         // 3. Initial Discovery
         await this.performDiscovery();

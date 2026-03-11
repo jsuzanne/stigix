@@ -29,9 +29,9 @@ The `RegistryManager` handles the background synchronization.
 
 | Event | Frequency | Description |
 | :--- | :--- | :--- |
-| **Heartbeat** | Every 60 seconds | The instance sends its current Private IP and capabilities (Voice, Security, etc.) to the registry. |
-| **Discovery** | Every 30 seconds | The instance fetches the list of *other* nodes registered for the same PoC. |
-| **TTL (Expire)** | 300 seconds (5m) | If an instance stops sending heartbeats, it is automatically removed from the registry after 5 minutes. |
+| **Heartbeat** | Every 5 minutes (300s) | The instance sends its current Private IP and capabilities (Voice, Security, etc.) to the registry. |
+| **Discovery** | Every 2 minutes (120s) | The instance fetches the list of *other* nodes registered for the same PoC. |
+| **TTL (Expire)** | 600 seconds (10m) | If an instance stops sending heartbeats, it is automatically removed from the registry after 10 minutes. |
 
 ---
 
