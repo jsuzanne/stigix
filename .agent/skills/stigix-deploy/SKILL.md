@@ -13,6 +13,9 @@ Use this skill whenever you make **code changes** to the stigix project that sho
 - After changes to `engines/` scripts, `iot/`, `vyos/`, or `mcp-server/`
 - **Skip** for doc-only changes (`docs/`, `README.md`, `CHANGELOG.md`, `*.md`) — those don't need a tag/rebuild
 
+> [!IMPORTANT]
+> **Dockerfile Audit**: If you added a NEW `.ts` file or a new directory in `web-dashboard/`, you MUST ensure it is explicitly copied in the `Runtime Stage` of the `web-dashboard/Dockerfile`. Otherwise, the container will fail with `ERR_MODULE_NOT_FOUND`.
+
 ## Steps
 
 ### 1 — Determine the new version
