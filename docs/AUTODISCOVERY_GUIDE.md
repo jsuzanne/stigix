@@ -12,9 +12,9 @@ To ensure security and isolation between different clients, Stigix uses a **Stat
 
 ### Key Derivation
 Every instance calculates a unique `X-PoC-Key` at startup:
-- **Input**: `PRISMA_SDWAN_TSGID` + `PRISMA_SDWAN_CLIENT_ID` + Salt.
-- **Algorithm**: `MD5` (transitioning to `SHA-256` for production).
-- **Benefit**: No local identity file (`identity.json`) is required. If you have the correct Prisma credentials in your `.env`, you are automatically authorized.
+- **Input**: Secure Hash derived from Shared Prisma Credentials and an internal salt.
+- **Algorithm**: Standard cryptographic hash (transitioning to a stronger variant for production).
+- **Benefit**: No local identity file (`identity.json`) is required. If your environment is correctly configured with your Prisma credentials, you are automatically authorized.
 
 ### Trust on First Registration
 1. The **first** instance that registers for a given `TSG_ID` "claims" that ID with its specific hash.
