@@ -1484,6 +1484,26 @@ export default function Settings({ token }: { token: string }) {
                                         </div>
                                     </div>
 
+                                    <div className="space-y-1.5 col-span-2">
+                                        <div className="text-[8px] font-black text-text-muted tracking-widest uppercase">Auto-Detection Identity</div>
+                                        <div className="p-3 bg-card-secondary/50 border border-border rounded-xl space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[9px] font-bold text-text-muted">Site Role:</span>
+                                                <span className={`text-[9px] font-black tracking-tight ${registryStatus?.detected_role === 'HUB' ? 'text-purple-500' : 'text-blue-500'}`}>
+                                                    {registryStatus?.detected_role || 'UNKNOWN'}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[9px] font-bold text-text-muted">Branch Gateway:</span>
+                                                <span className="text-[9px] font-black text-text-primary px-1.5 py-0.5 rounded bg-card">{registryStatus?.is_bg ? 'YES' : 'NO'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[9px] font-bold text-text-muted">Election Mode:</span>
+                                                <span className="text-[9px] font-black text-emerald-500 uppercase">{registryStatus?.current_mode || 'MANUAL'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div className="space-y-1.5">
                                         <div className="text-[8px] font-black text-text-muted tracking-widest uppercase">PoC Registry Key</div>
                                         <div className="p-2.5 bg-card-secondary/50 border border-border rounded-xl font-mono text-[9px] text-text-muted flex items-center justify-between">
@@ -1504,7 +1524,9 @@ export default function Settings({ token }: { token: string }) {
                                         <p className="text-[9px] text-text-muted leading-relaxed font-bold opacity-70">
                                             {registryStatus?.mode === 'leader'
                                                 ? "This node is the Leader. It handles registration for all local peers and periodically syncs to Cloudflare for global discovery."
-                                                : "This node is a Peer. It finds the Leader via Cloudflare once, then communicates locally to save Worker resources."}
+                                                : registryStatus?.registry_url === registryStatus?.remote_url
+                                                    ? "Node is in Peer Fallback mode. No local leader was found; communicating directly with Cloudflare (Write Quota Warning)."
+                                                    : "This node is a Peer. It finds the Leader via Cloudflare once, then communicates locally to save Worker resources."}
                                         </p>
                                     </div>
                                 </div>

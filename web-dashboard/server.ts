@@ -6407,24 +6407,27 @@ app.delete('/api/iot/devices/:id', authenticateToken, (req, res) => {
 });
 
 // --- Local Registry API (Hybrid Leader) ---
-let localRegistryServer: LocalRegistryServer | null = null;
-if (process.env.STIGIX_REGISTRY_MODE === 'leader') {
-    localRegistryServer = new LocalRegistryServer();
-    app.use('/api/registry', localRegistryServer.getRouter());
-    log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry`);
-}
+const localRegistryServer = new LocalRegistryServer();
+app.use('/api/registry', (req, res, next) => {
+    const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE;
+    if (mode === 'leader') {
+        return localRegistryServer.getRouter()(req, res, next);
+    }
+    next();
+});
+log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry (Dynamic Mode)`);
 
 // Global Registry Status
 app.get('/api/registry/status', authenticateToken, (req, res) => {
-    const status: any = {
-        ...registryManager.getStatus(),
-        mode: process.env.STIGIX_REGISTRY_MODE || 'peer',
-        local_registry_active: process.env.STIGIX_REGISTRY_MODE === 'leader'
-    };
+    const mgrStatus = registryManager.getStatus();
+    const mode = mgrStatus.current_mode || process.env.STIGIX_REGISTRY_MODE || 'peer';
 
-    if (localRegistryServer) {
-        status.local_instances = localRegistryServer.getInstances();
-    }
+    const status: any = {
+        ...mgrStatus,
+        mode: mode,
+        local_registry_active: mode === 'leader',
+        local_instances: mode === 'leader' ? localRegistryServer.getInstances() : []
+    };
 
     res.json(status);
 });

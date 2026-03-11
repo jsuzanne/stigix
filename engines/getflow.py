@@ -344,16 +344,23 @@ def get_all_lan_interfaces(sdk, sites, debug=False):
             print(f" Error getting elements: {e}", file=sys.stderr)
         return {}
 
-    site_id_to_name = {site.get('id'): site.get('name') for site in sites}
+    site_id_to_meta = {
+        site.get('id'): {
+            'name': site.get('name'),
+            'role': site.get('element_cluster_role'),
+            'branch_gateway': site.get('branch_gateway')
+        } for site in sites
+    }
 
     for element in all_elements:
         element_site_id = element.get('site_id')
         element_name = element.get('name', 'Unknown')
 
-        if not element_site_id or element_site_id not in site_id_to_name:
+        if not element_site_id or element_site_id not in site_id_to_meta:
             continue
 
-        site_name = site_id_to_name[element_site_id]
+        site_meta = site_id_to_meta[element_site_id]
+        site_name = site_meta['name']
 
         if debug:
             print(f" Checking element: {element_name} at site {site_name}", file=sys.stderr)
@@ -403,6 +410,8 @@ def get_all_lan_interfaces(sdk, sites, debug=False):
                     if element_site_id not in site_lan_map:
                         site_lan_map[element_site_id] = {
                             'site_name': site_name,
+                            'site_role': site_meta['role'],
+                            'branch_gateway': site_meta['branch_gateway'],
                             'networks': []
                         }
 
@@ -610,7 +619,7 @@ def flatten_lan_map(site_lan_map):
 def find_site_by_ip(local_ip, site_lan_map, debug=False):
     """
     Find which site the local IP belongs to
-    Returns (site_name, site_id, matched_network)
+    Returns (site_name, site_id, matched_network, site_role, branch_gateway)
     """
     try:
         local_ip_obj = ipaddress.IPv4Address(local_ip)
@@ -624,17 +633,23 @@ def find_site_by_ip(local_ip, site_lan_map, debug=False):
                 if local_ip_obj in network:
                     if debug:
                         print(f" ✓ Match found: {site_info['site_name']} - {network}", file=sys.stderr)
-                    return site_info['site_name'], site_id, str(network)
+                    return (
+                        site_info['site_name'], 
+                        site_id, 
+                        str(network), 
+                        site_info.get('site_role'), 
+                        site_info.get('branch_gateway')
+                    )
 
         if debug:
             print(f" ✗ No match found for {local_ip}", file=sys.stderr)
 
-        return None, None, None
+        return None, None, None, None, None
 
     except Exception as e:
         if debug:
             print(f" Error matching IP: {e}", file=sys.stderr)
-        return None, None, None
+        return None, None, None, None, None
 
 
 def get_all_sites_map(sdk, debug=False):
@@ -1525,7 +1540,7 @@ def main():
                 log_output("❌ Could not retrieve LAN interfaces", json_mode, is_error=True)
             sys.exit(1)
 
-        target_site_name, target_site_id, matched_network = find_site_by_ip(local_ip, site_lan_map, debug=args.debug)
+        target_site_name, target_site_id, matched_network, target_site_role, target_site_bg = find_site_by_ip(local_ip, site_lan_map, debug=args.debug)
 
         if not target_site_id:
             error_msg = {
@@ -1547,6 +1562,8 @@ def main():
                 "local_ip": local_ip,
                 "detected_site_name": target_site_name,
                 "detected_site_id": target_site_id,
+                "detected_site_role": target_site_role,
+                "detected_branch_gateway": target_site_bg,
                 "matched_network": matched_network
             }
             if json_mode:

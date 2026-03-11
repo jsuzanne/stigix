@@ -20,6 +20,8 @@ export interface RegistryConfig {
     heartbeatIntervalSec?: number;
     discoveryIntervalSec?: number;
     remoteUrl?: string; // Original Cloudflare URL
+    siteRole?: string; // HUB or SPOKE
+    isBranchGateway?: boolean;
 }
 
 export interface RegistryInstance {
@@ -218,7 +220,7 @@ export class StigixRegistryClient {
         }
     }
 
-    async findLeader(): Promise<string | null> {
+    async findLeader(): Promise<{ ip: string, id: string } | null> {
         if (!this.config.pocId || !this.config.remoteUrl) return null;
 
         try {
