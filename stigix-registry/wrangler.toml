@@ -1,0 +1,8 @@
+name = "stigix-registry"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "STIGIX_REGISTRY"
+id = "7b2dcb82e5aa4b7fa9a1fe3cfef90bed"
+preview_id = "YOUR_PREVIEW_KV_NAMESPACE_ID_HERE"

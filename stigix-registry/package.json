@@ -1,0 +1,16 @@
+{
+    "name": "stigix-registry",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "deploy": "npx wrangler deploy",
+        "dev": "npx wrangler dev",
+        "start": "npx wrangler dev"
+    },
+    "devDependencies": {
+        "@cloudflare/workers-types": "^4.20240101.0",
+        "typescript": "^5.0.0",
+        "wrangler": "^3.0.0"
+    }
+}

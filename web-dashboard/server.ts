@@ -22,6 +22,7 @@ import { SiteManager } from './site-manager.js';
 import { DiscoveryManager, DiscoveredProbe } from './discovery-manager.js';
 import { createServer } from 'http';
 import { TargetsManager } from './targets-manager.js';
+import { RegistryManager } from './registry-manager.js';
 
 import { Server } from 'socket.io';
 import multer from 'multer';
@@ -95,8 +96,12 @@ const XFR_QUICK_TARGETS = QUICK_TARGETS_RAW.split(',')
     });
 
 // Shared Targets Manager (config/targets.json + synthesized from legacy configs)
-const targetsManager = new TargetsManager(APP_CONFIG.configDir, XFR_QUICK_TARGETS);
+const registryManager = new RegistryManager(APP_CONFIG.configDir);
+const targetsManager = new TargetsManager(APP_CONFIG.configDir, XFR_QUICK_TARGETS, registryManager);
 log('SYSTEM', `🎯 Targets Manager initialized`);
+
+// Start Registry Service
+registryManager.start().catch(e => log('REGISTRY', `Failed to start: ${e.message}`, 'error'));
 
 if (DEBUG) {
     log('SYSTEM', `📂 Configuration Directory: ${APP_CONFIG.configDir}`);
@@ -221,7 +226,6 @@ async function enrichConvergenceHistory(testId: string, extra: Record<string, an
 
 // ───────────────────────────────────────────────────────────────────────────
 
-
 // Batch Counter - Persistent rotating ID for batch tests
 const BATCH_COUNTER_FILE = path.join(APP_CONFIG.configDir, 'batch-counter.json');
 
@@ -294,11 +298,12 @@ async function fetchFavicon(domain: string, endpoint: string = '/'): Promise<str
         });
 
         if (typeof bestIcon === 'string') {
+            const iconStr = bestIcon as string;
             // Resolve relative URLs
-            if (bestIcon.startsWith('//')) return `https:${bestIcon}`;
-            if (bestIcon.startsWith('/')) return `${baseUrl}${bestIcon}`;
-            if (!bestIcon.startsWith('http')) return `${baseUrl}/${bestIcon}`;
-            return bestIcon;
+            if (iconStr.startsWith('//')) return `https:${iconStr}`;
+            if (iconStr.startsWith('/')) return `${baseUrl}${iconStr}`;
+            if (!iconStr.startsWith('http')) return `${baseUrl}/${iconStr}`;
+            return iconStr;
         }
 
         return null;
@@ -5936,21 +5941,13 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
             }
         }
 
-        const now = Date.now();
-        const timeSinceLastLog = now - lastVersionLogTime;
-        if (currentVersion !== lastLoggedVersion || timeSinceLastLog > 300000) {
-            log('MAINTENANCE', `Detected Version: ${currentVersion} (from ${foundPath})`);
-            lastLoggedVersion = currentVersion;
-            lastVersionLogTime = now;
-        }
-
-        const execPromise = promisify(exec);
         let latestVersion = currentVersion;
         let updateAvailable = false;
+        let dockerReady = true;
+
+        const execPromise = promisify(exec);
 
         try {
-            // Use /tags endpoint as user might not have created official releases
-            // Increased timeout and added retry for reliability
             let stdout = '';
             let retries = 2;
             while (retries > 0) {
@@ -5967,35 +5964,24 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
 
             const tagsData = JSON.parse(stdout);
             if (Array.isArray(tagsData) && tagsData.length > 0) {
-                // Heuristic sort: prefer -patch versions, then sort by name descending
                 const sortedTags = tagsData.map((t: any) => t.name).sort((a: string, b: string) => {
                     const aPatch = a.includes('-patch.');
                     const bPatch = b.includes('-patch.');
-
                     if (aPatch && !bPatch) return -1;
                     if (!aPatch && bPatch) return 1;
-
-                    // If both are patches or both aren't, sort by version string descending
-                    // This handles v1.2.1-patch.79 vs v1.2.1-patch.78
-                    // We split by '.' to do a proper numeric comparison if possible
                     const aParts = a.split(/[-.]/);
                     const bParts = b.split(/[-.]/);
-
                     for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
                         const aP = aParts[i] || '';
                         const bP = bParts[i] || '';
                         const aNum = parseInt(aP.replace(/^\D+/, ''));
                         const bNum = parseInt(bP.replace(/^\D+/, ''));
-
                         if (!isNaN(aNum) && !isNaN(bNum)) {
                             if (bNum !== aNum) return bNum - aNum;
-                        } else {
-                            if (bP !== aP) return bP.localeCompare(aP);
-                        }
+                        } else if (bP !== aP) return bP.localeCompare(aP);
                     }
                     return 0;
                 });
-
                 const latestTag = sortedTags[0];
                 latestVersion = latestTag.replace(/^v/, '');
                 updateAvailable = (latestVersion !== currentVersion);
@@ -6007,20 +5993,11 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
             }
         }
 
-        let dockerReady = true;
         if (updateAvailable) {
             try {
-                // Check if the specific tag is already available on Docker Hub
-                // Note: Image name might be different from repo name, use a common one or check config
                 const dockerRepo = 'jsuzanne/sdwan-traffic-gen';
                 const { stdout: dockerStatus } = await execPromise(`curl -s -o /dev/null -w "%{http_code}" https://hub.docker.com/v2/repositories/${dockerRepo}/tags/v${latestVersion}/`);
-
-                // If 200, it's definitely ready. If 404, it might not be a public image or sync is slow.
-                // We'll trust 200, but if it's 404 we keep dockerReady=false to show the spinner.
-                dockerReady = (dockerStatus.trim() === '200');
-
-                // Fallback: if we get a 403 (Forbidden) or other non-404 error, assume it's private and ready
-                if (dockerStatus.trim() === '403') dockerReady = true;
+                dockerReady = (dockerStatus.trim() === '200' || dockerStatus.trim() === '403');
             } catch (e) {
                 console.warn('[MAINTENANCE] ⚠️ Docker Hub verification failed, assuming ready.');
             }

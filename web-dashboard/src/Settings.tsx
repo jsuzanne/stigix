@@ -72,6 +72,13 @@ type TargetDefinition = {
         xfr?: number;
     };
     source?: 'managed' | 'synthesized';
+    meta?: {
+        registry?: boolean;
+        location?: any;
+        ip_public?: string;
+        last_seen?: string;
+        [key: string]: any;
+    };
 };
 
 const EMPTY_TARGET_CAPS: TargetCapability = {
@@ -123,21 +130,21 @@ export default function Settings({ token }: { token: string }) {
     // Targets State
     const [targets, setTargets] = useState<TargetDefinition[]>([]);
     const [newTarget, setNewTarget] = useState<Omit<TargetDefinition, 'id' | 'source'>>(EMPTY_TARGET);
+    const [targetError, setTargetError] = useState<string | null>(null);
     const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
     const [showTargetPorts, setShowTargetPorts] = useState(false);
-    const [targetError, setTargetError] = useState<string | null>(null);
+    const [registryStatus, setRegistryStatus] = useState<any>(null);
 
+    const authHeaders = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
     // Convergence State
     const [convergenceThresholds, setConvergenceThresholds] = useState({ good: 1, degraded: 5, critical: 10 });
 
     const showSuccess = (msg: string) => {
         setSuccessMsg(msg);
         setTimeout(() => setSuccessMsg(null), 3000);
-    };
-
-    const authHeaders = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
     };
 
     // Data Fetching
@@ -169,20 +176,23 @@ export default function Settings({ token }: { token: string }) {
             .catch(() => { });
 
         // System/Maintenance data - Decoupled to avoid blocking initial load
-        fetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(r => r.json())
-            .then(maintenanceData => {
-                setStatus(maintenanceData);
-            })
-            .catch(() => { });
+        const fetchMaintenanceStatus = () => {
+            fetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(maintenanceData => {
+                    setStatus(maintenanceData);
+                })
+                .catch(() => { });
 
-        fetch('/api/admin/maintenance/status', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(r => r.json())
-            .then(upgradeData => {
-                setUpgradeStatus(upgradeData);
-                if (upgradeData.inProgress) setUpgrading(true);
-            })
-            .catch(() => { });
+            fetch('/api/admin/maintenance/status', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(upgradeData => {
+                    setUpgradeStatus(upgradeData);
+                    if (upgradeData.inProgress) setUpgrading(true);
+                })
+                .catch(() => { });
+        };
+        fetchMaintenanceStatus();
 
         // Fetch System Info
         const fetchSystemInfo = () => {
@@ -217,13 +227,24 @@ export default function Settings({ token }: { token: string }) {
             })
             .catch(() => { });
 
-        return () => clearInterval(sysInfoInterval);
+        // Fetch Registry Status
+        const fetchRegistryStatus = () => {
+            fetch('/api/registry/status', { headers: authHeaders })
+                .then(r => r.json())
+                .then(setRegistryStatus)
+                .catch(e => console.error("Failed to fetch registry status", e));
+        };
+        fetchRegistryStatus();
+
+        return () => {
+            clearInterval(sysInfoInterval);
+        };
 
     }, [token]);
 
-    // Polling for upgrade status
+    // Polling for upgrade status and registry status
     useEffect(() => {
-        const interval = setInterval(async () => {
+        const fetchMaintenanceStatus = async () => {
             try {
                 const res = await fetch('/api/admin/maintenance/status', {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -244,7 +265,26 @@ export default function Settings({ token }: { token: string }) {
             } catch (e) {
                 console.error('Failed to fetch upgrade status');
             }
-        }, 2000);
+        };
+
+        const fetchRegistryStatus = async () => {
+            try {
+                const res = await fetch('/api/registry/status', { headers: authHeaders });
+                const data = await res.json();
+                if (res.ok) {
+                    setRegistryStatus(data);
+                }
+            } catch (e) {
+                console.error('Failed to fetch registry status');
+            }
+        };
+
+        fetchMaintenanceStatus();
+        fetchRegistryStatus();
+        const interval = setInterval(() => {
+            fetchMaintenanceStatus();
+            fetchRegistryStatus();
+        }, 30000);
         return () => clearInterval(interval);
     }, [token]);
 
@@ -1502,9 +1542,14 @@ export default function Settings({ token }: { token: string }) {
                                     <div className="min-w-0">
                                         <div className="flex items-center gap-2">
                                             <span className="text-[11px] font-black text-text-primary tracking-tight">{t.name}</span>
-                                            {t.source === 'synthesized' && (
+                                            {t.source === 'synthesized' && !t.meta?.registry && (
                                                 <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30">
                                                     Legacy
+                                                </span>
+                                            )}
+                                            {t.meta?.registry && (
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                                    <Zap size={8} /> Auto
                                                 </span>
                                             )}
                                         </div>

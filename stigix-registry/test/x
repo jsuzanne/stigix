@@ -1,0 +1,10 @@
+curl -X POST https://stigix-registry.jlsuzanne.workers.dev/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "poc_id": "1927975027",
+    "instance_id": "paris-01",
+    "type": "docker",
+    "ip_private": "10.10.10.6",
+    "capabilities": {"voice": true, "speedtest": true},
+    "meta": {"site": "PARIS-DC1", "region": "France"}
+  }'

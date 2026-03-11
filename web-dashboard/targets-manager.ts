@@ -41,11 +41,13 @@ export class TargetsManager {
     private configFile: string;
     private configDir: string;
     private xfrEnvTargets: { label: string; host: string }[];
+    private registryManager?: any;
 
-    constructor(configDir: string, xfrEnvTargets: { label: string; host: string }[]) {
+    constructor(configDir: string, xfrEnvTargets: { label: string; host: string }[], registryManager?: any) {
         this.configDir = configDir;
         this.configFile = path.join(configDir, 'targets.json');
         this.xfrEnvTargets = xfrEnvTargets;
+        this.registryManager = registryManager;
     }
 
     // ─── Persistence ───────────────────────────────────────────────────────────
@@ -188,6 +190,31 @@ export class TargetsManager {
         }));
     }
 
+    private synthesizeFromRegistry(): TargetDefinition[] {
+        if (!this.registryManager) return [];
+        const peers = this.registryManager.getPeers();
+        return peers.map((p: any) => ({
+            id: `reg-${p.instance_id}`,
+            name: `${p.meta?.site || p.instance_id} (Auto)`,
+            host: p.ip_private,
+            enabled: true,
+            capabilities: {
+                voice: !!p.capabilities?.voice,
+                convergence: !!p.capabilities?.convergence,
+                xfr: !!p.capabilities?.xfr,
+                security: !!p.capabilities?.security,
+                connectivity: !!p.capabilities?.connectivity,
+            },
+            source: 'synthesized' as const, // Use synthesized to make it read-only in UI
+            meta: {
+                registry: true,
+                location: p.location,
+                ip_public: p.ip_public,
+                last_seen: p.last_seen
+            }
+        }));
+    }
+
     // ─── Merged View ───────────────────────────────────────────────────────────
 
     /**
@@ -203,9 +230,10 @@ export class TargetsManager {
         const synSecurity = this.synthesizeFromSecurityConfig();
         const synConv = this.synthesizeFromConvergenceEndpoints();
         const synXfr = this.synthesizeFromXfrEnv();
+        const synRegistry = this.synthesizeFromRegistry();
 
         // Ordered from highest to lowest priority
-        const allSources = [...managed, ...synVoice, ...synSecurity, ...synConv, ...synXfr];
+        const allSources = [...managed, ...synVoice, ...synSecurity, ...synConv, ...synXfr, ...synRegistry];
 
         // Dedup by normalized host; first occurrence (highest priority) wins,
         // but we OR-merge capabilities from all occurrences of the same host.
