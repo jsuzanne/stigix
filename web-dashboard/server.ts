@@ -23,6 +23,7 @@ import { DiscoveryManager, DiscoveredProbe } from './discovery-manager.js';
 import { createServer } from 'http';
 import { TargetsManager } from './targets-manager.js';
 import { RegistryManager } from './registry-manager.js';
+import { LocalRegistryServer } from './local-registry-server.js';
 
 import { Server } from 'socket.io';
 import multer from 'multer';
@@ -5912,6 +5913,11 @@ app.get('/api/admin/system/dashboard-data', authenticateToken, async (req, res) 
                 control: voiceControl,
                 stats: voiceStats
             },
+            registry: {
+                ...registryManager.getStatus(),
+                mode: process.env.STIGIX_REGISTRY_MODE || 'peer',
+                local_registry_active: process.env.STIGIX_REGISTRY_MODE === 'leader'
+            },
             timestamp: Date.now()
         });
     } catch (e: any) {
@@ -6398,6 +6404,29 @@ app.delete('/api/iot/devices/:id', authenticateToken, (req, res) => {
     devices = devices.filter(d => d.id !== id);
     saveIoTDevices(devices);
     res.json({ success: true });
+});
+
+// --- Local Registry API (Hybrid Leader) ---
+let localRegistryServer: LocalRegistryServer | null = null;
+if (process.env.STIGIX_REGISTRY_MODE === 'leader') {
+    localRegistryServer = new LocalRegistryServer();
+    app.use('/api/registry', localRegistryServer.getRouter());
+    log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry`);
+}
+
+// Global Registry Status
+app.get('/api/registry/status', authenticateToken, (req, res) => {
+    const status: any = {
+        ...registryManager.getStatus(),
+        mode: process.env.STIGIX_REGISTRY_MODE || 'peer',
+        local_registry_active: process.env.STIGIX_REGISTRY_MODE === 'leader'
+    };
+
+    if (localRegistryServer) {
+        status.local_instances = localRegistryServer.getInstances();
+    }
+
+    res.json(status);
 });
 
 app.post('/api/iot/start-batch', authenticateToken, async (req, res) => {

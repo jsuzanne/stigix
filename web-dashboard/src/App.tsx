@@ -120,6 +120,7 @@ export default function App() {
   // Traffic History State
   const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h'>('1h');
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [registryStatus, setRegistryStatus] = useState<any>(null);
 
 
   // Rate Calculation State - Use Refs to avoid stale closures in setInterval
@@ -307,6 +308,7 @@ export default function App() {
       if (data.dockerStats) setDockerStats(data.dockerStats);
       if (data.convergenceTests) setGlobalConvStatus(data.convergenceTests);
       if (data.voice) setGlobalVoiceStatus(data.voice);
+      if (data.registry) setRegistryStatus(data.registry);
     } catch (e) {
       console.error('Consolidated fetch failed');
     }
@@ -655,6 +657,17 @@ export default function App() {
                 <span className="text-text-muted/60"> • <span className="text-blue-400 font-bold">{siteInfo.detected_site_name}</span></span>
               )}
               {version && <span className="text-text-muted/60"> • {version}</span>}
+              {registryStatus?.is_registered && (
+                <span className={cn(
+                  "ml-4 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border shadow-sm inline-flex items-center gap-1.5",
+                  registryStatus?.mode === 'leader'
+                    ? "bg-purple-600/10 text-purple-500 border-purple-500/30"
+                    : "bg-blue-600/10 text-blue-500 border-blue-500/30"
+                )}>
+                  <div className={cn("w-1.5 h-1.5 rounded-full", registryStatus.mode === 'leader' ? "bg-purple-500 animate-pulse" : "bg-blue-500")} />
+                  {registryStatus.mode === 'leader' ? 'Registry Leader' : 'Peer Node'}
+                </span>
+              )}
             </p>
           </div>
 

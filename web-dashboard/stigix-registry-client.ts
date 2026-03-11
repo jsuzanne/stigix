@@ -19,6 +19,7 @@ export interface RegistryConfig {
     pocKey?: string; // PoC-specific key (derived or received)
     heartbeatIntervalSec?: number;
     discoveryIntervalSec?: number;
+    remoteUrl?: string; // Original Cloudflare URL
 }
 
 export interface RegistryInstance {
@@ -58,6 +59,7 @@ export class StigixRegistryClient {
         if (!this.config.pocKey && this.config.pocId && this.config.clientId) {
             this.config.pocKey = this.derivePoCKey(this.config.pocId, this.config.clientId);
         }
+        this.config.remoteUrl = this.config.registryUrl;
     }
 
     /**
@@ -76,17 +78,12 @@ export class StigixRegistryClient {
         const clientId = process.env.PRISMA_SDWAN_CLIENT_ID;
 
         // Auto-enable logic:
-        // Enabled if explicitly set to 'true' OR (TSG_ID and CLIENT_ID are present and not explicitly false)
         const explicitToggle = process.env.STIGIX_REGISTRY_ENABLED;
         const enabled = explicitToggle === 'true' ||
             (explicitToggle !== 'false' && !!pocId && !!clientId);
 
         const registryUrl = process.env.STIGIX_REGISTRY_URL || 'https://stigix-registry.jlsuzanne.workers.dev';
 
-        // Identity fallback logic:
-        // 1. STIGIX_INSTANCE_ID (Technical UID)
-        // 2. STIGIX_SITE_NAME (Display Name)
-        // 3. os.hostname() (System Name)
         const hostname = os.hostname();
         const siteName = process.env.STIGIX_SITE_NAME || process.env.STIGIX_INSTANCE_ID || hostname;
         const instanceId = process.env.STIGIX_INSTANCE_ID || process.env.STIGIX_SITE_NAME || hostname;
@@ -131,10 +128,6 @@ export class StigixRegistryClient {
         return headers;
     }
 
-    /**
-     * Registers the instance with the registry.
-     * Returns the registration response (which includes the poc_key).
-     */
     async register(ipPrivate: string, capabilities: RegistryInstance["capabilities"] = {}): Promise<any | null> {
         if (!this.config.enabled || !this.config.pocId) return null;
 
@@ -175,15 +168,8 @@ export class StigixRegistryClient {
         }
     }
 
-    /**
-     * Fetches other instances in the same PoC.
-     */
     async fetchInstances(): Promise<RegistryInstance[]> {
         if (!this.config.enabled || !this.config.pocId) return [];
-
-        // Note: Using pocKey if available via header is handled in getHeaders()
-        // but the worker requires 'X-PoC-Key' for discovery if using poc access
-        // or global key for admin access.
 
         const url = new URL(`${this.config.registryUrl}/instances`);
         url.searchParams.set('poc_id', this.config.pocId);
@@ -196,7 +182,6 @@ export class StigixRegistryClient {
             });
 
             if (!res.ok) {
-                // If 403, we might need to re-register to get/refresh the key
                 if (res.status === 403) {
                     console.warn(`[REGISTRY] Discovery forbidden. PoC Key may be invalid or missing.`);
                 } else {
@@ -210,6 +195,57 @@ export class StigixRegistryClient {
         } catch (e) {
             console.error(`[REGISTRY] Network error during discovery:`, e);
             return [];
+        }
+    }
+
+    async announceLeader(localIp: string): Promise<boolean> {
+        if (!this.config.pocId || !this.config.remoteUrl) return false;
+
+        try {
+            const res = await fetch(`${this.config.remoteUrl}/leader`, {
+                method: 'POST',
+                headers: this.getHeaders(),
+                body: JSON.stringify({
+                    poc_id: this.config.pocId,
+                    leader_ip: localIp
+                })
+            });
+            return res.ok;
+        } catch (e) {
+            console.error(`[REGISTRY] Failed to announce leader:`, e);
+            return false;
+        }
+    }
+
+    async findLeader(): Promise<string | null> {
+        if (!this.config.pocId || !this.config.remoteUrl) return null;
+
+        try {
+            const url = new URL(`${this.config.remoteUrl}/leader`);
+            url.searchParams.set('poc_id', this.config.pocId);
+
+            const res = await fetch(url.toString(), {
+                headers: this.getHeaders()
+            });
+
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data.leader_ip || null;
+        } catch (e) {
+            console.error(`[REGISTRY] Failed to find leader:`, e);
+            return null;
+        }
+    }
+
+    setLocalRegistry(leaderIp: string, port: number = 5000) {
+        this.config.registryUrl = `http://${leaderIp}:${port}/api/registry`;
+        console.log(`[REGISTRY] Switched to Local Leader: ${this.config.registryUrl}`);
+    }
+
+    resetToRemote() {
+        if (this.config.remoteUrl) {
+            this.config.registryUrl = this.config.remoteUrl;
+            console.log(`[REGISTRY] Reset to Remote Bootstrap: ${this.config.registryUrl}`);
         }
     }
 }

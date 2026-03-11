@@ -103,7 +103,7 @@ const BetaBadge = ({ className }: { className?: string }) => (
 );
 
 export default function Settings({ token }: { token: string }) {
-    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence'>('distribution');
+    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry'>('distribution');
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -655,6 +655,7 @@ export default function Settings({ token }: { token: string }) {
         { id: 'system', label: 'System Info' },
         { id: 'maintenance', label: 'System Maintenance', beta: true },
         { id: 'targets', label: 'Targets' },
+        { id: 'registry', label: 'Hybrid Registry', beta: true },
     ];
 
     return (
@@ -1401,7 +1402,200 @@ export default function Settings({ token }: { token: string }) {
                 )}
             </div>
 
-            {/* ─── Targets Tab ────────────────────────────────────────────── */}
+            {/* ─── Registry Tab ────────────────────────────────────────────── */}
+            {activeTab === 'registry' && (
+                <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-purple-600/10 rounded-lg text-purple-500">
+                                <Database size={20} />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-text-primary tracking-tight">Hybrid Registry Dashboard</h2>
+                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Monitor peer-to-peer discovery and bootstrap state</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className={cn(
+                                "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm",
+                                registryStatus?.mode === 'leader'
+                                    ? "bg-purple-600/10 text-purple-500 border-purple-500/30"
+                                    : "bg-blue-600/10 text-blue-500 border-blue-500/30"
+                            )}>
+                                Role: {registryStatus?.mode?.toUpperCase() || 'PEER'}
+                            </span>
+                            {registryStatus?.is_registered && (
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-green-500/10 text-green-500 border border-green-500/30 shadow-sm flex items-center gap-1.5">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                    Cloudflare Online
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Overview Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-purple-500/30 transition-all">
+                            <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Discovered Peers</div>
+                            <div className="text-2xl font-black text-text-primary group-hover:text-purple-500 transition-colors uppercase">{registryStatus?.peer_count || 0}</div>
+                            <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Nodes currently known to this instance</div>
+                        </div>
+                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-blue-500/30 transition-all">
+                            <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Detected IP</div>
+                            <div className="text-xl font-black text-text-primary font-mono group-hover:text-blue-500 transition-colors">{registryStatus?.detected_ip || 'N/A'}</div>
+                            <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Local address reported to registry</div>
+                        </div>
+                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-emerald-500/30 transition-all">
+                            <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">PoC ID</div>
+                            <div className="text-sm font-black text-text-primary group-hover:text-emerald-500 transition-colors">{registryStatus?.poc_id || 'unconfigured'}</div>
+                            <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Prisma SD-WAN TSG Context</div>
+                        </div>
+                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-amber-500/30 transition-all">
+                            <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Registry Sync</div>
+                            <div className="text-[11px] font-black text-text-primary truncate font-mono opacity-80">{registryStatus?.registry_url ? new URL(registryStatus.registry_url).hostname : 'N/A'}</div>
+                            <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Current active discovery endpoint</div>
+                        </div>
+                    </div>
+
+                    {/* Details and Local Instances */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Registry Details */}
+                        <div className="lg:col-span-1 space-y-6">
+                            <div className="bg-card p-6 border border-border rounded-2xl space-y-5 shadow-sm">
+                                <h3 className="text-[10px] font-black text-text-muted tracking-[0.2em] uppercase">Configuration State</h3>
+
+                                <div className="space-y-4">
+                                    <div className="space-y-1.5">
+                                        <div className="text-[8px] font-black text-text-muted tracking-widest uppercase">Bootstrap URL (Cloudflare)</div>
+                                        <div className="p-2.5 bg-card-secondary/50 border border-border rounded-xl font-mono text-[9px] text-text-secondary truncate">
+                                            {registryStatus?.remote_url || 'N/A'}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <div className="text-[8px] font-black text-text-muted tracking-widest uppercase">Active Registry</div>
+                                        <div className="p-2.5 bg-card-secondary/50 border border-border rounded-xl font-mono text-[9px] text-text-primary truncate flex items-center gap-2">
+                                            {registryStatus?.registry_url === registryStatus?.remote_url ? (
+                                                <Globe size={10} className="text-blue-500" />
+                                            ) : (
+                                                <Server size={10} className="text-purple-500" />
+                                            )}
+                                            {registryStatus?.registry_url || 'N/A'}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <div className="text-[8px] font-black text-text-muted tracking-widest uppercase">PoC Registry Key</div>
+                                        <div className="p-2.5 bg-card-secondary/50 border border-border rounded-xl font-mono text-[9px] text-text-muted flex items-center justify-between">
+                                            <div className="flex gap-1">
+                                                {registryStatus?.poc_key ? '••••••••••••••••' : 'None'}
+                                            </div>
+                                            <Lock size={10} className="opacity-40" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 border-t border-border/50">
+                                    <div className="p-4 bg-purple-600/5 border border-purple-500/10 rounded-xl space-y-2">
+                                        <div className="flex items-center gap-2 text-purple-500">
+                                            <Info size={14} />
+                                            <span className="text-[9px] font-black uppercase tracking-widest">Hybrid Mode Info</span>
+                                        </div>
+                                        <p className="text-[9px] text-text-muted leading-relaxed font-bold opacity-70">
+                                            {registryStatus?.mode === 'leader'
+                                                ? "This node is the Leader. It handles registration for all local peers and periodically syncs to Cloudflare for global discovery."
+                                                : "This node is a Peer. It finds the Leader via Cloudflare once, then communicates locally to save Worker resources."}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Local Instance Table (Leader Only) or Peer View */}
+                        <div className="lg:col-span-2">
+                            <div className="bg-card border border-border rounded-2xl h-full flex flex-col shadow-sm">
+                                <div className="p-6 border-b border-border/50 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-emerald-600/10 rounded-lg text-emerald-500">
+                                            <Activity size={18} />
+                                        </div>
+                                        <h3 className="text-sm font-black text-text-primary tracking-tight">
+                                            {registryStatus?.mode === 'leader' ? 'Locally Registered Instances' : 'Visible Peers'}
+                                        </h3>
+                                    </div>
+                                    <button
+                                        onClick={() => window.location.reload()}
+                                        className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
+                                        title="Refresh"
+                                    >
+                                        <RefreshCw size={14} />
+                                    </button>
+                                </div>
+
+                                <div className="flex-1 overflow-auto p-4">
+                                    {registryStatus?.mode === 'leader' ? (
+                                        <table className="w-full text-left">
+                                            <thead>
+                                                <tr className="border-b border-border/50">
+                                                    <th className="pb-3 px-4 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Instance ID</th>
+                                                    <th className="pb-3 px-4 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Private IP</th>
+                                                    <th className="pb-3 px-4 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Capabilities</th>
+                                                    <th className="pb-3 px-4 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Last Seen</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {registryStatus?.local_instances?.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan={4} className="py-12 text-center text-text-muted text-[10px] font-bold tracking-widest opacity-50">
+                                                            No peers have registered with this leader yet.
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    registryStatus?.local_instances?.map((inst: any) => (
+                                                        <tr key={inst.instance_id} className="group hover:bg-card-hover transition-colors">
+                                                            <td className="py-4 px-4">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-7 h-7 rounded-lg bg-purple-600/10 text-purple-500 flex items-center justify-center shrink-0">
+                                                                        <Server size={14} />
+                                                                    </div>
+                                                                    <span className="text-[11px] font-black text-text-primary tracking-tight">{inst.instance_id}</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-4 px-4 font-mono text-[10px] text-text-secondary">{inst.ip_private}</td>
+                                                            <td className="py-4 px-4">
+                                                                <div className="flex gap-1">
+                                                                    {inst.capabilities?.voice && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" title="Voice" />}
+                                                                    {inst.capabilities?.xfr && <div className="w-1.5 h-1.5 rounded-full bg-cyan-500" title="XFR" />}
+                                                                    {inst.capabilities?.convergence && <div className="w-1.5 h-1.5 rounded-full bg-purple-500" title="Convergence" />}
+                                                                    {inst.capabilities?.security && <div className="w-1.5 h-1.5 rounded-full bg-red-500" title="Security" />}
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-4 px-4 text-[10px] text-text-muted font-bold whitespace-nowrap">
+                                                                {new Date(inst.last_seen).toLocaleTimeString()}
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        <div className="h-full flex flex-col items-center justify-center space-y-4 opacity-70">
+                                            <Network size={48} className="text-text-muted opacity-20" />
+                                            <div className="text-center space-y-1">
+                                                <p className="text-[11px] font-black text-text-muted uppercase tracking-widest">Peer Discovery active</p>
+                                                <p className="text-[9px] text-text-muted font-bold max-w-[240px] leading-relaxed">
+                                                    Peers discovered by this instance are listed in the <span className="text-emerald-500">Targets</span> tab under 'Auto' badge.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {activeTab === 'targets' && (
                 <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
                     <div className="flex items-center gap-3">

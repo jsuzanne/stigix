@@ -38,7 +38,23 @@ export class RegistryManager {
             return;
         }
 
-        console.log(`[REGISTRY] Starting integration for PoC: ${config.pocId}, Instance: ${config.instanceId}`);
+        const mode = process.env.STIGIX_REGISTRY_MODE || 'peer';
+        console.log(`[REGISTRY] Starting in ${mode.toUpperCase()} mode for PoC: ${config.pocId}`);
+
+        if (mode === 'leader') {
+            // Leader Mode: Announce ourselves to Bootstrap Signal
+            await this.client.announceLeader(this.currentIp);
+            // Switch heartbeats to local server (self)
+            this.client.setLocalRegistry('127.0.0.1');
+        } else {
+            // Peer Mode: Try to find local leader via Bootstrap
+            const leaderIp = await this.client.findLeader();
+            if (leaderIp) {
+                this.client.setLocalRegistry(leaderIp);
+            } else {
+                console.log(`[REGISTRY] No local leader found. Using remote bootstrap for now.`);
+            }
+        }
 
         // 1. Initial Registration
         await this.performHeartbeat();
@@ -55,7 +71,27 @@ export class RegistryManager {
     }
 
     private async performHeartbeat() {
-        // Build capabilities based on available services (could be dynamic later)
+        const config = this.client.getConfig();
+        const mode = process.env.STIGIX_REGISTRY_MODE || 'peer';
+
+        // 1. Peer Recovery: If using Remote, try to find a Local Leader
+        if (mode === 'peer' && config.registryUrl === config.remoteUrl) {
+            const leaderIp = await this.client.findLeader();
+            if (leaderIp) {
+                this.client.setLocalRegistry(leaderIp);
+            }
+        }
+
+        // 2. Leader Maintenance: Periodic Announcement to Bootstrap (Cloudflare)
+        if (mode === 'leader') {
+            // Every heartbeat is local, but re-announce to Cloudflare occasionally
+            // Using a simple Math.random() or counter to avoid spamming
+            if (Math.random() > 0.8) {
+                await this.client.announceLeader(this.currentIp);
+            }
+        }
+
+        // Build capabilities based on available services
         const capabilities = {
             voice: true,
             convergence: true,
@@ -89,7 +125,9 @@ export class RegistryManager {
             poc_key: config.pocKey,
             is_registered: !!config.pocKey,
             peer_count: this.discoveredPeers.length,
-            detected_ip: this.currentIp
+            detected_ip: this.currentIp,
+            registry_url: config.registryUrl,
+            remote_url: config.remoteUrl
         };
     }
 

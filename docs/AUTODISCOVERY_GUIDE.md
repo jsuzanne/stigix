@@ -35,18 +35,46 @@ The `RegistryManager` handles the background synchronization.
 
 ---
 
-## 4. Troubleshooting & Verification
+## 4. Hybrid Mode (v1.2.1-patch.166+)
 
-### Visualization of the Key
-You can verify the current PoC Key (hash) by querying the local agent API:
+To optimize for Cloudflare Free tier limits, Stigix supports a **Hybrid Registry** model. 
+
+### Roles
+- **Leader**: One node (typically a central Hub) acts as the local registry server. It announces its local IP to Cloudflare (the "Bootstrap Signal").
+- **Peer**: All other nodes discover the Leader's IP via Cloudflare once, then switch all subsequent heartbeat/discovery traffic to the Leader's local IP.
+
+### Configuration
+Set the following variable in your `.env`:
+```bash
+# On the Hub/Leader node
+STIGIX_REGISTRY_MODE=leader
+
+# On all other nodes (default)
+STIGIX_REGISTRY_MODE=peer
+```
+
+---
+
+## 5. Troubleshooting & Verification
+
+### Redeploying the Bootstrap
+If you manage your own Cloudflare Worker, you **must** redeploy it to support the new `/leader` endpoints:
+```bash
+cd stigix-registry
+npx wrangler deploy
+```
+
+### Checking Status
+Verify the local status via:
 ```bash
 curl http://localhost:5000/api/registry/status
 ```
-Look for the `"poc_key"` field in the JSON response.
 
-### Checking Peer Discovery
-You can see which peers have been discovered by checking the same API or looking for instances with the **Auto** badge in the **Settings > Targets** dashboard.
+### Logs to Watch
+- **Leader**: `[REGISTRY] Starting in LEADER mode`, `🏠 Local Registry Server mounted`
+- **Peer**: `[REGISTRY] Switched to Local Leader: http://<leader-ip>:5000/api/registry`
 
 ### Common Issues
-- **403 Forbidden**: Usually means the Prisma credentials do not match those used by the first node that registered the PoC.
-- **No Peers Found**: Ensure `STIGIX_REGISTRY_ENABLED=true` is set in the `.env` of all nodes.
+- **403 Forbidden**: Invalid PoC Key.
+- **No Leader Found**: No node has been configured or started with `STIGIX_REGISTRY_MODE=leader`.
+- **Worker Redirection**: If a Peer cannot find a Leader, it will fallback to Cloudflare for 5 minutes before retrying.

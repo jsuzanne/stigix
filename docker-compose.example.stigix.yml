@@ -47,6 +47,14 @@ services:
       # --- Target Ports ---
       - TARGET_HTTP_PORT=8082
 
+      # --- Registry & Discovery (Optional Overrides) ---
+      - STIGIX_REGISTRY_ENABLED=${STIGIX_REGISTRY_ENABLED:-true}
+      - STIGIX_SITE_NAME=${STIGIX_SITE_NAME:-}
+      - STIGIX_INSTANCE_ID=${STIGIX_INSTANCE_ID:-}
+      - STIGIX_REGISTRY_HEARTBEAT_SEC=${STIGIX_REGISTRY_HEARTBEAT_SEC:-300}
+      - STIGIX_REGISTRY_DISCOVERY_SEC=${STIGIX_REGISTRY_DISCOVERY_SEC:-120}
+      - STIGIX_REGISTRY_MODE=${STIGIX_REGISTRY_MODE:-peer}
+
     healthcheck:
       test: [ "CMD-SHELL", "test -f /app/config/applications-config.json -o -f /app/config/applications.txt" ]
       interval: 10s

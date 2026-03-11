@@ -42,6 +42,10 @@ export default {
                 return await handleRegister(request, env);
             } else if (url.pathname === '/instances' && method === 'GET') {
                 return await handleInstances(request, env);
+            } else if (url.pathname === '/leader' && method === 'POST') {
+                return await handleSetLeader(request, env);
+            } else if (url.pathname === '/leader' && method === 'GET') {
+                return await handleGetLeader(request, env);
             } else {
                 return jsonResponse({ status: 'error', error: 'not_found' }, 404);
             }
@@ -51,6 +55,65 @@ export default {
         }
     },
 };
+
+// --- GET /leader (Peer Discovery) ---
+async function handleGetLeader(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    const poc_id = url.searchParams.get('poc_id');
+
+    if (!poc_id) {
+        return jsonResponse({ status: 'error', error: 'invalid_payload', details: 'Missing poc_id' }, 400);
+    }
+
+    // Auth Check
+    const storedPocKey = await env.STIGIX_REGISTRY.get(`auth:poc:${poc_id}`);
+    const providedPocKey = request.headers.get('X-PoC-Key');
+    if (!storedPocKey || (providedPocKey !== storedPocKey)) {
+        return jsonResponse({ status: 'error', error: 'forbidden' }, 403);
+    }
+
+    const leaderIp = await env.STIGIX_REGISTRY.get(`leader:${poc_id}`);
+    if (!leaderIp) {
+        return jsonResponse({ status: 'error', error: 'not_found', details: 'No leader announced for this PoC' }, 404);
+    }
+
+    return jsonResponse({ status: 'ok', poc_id, leader_ip: leaderIp });
+}
+
+// --- POST /leader (Leader Announcement) ---
+async function handleSetLeader(request: Request, env: Env): Promise<Response> {
+    let payload: { poc_id: string; leader_ip: string };
+    try {
+        payload = await request.json();
+    } catch (e) {
+        return jsonResponse({ status: 'error', error: 'invalid_payload' }, 400);
+    }
+
+    if (!payload.poc_id || !payload.leader_ip) {
+        return jsonResponse({ status: 'error', error: 'invalid_payload', details: 'Missing poc_id or leader_ip' }, 400);
+    }
+
+    // Auth Check
+    const storedPocKey = await env.STIGIX_REGISTRY.get(`auth:poc:${payload.poc_id}`);
+    const providedPocKey = request.headers.get('X-PoC-Key');
+
+    // First registration of a PoC via /leader is also allowed (auto-enrollment)
+    if (!storedPocKey) {
+        const newKey = providedPocKey || crypto.randomUUID();
+        await env.STIGIX_REGISTRY.put(`auth:poc:${payload.poc_id}`, newKey);
+        console.log(`[AUTH] Enrolled PoC via /leader: ${payload.poc_id}`);
+    } else if (providedPocKey !== storedPocKey) {
+        return jsonResponse({ status: 'error', error: 'forbidden' }, 403);
+    }
+
+    // Save leader IP with a long TTL (900s = 15 min)
+    await env.STIGIX_REGISTRY.put(`leader:${payload.poc_id}`, payload.leader_ip, {
+        expirationTtl: 900
+    });
+
+    console.log(`[BOOTSTRAP] Leader announced for PoC ${payload.poc_id}: ${payload.leader_ip}`);
+    return jsonResponse({ status: 'ok' });
+}
 
 // --- POST /register ---
 async function handleRegister(request: Request, env: Env): Promise<Response> {
