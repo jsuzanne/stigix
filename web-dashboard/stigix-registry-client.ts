@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import os from 'node:os';
 
 /**
  * StigixRegistryClient — A standalone library to interface with the Stigix Registry (Cloudflare Worker).
@@ -72,8 +73,15 @@ export class StigixRegistryClient {
         const enabled = process.env.STIGIX_REGISTRY_ENABLED === 'true';
         const registryUrl = process.env.STIGIX_REGISTRY_URL || 'https://stigix-registry.jlsuzanne.workers.dev';
         const pocId = process.env.PRISMA_SDWAN_TSGID || null;
-        const instanceId = process.env.STIGIX_INSTANCE_ID || `stigix-${Math.random().toString(36).slice(2, 9)}`;
-        const siteName = process.env.STIGIX_SITE_NAME;
+
+        // Identity fallback logic:
+        // 1. STIGIX_INSTANCE_ID (Technical UID)
+        // 2. STIGIX_SITE_NAME (Display Name)
+        // 3. os.hostname() (System Name)
+        const hostname = os.hostname();
+        const siteName = process.env.STIGIX_SITE_NAME || process.env.STIGIX_INSTANCE_ID || hostname;
+        const instanceId = process.env.STIGIX_INSTANCE_ID || process.env.STIGIX_SITE_NAME || hostname;
+
         const region = process.env.PRISMA_SDWAN_REGION;
         const instanceType = process.env.STIGIX_INSTANCE_TYPE || 'docker';
         const apiKey = process.env.STIGIX_REGISTRY_API_KEY;
