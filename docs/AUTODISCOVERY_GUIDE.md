@@ -48,5 +48,5 @@ Look for the `"poc_key"` field in the JSON response.
 You can see which peers have been discovered by checking the same API or looking for instances with the **Auto** badge in the **Settings > Targets** dashboard.
 
 ### Common Issues
-- **403 Forbidden**: Usually means the `CLIENT_ID` or `TSG_ID` does not match the one used by the first node that registered the PoC.
+- **403 Forbidden**: Usually means the Prisma credentials do not match those used by the first node that registered the PoC.
 - **No Peers Found**: Ensure `STIGIX_REGISTRY_ENABLED=true` is set in the `.env` of all nodes.
