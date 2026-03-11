@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.1-patch.162] - 2026-03-11
+### Changed
+- **DevOps**: Added optional `STIGIX_REGISTRY_ENABLED`, `STIGIX_SITE_NAME`, and `STIGIX_INSTANCE_ID` overrides to `docker-compose.stigix.yml` for easier configuration discovery. 🐳
+
+## [v1.2.1-patch.161] - 2026-03-11
+### Added
+- **Registry**: Implemented **Auto-Enable** logic. Registry discovery is now active by default if `PRISMA_SDWAN_TSGID` and `PRISMA_SDWAN_CLIENT_ID` are present in the environment. 🎯✨
+
+## [v1.2.1-patch.160] - 2026-03-11
+### Added
+- **Identity**: Implemented **Smart Identity**. The system now automatically falls back to the local **hostname** if `STIGIX_INSTANCE_ID` or `STIGIX_SITE_NAME` are not provided. 🆔
+
+## [v1.2.1-patch.159] - 2026-03-11
+### Fixed
+- **Deployment**: Resolved a critical `ERR_MODULE_NOT_FOUND` error by including the missing `registry-manager.ts` and `stigix-registry-client.ts` in the production Docker image. 🛠️🐳
+
+## [v1.2.1-patch.158] - 2026-03-11
+### Added
+- **Registry**: Introduced **Stateless Autodiscovery** via Stigix Registry (Cloudflare Worker). 📡🌐
+  - **Security**: Implemented a stateless hashing mechanism (`X-PoC-Key`) derived from Prisma credentials, eliminating local identity persistence.
+  - **Discovery**: Automated peer-to-peer target discovery with background heartbeats (60s) and discovery sweeps (30s).
+  - **UI**: Added "Auto" badge in Settings > Targets to distinguish discovered peers. 🏷️
+  - **Tooling**: Created `docs/AUTODISCOVERY_GUIDE.md` and a specialized `stigix-registry-debug` Skill. 📚
+
 ## [v1.2.1-patch.151] - 2026-03-05
 ### Added
 - **Convergence Thresholds**: Implemented dynamic, configurable thresholds (Good, Degraded, Bad, Critical) via a new "Convergence" settings tab. ⚡
