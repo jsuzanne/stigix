@@ -389,6 +389,18 @@ function main() {
     
     # Main loop
     while true; do
+        # Check for reset signal
+        if [[ -f "${LOG_DIR}/.reset_stats" ]]; then
+            log_info "Reset signal received. Clearing internal counters."
+            TOTAL_REQUESTS=0
+            unset APP_COUNTERS
+            declare -A APP_COUNTERS
+            unset APP_ERRORS
+            declare -A APP_ERRORS
+            rm -f "${LOG_DIR}/.reset_stats"
+            writeStats
+        fi
+
         # Check if traffic generation is enabled
         local config_file="${CONFIG_DIR}/applications-config.json"
         local legacy_control_file="${CONFIG_DIR}/traffic-control.json"

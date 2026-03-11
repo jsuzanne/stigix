@@ -2613,6 +2613,10 @@ app.delete('/api/stats', authenticateToken, (req, res) => {
         };
         fs.writeFileSync(STATS_FILE, JSON.stringify(emptyStats, null, 2));
 
+        // Create a signal file for the traffic generator to reset its memory
+        const resetSignalFile = path.join(APP_CONFIG.logDir, '.reset_stats');
+        fs.writeFileSync(resetSignalFile, 'reset');
+
         // Also clear history
         if (fs.existsSync(TRAFFIC_HISTORY_FILE)) {
             fs.writeFileSync(TRAFFIC_HISTORY_FILE, '');

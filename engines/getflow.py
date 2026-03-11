@@ -1000,6 +1000,24 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
             print(f" [TOPO] Error fetching elements: {e}", file=sys.stderr)
         all_elements = []
 
+    # --- Step 2.1: Element Operational Status (Bulk) ---
+    el_status_map = {}
+    try:
+        if debug:
+            print(" [TOPO] Fetching element operational status...", file=sys.stderr)
+        status_resp = sdk.get.elements_status() # Correct endpoint for operational status
+        if status_resp.cgx_status:
+            items = status_resp.cgx_content.get('items', [])
+            for item in items:
+                eid = item.get('id')
+                if eid:
+                    el_status_map[eid] = item
+            if debug:
+                print(f" [TOPO] Found status for {len(el_status_map)} elements", file=sys.stderr)
+    except Exception as e:
+        if debug:
+            print(f" [TOPO] Error fetching element status: {e}", file=sys.stderr)
+
     elements_by_site = {}
     for el in all_elements:
         sid = el.get('site_id')
@@ -1153,10 +1171,9 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 wan_if_id = wan_if.get('id')
                 wan_name = wan_if.get('name', 'Unknown')
                 circuit_label = wan_if.get('label') or wan_if.get('name')
-                network_name = wan_if.get('network_id')  # will be an ID — we resolve if possible
                 bw_down = wan_if.get('bw_config', {}).get('bwc_down_kbps') if wan_if.get('bw_config') else None
                 bw_up = wan_if.get('bw_config', {}).get('bwc_up_kbps') if wan_if.get('bw_config') else None
-
+                
                 # WAN IP (from bound interface's ipv4_config)
                 wan_ip = None
                 wan_network = None
@@ -1286,16 +1303,34 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                     'connections': connections_out,
                 })
 
+            # --- Shell device detection ---
+            el_stat = el_status_map.get(el_id, {})
+            # logic: unreachable AND (Template not attached OR serial missing)
+            # and matching the user's criteria as best as possible in Prisma SDK terms
+            el_reachable = el_stat.get('connected', False)
+            el_serial = element.get('serial_number') or element.get('uuid') # Check both
+            
+            # is_shell if serial is missing OR (not reachable AND not bound/provisioned)
+            is_shell = False
+            if not el_serial:
+                is_shell = True
+            elif not el_reachable and element.get('state') != 'bound':
+                is_shell = True
+
             devices_out.append({
                 'device_id': el_id,
                 'device_name': el_name,
                 'model': el_model,
                 'software_version': el_sw,
+                'is_shell': is_shell,
+                'state': element.get('state'),
+                'connected': el_reachable,
                 'lan_interfaces': lan_interfaces,
                 'wan_interfaces': wan_interface_details,
             })
 
-        result_sites.append({
+        # --- Site filtering: Exclude sites with NO devices or ONLY SHELL devices ---
+        site_entry = {
             'site_id': site_id,
             'site_name': site_name,
             'site_role': site_role,
@@ -1306,7 +1341,14 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                 'post_code': address.get('post_code'),
             },
             'devices': devices_out,
-        })
+        }
+        
+        has_live_device = any(not d.get('is_shell', False) for d in devices_out)
+        
+        if devices_out and has_live_device:
+            result_sites.append(site_entry)
+        elif debug:
+             print(f" [TOPO] Filtering out site {site_name} (ID: {site_id}): No live devices found.", file=sys.stderr)
 
     return result_sites
 

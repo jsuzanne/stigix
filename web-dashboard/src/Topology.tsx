@@ -34,7 +34,14 @@ import {
     CheckCircle,
     AlertCircle,
     ArrowRight,
-    Search
+    Search,
+    Filter,
+    Check,
+    Square,
+    CheckSquare,
+    ChevronRight,
+    LayoutGrid,
+    Layers
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { clsx } from 'clsx';
@@ -391,8 +398,8 @@ const CloudNode = ({ data }: any) => {
                 <Cloud size={28} />
             </div>
             <div className="text-center">
-                <div className="text-lg font-black text-text-primary tracking-tight uppercase leading-none">{data.wan_network}</div>
-                <div className="text-[10px] text-text-muted font-bold tracking-[0.2em] mt-2">UNDERLAY</div>
+                <div className="text-lg font-black text-text-primary tracking-tight uppercase leading-none">{data.name}</div>
+                <div className="text-[10px] text-text-muted font-bold tracking-[0.2em] mt-2 opacity-50 uppercase tracking-widest">Network Provider</div>
             </div>
         </div>
     );
@@ -431,31 +438,55 @@ function TopologyContent({ token }: TopologyProps) {
     const [pathFilter, setPathFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN' | 'HUB'>('ALL');
     const [logicalViewSiteId, setLogicalViewSiteId] = useState<string | null>(null);
 
+    // Filter state
+    const [visibleSiteIds, setVisibleSiteIds] = useState<string[] | null>(() => {
+        try {
+            const saved = localStorage.getItem('stigix_topology_visible_sites');
+            return saved ? JSON.parse(saved) : null;
+        } catch {
+            return null;
+        }
+    });
+    const [showFilter, setShowFilter] = useState(false);
+    const [filterSearch, setFilterSearch] = useState('');
+
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
     const { fitView } = useReactFlow();
 
+    // Persist visibility selection
+    useEffect(() => {
+        if (visibleSiteIds) {
+            localStorage.setItem('stigix_topology_visible_sites', JSON.stringify(visibleSiteIds));
+        }
+    }, [visibleSiteIds]);
+
     const processTopology = useCallback((data: any) => {
         if (!data.sites) return;
+
+        // Apply Visibility Filter
+        const filteredSites = visibleSiteIds
+            ? data.sites.filter((s: any) => visibleSiteIds.includes(s.site_id))
+            : data.sites;
 
         const newNodes: Node[] = [];
         const newEdges: Edge[] = [];
 
         // Identify Hubs vs Spokes
-        const hubs = data.sites.filter((s: any) =>
+        const hubs = filteredSites.filter((s: any) =>
             s.element_cluster_role === 'HUB' ||
             s.site_name.includes('DC') ||
             s.site_name.includes('BRGW') ||
             s.site_name.toLowerCase().includes('azure') ||
             s.site_name.toLowerCase().includes('aws')
         );
-        const spokes = data.sites.filter((s: any) => !hubs.includes(s));
+        const spokes = filteredSites.filter((s: any) => !hubs.includes(s));
 
         // Identify unique WAN Networks (Clouds)
         const publicWanNetworks = new Set<string>();
         const privateWanNetworks = new Set<string>();
 
-        data.sites.forEach((s: any) => {
+        filteredSites.forEach((s: any) => {
             s.devices?.forEach((d: any) => {
                 d.wan_interfaces?.forEach((w: any) => {
                     const netName = w.wan_network || '';
@@ -533,6 +564,12 @@ function TopologyContent({ token }: TopologyProps) {
         // --- EDGES CHANGE BASED ON MODE ---
         if (logicalViewSiteId) {
             const selectedSite = data.sites.find((s: any) => s.site_id === logicalViewSiteId);
+            // Hide logical view if the selected site is hidden by filter
+            if (visibleSiteIds && !visibleSiteIds.includes(logicalViewSiteId)) {
+                setLogicalViewSiteId(null);
+                return;
+            }
+
             const isSelectedSiteHub = selectedSite && (
                 selectedSite.element_cluster_role === 'HUB' ||
                 selectedSite.site_name.includes('DC') ||
@@ -543,6 +580,10 @@ function TopologyContent({ token }: TopologyProps) {
 
             // mode LOGICAL: Draw direct site-to-site tunnels relative to selected site
             data.sites.forEach((site: any) => {
+                // Only consider sites that are visible or the selected site itself
+                const isSiteVisible = !visibleSiteIds || visibleSiteIds.includes(site.site_id);
+                if (!isSiteVisible && site.site_id !== logicalViewSiteId) return;
+
                 site.devices?.forEach((d: any) => {
                     d.wan_interfaces?.forEach((w: any) => {
                         w.connections?.forEach((c: any, cIdx: number) => {
@@ -551,6 +592,10 @@ function TopologyContent({ token }: TopologyProps) {
 
                             // If this isn't a connection to or from our selected site, skip it
                             if (!isSourceSelected && !isTargetSelected) return;
+
+                            // Only show connections between visible sites
+                            const isPeerVisible = !visibleSiteIds || visibleSiteIds.includes(c.peer_site_id);
+                            if (!isPeerVisible && c.peer_site_id !== logicalViewSiteId) return;
 
                             // If we selected a SPOKE, only show connections to HUBS
                             if (!isSelectedSiteHub) {
@@ -606,7 +651,7 @@ function TopologyContent({ token }: TopologyProps) {
             });
         } else {
             // mode PHYSICAL: Draw site-to-cloud edges
-            data.sites.forEach((site: any) => {
+            filteredSites.forEach((site: any) => {
                 const isHub = hubs.includes(site);
                 site.devices?.forEach((device: any) => {
                     device.wan_interfaces?.forEach((wan: any) => {
@@ -638,7 +683,7 @@ function TopologyContent({ token }: TopologyProps) {
 
         setNodes(newNodes);
         setEdges(newEdges);
-    }, [logicalViewSiteId, setNodes, setEdges]);
+    }, [logicalViewSiteId, setNodes, setEdges, visibleSiteIds]);
 
     const fetchTopology = useCallback(async () => {
         setLoading(true);
@@ -665,7 +710,7 @@ function TopologyContent({ token }: TopologyProps) {
         } else {
             processTopology(topology);
         }
-    }, [topology, logicalViewSiteId, fetchTopology, processTopology]);
+    }, [topology, logicalViewSiteId, fetchTopology, processTopology, visibleSiteIds]);
 
     const onNodeClick = useCallback((_: any, node: Node) => {
         setSelectedObject({ type: 'node', ...node.data });
@@ -841,6 +886,21 @@ function TopologyContent({ token }: TopologyProps) {
                                 <RefreshCw size={18} className={cn("transition-transform duration-500", loading ? "animate-spin" : "group-hover:rotate-180")} />
                             </button>
                             <button
+                                onClick={() => setShowFilter(!showFilter)}
+                                className={cn(
+                                    "bg-card/80 backdrop-blur-md border border-white/5 hover:bg-card hover:border-blue-500/50 p-3 rounded-xl transition-all shadow-xl group flex items-center justify-center relative",
+                                    (visibleSiteIds !== null && topology && visibleSiteIds.length !== topology.sites.length) ? "text-blue-400 border-blue-500/30" : "text-text-muted"
+                                )}
+                                title="Filter visible sites"
+                            >
+                                <Filter size={18} className="transition-transform group-hover:scale-110" />
+                                {visibleSiteIds !== null && topology && visibleSiteIds.length !== topology.sites.length && (
+                                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-background">
+                                        {visibleSiteIds.length}
+                                    </span>
+                                )}
+                            </button>
+                            <button
                                 onClick={handleExportCsv}
                                 className="bg-card/80 backdrop-blur-md border border-white/5 hover:bg-card hover:border-blue-500/50 text-text-muted hover:text-blue-400 p-3 rounded-xl transition-all shadow-xl group flex items-center justify-center"
                                 title="Export details to CSV"
@@ -856,6 +916,122 @@ function TopologyContent({ token }: TopologyProps) {
                             </button>
                         </div>
                     </div>
+
+                    {/* Filter Panel Overlay */}
+                    {showFilter && topology && (
+                        <div className="absolute top-20 right-4 z-[60] w-[350px] bg-card/95 backdrop-blur-xl border border-border rounded-3xl shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300 max-h-[70vh] flex flex-col">
+                            <div className="p-4 border-b border-border flex items-center justify-between bg-card-secondary/20 rounded-t-3xl">
+                                <div className="flex items-center gap-2">
+                                    <Filter size={16} className="text-blue-500" />
+                                    <h3 className="text-sm font-black text-text-primary uppercase tracking-tight">Filter SASE Sites</h3>
+                                </div>
+                                <button onClick={() => setShowFilter(false)} className="p-1 hover:bg-card-secondary rounded-lg transition-colors text-text-muted">
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            <div className="p-4 space-y-4 flex-1 overflow-hidden flex flex-col">
+                                {/* Search in Filter */}
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={14} />
+                                    <input
+                                        type="text"
+                                        placeholder="Search sites..."
+                                        value={filterSearch}
+                                        onChange={(e) => setFilterSearch(e.target.value)}
+                                        className="w-full bg-card-secondary/50 border border-border rounded-xl pl-9 pr-4 py-2 text-xs font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-blue-500/50 transition-all"
+                                    />
+                                </div>
+
+                                {/* Quick Filters */}
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        onClick={() => setVisibleSiteIds(topology.sites.map((s: any) => s.site_id))}
+                                        className="py-2 px-3 bg-card-secondary/50 hover:bg-card-secondary border border-border rounded-xl text-[10px] font-black uppercase tracking-widest text-text-muted hover:text-text-primary transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <CheckSquare size={12} /> Select All
+                                    </button>
+                                    <button
+                                        onClick={() => setVisibleSiteIds([])}
+                                        className="py-2 px-3 bg-card-secondary/50 hover:bg-card-secondary border border-border rounded-xl text-[10px] font-black uppercase tracking-widest text-text-muted hover:text-text-primary transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Square size={12} /> Clear None
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            const hubs = topology.sites.filter((s: any) => s.element_cluster_role === 'HUB' || s.site_name.includes('DC')).map((s: any) => s.site_id);
+                                            setVisibleSiteIds(hubs);
+                                        }}
+                                        className="py-2 px-3 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-xl text-[10px] font-black uppercase tracking-widest text-blue-500 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <LayoutGrid size={12} /> Hubs Only
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            const spokes = topology.sites.filter((s: any) => s.element_cluster_role !== 'HUB' && !s.site_name.includes('DC')).map((s: any) => s.site_id);
+                                            setVisibleSiteIds(spokes);
+                                        }}
+                                        className="py-2 px-3 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 rounded-xl text-[10px] font-black uppercase tracking-widest text-green-500 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Layers size={12} /> Branches Only
+                                    </button>
+                                </div>
+
+                                {/* Site List */}
+                                <div className="flex-1 overflow-y-auto space-y-1 pr-1 scrollbar-thin scrollbar-thumb-border">
+                                    {topology.sites
+                                        .filter((s: any) => s.site_name.toLowerCase().includes(filterSearch.toLowerCase()))
+                                        .map((site: any) => {
+                                            const isHub = site.element_cluster_role === 'HUB' || site.site_name.includes('DC');
+                                            const isVisible = visibleSiteIds === null || visibleSiteIds.includes(site.site_id);
+
+                                            return (
+                                                <button
+                                                    key={site.site_id}
+                                                    onClick={() => {
+                                                        const current = visibleSiteIds || topology.sites.map((s: any) => s.site_id);
+                                                        if (current.includes(site.site_id)) {
+                                                            setVisibleSiteIds(current.filter((id: string) => id !== site.site_id));
+                                                        } else {
+                                                            setVisibleSiteIds([...current, site.site_id]);
+                                                        }
+                                                    }}
+                                                    className={cn(
+                                                        "w-full flex items-center justify-between p-2.5 rounded-xl border transition-all group",
+                                                        isVisible
+                                                            ? "bg-blue-500/5 border-blue-500/20 text-text-primary"
+                                                            : "bg-transparent border-transparent text-text-muted opacity-50 grayscale"
+                                                    )}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={cn(
+                                                            "w-8 h-8 rounded-lg flex items-center justify-center",
+                                                            isHub ? "bg-blue-500/20 text-blue-500" : "bg-card-secondary text-text-secondary"
+                                                        )}>
+                                                            {isHub ? <Server size={14} /> : <Home size={14} />}
+                                                        </div>
+                                                        <div className="text-left">
+                                                            <div className="text-xs font-black uppercase tracking-tight">{site.site_name}</div>
+                                                            <div className="text-[9px] font-bold opacity-60 tracking-widest uppercase">{isHub ? 'Hub Site' : 'Branch Site'}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className={cn(
+                                                        "w-5 h-5 rounded-md flex items-center justify-center transition-all",
+                                                        isVisible ? "bg-blue-500 text-white shadow-lg shadow-blue-500/20" : "bg-card-secondary text-transparent border border-border"
+                                                    )}>
+                                                        <Check size={12} strokeWidth={4} />
+                                                    </div>
+                                                </button>
+                                            )
+                                        })}
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-card-secondary/30 rounded-b-3xl text-[10px] text-text-muted font-bold text-center italic border-t border-border">
+                                {visibleSiteIds?.length || 0} of {topology.sites.length} sites visible
+                            </div>
+                        </div>
+                    )}
 
                     <ReactFlow
                         nodes={filteredNodes}
@@ -1005,7 +1181,9 @@ function TopologyContent({ token }: TopologyProps) {
                                         <div>
                                             <h3 className="text-lg font-black text-text-primary tracking-tight">{selectedObject.name || selectedObject.label}</h3>
                                             <p className="text-[10px] text-text-muted font-bold tracking-widest uppercase">
-                                                {selectedObject.type === 'node' ? 'Site Entity' : 'Circuit Link'}
+                                                {selectedObject.type === 'node'
+                                                    ? (selectedObject.site_id ? 'Site Entity' : 'WAN Network')
+                                                    : 'Circuit Link'}
                                             </p>
                                         </div>
                                     </div>
@@ -1017,194 +1195,188 @@ function TopologyContent({ token }: TopologyProps) {
                                 <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin scrollbar-thumb-border">
                                     {selectedObject.type === 'node' ? (
                                         <>
-                                            {/* Logical View Toggle */}
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => setLogicalViewSiteId(logicalViewSiteId === selectedObject.site_id ? null : selectedObject.site_id)}
-                                                    className={cn(
-                                                        "flex-1 py-3 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-2",
-                                                        logicalViewSiteId === selectedObject.site_id
-                                                            ? "bg-purple-500 hover:bg-purple-600 border border-purple-400 text-white shadow-purple-500/20"
-                                                            : "bg-blue-500 hover:bg-blue-600 border border-blue-400 text-white shadow-blue-500/20"
-                                                    )}
-                                                >
-                                                    <Network size={16} />
-                                                    {logicalViewSiteId === selectedObject.site_id ? 'Show Physical View' : `Show Overlay for ${selectedObject.name}`}
-                                                </button>
-                                            </div>
+                                            {/* Site-Specific View (Logical View Toggle & Interfaces) */}
+                                            {selectedObject.site_id ? (
+                                                <>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => setLogicalViewSiteId(logicalViewSiteId === selectedObject.site_id ? null : selectedObject.site_id)}
+                                                            className={cn(
+                                                                "flex-1 py-3 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-2",
+                                                                logicalViewSiteId === selectedObject.site_id
+                                                                    ? "bg-purple-500 hover:bg-purple-600 border border-purple-400 text-white shadow-purple-500/20"
+                                                                    : "bg-blue-500 hover:bg-blue-600 border border-blue-400 text-white shadow-blue-500/20"
+                                                            )}
+                                                        >
+                                                            <Network size={16} />
+                                                            {logicalViewSiteId === selectedObject.site_id ? 'Show Physical View' : `Show Overlay for ${selectedObject.name}`}
+                                                        </button>
+                                                    </div>
 
-                                            <div className="space-y-3">
-                                                <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
-                                                    <Network size={12} /> WAN Interfaces
-                                                </div>
-                                                <div className="grid gap-2">
-                                                    {selectedObject.devices?.map((d: any) =>
-                                                        d.wan_interfaces?.map((w: any, idx: number) => (
-                                                            <div key={idx} className="bg-card-secondary/40 border border-border/60 p-3 rounded-xl flex items-center justify-between group hover:border-blue-500/30 transition-all">
-                                                                <div>
-                                                                    <div className="text-xs font-bold text-text-primary uppercase tracking-tight">
-                                                                        {selectedObject.devices.length > 1 ? `${d.device_name}: ${w.name}` : w.name}
+                                                    <div className="space-y-3">
+                                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
+                                                            <Network size={12} /> WAN Interfaces
+                                                        </div>
+                                                        <div className="grid gap-2">
+                                                            {selectedObject.devices?.map((d: any) =>
+                                                                d.wan_interfaces?.map((w: any, idx: number) => (
+                                                                    <div key={idx} className="bg-card-secondary/40 border border-border/60 p-3 rounded-xl flex items-center justify-between group hover:border-blue-500/30 transition-all">
+                                                                        <div>
+                                                                            <div className="text-xs font-bold text-text-primary uppercase tracking-tight">
+                                                                                {selectedObject.devices.length > 1 ? `${d.device_name}: ${w.name}` : w.name}
+                                                                            </div>
+                                                                            <div className="text-[10px] text-text-secondary font-mono mt-0.5">{w.ip || 'DHCP (Pending)'}</div>
+                                                                        </div>
+                                                                        <div className={cn(
+                                                                            "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter border",
+                                                                            w.ip && !w.ip.includes('Pending')
+                                                                                ? "bg-green-500/10 text-green-500 border-green-500/20"
+                                                                                : "bg-orange-500/10 text-orange-500 border-orange-500/20"
+                                                                        )}>
+                                                                            {w.ip && !w.ip.includes('Pending') ? 'Connected' : 'Pending'}
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="text-[10px] text-text-secondary font-mono mt-0.5">{w.ip || 'DHCP (Pending)'}</div>
-                                                                </div>
-                                                                <div className={cn(
-                                                                    "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter border",
-                                                                    w.ip && !w.ip.includes('Pending')
-                                                                        ? "bg-green-500/10 text-green-500 border-green-500/20"
-                                                                        : "bg-orange-500/10 text-orange-500 border-orange-500/20"
-                                                                )}>
-                                                                    {w.ip && !w.ip.includes('Pending') ? 'Connected' : 'Pending'}
-                                                                </div>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-3">
+                                                        <div className="flex justify-between items-center">
+                                                            <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
+                                                                <Share2 size={12} /> Detailed Overlay Paths
                                                             </div>
-                                                        ))
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            <div className="space-y-3">
-                                                <div className="flex justify-between items-center">
-                                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
-                                                        <Share2 size={12} /> Detailed Overlay Paths
-                                                    </div>
-                                                    <div className="flex gap-1">
-                                                        {(['ALL', 'ACTIVE', 'BACKUP', 'DOWN', 'HUB'] as const).map(f => (
-                                                            <button
-                                                                key={f}
-                                                                onClick={(e) => { e.stopPropagation(); setPathFilter(f); }}
-                                                                className={cn(
-                                                                    "px-1.5 py-0.5 rounded text-[8px] font-black tracking-tighter transition-all border",
-                                                                    pathFilter === f
-                                                                        ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20"
-                                                                        : "bg-card-secondary/40 border-border/40 text-text-muted hover:text-text-primary"
-                                                                )}
-                                                            >
-                                                                {f}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                                <div className="w-full overflow-x-auto pb-2">
-                                                    <table className="w-full text-left border-separate" style={{ borderSpacing: '0 4px' }}>
-                                                        <tbody className="text-[10px]">
-                                                            {(() => {
-                                                                // Aggregate all connections across all devices and interfaces into a rich format
-                                                                const paths: any[] = [];
-                                                                selectedObject.devices?.forEach((d: any) => {
-                                                                    d.wan_interfaces?.forEach((w: any) => {
-                                                                        w.connections?.forEach((c: any) => {
-                                                                            paths.push({
-                                                                                sourceSite: selectedObject.name,
-                                                                                sourceDevice: c.source_device_name || 'ION',
-                                                                                sourceCircuit: w.name || 'WAN',
-                                                                                peerSite: c.peer_site_name,
-                                                                                peerDevice: c.peer_device_name || 'ION',
-                                                                                destCircuit: c.peer_wan_interface || 'WAN',
-                                                                                network: w.wan_network || 'UNKNOWN',
-                                                                                // Debugging fields
-                                                                                vpnId: c.debug_vpn_id,
-                                                                                srcIp: c.debug_source_ip,
-                                                                                dstIp: c.debug_peer_ip,
-
-                                                                                // Core routing logic mapping from Prisma SD-WAN (now per-session)
-                                                                                isRoutingActive: c.active,
-                                                                                isRoutingUsable: c.usable,
-                                                                                isLinkUp: c.link_up,
-                                                                                vpState: c.vpState
+                                                            <div className="flex gap-1">
+                                                                {(['ALL', 'ACTIVE', 'BACKUP', 'DOWN', 'HUB'] as const).map(f => (
+                                                                    <button
+                                                                        key={f}
+                                                                        onClick={(e) => { e.stopPropagation(); setPathFilter(f); }}
+                                                                        className={cn(
+                                                                            "px-1.5 py-0.5 rounded text-[8px] font-black tracking-tighter transition-all border",
+                                                                            pathFilter === f
+                                                                                ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20"
+                                                                                : "bg-card-secondary/40 border-border/40 text-text-muted hover:text-text-primary"
+                                                                        )}
+                                                                    >
+                                                                        {f}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-full overflow-x-auto pb-2">
+                                                            <table className="w-full text-left border-separate" style={{ borderSpacing: '0 4px' }}>
+                                                                <tbody className="text-[10px]">
+                                                                    {(() => {
+                                                                        // Aggregate all connections across all devices and interfaces into a rich format
+                                                                        const paths: any[] = [];
+                                                                        selectedObject.devices?.forEach((d: any) => {
+                                                                            d.wan_interfaces?.forEach((w: any) => {
+                                                                                w.connections?.forEach((c: any) => {
+                                                                                    paths.push({
+                                                                                        sourceSite: selectedObject.name,
+                                                                                        sourceDevice: c.source_device_name || 'ION',
+                                                                                        sourceCircuit: w.name || 'WAN',
+                                                                                        peerSite: c.peer_site_name,
+                                                                                        peerDevice: c.peer_device_name || 'ION',
+                                                                                        destCircuit: c.peer_wan_interface || 'WAN',
+                                                                                        network: w.wan_network || 'UNKNOWN',
+                                                                                        vpnId: c.debug_vpn_id,
+                                                                                        srcIp: c.debug_source_ip,
+                                                                                        dstIp: c.debug_peer_ip,
+                                                                                        isRoutingActive: c.active,
+                                                                                        isRoutingUsable: c.usable,
+                                                                                        isLinkUp: c.link_up,
+                                                                                        vpState: c.vpState
+                                                                                    });
+                                                                                });
                                                                             });
                                                                         });
-                                                                    });
-                                                                });
 
-                                                                // Apply Filter
-                                                                const filteredPaths = paths.filter(p => {
-                                                                    if (pathFilter === 'ALL') return true;
-                                                                    if (pathFilter === 'ACTIVE') return p.isRoutingActive;
-                                                                    if (pathFilter === 'BACKUP') return (p.isRoutingUsable || p.isLinkUp) && !p.isRoutingActive;
-                                                                    if (pathFilter === 'DOWN') return !p.isRoutingActive && !p.isRoutingUsable && !p.isLinkUp;
-                                                                    if (pathFilter === 'HUB') return p.peerSite.startsWith('DC') || p.peerSite.startsWith('BRGW') || p.peerDevice.startsWith('DC') || p.peerDevice.startsWith('BRGW');
-                                                                    return true;
-                                                                });
+                                                                        const filteredPaths = paths.filter(p => {
+                                                                            if (pathFilter === 'ALL') return true;
+                                                                            if (pathFilter === 'ACTIVE') return p.isRoutingActive;
+                                                                            if (pathFilter === 'BACKUP') return (p.isRoutingUsable || p.isLinkUp) && !p.isRoutingActive;
+                                                                            if (pathFilter === 'DOWN') return !p.isRoutingActive && !p.isRoutingUsable && !p.isLinkUp;
+                                                                            if (pathFilter === 'HUB') return p.peerSite.startsWith('DC') || p.peerSite.startsWith('BRGW') || p.peerDevice.startsWith('DC') || p.peerDevice.startsWith('BRGW');
+                                                                            return true;
+                                                                        });
 
-                                                                if (filteredPaths.length === 0) {
-                                                                    return <tr><td colSpan={5} className="text-text-muted italic opacity-50 py-4 text-center">No matching overlay peers discovered</td></tr>;
-                                                                }
+                                                                        if (filteredPaths.length === 0) {
+                                                                            return <tr><td colSpan={5} className="text-text-muted italic opacity-50 py-4 text-center">No matching overlay peers discovered</td></tr>;
+                                                                        }
+                                                                        filteredPaths.sort((a, b) => a.peerSite.localeCompare(b.peerSite));
+                                                                        return filteredPaths.map((p: any, idx: number) => {
+                                                                            let tagBg = "bg-card-secondary/20";
+                                                                            let tagText = "text-text-muted";
+                                                                            let label = "UNKNOWN";
+                                                                            if (p.isRoutingActive) { tagBg = "bg-green-500/10"; tagText = "text-green-500"; label = "ACTIVE"; }
+                                                                            else if (p.isRoutingUsable || p.isLinkUp) { tagBg = "bg-blue-500/10"; tagText = "text-blue-500"; label = "BACKUP"; }
+                                                                            else { tagBg = "bg-red-500/10"; tagText = "text-red-500"; label = "DOWN"; }
 
-                                                                // Sort paths by Peer Name, then by Activity
-                                                                filteredPaths.sort((a, b) => a.peerSite.localeCompare(b.peerSite));
+                                                                            return (
+                                                                                <tr key={idx} className="group hover:bg-card/40 transition-colors">
+                                                                                    <td className="py-2 pl-3 rounded-l-lg border-y border-l bg-card/20 border-border/20 group-hover:border-border/60 text-right whitespace-nowrap min-w-[50px]">
+                                                                                        <div className="flex items-center justify-end gap-1 text-[9px] font-mono">
+                                                                                            <span className="text-text-primary hidden lg:inline">{p.sourceSite}</span>
+                                                                                            <span className="text-text-muted/50 hidden lg:inline">:</span>
+                                                                                            <span className="text-blue-500 font-bold">{p.sourceDevice}</span>
+                                                                                        </div>
+                                                                                    </td>
+                                                                                    <td className="py-2 px-1 border-y bg-card/20 border-border/20 group-hover:border-border/60 text-right whitespace-nowrap w-[1%]">
+                                                                                        <span className="text-[9px] font-mono text-text-secondary bg-card-secondary/50 px-1 py-0.5 rounded uppercase tracking-tighter inline-block">{p.sourceCircuit}</span>
+                                                                                    </td>
+                                                                                    <td className="py-2 px-2 border-y bg-card/20 border-border/20 group-hover:border-border/60 text-center whitespace-nowrap w-[1%]">
+                                                                                        <div className="flex justify-center items-center opacity-90 pb-[1px]">
+                                                                                            <span className="text-[9px] font-mono text-text-muted tracking-tighter hidden sm:inline">&lt;=</span>
+                                                                                            <span className={cn("px-1.5 py-[1px] mx-1 rounded font-black text-[8px] tracking-wider text-center border min-w-[45px]", tagBg, tagText, p.isRoutingActive ? "border-green-500/20" : p.isRoutingUsable ? "border-blue-500/20" : "border-red-500/20")}>
+                                                                                                {label}
+                                                                                            </span>
+                                                                                            <span className="text-[9px] font-mono text-text-muted tracking-tighter hidden sm:inline">=&gt;</span>
+                                                                                        </div>
+                                                                                    </td>
+                                                                                    <td className="py-2 px-1 border-y bg-card/20 border-border/20 group-hover:border-border/60 text-left whitespace-nowrap w-[1%]">
+                                                                                        <span className="text-[9px] font-mono text-text-secondary bg-card-secondary/50 px-1 py-0.5 rounded uppercase tracking-tighter inline-block">{p.destCircuit}</span>
+                                                                                    </td>
+                                                                                    <td className="py-2 pr-3 rounded-r-lg border-y border-r bg-card/20 border-border/20 group-hover:border-border/60 text-left whitespace-nowrap min-w-[50px]">
+                                                                                        <div className="flex items-center justify-start gap-1 text-[9px] font-mono">
+                                                                                            <span className="text-blue-500 font-bold">{p.peerDevice}</span>
+                                                                                            <span className="text-text-muted/50 hidden lg:inline">:</span>
+                                                                                            <span className="text-text-primary hidden lg:inline">{p.peerSite}</span>
+                                                                                        </div>
+                                                                                    </td>
+                                                                                </tr>
+                                                                            );
+                                                                        });
+                                                                    })()}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                /* Cloud-Specific View (Hide Overlays) */
+                                                <div className="space-y-6">
+                                                    <div className="bg-blue-500/5 border border-blue-500/20 p-8 rounded-[40px] flex flex-col items-center gap-4 shadow-inner">
+                                                        <div className="p-4 bg-blue-500 rounded-full text-white shadow-xl shadow-blue-500/20">
+                                                            <Cloud size={32} />
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <div className="text-xl font-black text-text-primary tracking-tight uppercase leading-none">{selectedObject.name}</div>
+                                                            <div className="text-[10px] text-text-muted font-bold tracking-[0.2em] mt-3 opacity-60">NETWORK INFRASTRUCTURE</div>
+                                                        </div>
+                                                    </div>
 
-                                                                return filteredPaths.map((p: any, idx: number) => {
-                                                                    // Logic for CSS styling based on state
-                                                                    let lineStyle = "border-t border-dashed border-text-muted/30"; // Default unknown
-                                                                    let tagBg = "bg-card-secondary/20";
-                                                                    let tagText = "text-text-muted";
-                                                                    let label = "UNKNOWN";
-
-                                                                    if (p.isRoutingActive) {
-                                                                        lineStyle = "border-t border-solid border-green-500/50";
-                                                                        tagBg = "bg-green-500/10";
-                                                                        tagText = "text-green-500";
-                                                                        label = "ACTIVE";
-                                                                    } else if (p.isRoutingUsable || p.isLinkUp) {
-                                                                        lineStyle = "border-t border-dashed border-blue-500/50";
-                                                                        tagBg = "bg-blue-500/10";
-                                                                        tagText = "text-blue-500";
-                                                                        label = "BACKUP";
-                                                                    } else {
-                                                                        lineStyle = "border-t border-solid border-red-500/50";
-                                                                        tagBg = "bg-red-500/10";
-                                                                        label = "DOWN";
-                                                                    }
-
-                                                                    return (
-                                                                        <tr key={idx} className="group hover:bg-card/40 transition-colors">
-
-                                                                            {/* Source Site & Device */}
-                                                                            <td className="py-2 pl-3 rounded-l-lg border-y border-l bg-card/20 border-border/20 group-hover:border-border/60 text-right whitespace-nowrap min-w-[50px]">
-                                                                                <div className="flex items-center justify-end gap-1 text-[9px] font-mono">
-                                                                                    <span className="text-text-primary hidden lg:inline">{p.sourceSite}</span>
-                                                                                    <span className="text-text-muted/50 hidden lg:inline">:</span>
-                                                                                    <span className="text-blue-500 font-bold">{p.sourceDevice}</span>
-                                                                                </div>
-                                                                            </td>
-
-                                                                            {/* Source Circuit */}
-                                                                            <td className="py-2 px-1 border-y bg-card/20 border-border/20 group-hover:border-border/60 text-right whitespace-nowrap w-[1%]">
-                                                                                <span className="text-[9px] font-mono text-text-secondary bg-card-secondary/50 px-1 py-0.5 rounded uppercase tracking-tighter inline-block">{p.sourceCircuit}</span>
-                                                                            </td>
-
-                                                                            {/* Center Status Arrow */}
-                                                                            <td className="py-2 px-2 border-y bg-card/20 border-border/20 group-hover:border-border/60 text-center whitespace-nowrap w-[1%]">
-                                                                                <div className="flex justify-center items-center opacity-90 pb-[1px]">
-                                                                                    <span className="text-[9px] font-mono text-text-muted tracking-tighter hidden sm:inline">&lt;=</span>
-                                                                                    <span className={cn("px-1.5 py-[1px] mx-1 rounded font-black text-[8px] tracking-wider text-center border min-w-[45px]", tagBg, tagText, p.isRoutingActive ? "border-green-500/20" : p.isRoutingUsable ? "border-blue-500/20" : "border-red-500/20")}>
-                                                                                        {label}
-                                                                                    </span>
-                                                                                    <span className="text-[9px] font-mono text-text-muted tracking-tighter hidden sm:inline">=&gt;</span>
-                                                                                </div>
-                                                                            </td>
-
-                                                                            {/* Dest Circuit */}
-                                                                            <td className="py-2 px-1 border-y bg-card/20 border-border/20 group-hover:border-border/60 text-left whitespace-nowrap w-[1%]">
-                                                                                <span className="text-[9px] font-mono text-text-secondary bg-card-secondary/50 px-1 py-0.5 rounded uppercase tracking-tighter inline-block">{p.destCircuit}</span>
-                                                                            </td>
-
-                                                                            {/* Dest Device & Site */}
-                                                                            <td className="py-2 pr-3 rounded-r-lg border-y border-r bg-card/20 border-border/20 group-hover:border-border/60 text-left whitespace-nowrap min-w-[50px]">
-                                                                                <div className="flex items-center justify-start gap-1 text-[9px] font-mono">
-                                                                                    <span className="text-blue-500 font-bold">{p.peerDevice}</span>
-                                                                                    <span className="text-text-muted/50 hidden lg:inline">:</span>
-                                                                                    <span className="text-text-primary hidden lg:inline">{p.peerSite}</span>
-                                                                                </div>
-                                                                            </td>
-
-                                                                        </tr>
-                                                                    );
-                                                                });
-                                                            })()}
-                                                        </tbody>
-                                                    </table>
+                                                    <div className="bg-card-secondary/20 p-6 rounded-3xl border border-border/50 space-y-4">
+                                                        <div className="flex items-center gap-2 text-[10px] font-black text-text-muted uppercase tracking-widest">
+                                                            <Info size={14} className="text-blue-500" /> Network Details
+                                                        </div>
+                                                        <p className="text-xs text-text-secondary leading-relaxed font-medium">
+                                                            This node represents the <span className="text-text-primary font-bold">{selectedObject.name}</span> underlay network.
+                                                            It facilitates transport for all overlay tunnels associated with this network provider.
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            )}
 
                                             {selectedObject.address && (
                                                 <div className="space-y-2 pb-4">
