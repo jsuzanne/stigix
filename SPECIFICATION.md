@@ -13,7 +13,7 @@ The **SD-WAN Traffic Generator** is a realistic enterprise network simulation pl
 2. **Network Impairment & Control** — VyOS router orchestration with CYCLE and STEP-BY-STEP sequence modes for programmatic failover scenarios
 3. **Measurement & Validation** — Convergence testing (failover timing, egress path enrichment), Voice MOS scoring, XFR throughput, connectivity probing, and security policy validation
 
-The system integrates natively with **Prisma SD-WAN (CloudGenix)** for Zero-Config site detection, smart target discovery, and automatic egress path enrichment via the Flow Browser API.
+The system integrates natively with **Prisma SD-WAN (CloudGenix)** for Zero-Config site detection and includes a **Hybrid Registry** system for peer discovery (Cloudflare + Local Leader) without manual IP configuration.
 
 ---
 
@@ -30,6 +30,7 @@ The system integrates natively with **Prisma SD-WAN (CloudGenix)** for Zero-Conf
 | **Connectivity Performance** | Multi-probe latency monitoring, TCP handshake timing, and Docker stats |
 | **IoT Simulation** | Scapy-powered L2/L3 simulation (ARP, DHCP, mDNS, SSDP) for 20+ device types |
 | **Prisma SD-WAN Integration** | Auto site detection, DC target discovery, flow browser egress path enrichment |
+| **Hybrid Registry** | Cloudflare-backed discovery with local leader election for zero-cost P2P scaling |
 | **Web Dashboard** | React 19 SPA with real-time Socket.IO events, dark/light themes, JWT auth |
 
 ---
@@ -52,28 +53,25 @@ graph TB
         WEB -->|spawn| ENG["engines/ (Python)\nconvergence, voice, getflow"]
     end
 
-    subgraph "Target Site — Docker Compose"
-        ECHO["sdwan-voice-echo\nVoice + Convergence + HTTP"]
-        XFRT["xfr-target\nXFR Server"]
+    subgraph "Hub / Leader Site"
+        REG["Local Registry\nExpress :8080/api/registry"]
     end
 
-    subgraph "Prisma SD-WAN Cloud"
+    subgraph "Cloud Service"
+        CF["Cloudflare Worker\nRegistry Bootstrap"]
         PSASE["Prisma SASE API\nFlow Browser / Site API"]
     end
 
     USER["Browser\nPort 8080"] -->|React SPA| WEB
+    WEB -->|Bootstrap| CF
+    WEB -->|Registration| REG
+    REG -->|Fallback| CF
     TG -->|HTTPS| INTERNET["SaaS / Cloud Apps"]
-    WEB -->|UDP 6200| ECHO
-    WEB -->|UDP 6100-6101| ECHO
-    WEB -->|TCP/UDP 9000| XFRT
+    WEB -->|UDP 6200| ECHO["sdwan-voice-echo"]
     WEB -->|HTTPS| PSASE
-
-    style TG fill:#e1f5ff
-    style WEB fill:#fff4e1
-    style XFR fill:#f0fff0
-    style ECHO fill:#e1f5ff
-    style PSASE fill:#005FA9,color:#fff
 ```
+
+### Container Architecture
 
 ### Container Architecture
 
@@ -636,20 +634,24 @@ DEBUG=true                 # Enable verbose [CONV] [DEBUG] logs
 | `/api/connectivity/iperf/server` | GET | ✅ | iperf3 server info |
 | `/api/connectivity/iperf/client` | POST | ✅ | Run iperf3 client test |
 
-### IoT Simulation
-
-| Endpoint | Method | Auth | Description |
-|---|---|---|---|
-| `/api/iot/devices` | GET | ✅ | List simulated devices |
-| `/api/iot/devices` | POST | ✅ | Add device |
-| `/api/iot/devices/:id` | DELETE | ✅ | Remove device |
-| `/api/iot/start/:id` | POST | ✅ | Start device simulation |
-| `/api/iot/stop/:id` | POST | ✅ | Stop device simulation |
-| `/api/iot/start-batch` | POST | ✅ | Start all devices |
-| `/api/iot/stop-batch` | POST | ✅ | Stop all devices |
-| `/api/iot/stats` | GET | ✅ | Simulation statistics |
-| `/api/iot/config/export` | GET | ✅ | Export IoT config |
 | `/api/iot/config/import` | POST | ✅ | Import IoT config |
+
+### Hybrid Registry (Peer Discovery)
+
+#### Cloudflare Bootstrap Worker
+| Endpoint | Method | Description |
+|---|---|---|
+| `/leader` | POST | Announce local leader IP with lease protection |
+| `/leader` | GET | Retrieve current leader IP for a PoC |
+| `/register` | POST | Direct registration to Cloudflare (Bootstrap) |
+| `/instances` | GET | List peers discovered via Cloudflare |
+
+#### Local Registry Engine (Express :8080)
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/registry/register` | POST | Peer heartbeat registration |
+| `/api/registry/instances` | GET | List peers connected to local leader |
+| `/api/registry/status` | GET | Registry service mode and health |
 
 ---
 
