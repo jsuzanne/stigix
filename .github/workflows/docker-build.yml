@@ -161,10 +161,13 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.build_full }}" == "true" ]]; then
             echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-            echo "🚀 FULL BUILD: AMD64 + ARM64"
+            echo "🚀 FULL MANUAL BUILD: AMD64 + ARM64"
+          elif [[ $GITHUB_REF == refs/tags/* ]] || [[ $GITHUB_REF == refs/heads/main ]]; then
+            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
+            echo "🌍 MULTI-PLATFORM RELEASE: AMD64 + ARM64"
           else
             echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-            echo "⚡ FAST BUILD: AMD64 ONLY"
+            echo "⚡ FAST BRANCH BUILD: AMD64 ONLY"
           fi
 
       - name: Build and push Web UI
