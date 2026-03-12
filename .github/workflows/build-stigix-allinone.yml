@@ -99,12 +99,12 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.build_full }}" == "true" ]]; then
             echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
             echo "🚀 FULL BUILD: AMD64 + ARM64 (Manual)"
-          elif [[ $GITHUB_REF == refs/tags/* ]] || [[ $GITHUB_REF == refs/heads/main ]]; then
+          elif [[ $GITHUB_REF == refs/tags/* ]]; then
             echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-            echo "🌍 MULTI-PLATFORM BUILD: AMD64 + ARM64 (Release/Latest)"
+            echo "🌍 RELEASE BUILD: AMD64 + ARM64 (Tag)"
           else
             echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-            echo "⚡ FAST BUILD: AMD64 ONLY (Branch)"
+            echo "⚡ FAST BUILD: AMD64 ONLY (Main/Branch)"
           fi
 
       - name: Build and push Stigix All-in-One
