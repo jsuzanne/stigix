@@ -96,13 +96,11 @@ const XFR_QUICK_TARGETS = QUICK_TARGETS_RAW.split(',')
         return { label: cleanLabel, host: cleanHost };
     });
 
+
 // Shared Targets Manager (config/targets.json + synthesized from legacy configs)
 const registryManager = new RegistryManager(APP_CONFIG.configDir);
 const targetsManager = new TargetsManager(APP_CONFIG.configDir, XFR_QUICK_TARGETS, registryManager);
 log('SYSTEM', `🎯 Targets Manager initialized`);
-
-// Start Registry Service
-registryManager.start().catch(e => log('REGISTRY', `Failed to start: ${e.message}`, 'error'));
 
 if (DEBUG) {
     log('SYSTEM', `📂 Configuration Directory: ${APP_CONFIG.configDir}`);
@@ -6570,5 +6568,9 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
     // Smoke Test: Validate all Express routes to catch PathError regressions early
 
 
+
     console.log(`Backend running at http://localhost:${PORT}`);
+
+    // Start Registry Service only after server is listening
+    registryManager.start().catch(e => log('REGISTRY', `Failed to start: ${e.message}`, 'error'));
 });

@@ -1,5 +1,6 @@
 import path from 'path';
 import os from 'os';
+import net from 'net';
 import { spawn } from 'child_process';
 import { StigixRegistryClient, RegistryInstance } from './stigix-registry-client.js';
 
@@ -23,16 +24,61 @@ export class RegistryManager {
     }
 
     private detectPrivateIp(): string {
+        // 1. Manual override
+        if (process.env.STIGIX_PRIVATE_IP) {
+            return process.env.STIGIX_PRIVATE_IP;
+        }
+
         const nets = os.networkInterfaces();
+        const blacklist = ['docker', 'virbr', 'veth', 'br-', 'lo'];
+
+        // Collect all possible IPs
+        const candidates: string[] = [];
+
         for (const name of Object.keys(nets)) {
-            for (const net of nets[name]!) {
+            // Skip blacklisted interfaces
+            if (blacklist.some(b => name.startsWith(b))) continue;
+
+            for (const netInfo of nets[name]!) {
                 // Skip internally and non-IPv4
-                if (net.family === 'IPv4' && !net.internal) {
-                    return net.address;
+                if (netInfo.family === 'IPv4' && !netInfo.internal) {
+                    candidates.push(netInfo.address);
                 }
             }
         }
+
+        // Return first candidate, or fallback
+        if (candidates.length > 0) {
+            // Heuristic: Prefer 192, 10, or 172 ranges (private)
+            const preferred = candidates.find(ip =>
+                ip.startsWith('192.') || ip.startsWith('10.') || ip.startsWith('172.')
+            );
+            return preferred || candidates[0];
+        }
+
         return '127.0.0.1';
+    }
+
+    private async isPortOpen(host: string, port: number, timeout = 3000): Promise<boolean> {
+        return new Promise((resolve) => {
+            const socket = new net.Socket();
+            const timer = setTimeout(() => {
+                socket.destroy();
+                resolve(false);
+            }, timeout);
+
+            socket.connect(port, host, () => {
+                clearTimeout(timer);
+                socket.destroy();
+                resolve(true);
+            });
+
+            socket.on('error', () => {
+                clearTimeout(timer);
+                socket.destroy();
+                resolve(false);
+            });
+        });
     }
 
     private async autoDetectIdentity(): Promise<{ role: string | null, isBg: boolean }> {
@@ -104,9 +150,16 @@ export class RegistryManager {
             // Peer Mode: Try to find local leader via Bootstrap
             const leader = await this.client.findLeader();
             if (leader) {
-                this.leaderInfo = leader;
-                this.client.setLocalRegistry(leader.ip);
-                console.log(`[REGISTRY] Local leader discovered at ${leader.ip} (${leader.id})`);
+                console.log(`[REGISTRY] Local leader discovered at ${leader.ip}. Verifying reachability...`);
+                const isOpen = await this.isPortOpen(leader.ip, 8080); // Default port
+
+                if (isOpen) {
+                    this.leaderInfo = leader;
+                    this.client.setLocalRegistry(leader.ip);
+                    console.log(`[REGISTRY] Local leader reached successfully. Switching to local mode.`);
+                } else {
+                    console.warn(`[REGISTRY] Local leader ${leader.ip} found but port 8080 is unreachable. Falling back to Cloudflare.`);
+                }
             } else {
                 console.log(`[REGISTRY] No local leader found. Using remote bootstrap (Cloudflare).`);
             }
@@ -137,9 +190,20 @@ export class RegistryManager {
         if (mode === 'peer' && config.registryUrl === config.remoteUrl) {
             const leader = await this.client.findLeader();
             if (leader) {
-                this.leaderInfo = leader;
-                this.client.setLocalRegistry(leader.ip);
-                console.log(`[REGISTRY] Transitioning to local leader at ${leader.ip}`);
+                const isOpen = await this.isPortOpen(leader.ip, 8080);
+                if (isOpen) {
+                    this.leaderInfo = leader;
+                    this.client.setLocalRegistry(leader.ip);
+                    console.log(`[REGISTRY] Transitioning to local leader at ${leader.ip}`);
+                } else {
+                    // Leader found but not reachable, so we can't use it.
+                    // Fall through to the "no leader found" logic.
+                    console.log(`[REGISTRY] Local leader ${leader.ip} found but port 8080 is unreachable. Skipping registration.`);
+                    // Safeguard: If no leader is found, do NOT register (POST) to Cloudflare.
+                    // This ensures Cloudflare is only contacted in READ ONLY mode (findLeader/fetchInstances).
+                    console.log(`[REGISTRY] No local leader found. Skipping registration to save Cloudflare KV Quota.`);
+                    return;
+                }
             } else {
                 // Safeguard: If no leader is found, do NOT register (POST) to Cloudflare.
                 // This ensures Cloudflare is only contacted in READ ONLY mode (findLeader/fetchInstances).
