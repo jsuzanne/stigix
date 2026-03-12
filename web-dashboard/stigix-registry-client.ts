@@ -20,7 +20,6 @@ export interface RegistryConfig {
     heartbeatIntervalSec?: number;
     discoveryIntervalSec?: number;
     remoteUrl?: string; // Global Bootstrap Signal (Cloudflare)
-    bootstrapUrl?: string; // Source for remoteUrl
     siteRole?: string; // HUB or SPOKE
     isBranchGateway?: boolean;
 }
@@ -64,8 +63,9 @@ export class StigixRegistryClient {
         if (!this.config.pocKey && this.config.pocId && this.config.clientId) {
             this.config.pocKey = this.derivePoCKey(this.config.pocId, this.config.clientId);
         }
-        // Decouple remoteUrl from registryUrl to ensure bootstrap always works
-        this.config.remoteUrl = this.config.bootstrapUrl || 'https://stigix-registry.jlsuzanne.workers.dev';
+        // Force remoteUrl to be the stable Cloudflare bootstrap signal, 
+        // regardless of registryUrl overrides.
+        this.config.remoteUrl = 'https://stigix-registry.jlsuzanne.workers.dev';
     }
 
     /**
@@ -101,7 +101,6 @@ export class StigixRegistryClient {
             (explicitToggle !== 'false' && !!pocId && !!clientId);
 
         const registryUrl = process.env.STIGIX_REGISTRY_URL || 'https://stigix-registry.jlsuzanne.workers.dev';
-        const bootstrapUrl = process.env.STIGIX_BOOTSTRAP_URL || 'https://stigix-registry.jlsuzanne.workers.dev';
 
         const hostname = os.hostname();
         const siteName = process.env.STIGIX_SITE_NAME || process.env.STIGIX_INSTANCE_ID || hostname;
@@ -114,7 +113,6 @@ export class StigixRegistryClient {
         return new StigixRegistryClient({
             enabled,
             registryUrl,
-            bootstrapUrl,
             pocId,
             instanceId,
             siteName,
