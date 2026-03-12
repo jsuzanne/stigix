@@ -105,7 +105,7 @@ export class StigixRegistryClient {
             apiKey,
             clientId,
             heartbeatIntervalSec: parseInt(process.env.STIGIX_REGISTRY_HEARTBEAT_SEC || '300'),
-            discoveryIntervalSec: parseInt(process.env.STIGIX_REGISTRY_DISCOVERY_SEC || '120')
+            discoveryIntervalSec: parseInt(process.env.STIGIX_REGISTRY_DISCOVERY_SEC || '30')
         });
     }
 

@@ -192,15 +192,35 @@ export class RegistryManager {
         // 1. Initial Registration
         await this.performHeartbeat();
 
-        // 2. Setup Loops
-        const heartbeatMs = (config.heartbeatIntervalSec || 300) * 1000;
-        const discoveryMs = (config.discoveryIntervalSec || 120) * 1000;
-
-        this.heartbeatInterval = setInterval(() => this.performHeartbeat(), heartbeatMs);
-        this.discoveryInterval = setInterval(() => this.performDiscovery(), discoveryMs);
-
         // 3. Initial Discovery
         await this.performDiscovery();
+
+        this.setupIntervals();
+    }
+
+    private setupIntervals() {
+        const config = this.client.getConfig();
+        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
+
+        // Clear existing
+        if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+        if (this.discoveryInterval) clearInterval(this.discoveryInterval);
+
+        // Discovery is always 30s (Read-only, 100k/day quota is safe)
+        const discoveryMs = (config.discoveryIntervalSec || 30) * 1000;
+        this.discoveryInterval = setInterval(() => this.performDiscovery(), discoveryMs);
+
+        // Heartbeat is adaptive
+        let heartbeatMs = (config.heartbeatIntervalSec || 300) * 1000;
+
+        // If we are a Peer using a LOCAL Leader, we can go faster (no Cloudflare quota impact)
+        // If we are the Leader, we still heartbeat slow to Cloudflare to save quota
+        if (mode === 'peer' && config.registryUrl !== config.remoteUrl) {
+            heartbeatMs = 60000; // 1 minute
+            console.log(`[REGISTRY] Local mode detected. Heartbeat increased to 60s.`);
+        }
+
+        this.heartbeatInterval = setInterval(() => this.performHeartbeat(), heartbeatMs);
     }
 
     private async performHeartbeat() {
@@ -216,6 +236,7 @@ export class RegistryManager {
                     this.leaderInfo = leader;
                     this.client.setLocalRegistry(leader.ip);
                     console.log(`[REGISTRY] Transitioning to local leader at ${leader.ip}`);
+                    this.setupIntervals();
                 } else {
                     // Leader found but not reachable, so we can't use it.
                     // Fall through to the "no leader found" logic.
