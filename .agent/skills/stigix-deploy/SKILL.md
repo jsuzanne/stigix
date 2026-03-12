@@ -39,10 +39,14 @@ All three files must always stay in sync.
 
 ### 3 — Stage, commit, and push
 
-Stage **all** changed files (source + VERSION files together in one commit):
+Stage **all** changed files (source + VERSION files together in one commit). 
+
+> [!IMPORTANT]
+> **Visibility Rule**: Always prefix the commit message with the new version number. This makes it easy to track which version is being built in the GitHub Actions list.
+
 ```bash
 git add -A
-git commit -m "feat/fix: <short description>
+git commit -m "$NEW_VER: <feat|fix>: <short description>
 
 <expanded bullet summary of what changed>"
 git push
@@ -55,17 +59,18 @@ git tag $NEW_VER
 git push origin $NEW_VER
 ```
 
-This triggers GitHub Actions (`docker-build.yml`) which builds and pushes:
-- `jsuzanne/sdwan-web-ui:latest` + `jsuzanne/sdwan-web-ui:$NEW_VER`
-- Same for `sdwan-traffic-gen`, `sdwan-voice-gen`, `sdwan-voice-echo`, `sdwan-mcp-server`
+This triggers GitHub Actions (`build-stigix-allinone.yml` and `docker-build.yml`) which automatically creates:
+- **Multi-platform images (AMD64 + ARM64)**: Only for official tags (`v*`). This ensures Raspberry Pi compatibility.
+- **Fast AMD64-only images**: For pushes to the `main` branch (updating `latest`).
 
-### 5 — Verify CI (optional)
+### 5 — Verify CI Visibility
 
-Check the Actions tab: `https://github.com/jsuzanne/stigix/actions`
+Check the Actions tab: `https://github.com/jsuzanne/stigix/actions`.
+You should see the run name labeled with `🚀 Release $NEW_VER`.
 
 ## Rules
 
-- **Never** bump the version for doc-only commits (no tag needed, CI won't build anyway since no Dockerfile/source changed)
-- VERSION files and the git tag must always match exactly
-- Always bump version **before** the tag push, not after
-- If a tag already exists, use `git tag -f $NEW_VER && git push origin $NEW_VER --force`
+- **Prefix**: Never forget the `$NEW_VER:` prefix in the commit message.
+- **Sync**: VERSION files and the git tag must always match exactly.
+- **Timing**: Always bump version **before** the tag push.
+- **Doc-only**: Skip versioning for README/Documentation-only changes.
