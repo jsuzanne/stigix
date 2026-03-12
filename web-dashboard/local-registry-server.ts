@@ -29,7 +29,7 @@ export class LocalRegistryServer {
         return Array.from(this.instances.values());
     }
 
-    getRouter(): Router {
+    getRouter(targetsManager?: any): Router {
         const router = Router();
 
         // POST /register
@@ -78,6 +78,21 @@ export class LocalRegistryServer {
                 poc_id,
                 instances: results
             });
+        });
+
+        // GET /targets (Shared Targets from Leader to Peer)
+        router.get('/targets', (req, res) => {
+            if (!targetsManager) {
+                return res.json([]);
+            }
+            try {
+                // Get targets from the Leader's targetsManager.
+                const targets = targetsManager.getMergedTargets();
+                return res.json(targets);
+            } catch (e) {
+                console.error(`[LOCAL-REGISTRY] Error serving targets:`, e);
+                return res.status(500).json({ status: 'error', error: 'failed_to_get_targets' });
+            }
         });
 
         return router;

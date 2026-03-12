@@ -89,18 +89,62 @@ export class TargetsManager {
     updateTarget(id: string, data: Partial<Omit<TargetDefinition, 'id' | 'source'>>): TargetDefinition | null {
         const targets = this.loadTargets();
         const idx = targets.findIndex(t => t.id === id);
-        if (idx === -1) return null;
-        targets[idx] = { ...targets[idx], ...data, id, source: 'managed' };
-        this.saveTargets(targets);
-        return targets[idx];
+        
+        if (idx !== -1) {
+            targets[idx] = { ...targets[idx], ...data, id, source: 'managed' };
+            this.saveTargets(targets);
+            return targets[idx];
+        }
+
+        // If not found by ID, it might be a synthesized target being edited.
+        // We look it up in the merged list by ID to get its original properties and promote it.
+        const merged = this.getMergedTargets();
+        const synthTarget = merged.find(t => t.id === id);
+        if (synthTarget) {
+            const promoted: TargetDefinition = {
+                ...synthTarget,
+                ...data,
+                id: makeId(), // Assign a new managed ID
+                source: 'managed'
+            };
+            // Remove meta data that shouldn't persist in managed (like local_config/registry)
+            delete promoted.meta;
+            targets.push(promoted);
+            this.saveTargets(targets);
+            return promoted;
+        }
+
+        return null;
     }
 
     deleteTarget(id: string): boolean {
         const targets = this.loadTargets();
+        const initialLength = targets.length;
         const filtered = targets.filter(t => t.id !== id);
-        if (filtered.length === targets.length) return false;
-        this.saveTargets(filtered);
-        return true;
+        
+        if (filtered.length !== initialLength) {
+            this.saveTargets(filtered);
+            return true;
+        }
+
+        // If not found in managed targets, check if it's a synthesized target
+        const merged = this.getMergedTargets();
+        const synthTarget = merged.find(t => t.id === id);
+        if (synthTarget) {
+            // "Delete" a synthesized target by promoting it and explicitly disabling it
+            const disabledTarget: TargetDefinition = {
+                ...synthTarget,
+                id: makeId(),
+                enabled: false,
+                source: 'managed'
+            };
+            delete disabledTarget.meta;
+            targets.push(disabledTarget);
+            this.saveTargets(targets);
+            return true;
+        }
+
+        return false;
     }
 
     // ─── Synthesis from legacy configs ─────────────────────────────────────────
@@ -124,6 +168,7 @@ export class TargetsManager {
                     capabilities: { ...EMPTY_CAPS, voice: true },
                     ports: { voice: voicePort },
                     source: 'synthesized' as const,
+                    meta: { local_config: true }
                 };
             }).filter(Boolean) as TargetDefinition[];
         } catch { return []; }
@@ -153,6 +198,7 @@ export class TargetsManager {
                         capabilities: { ...EMPTY_CAPS, security: true },
                         ports: { http: httpPort },
                         source: 'synthesized' as const,
+                        meta: { local_config: true }
                     } as TargetDefinition;
                 } catch { return null; }
             }).filter(Boolean) as TargetDefinition[];
@@ -174,6 +220,7 @@ export class TargetsManager {
                     capabilities: { ...EMPTY_CAPS, convergence: true },
                     ports: { convergence: ep.port || 6200 },
                     source: 'synthesized' as const,
+                    meta: { local_config: true }
                 } as TargetDefinition;
             }).filter(Boolean) as TargetDefinition[];
         } catch { return []; }
@@ -187,13 +234,16 @@ export class TargetsManager {
             enabled: true,
             capabilities: { ...EMPTY_CAPS, xfr: true },
             source: 'synthesized' as const,
+            meta: { local_config: true }
         }));
     }
 
     private synthesizeFromRegistry(): TargetDefinition[] {
         if (!this.registryManager) return [];
+        
+        // 1. Peer instances
         const peers = this.registryManager.getPeers();
-        return peers.map((p: any) => ({
+        const peerTargets = peers.map((p: any) => ({
             id: `reg-${p.instance_id}`,
             name: `${p.meta?.site || p.instance_id} (Auto)`,
             host: p.ip_private,
@@ -213,6 +263,23 @@ export class TargetsManager {
                 last_seen: p.last_seen
             }
         }));
+
+        // 2. Shared generic targets from local Leader (if we are a peer)
+        const sharedTargetsList = typeof this.registryManager.getSharedTargets === 'function' 
+            ? this.registryManager.getSharedTargets() : [];
+
+        const sharedTgtDefs: TargetDefinition[] = sharedTargetsList.map((t: any) => ({
+            ...t,
+            id: `reg-shared-${t.id || t.host}`,
+            source: 'synthesized' as const,
+            meta: {
+                ...(t.meta || {}),
+                registry: true,
+                leader_provided: true
+            }
+        }));
+
+        return [...peerTargets, ...sharedTgtDefs];
     }
 
     // ─── Merged View ───────────────────────────────────────────────────────────
@@ -261,6 +328,20 @@ export class TargetsManager {
                         http: existing.ports?.http ?? t.ports.http,
                         xfr: existing.ports?.xfr ?? t.ports.xfr,
                     };
+                }
+                // Retain source metadata (e.g., if any source says it's from the registry, it stays auto)
+                if (t.meta) {
+                    existing.meta = {
+                        ...(existing.meta || {}),
+                        ...t.meta,
+                        registry: existing.meta?.registry || t.meta.registry,
+                        leader_provided: existing.meta?.leader_provided || t.meta.leader_provided,
+                    };
+                }
+                
+                // Prefer authoritative registry names over generic legacy local configuration names
+                if (t.meta?.registry && existing.source === 'synthesized') {
+                    existing.name = t.name;
                 }
             }
         }

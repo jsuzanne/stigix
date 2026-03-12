@@ -25,8 +25,15 @@ export type TargetDefinition = {
         http?: number; // default 8082
         xfr?: number; // default 5201
     };
-    /** 'managed' = editable via the UI; 'synthesized' = derived from legacy config */
     source?: 'managed' | 'synthesized';
+    meta?: {
+        registry?: boolean;
+        leader_provided?: boolean;
+        location?: any;
+        ip_public?: string;
+        last_seen?: string;
+        [key: string]: any;
+    };
 };
 
 export const TARGET_PORT_DEFAULTS = {

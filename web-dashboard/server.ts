@@ -6483,7 +6483,7 @@ const localRegistryServer = new LocalRegistryServer();
 app.use('/api/registry', (req, res, next) => {
     const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE;
     if (mode === 'leader') {
-        return localRegistryServer.getRouter()(req, res, next);
+        return localRegistryServer.getRouter(targetsManager)(req, res, next);
     }
     next();
 });

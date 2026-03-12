@@ -14,6 +14,7 @@ export class RegistryManager {
     private heartbeatInterval: NodeJS.Timeout | null = null;
     private discoveryInterval: NodeJS.Timeout | null = null;
     private peerCache: Map<string, { instance: RegistryInstance, lastSeen: number }> = new Map();
+    private sharedTargetsCache: any[] = [];
     private currentIp: string = '127.0.0.1';
     private leaderInfo: { ip: string, id: string } | null = null;
     private detectedRole: string | null = null;
@@ -341,6 +342,17 @@ export class RegistryManager {
                 });
             }
         }
+
+        // Fetch shared targets from Leader if we are a Peer connected to Local Leader
+        if (mode === 'peer' && config.registryUrl !== config.remoteUrl) {
+            this.sharedTargetsCache = await this.client.fetchSharedTargets();
+        } else {
+            this.sharedTargetsCache = [];
+        }
+    }
+
+    getSharedTargets() {
+        return this.sharedTargetsCache;
     }
 
     getPeers(): RegistryInstance[] {

@@ -82,7 +82,7 @@ type TargetDefinition = {
 };
 
 const EMPTY_TARGET_CAPS: TargetCapability = {
-    voice: false, convergence: false, xfr: false, security: false, connectivity: false,
+    voice: true, convergence: true, xfr: true, security: true, connectivity: true,
 };
 
 const EMPTY_TARGET: Omit<TargetDefinition, 'id' | 'source'> = {
@@ -1825,13 +1825,13 @@ export default function Settings({ token }: { token: string }) {
                                     <div className="min-w-0">
                                         <div className="flex items-center gap-2">
                                             <span className="text-[11px] font-black text-text-primary tracking-tight">{t.name}</span>
-                                            {t.source === 'synthesized' && !t.meta?.registry && (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                                                    Legacy
+                                            {t.meta?.local_config && (
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30" title="This target is saved in a local component configuration file">
+                                                    Static
                                                 </span>
                                             )}
                                             {t.meta?.registry && (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1" title="Discovered automatically via the Registry">
                                                     <Zap size={8} /> Auto
                                                 </span>
                                             )}
@@ -1847,7 +1847,6 @@ export default function Settings({ token }: { token: string }) {
                                     </div>
                                 </div>
                                 <div className="flex gap-1.5 px-2 shrink-0">
-                                    {t.source !== 'synthesized' && (
                                         <>
                                             <button
                                                 onClick={() => toggleTargetEnabled(t)}
@@ -1874,7 +1873,6 @@ export default function Settings({ token }: { token: string }) {
                                                 <Trash2 size={14} />
                                             </button>
                                         </>
-                                    )}
                                 </div>
                             </div>
                         ))}

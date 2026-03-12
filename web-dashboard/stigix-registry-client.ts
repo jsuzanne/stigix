@@ -224,6 +224,28 @@ export class StigixRegistryClient {
         }
     }
 
+    async fetchSharedTargets(): Promise<any[]> {
+        if (!this.config.enabled || !this.config.pocId || this.config.registryUrl === this.config.remoteUrl) return [];
+
+        try {
+            // Only fetch from Local Leader API
+            const url = new URL(`${this.config.registryUrl}/targets`);
+            const res = await fetch(url.toString(), {
+                headers: this.getHeaders()
+            });
+
+            if (!res.ok) {
+                return [];
+            }
+
+            const data = await res.json();
+            return Array.isArray(data) ? data : [];
+        } catch (e) {
+            console.error(`[REGISTRY] Network error fetching shared targets:`, e);
+            return [];
+        }
+    }
+
     async announceLeader(localIp: string): Promise<boolean> {
         if (!this.config.pocId || !this.config.remoteUrl) return false;
 
