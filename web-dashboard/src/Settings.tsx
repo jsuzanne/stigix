@@ -27,7 +27,7 @@ interface Category {
 
 interface CustomProbe {
     name: string;
-    type: 'HTTP' | 'HTTPS' | 'TCP' | 'PING' | 'DNS' | 'UDP';
+    type: 'HTTP' | 'HTTPS' | 'TCP' | 'PING' | 'DNS' | 'UDP' | 'CLOUD';
     target: string;
     timeout: number;
     enabled?: boolean;
@@ -139,6 +139,8 @@ export default function Settings({ token }: { token: string }) {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
     };
+
+    const [cloudScenarios, setCloudScenarios] = useState<any[]>([]);
     // Convergence State
     const [convergenceThresholds, setConvergenceThresholds] = useState({ good: 1, degraded: 5, critical: 10 });
 
@@ -159,6 +161,16 @@ export default function Settings({ token }: { token: string }) {
             setCategories(catsData.map((c: any) => ({ ...c, expanded: true })));
             setInterfaces(ifaceData);
             setCustomProbes(probesData || []);
+
+            // Fetch Cloud Scenarios
+            fetch('/api/target/scenarios', { headers: authHeaders })
+                .then(r => r.json())
+                .then(data => {
+                    // Filter out EICAR for performance probes as requested
+                    const filtered = (data || []).filter((s: any) => s.id !== 'security-eicar');
+                    setCloudScenarios(filtered);
+                })
+                .catch(() => { });
 
             // Fetch ALL detected interfaces (secondary)
             fetch('/api/config/interfaces?all=true', { headers: { 'Authorization': `Bearer ${token}` } })
@@ -866,17 +878,40 @@ export default function Settings({ token }: { token: string }) {
                                         <option value="TCP">TCP</option>
                                         <option value="DNS">DNS</option>
                                         <option value="UDP">UDP</option>
+                                        <option value="CLOUD">Stigix Cloud</option>
                                     </select>
                                 </div>
                                 <div className="md:col-span-2 space-y-2">
-                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">Target Uri / Ip</label>
-                                    <input
-                                        type="text"
-                                        placeholder="google.com"
-                                        className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-sm"
-                                        value={newProbe.target}
-                                        onChange={e => setNewProbe({ ...newProbe, target: e.target.value })}
-                                    />
+                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">
+                                        {newProbe.type === 'CLOUD' ? 'Cloud scenario' : 'Target Uri / Ip'}
+                                    </label>
+                                    {newProbe.type === 'CLOUD' ? (
+                                        <select
+                                            className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-sm"
+                                            value={newProbe.target}
+                                            onChange={e => {
+                                                const scenario = cloudScenarios.find(s => s.id === e.target.value);
+                                                setNewProbe({
+                                                    ...newProbe,
+                                                    target: e.target.value,
+                                                    name: newProbe.name || scenario?.label || ''
+                                                });
+                                            }}
+                                        >
+                                            <option value="">Select Scenario...</option>
+                                            {cloudScenarios.map(s => (
+                                                <option key={s.id} value={s.id}>{s.label}</option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <input
+                                            type="text"
+                                            placeholder={newProbe.type === 'DNS' ? '8.8.8.8' : 'google.com'}
+                                            className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-sm"
+                                            value={newProbe.target}
+                                            onChange={e => setNewProbe({ ...newProbe, target: e.target.value })}
+                                        />
+                                    )}
                                 </div>
                                 <div className="space-y-2 flex flex-col justify-end">
                                     <button
@@ -901,7 +936,12 @@ export default function Settings({ token }: { token: string }) {
                                             </div>
                                             <div>
                                                 <div className="text-[11px] font-black text-text-primary tracking-tight">{probe.name}</div>
-                                                <div className="text-[10px] text-text-muted font-mono tracking-tighter truncate max-w-[140px] opacity-70">{probe.target}</div>
+                                                <div className="text-[10px] text-text-muted font-mono tracking-tighter truncate max-w-[140px] opacity-70">
+                                                    {probe.type === 'CLOUD'
+                                                        ? (cloudScenarios.find(s => s.id === probe.target)?.label || probe.target)
+                                                        : probe.target
+                                                    }
+                                                </div>
                                             </div>
                                         </div>
                                         <div className="flex gap-1.5 px-2">

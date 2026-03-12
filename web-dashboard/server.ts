@@ -22,6 +22,7 @@ import { SiteManager } from './site-manager.js';
 import { DiscoveryManager, DiscoveredProbe } from './discovery-manager.js';
 import { createServer } from 'http';
 import { TargetsManager } from './targets-manager.js';
+import { TargetManager } from './target-manager.js';
 import { RegistryManager } from './registry-manager.js';
 import { LocalRegistryServer } from './local-registry-server.js';
 
@@ -97,10 +98,11 @@ const XFR_QUICK_TARGETS = QUICK_TARGETS_RAW.split(',')
     });
 
 
-// Shared Targets Manager (config/targets.json + synthesized from legacy configs)
 const registryManager = new RegistryManager(APP_CONFIG.configDir);
 const targetsManager = new TargetsManager(APP_CONFIG.configDir, XFR_QUICK_TARGETS, registryManager);
+const targetManager = new TargetManager(APP_CONFIG.configDir);
 log('SYSTEM', `🎯 Targets Manager initialized`);
+log('SYSTEM', `☁️ Cloud Target Manager initialized`);
 
 if (DEBUG) {
     log('SYSTEM', `📂 Configuration Directory: ${APP_CONFIG.configDir}`);
@@ -2281,6 +2283,39 @@ app.use('/api/stats', authenticateToken);
 app.use('/api/logs', authenticateToken);
 app.use('/api/status', authenticateToken); // Protect status too
 
+// --- Cloud Target API ---
+app.get('/api/target/scenarios', authenticateToken, (req, res) => {
+    res.json(targetManager.getScenarios());
+});
+
+app.get('/api/target/config', authenticateToken, (req, res) => {
+    res.json(targetManager.getConfig());
+});
+
+// Proxy endpoint for restricted egress environments
+app.get('/api/target/proxy/:path*', authenticateToken, async (req, res) => {
+    const targetPath = (req.params as any).path;
+    const scenarios = targetManager.getScenarios();
+    const scenario = scenarios.find(s => s.path === `/${targetPath}`);
+
+    if (!scenario || !scenario.signedUrl) {
+        return res.status(404).json({ error: 'scenario_not_found' });
+    }
+
+    try {
+        const response = await fetch(scenario.signedUrl);
+        const data = await response.arrayBuffer();
+
+        // Forward headers
+        res.set('Content-Type', response.headers.get('Content-Type') || 'application/octet-stream');
+        res.set('X-Stigix-Scenario', response.headers.get('X-Stigix-Scenario') || '');
+
+        res.send(Buffer.from(data));
+    } catch (error: any) {
+        res.status(502).json({ error: 'worker_proxy_failed', details: error.message });
+    }
+});
+
 // Status Check (Unprotected for local health check?) 
 // We can make a specific /health endpoint for Docker if needed, but for now protect all.
 
@@ -2791,7 +2826,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
         timestamp: startTime,
         endpointId: endpoint.name.toLowerCase().replace(/\s+/g, '-'),
         endpointName: endpoint.name,
-        endpointType: endpoint.type.toUpperCase() as 'HTTP' | 'HTTPS' | 'PING' | 'TCP' | 'UDP' | 'DNS',
+        endpointType: endpoint.type.toUpperCase() as 'HTTP' | 'HTTPS' | 'PING' | 'TCP' | 'UDP' | 'DNS' | 'CLOUD',
         url: endpoint.target,
         reachable: false,
         metrics: { total_ms: 0 },
@@ -2887,6 +2922,17 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                         size_bytes: sum.bytes || 0
                     };
                     result.score = calculateDEMScore(result.endpointType, result.reachable, undefined, result.metrics);
+                }
+            } catch (e) { }
+        } else if (endpoint.type.toLowerCase() === 'cloud') {
+            try {
+                // For cloud probes, 'target' is the scenario ID
+                const probeResult = await targetManager.runProbe(endpoint.target);
+                result.reachable = probeResult.success;
+                result.score = probeResult.score;
+                result.metrics.total_ms = probeResult.latency_ms;
+                if (probeResult.data) {
+                    result.data = probeResult.data;
                 }
             } catch (e) { }
         }
@@ -5643,15 +5689,42 @@ app.post('/api/security/edl-test', authenticateToken, async (req, res) => {
 
 // API: Threat Prevention Test (EICAR)
 app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
-    const { endpoint } = req.body;
+    const { endpoint, scenarioId } = req.body;
 
     const testId = getNextTestId();
+
+    if (scenarioId) {
+        logTest(`[THREAT-TEST-${testId}] Stigix Cloud scenario requested: ${scenarioId}`);
+        try {
+            const probeResult = await targetManager.runProbe(scenarioId);
+            const status = probeResult.success ? 'allowed' : 'blocked';
+
+            const result = {
+                success: probeResult.success,
+                status: status,
+                endpoint: 'Stigix Cloud Target',
+                scenarioId,
+                message: probeResult.success
+                    ? 'EICAR file downloaded successfully via Stigix Cloud (not blocked by IPS)'
+                    : 'Stigix Cloud EICAR test BLOCKED (Security Policy Enforcement confirmed)',
+                latency: probeResult.latency_ms,
+                data: probeResult.data
+            };
+
+            logTest(`[THREAT-TEST-${testId}] Cloud scenario ${scenarioId} result: ${status.toUpperCase()}`);
+            addTestResult('threat_prevention', `EICAR Test (Cloud: ${scenarioId})`, result, testId);
+            return res.json({ success: true, results: [result], testId });
+        } catch (error: any) {
+            logTest(`[THREAT-TEST-${testId}] Cloud scenario failed: ${error.message}`);
+            return res.status(500).json({ error: `Cloud scenario execution failed: ${error.message}` });
+        }
+    }
 
     logTest(`[THREAT-TEST-${testId}] EICAR test request received: ${endpoint} (Threat Prevention Test)`);
 
     if (!endpoint) {
         logTest(`[THREAT-TEST-${testId}] Test failed: No endpoint provided`);
-        return res.status(400).json({ error: 'Endpoint URL is required' });
+        return res.status(400).json({ error: 'Endpoint URL is required or provide a scenarioId' });
     }
 
     // Validate URL format

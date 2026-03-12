@@ -12,7 +12,7 @@ export interface ConnectivityResult {
     timestamp: number;
     endpointId: string;
     endpointName: string;
-    endpointType: 'HTTP' | 'HTTPS' | 'PING' | 'TCP' | 'UDP' | 'DNS';
+    endpointType: 'HTTP' | 'HTTPS' | 'PING' | 'TCP' | 'UDP' | 'DNS' | 'CLOUD';
     url: string;
     reachable: boolean;
     httpCode?: number;
@@ -31,6 +31,7 @@ export interface ConnectivityResult {
         ssl_verify?: number;
     };
     score: number;
+    data?: any; // Rich scenario info (e.g. for Egress Info)
 }
 
 export class ConnectivityLogger {

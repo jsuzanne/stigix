@@ -1,4 +1,5 @@
 # Logs
+*.pdf
 *.log
 *.log.*
 *.json

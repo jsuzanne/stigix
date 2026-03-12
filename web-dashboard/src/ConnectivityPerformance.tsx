@@ -339,6 +339,10 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
         return results.filter(r => r.endpointType === 'UDP');
     }, [results]);
 
+    const cloudResults = React.useMemo(() => {
+        return results.filter(r => r.endpointType === 'CLOUD');
+    }, [results]);
+
     // Memoized results for the detail modal — avoids re-filtering on every parent render
     const selectedEndpointResults = React.useMemo(() => {
         if (!selectedEndpoint) return [];
@@ -441,6 +445,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                         <EndpointTypeGraph type="PING" results={pingResults} color="#22c55e" />
                         <EndpointTypeGraph type="DNS" results={dnsResults} color="#a855f7" />
                         <EndpointTypeGraph type="UDP" results={udpResults} color="#f97316" />
+                        <EndpointTypeGraph type="CLOUD" results={cloudResults} color="#6366f1" />
                     </div>
                 </div>
             </div>
@@ -476,7 +481,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                         />
                     </div>
                     <div className="flex p-1 bg-card-secondary rounded-lg border border-border">
-                        {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS'].map(t => (
+                        {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD'].map(t => (
                             <button
                                 key={t}
                                 onClick={() => setFilterType(t)}
@@ -625,7 +630,12 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                                 </span>
                                             )}
                                         </div>
-                                        <span className="text-[10px] text-text-muted font-mono truncate max-w-[200px]">{e.lastResult.url}</span>
+                                        <span className="text-[10px] text-text-muted font-mono truncate max-w-[200px]">
+                                            {e.type === 'CLOUD' && e.lastResult.data?.public_ip
+                                                ? `${e.lastResult.data.public_ip} (${e.lastResult.data.country}${e.lastResult.data.colo ? ` - ${e.lastResult.data.colo}` : ''})`
+                                                : e.lastResult.url
+                                            }
+                                        </span>
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 text-center">
@@ -633,7 +643,8 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                         "px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-tighter",
                                         e.type === 'HTTPS' ? "text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20" :
                                             e.type === 'HTTP' ? "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20" :
-                                                "text-orange-500 bg-orange-500/10 border-orange-500/20"
+                                                e.type === 'CLOUD' ? "text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/20" :
+                                                    "text-orange-500 bg-orange-500/10 border-orange-500/20"
                                     )}>
                                         {e.type}
                                     </span>
