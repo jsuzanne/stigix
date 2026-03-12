@@ -106,7 +106,7 @@ export default function App() {
   const [iperfResult, setIperfResult] = useState<any>(null);
   const [runningIperf, setRunningIperf] = useState(false);
   const [showIperfModal, setShowIperfModal] = useState(false);
-  const [iperfTarget, setIperfTarget] = useState('192.168.203.100');
+  const [iperfTarget, setIperfTarget] = useState('');
   const [iperfServerInfo, setIperfServerInfo] = useState<any>(null);
   const [publicIp, setPublicIp] = useState<string | null>(null);
   const [gatewayIp, setGatewayIp] = useState<string | null>(null);

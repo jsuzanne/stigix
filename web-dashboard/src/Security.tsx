@@ -163,7 +163,7 @@ export default function Security({ token }: SecurityProps) {
 
 
     // EICAR endpoint input
-    const [eicarEndpoint, setEicarEndpoint] = useState('http://192.168.203.100/eicar.com.txt');
+    const [eicarEndpoint, setEicarEndpoint] = useState('');
     const [securityTargets, setSecurityTargets] = useState<any[]>([]);
 
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
@@ -1257,7 +1257,7 @@ export default function Security({ token }: SecurityProps) {
                                     {/* Target picker from shared registry */}
                                     {securityTargets.length > 0 && (
                                         <div className="mb-3">
-                                            <label className="block text-[10px] font-bold text-text-muted mb-1.5 uppercase tracking-widest">Quick Target from Registry</label>
+                                            <label className="block text-[10px] font-bold text-text-muted mb-1.5 uppercase tracking-widest">Available Security Targets</label>
                                             <select
                                                 onChange={e => {
                                                     if (!e.target.value) return;
@@ -1281,7 +1281,7 @@ export default function Security({ token }: SecurityProps) {
                                         type="text"
                                         value={eicarEndpoint}
                                         onChange={(e) => setEicarEndpoint(e.target.value)}
-                                        placeholder="http://192.168.203.100/eicar.com.txt"
+                                        placeholder="Select a target above or enter URL manually"
                                         className="w-full bg-card-secondary border border-border text-text-primary rounded-lg px-4 py-2 focus:border-red-500 outline-none"
                                     />
                                 </div>

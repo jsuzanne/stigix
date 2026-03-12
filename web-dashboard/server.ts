@@ -4326,7 +4326,7 @@ app.get('/api/logs', (req, res) => {
 const DEFAULT_SECURITY_CONFIG = {
     url_filtering: { enabled_categories: [], protocol: 'http' },
     dns_security: { enabled_tests: [] },
-    threat_prevention: { enabled: false, eicar_endpoint: 'http://192.168.203.100/eicar.com.txt', eicar_endpoints: ['http://192.168.203.100/eicar.com.txt'] },
+    threat_prevention: { enabled: false, eicar_endpoint: '', eicar_endpoints: [] },
     scheduled_execution: {
         url: { enabled: false, interval_minutes: 60, last_run_time: null, next_run_time: null },
         dns: { enabled: false, interval_minutes: 60, last_run_time: null, next_run_time: null },
