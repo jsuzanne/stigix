@@ -1,21 +1,18 @@
 # Target Site Capabilities
 
-The **Target Site** is composed of two lightweight containers designed to be deployed at branch sites or data centers as destinations for traffic generation and validation. Each container consolidates multiple test services into a single, easy-to-deploy appliance.
+In Stigix, **every instance is both a Source and a Target.** By default, when you deploy a Stigix node (All-in-One), it automatically starts a suite of responsive services. This means any node can act as a destination for traffic generation, SLA monitoring, and performance validation from any other peer in the network.
 
 ---
 
-## 🚀 Available Services
+## 🚀 Available Services (Active by Default)
 
-| Service | Container | Port | Protocol | Purpose |
-|---------|-----------|------|----------|---------|
-| **Voice Echo** | `sdwan-voice-echo` | 6100-6101 | UDP | Reflects RTP packets for VoIP MOS scoring |
-| **Convergence** | `sdwan-voice-echo` | 6200 | UDP | High-precision echo for measuring failover time |
-| **Bandwidth (iperf3)** | `sdwan-voice-echo` | 5201 | TCP/UDP | Standard `iperf3` server for throughput testing |
-| **App Simulation** | `sdwan-voice-echo` | 8082 | TCP | HTTP server for SLA and Security testing |
-| **XFR Speedtest** | `xfr-target` | 9000 | TCP/UDP/QUIC | High-performance throughput testing with deterministic ports |
-
-> [!NOTE]
-> The `xfr-target` container is separate from `sdwan-voice-echo`. Deploy both side-by-side on target machines. See [XFR_TESTING.md](XFR_TESTING.md) for full deployment instructions.
+| Service | Port | Protocol | Purpose |
+|---------|------|----------|---------|
+| **Voice Echo** | 6100-6101 | UDP | Reflects RTP packets for VoIP MOS scoring |
+| **Convergence** | 6200 | UDP | High-precision echo for measuring failover time |
+| **Bandwidth (iperf3)** | 5201 | TCP/UDP | Standard `iperf3` server for throughput testing |
+| **App Simulation** | 8082 | TCP | HTTP server for SLA and Security testing |
+| **XFR Speedtest** | 9000 | TCP/UDP/QUIC | High-performance throughput testing with deterministic ports |
 
 ---
 
