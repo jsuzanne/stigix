@@ -2293,8 +2293,9 @@ app.get('/api/target/config', authenticateToken, (req, res) => {
 });
 
 // Proxy endpoint for restricted egress environments
-app.get('/api/target/proxy/:path*', authenticateToken, async (req, res) => {
-    const targetPath = (req.params as any).path;
+app.get('/api/target/proxy/{*path}', authenticateToken, async (req, res) => {
+    const rawPath = (req.params as any).path;
+    const targetPath = Array.isArray(rawPath) ? rawPath.join('/') : String(rawPath || '');
     const scenarios = targetManager.getScenarios();
     const scenario = scenarios.find(s => s.path === `/${targetPath}`);
 
