@@ -1,5 +1,6 @@
 import path from 'path';
 import os from 'os';
+import fs from 'fs';
 import net from 'net';
 import { spawn } from 'child_process';
 import { StigixRegistryClient, RegistryInstance } from './stigix-registry-client.js';
@@ -20,16 +21,36 @@ export class RegistryManager {
 
     constructor(configDir: string) {
         this.client = StigixRegistryClient.fromEnv();
-        this.currentIp = this.detectPrivateIp();
+        this.currentIp = this.detectPrivateIp(configDir);
     }
 
-    private detectPrivateIp(): string {
+    private detectPrivateIp(configDir: string): string {
         // 1. Manual override
         if (process.env.STIGIX_PRIVATE_IP) {
             return process.env.STIGIX_PRIVATE_IP;
         }
 
         const nets = os.networkInterfaces();
+
+        // 2. Try to use interface.txt / interfaces.txt
+        try {
+            const ifaceFile = path.join(configDir, 'interfaces.txt');
+            if (fs.existsSync(ifaceFile)) {
+                const ifaceName = fs.readFileSync(ifaceFile, 'utf8').trim().split('\n')[0].trim();
+                const netInfo = nets[ifaceName];
+                if (netInfo) {
+                    const ipv4 = netInfo.find(ni => ni.family === 'IPv4');
+                    if (ipv4) {
+                        console.log(`[REGISTRY] Selected IP from interfaces.txt (${ifaceName}): ${ipv4.address}`);
+                        return ipv4.address;
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn(`[REGISTRY] Failed to read interfaces.txt for IP detection:`, e);
+        }
+
+        // 3. Heuristic fallback
         const blacklist = ['docker', 'virbr', 'veth', 'br-', 'lo'];
 
         // Collect all possible IPs
