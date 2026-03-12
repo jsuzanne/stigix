@@ -173,6 +173,8 @@ environment:
   - PRISMA_SDWAN_TSGID=${PRISMA_SDWAN_TSGID}
   - PRISMA_SDWAN_CLIENT_ID=${PRISMA_SDWAN_CLIENT_ID}
   - PRISMA_SDWAN_CLIENT_SECRET=${PRISMA_SDWAN_CLIENT_SECRET}
+  # Optional: Override auto-detection (Crucial for routed Hub Datacenters)
+  - PRISMA_SDWAN_SITE_NAME=${PRISMA_SDWAN_SITE_NAME}
 ```
 
 Or in your `.env` file:
@@ -181,6 +183,7 @@ PRISMA_SDWAN_REGION=de
 PRISMA_SDWAN_TSGID=123456789
 PRISMA_SDWAN_CLIENT_ID=abc@tsgid.iam.panserviceaccount.com
 PRISMA_SDWAN_CLIENT_SECRET=long-secret-key-here
+PRISMA_SDWAN_SITE_NAME="Datacenter 1"
 ```
 Dashboard → Settings → Change Password
 

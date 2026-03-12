@@ -45,6 +45,8 @@ services:
       - PRISMA_SDWAN_TSGID=${PRISMA_SDWAN_TSGID:-}
       - PRISMA_SDWAN_CLIENT_ID=${PRISMA_SDWAN_CLIENT_ID:-}
       - PRISMA_SDWAN_CLIENT_SECRET=${PRISMA_SDWAN_CLIENT_SECRET:-}
+      # Optional: Override auto-detection (Crucial for routed Hub Datacenters)
+      - PRISMA_SDWAN_SITE_NAME=${PRISMA_SDWAN_SITE_NAME:-}
       # Optional: Custom connectivity tests
       # Format: NAME:URL for HTTP, NAME:IP for PING, NAME:IP:PORT for TCP
       # - CONNECTIVITY_HTTP_1=MyApp:https://myapp.example.com

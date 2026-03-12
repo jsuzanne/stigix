@@ -1518,6 +1518,30 @@ def main():
 
     if args.auto_detect:
         log_output("\n🔍 Auto-detecting site...", json_mode)
+        
+        # 1. First check if there is an explicit environment override (crucial for routed DC Hubs)
+        env_site_name = os.getenv("PRISMA_SDWAN_SITE_NAME")
+        if env_site_name:
+            log_output(f" Found PRISMA_SDWAN_SITE_NAME override: {env_site_name}", json_mode)
+            for site in sites:
+                if site.get('name') == env_site_name:
+                    result = {
+                        "success": True,
+                        "local_ip": get_local_ip() or "env_override",
+                        "detected_site_name": site.get('name'),
+                        "detected_site_id": site.get('id'),
+                        "detected_site_role": site.get('element_cluster_role'),
+                        "detected_branch_gateway": site.get('branch_gateway'),
+                        "matched_network": "env-override"
+                    }
+                    if json_mode:
+                        print(json.dumps(result, indent=2))
+                    else:
+                        log_output(f"✓ Using explicit site override: {env_site_name}", json_mode)
+                    sys.exit(0)
+            log_output(f"⚠️ Overridden site '{env_site_name}' not found in Prisma SD-WAN, falling back to IP detection...", json_mode)
+
+        # 2. Fallback to IP-based auto-detection
         local_ip = get_local_ip()
 
         if not local_ip:
