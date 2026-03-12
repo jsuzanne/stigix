@@ -93,13 +93,31 @@ echo "📦 Downloading Base Configuration from GitHub..."
 curl -sSL -o docker-compose.yml "$COMPOSE_URL"
 
 # 4. Mode-specific adjustments (Creating the right docker-compose/env)
-# In the future, Stigix All-in-One could read STIGIX_ROLE to disable supervisord processes.
-# For now, we prepare the .env file with this intent.
 echo "STIGIX_ROLE=$INSTALL_MODE" > .env
+
+# Base UI/Traffic Gen Config
 if [ "$INSTALL_MODE" == "both" ] || [ "$INSTALL_MODE" == "source" ]; then
     echo "AUTO_START_TRAFFIC=true" >> .env
     echo "SLEEP_BETWEEN_REQUESTS=1" >> .env
 fi
+
+# 5. Add Commented Templates for common configurations
+cat <<EOF >> .env
+
+# --- Prisma SD-WAN Integration (Optional) ---
+# PRISMA_SDWAN_TSGID=YOUR_TSG_ID
+# PRISMA_SDWAN_REGION=Germany
+# PRISMA_SDWAN_CLIENT_ID="your-client-id@tsgid.iam.panserviceaccount.com"
+# PRISMA_SDWAN_CLIENT_SECRET="your-client-secret"
+
+# --- Registry & Autodiscovery (Optional) ---
+# STIGIX_REGISTRY_ENABLED=true
+# STIGIX_REGISTRY_URL=https://stigix-registry.jlsuzanne.workers.dev
+# STIGIX_INSTANCE_ID=local-node-$(hostname | cut -d'.' -f1)
+
+# Site name for dashboard display
+STIGIX_SITE_NAME=$(hostname | cut -d'.' -f1)
+EOF
 
 # Adjust the docker-compose.yml based on mode if needed
 if [ "$INSTALL_MODE" == "target" ]; then
