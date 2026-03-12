@@ -18,10 +18,45 @@ export class RegistryManager {
     private leaderInfo: { ip: string, id: string } | null = null;
     private detectedRole: string | null = null;
     private isBranchGateway: boolean = false;
+    private configDir: string;
+    private statsFile: string;
+    private stats: { reads: number; writes: number; since: string } = { reads: 0, writes: 0, since: new Date().toISOString() };
 
     constructor(configDir: string) {
-        this.client = StigixRegistryClient.fromEnv();
+        this.configDir = configDir;
+        this.statsFile = path.join(configDir, 'registry-stats.json');
+        this.loadStats();
+        
+        this.client = StigixRegistryClient.fromEnv((usage) => this.handleUsage(usage));
         this.currentIp = this.detectPrivateIp(configDir);
+    }
+
+    private loadStats() {
+        try {
+            if (fs.existsSync(this.statsFile)) {
+                const data = fs.readFileSync(this.statsFile, 'utf8');
+                const parsed = JSON.parse(data);
+                if (typeof parsed.reads === 'number' && typeof parsed.writes === 'number') {
+                    this.stats = parsed;
+                }
+            }
+        } catch (e) {
+            console.error(`[REGISTRY] Failed to load stats from ${this.statsFile}`, e);
+        }
+    }
+
+    private saveStats() {
+        try {
+            fs.writeFileSync(this.statsFile, JSON.stringify(this.stats, null, 2));
+        } catch (e) {
+            console.error(`[REGISTRY] Failed to save stats to ${this.statsFile}`, e);
+        }
+    }
+
+    private handleUsage(usage: { reads: number; writes: number }) {
+        this.stats.reads += usage.reads;
+        this.stats.writes += usage.writes;
+        this.saveStats();
     }
 
     private detectPrivateIp(configDir: string): string {
@@ -339,7 +374,8 @@ export class RegistryManager {
             leader_info: this.leaderInfo,
             detected_role: this.detectedRole,
             is_bg: this.isBranchGateway,
-            current_mode: process.env.STIGIX_REGISTRY_MODE_CURRENT
+            current_mode: process.env.STIGIX_REGISTRY_MODE_CURRENT,
+            stats: this.stats
         };
     }
 

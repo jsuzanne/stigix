@@ -54,9 +54,11 @@ export interface RegistryInstance {
 
 export class StigixRegistryClient {
     private config: RegistryConfig;
+    private onUsage?: (usage: { reads: number; writes: number }) => void;
 
-    constructor(config: RegistryConfig) {
+    constructor(config: RegistryConfig, onUsage?: (usage: { reads: number; writes: number }) => void) {
         this.config = config;
+        this.onUsage = onUsage;
         // Auto-derive PoC key if possible
         if (!this.config.pocKey && this.config.pocId && this.config.clientId) {
             this.config.pocKey = this.derivePoCKey(this.config.pocId, this.config.clientId);
@@ -70,6 +72,10 @@ export class StigixRegistryClient {
     private trackKvEstimate(endpoint: string, reads: number, writes: number, isRemote: boolean) {
         if (!isRemote) return;
         console.log(`[REGISTRY-TRACKING] Cloudflare API -> Endpoint: ${endpoint} | Estimated KV Reads: ${reads} | Estimated KV Writes: ${writes}`);
+        
+        if (this.onUsage) {
+            this.onUsage({ reads, writes });
+        }
     }
 
     /**
@@ -83,7 +89,7 @@ export class StigixRegistryClient {
     /**
      * Factory method to create a client from environment variables.
      */
-    static fromEnv(): StigixRegistryClient {
+    static fromEnv(onUsage?: (usage: { reads: number; writes: number }) => void): StigixRegistryClient {
         const pocId = process.env.PRISMA_SDWAN_TSGID || null;
         const clientId = process.env.PRISMA_SDWAN_CLIENT_ID;
 
@@ -114,7 +120,7 @@ export class StigixRegistryClient {
             clientId,
             heartbeatIntervalSec: parseInt(process.env.STIGIX_REGISTRY_HEARTBEAT_SEC || '300'),
             discoveryIntervalSec: parseInt(process.env.STIGIX_REGISTRY_DISCOVERY_SEC || '30')
-        });
+        }, onUsage);
     }
 
     getConfig(): RegistryConfig {
