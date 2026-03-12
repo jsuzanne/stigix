@@ -229,24 +229,8 @@ export class RegistryManager {
 
         // 1. Peer Recovery: If using Remote, try to find a Local Leader
         if (mode === 'peer' && config.registryUrl === config.remoteUrl) {
-            const leader = await this.client.findLeader();
-            if (leader) {
-                const isOpen = await this.isPortOpen(leader.ip, 8080);
-                if (isOpen) {
-                    this.leaderInfo = leader;
-                    this.client.setLocalRegistry(leader.ip);
-                    console.log(`[REGISTRY] Transitioning to local leader at ${leader.ip}`);
-                    this.setupIntervals();
-                } else {
-                    // Leader found but not reachable, so we can't use it.
-                    // Fall through to the "no leader found" logic.
-                    console.log(`[REGISTRY] Local leader ${leader.ip} found but port 8080 is unreachable. Skipping registration.`);
-                    // Safeguard: If no leader is found, do NOT register (POST) to Cloudflare.
-                    // This ensures Cloudflare is only contacted in READ ONLY mode (findLeader/fetchInstances).
-                    console.log(`[REGISTRY] No local leader found. Skipping registration to save Cloudflare KV Quota.`);
-                    return;
-                }
-            } else {
+            const connected = await this.tryConnectToLocalLeader();
+            if (!connected) {
                 // Safeguard: If no leader is found, do NOT register (POST) to Cloudflare.
                 // This ensures Cloudflare is only contacted in READ ONLY mode (findLeader/fetchInstances).
                 console.log(`[REGISTRY] No local leader found. Skipping registration to save Cloudflare KV Quota.`);
@@ -285,7 +269,33 @@ export class RegistryManager {
         }
     }
 
+    private async tryConnectToLocalLeader(): Promise<boolean> {
+        const leader = await this.client.findLeader();
+        if (leader) {
+            const isOpen = await this.isPortOpen(leader.ip, 8080);
+            if (isOpen) {
+                this.leaderInfo = leader;
+                this.client.setLocalRegistry(leader.ip);
+                console.log(`[REGISTRY] Transitioning to local leader at ${leader.ip}`);
+                this.setupIntervals();
+                return true;
+            } else {
+                console.log(`[REGISTRY] Local leader ${leader.ip} found but port 8080 unreachable.`);
+            }
+        }
+        return false;
+    }
+
     private async performDiscovery() {
+        const config = this.client.getConfig();
+        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
+
+        // 1. Recovery Check: If on Fallback, try to find the Leader in the discovery phase
+        // (Discovery is 30s vs Heartbeat 300s, so this makes recovery much faster)
+        if (mode === 'peer' && config.registryUrl === config.remoteUrl) {
+            await this.tryConnectToLocalLeader();
+        }
+
         const instances = await this.client.fetchInstances();
         if (instances && Array.isArray(instances)) {
             const now = Date.now();
