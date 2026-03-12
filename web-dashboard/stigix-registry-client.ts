@@ -63,9 +63,11 @@ export class StigixRegistryClient {
         if (!this.config.pocKey && this.config.pocId && this.config.clientId) {
             this.config.pocKey = this.derivePoCKey(this.config.pocId, this.config.clientId);
         }
-        // Force remoteUrl to be the stable Cloudflare bootstrap signal, 
-        // regardless of registryUrl overrides.
-        this.config.remoteUrl = 'https://stigix-registry.jlsuzanne.workers.dev';
+        
+        // Snapshot the initial registry URL as the "Remote Bootstrap" signal.
+        // This ensures findLeader/announceLeader always use the original Cloudflare URL
+        // from .env, even after heartbeats switch to a local leader IP.
+        this.config.remoteUrl = this.config.registryUrl || 'https://stigix-registry.jlsuzanne.workers.dev';
     }
 
     /**
