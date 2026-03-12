@@ -25,56 +25,45 @@ Every instance calculates a unique `X-PoC-Key` at startup:
 
 ## 3. Lifecycle & Frequencies
 
-The `RegistryManager` handles the background synchronization.
+The `RegistryManager` handles the background synchronization with adaptive polling.
 
-| Event | Frequency | Description |
-| :--- | :--- | :--- |
-| **Heartbeat** | Every 5 minutes (300s) | The instance sends its current Private IP and capabilities (Voice, Security, etc.) to the registry. |
-| **Discovery** | Every 2 minutes (120s) | The instance fetches the list of *other* nodes registered for the same PoC. |
-| **TTL (Expire)** | 600 seconds (10m) | If an instance stops sending heartbeats, it is automatically removed from the registry after 10 minutes. |
+| Event | Frequency (Peer Local) | Frequency (Remote) | Description |
+| :--- | :--- | :--- | :--- |
+| **Heartbeat** | 60 seconds (1m) | 300 seconds (5m) | Updates Private IP and capabilities. Fast on local, slow on Cloudflare to save quota. |
+| **Discovery** | 30 seconds | 30 seconds | Fetches the latest list of peers and shared targets. |
+| **Failover Check** | Every Hearbeat | N/A | If a local heartbeat fails, the node immediately resets to Cloudflare Bootstrap. |
+| **TTL (Expire)** | 300 seconds (5m) | 300 seconds (5m) | Cloudflare automatically prunes inactive peers after 5 minutes of silence. |
+| **Leader Lease** | N/A | 900 seconds (15m) | The leadership record lasts 15 minutes unless refreshed by the leader. |
 
 ---
 
-## 4. Hybrid Mode (v1.2.1-patch.166+)
+## 4. Hybrid Mode & Bootstrap Snapshot (v1.2.1-patch.192+)
 
-To optimize for Cloudflare Free tier limits, Stigix supports a **Hybrid Registry** model. 
+To ensure robustness during leader transitions, Stigix uses a **Bootstrap Snapshot** mechanism.
 
-### Roles
-- **Leader**: One node (typically a central Hub) acts as the local registry server. It announces its local IP to Cloudflare (the "Bootstrap Signal").
-- **Peer**: All other nodes discover the Leader's IP via Cloudflare once, then switch all subsequent heartbeat/discovery traffic to the Leader's local IP.
+### Layering
+- **Bootstrap Layer**: Permanently fixed to the `STIGIX_REGISTRY_URL` provided in `.env` at startup. Used for high-level "political" signals (e.g., announcing a new leader).
+- **Service Layer**: Dynamically switches between Local Leader IPs and Cloudflare based on availability.
 
-### Configuration
-Set the following variable in your `.env`:
-```bash
-# On the Hub/Leader node
-STIGIX_REGISTRY_MODE=leader
+### How it works
+1. **Startup**: The instance "snapshots" the Cloudflare URL from `.env`.
+2. **Transition**: If you switch a node to `leader`, it calls Cloudflare securely using its snapshot, even if its local registry configuration was pointed at an old IP.
+3. **Healing**: Peers detect the missing old leader, revert to the Cloudflare snapshot, find the new leader, and reconnect.
 
-# On all other nodes (default)
-STIGIX_REGISTRY_MODE=peer
-```
+> [!TIP]
+> **Implementation Tutorial**: For a step-by-step guide on how to set up your site and propagate targets from a Leader to all Spokes, see the [Implementation Guide](file:///Users/jsuzanne/Github/stigix/docs/HYBRID_REGISTRY.md#step-by-step-implementation-guide).
 
 ---
 
 ## 5. Troubleshooting & Verification
 
-### Redeploying the Bootstrap
-If you manage your own Cloudflare Worker, you **must** redeploy it to support the new `/leader` endpoints:
-```bash
-cd stigix-registry
-npx wrangler deploy
-```
-
-### Checking Status
+### Status Check
 Verify the local status via:
 ```bash
 curl http://localhost:5000/api/registry/status
 ```
 
-### Logs to Watch
-- **Leader**: `[REGISTRY] Starting in LEADER mode`, `🏠 Local Registry Server mounted`
-- **Peer**: `[REGISTRY] Switched to Local Leader: http://<leader-ip>:5000/api/registry`
-
 ### Common Issues
-- **403 Forbidden**: Invalid PoC Key.
-- **No Leader Found**: No node has been configured or started with `STIGIX_REGISTRY_MODE=leader`.
-- **Worker Redirection**: If a Peer cannot find a Leader, it will fallback to Cloudflare for 5 minutes before retrying.
+- **403 Forbidden**: Invalid PoC Key (Check Prisma Credentials in `.env`).
+- **Isolation/No Leader**: Ensure at least one Hub is set to `STIGIX_REGISTRY_MODE=leader`.
+- **Sync Lag**: Total convergence across all sites typically takes **60 to 90 seconds**.
