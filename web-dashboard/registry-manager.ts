@@ -213,12 +213,12 @@ export class RegistryManager {
                 if (isOpen) {
                     this.leaderInfo = leader;
                     this.client.setLocalRegistry(leader.ip);
-                    console.log(`[REGISTRY] Local leader reached successfully. Switching to local mode.`);
+                    console.log(`[REGISTRY] Local leader reached successfully. Target URL: ${config.registryUrl}`);
                 } else {
                     console.warn(`[REGISTRY] Local leader ${leader.ip} found but port 8080 is unreachable. Falling back to Cloudflare.`);
                 }
             } else {
-                console.log(`[REGISTRY] No local leader found. Using remote bootstrap (Cloudflare).`);
+                console.log(`[REGISTRY] No local leader found. Using remote bootstrap (Cloudflare) at ${config.remoteUrl}`);
             }
         }
 
@@ -299,7 +299,7 @@ export class RegistryManager {
             // If local registration fails, it means the Leader is likely dead.
             // We MUST reset our registry URL to the Remote (Cloudflare) so that 
             // the next heartbeat will trigger a new findLeader() lookup.
-            console.log(`[REGISTRY] Local Leader heartbeat failed. Reverting to remote discovery...`);
+            console.log(`[REGISTRY] Local Leader heartbeat failed. Reverting to remote discovery via ${config.remoteUrl}`);
             this.client.resetToRemote();
             this.leaderInfo = null;
         }
@@ -312,7 +312,7 @@ export class RegistryManager {
             if (isOpen) {
                 this.leaderInfo = leader;
                 this.client.setLocalRegistry(leader.ip);
-                console.log(`[REGISTRY] Transitioning to local leader at ${leader.ip}`);
+                console.log(`[REGISTRY] Transitioning to local leader: http://${leader.ip}:8080/api/registry`);
                 this.setupIntervals();
                 return true;
             } else {

@@ -173,7 +173,7 @@ export class StigixRegistryClient {
             });
 
             if (!res.ok) {
-                console.error(`[REGISTRY] Registration failed: ${res.status} ${await res.text()}`);
+                console.error(`[REGISTRY] Registration failed at ${this.config.registryUrl}: ${res.status} ${await res.text()}`);
                 return null;
             }
 
@@ -187,7 +187,7 @@ export class StigixRegistryClient {
             }
             return data;
         } catch (e) {
-            console.error(`[REGISTRY] Network error during registration:`, e);
+            console.error(`[REGISTRY] Network error during registration at ${this.config.registryUrl}:`, e);
             return null;
         }
     }
@@ -207,9 +207,9 @@ export class StigixRegistryClient {
 
             if (!res.ok) {
                 if (res.status === 403) {
-                    console.warn(`[REGISTRY] Discovery forbidden. PoC Key may be invalid or missing.`);
+                    console.warn(`[REGISTRY] Discovery forbidden at ${this.config.registryUrl}. PoC Key may be invalid or missing.`);
                 } else {
-                    console.error(`[REGISTRY] Fetch instances failed: ${res.status}`);
+                    console.error(`[REGISTRY] Fetch instances failed at ${this.config.registryUrl}: ${res.status}`);
                 }
                 return [];
             }
@@ -245,7 +245,7 @@ export class StigixRegistryClient {
             const data = await res.json();
             return Array.isArray(data) ? data : [];
         } catch (e) {
-            console.error(`[REGISTRY] Network error fetching shared targets:`, e);
+            console.error(`[REGISTRY] Network error fetching shared targets from ${this.config.registryUrl}:`, e);
             return [];
         }
     }
