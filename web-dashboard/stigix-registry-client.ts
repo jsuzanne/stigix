@@ -65,6 +65,14 @@ export class StigixRegistryClient {
     }
 
     /**
+     * Helper to log Cloudflare KV usage estimates
+     */
+    private trackKvEstimate(endpoint: string, reads: number, writes: number, isRemote: boolean) {
+        if (!isRemote) return;
+        console.log(`[REGISTRY-TRACKING] Cloudflare API -> Endpoint: ${endpoint} | Estimated KV Reads: ${reads} | Estimated KV Writes: ${writes}`);
+    }
+
+    /**
      * Derives a stable PoC Key from shared secrets.
      * This makes discovery "stateless" for instances sharing the same credentials.
      */
@@ -160,6 +168,10 @@ export class StigixRegistryClient {
             }
 
             const data = await res.json();
+            
+            const isRemote = this.config.registryUrl === this.config.remoteUrl;
+            this.trackKvEstimate('/register', 1, 1, isRemote);
+
             if (data.poc_key) {
                 this.config.pocKey = data.poc_key;
             }
@@ -193,7 +205,13 @@ export class StigixRegistryClient {
             }
 
             const data = await res.json();
-            return data.instances || [];
+            const instances = data.instances || [];
+
+            const isRemote = this.config.registryUrl === this.config.remoteUrl;
+            // 1 read for auth, 1 list operation (not strictly a read, but counts as list), and 1 read per instance
+            this.trackKvEstimate('/instances', 1 + instances.length, 0, isRemote);
+
+            return instances;
         } catch (e) {
             console.error(`[REGISTRY] Network error during discovery:`, e);
             return [];
@@ -213,6 +231,9 @@ export class StigixRegistryClient {
                     leader_id: this.config.instanceId
                 })
             });
+            
+            this.trackKvEstimate('POST /leader', 2, 1, true); // approx 2 reads (auth, existing leader) + 1 write
+            
             return res.ok;
         } catch (e) {
             console.error(`[REGISTRY] Failed to announce leader:`, e);
@@ -233,6 +254,9 @@ export class StigixRegistryClient {
 
             if (!res.ok) return null;
             const data = await res.json();
+            
+            this.trackKvEstimate('GET /leader', 2, 0, true); // approx 2 reads (auth, existing leader)
+            
             if (!data.leader_ip) return null;
             return {
                 ip: data.leader_ip,

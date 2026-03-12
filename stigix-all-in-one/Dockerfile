@@ -52,6 +52,7 @@ RUN npm install tsx --no-save
 COPY --from=builder /app/dist ./dist
 COPY web-dashboard/server.ts ./
 COPY web-dashboard/targets-manager.ts ./
+COPY web-dashboard/target-manager.ts ./
 COPY web-dashboard/test-logger.ts ./
 COPY web-dashboard/connectivity-logger.ts ./
 COPY web-dashboard/iot-manager.ts ./
