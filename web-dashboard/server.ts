@@ -54,12 +54,12 @@ function findProjectRoot() {
         return parent;
     }
     // Fallback: Default to parent but log warning
-    console.warn(`[SYSTEM] ⚠️ Could not clearly identify project root, falling back to: ${parent}`);
+    log('SYSTEM', `⚠️ Could not clearly identify project root, falling back to: ${parent}`, 'warn');
     return parent;
 }
 
 const PROJECT_ROOT = findProjectRoot();
-log('SYSTEM', `🚀 Project Root: ${PROJECT_ROOT}`);
+log('SYSTEM', `Project Root: ${PROJECT_ROOT}`);
 
 /**
  * Get the path to the Python interpreter.
@@ -73,7 +73,7 @@ function getPythonPath() {
     return 'python3';
 }
 const PYTHON_PATH = getPythonPath();
-log('SYSTEM', `🐍 Python Path: ${PYTHON_PATH}`);
+log('SYSTEM', `Python Path: ${PYTHON_PATH}`);
 
 // Configuration Paths - Environment aware
 const APP_CONFIG = {
@@ -101,8 +101,8 @@ const XFR_QUICK_TARGETS = QUICK_TARGETS_RAW.split(',')
 const registryManager = new RegistryManager(APP_CONFIG.configDir);
 const targetsManager = new TargetsManager(APP_CONFIG.configDir, XFR_QUICK_TARGETS, registryManager);
 const targetManager = new TargetManager(APP_CONFIG.configDir);
-log('SYSTEM', `🎯 Targets Manager initialized`);
-log('SYSTEM', `☁️ Cloud Target Manager initialized`);
+log('SYSTEM', `Targets Manager initialized`);
+log('SYSTEM', `Cloud Target Manager initialized`);
 
 if (DEBUG) {
     log('SYSTEM', `📂 Configuration Directory: ${APP_CONFIG.configDir}`);
@@ -114,11 +114,11 @@ const LOG_RETENTION_DAYS = parseInt(process.env.LOG_RETENTION_DAYS || '7');
 const LOG_MAX_SIZE_MB = parseInt(process.env.LOG_MAX_SIZE_MB || '100');
 const testLogger = new TestLogger(APP_CONFIG.logDir, LOG_RETENTION_DAYS, LOG_MAX_SIZE_MB);
 
-if (DEBUG) console.log(`Test Logger initialized: retention=${LOG_RETENTION_DAYS} days, max_size=${LOG_MAX_SIZE_MB}MB`);
+if (DEBUG) log('SYSTEM', `Test Logger initialized: retention=${LOG_RETENTION_DAYS} days, max_size=${LOG_MAX_SIZE_MB}MB`, 'debug');
 
 // DEM Connectivity Logger
 const connectivityLogger = new ConnectivityLogger(APP_CONFIG.logDir, LOG_RETENTION_DAYS, LOG_MAX_SIZE_MB);
-if (DEBUG) console.log(`Connectivity Logger initialized (DEM)`);
+if (DEBUG) log('SYSTEM', `Connectivity Logger initialized (DEM)`, 'debug');
 
 // Test Counter - Persistent sequential ID for all tests
 const TEST_COUNTER_FILE = path.join(APP_CONFIG.configDir, 'test-counter.json');
@@ -135,7 +135,12 @@ const CONVERGENCE_ENDPOINTS_FILE = path.join(APP_CONFIG.configDir, 'convergence-
 
 // Debug mode: set DEBUG=true in .env or docker-compose env to enable verbose logging
 const debugMode = process.env.DEBUG === 'true';
-const dbg = (...args: any[]) => { if (debugMode) console.log(...args); };
+const dbg = (...args: any[]) => {
+    if (debugMode) {
+        const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+        log('DEBUG', message, 'debug');
+    }
+};
 
 /**
  * Spawn getflow.py and return parsed JSON, or null on any error.
@@ -146,9 +151,9 @@ async function runGetflow(siteName: string, sourcePort: number, dstIp: string): 
         try {
             // engines/ is mounted inside the Docker container (same as convergence_orchestrator.py)
             const scriptPath = path.join(PROJECT_ROOT, 'engines', 'getflow.py');
-            dbg(`[CONV] [DEBUG] runGetflow: scriptPath=${scriptPath} exists=${fs.existsSync(scriptPath)}`);
+            dbg('CONV', `runGetflow: scriptPath=${scriptPath} exists=${fs.existsSync(scriptPath)}`);
             if (!fs.existsSync(scriptPath)) {
-                console.warn(`[CONV] getflow.py not found at: ${scriptPath}`);
+                log('CONV', `getflow.py not found at: ${scriptPath}`, 'warn');
                 resolve(null);
                 return;
             }
@@ -160,23 +165,23 @@ async function runGetflow(siteName: string, sourcePort: number, dstIp: string): 
                 '--minutes', '5',
                 '--json'
             ];
-            dbg(`[CONV] [DEBUG] Spawning: python3 ${args.join(' ')}`);
+            dbg('CONV', `Spawning: python3 ${args.join(' ')}`);
             const proc = spawn(PYTHON_PATH, args, { timeout: 30_000 });
             let stdout = '';
             let stderr = '';
             proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
             proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
             proc.on('close', (code) => {
-                dbg(`[CONV] [DEBUG] getflow exited code=${code} stdout_len=${stdout.length} stderr=${stderr.slice(0, 200)}`);
+                dbg('CONV', `getflow exited code=${code} stdout_len=${stdout.length} stderr=${stderr.slice(0, 200)}`);
                 try { resolve(JSON.parse(stdout)); }
                 catch { resolve(null); }
             });
             proc.on('error', (e) => {
-                dbg(`[CONV] [DEBUG] getflow spawn error: ${e.message}`);
+                dbg('CONV', `getflow spawn error: ${e.message}`);
                 resolve(null);
             });
         } catch (e: any) {
-            dbg(`[CONV] [DEBUG] runGetflow exception: ${e.message}`);
+            dbg('CONV', `runGetflow exception: ${e.message}`);
             resolve(null);
         }
     });
@@ -220,7 +225,7 @@ async function enrichConvergenceHistory(testId: string, extra: Record<string, an
         await fs.promises.rename(tmp, CONVERGENCE_HISTORY_FILE);
         return true;
     } catch (e: any) {
-        console.warn(`[CONV] enrichConvergenceHistory failed: ${e.message}`);
+        log('CONV', `enrichConvergenceHistory failed: ${e.message}`, 'warn');
         return false;
     }
 }
@@ -309,7 +314,7 @@ async function fetchFavicon(domain: string, endpoint: string = '/'): Promise<str
 
         return null;
     } catch (e: any) {
-        dbg(`[ICON] Error discoverng icon for ${domain}: ${e.message}`);
+        dbg('ICON', `Error discoverng icon for ${domain}: ${e.message}`);
         return null;
     }
 }
@@ -329,7 +334,7 @@ function saveIconCache(entry: IconCacheEntry) {
     try {
         fs.writeFileSync(ICON_CACHE_FILE, JSON.stringify(cache, null, 2));
     } catch (e: any) {
-        console.error(`[ICON] Failed to save cache: ${e.message}`);
+        log('ICON', `Failed to save cache: ${e.message}`, 'error');
     }
 }
 
@@ -436,7 +441,7 @@ class XfrJobManager {
                 }));
             fs.writeFileSync(this.historyFile, JSON.stringify({ jobs: data, counter: this.sequenceCounter }, null, 2));
         } catch (e) {
-            console.error('Failed to save xfr history', e);
+            log('XFR', `Failed to save xfr history: ${e}`, 'error');
         }
     }
 
@@ -450,7 +455,7 @@ class XfrJobManager {
                 });
             }
         } catch (e) {
-            console.error('Failed to load xfr history', e);
+            log('XFR', `Failed to load xfr history: ${e}`, 'error');
         }
     }
 
@@ -493,7 +498,7 @@ class XfrJobManager {
         try {
             fs.appendFileSync(xfrLogFile, logLine);
         } catch (e) {
-            console.error('Failed to write to xfr.log', e);
+            log('XFR', `Failed to write to xfr.log: ${e}`, 'error');
         }
     }
 
@@ -765,11 +770,11 @@ const getInterface = (): string => {
                 .filter(line => line && !line.startsWith('#'));
 
             if (cleanLines.length > 0) {
-                if (DEBUG) console.log(`📡 [SYSTEM] Using interface: ${cleanLines[0]} (Source: interfaces.txt)`);
+                if (DEBUG) log('SYSTEM', `Using interface: ${cleanLines[0]} (Source: interfaces.txt)`, 'debug');
                 return cleanLines[0];
             }
         } catch (e) {
-            console.warn('⚠️ [SYSTEM] Failed to read interfaces.txt', e);
+            log('SYSTEM', `Failed to read interfaces.txt: ${e}`, 'warn');
         }
     }
 
@@ -781,7 +786,7 @@ const getInterface = (): string => {
             timeout: 2000
         }).trim();
         if (output) {
-            if (DEBUG) console.log(`📡 [SYSTEM] Auto-detected interface: ${output} (Source: ip route)`);
+            if (DEBUG) log('SYSTEM', `Auto-detected interface: ${output} (Source: ip route)`, 'debug');
             return output;
         }
     } catch (e) {
@@ -811,13 +816,13 @@ const getInterface = (): string => {
             candidates[0];
 
         if (best) {
-            if (DEBUG) console.log(`📡 [SYSTEM] Auto-detected interface: ${best} (Source: os.networkInterfaces fallback)`);
+            if (DEBUG) log('SYSTEM', `Auto-detected interface: ${best} (Source: os.networkInterfaces fallback)`, 'debug');
             return best;
         }
     } catch (e) { }
 
     // 4. Absolute Fallback
-    console.warn('📡 [SYSTEM] No interface detected. Defaulting to eth0');
+    log('SYSTEM', 'No interface detected. Defaulting to eth0', 'warn');
     return 'eth0';
 };
 
@@ -831,14 +836,14 @@ const migrateVoiceConfig = () => {
     const legacyServersFile = path.join(APP_CONFIG.configDir, 'voice-servers.txt');
     if (!fs.existsSync(legacyControlFile) && !fs.existsSync(legacyServersFile)) return;
 
-    console.log('[SYSTEM] 📦 Migrating legacy Voice configuration to unified format...');
+    log('SYSTEM', 'Migrating legacy Voice configuration to unified format...');
 
     let control: any = { enabled: false, max_simultaneous_calls: 3, sleep_between_calls: 5, interface: getInterface() };
     if (fs.existsSync(legacyControlFile)) {
         try {
             const data = JSON.parse(fs.readFileSync(legacyControlFile, 'utf8'));
             control = { ...control, ...data };
-        } catch (e) { console.error('Voice control migration failed', e); }
+        } catch (e) { log('SYSTEM', `Voice control migration failed: ${e}`, 'error'); }
     }
 
     let servers: any[] = [];
@@ -869,14 +874,14 @@ const migrateVoiceConfig = () => {
 
     const unifiedConfig = { control, servers, state };
     fs.writeFileSync(VOICE_CONFIG_FILE, JSON.stringify(unifiedConfig, null, 2));
-    console.log('[SYSTEM] ✅ Voice configuration consolidated.');
+    log('SYSTEM', 'Voice configuration consolidated.');
 
     // Cleanup old files
     try {
         if (fs.existsSync(legacyControlFile)) fs.renameSync(legacyControlFile, legacyControlFile + '.migrated');
         if (fs.existsSync(legacyServersFile)) fs.renameSync(legacyServersFile, legacyServersFile + '.migrated');
         if (fs.existsSync(VOICE_COUNTER_FILE_LEGACY)) fs.renameSync(VOICE_COUNTER_FILE_LEGACY, VOICE_COUNTER_FILE_LEGACY + '.migrated');
-    } catch (e) { console.log('[SYSTEM] ⚠️ Failed to rename legacy voice files, but migration succeeded.'); }
+    } catch (e) { log('SYSTEM', 'Failed to rename legacy voice files, but migration succeeded.', 'warn'); }
 };
 
 /**
@@ -886,7 +891,7 @@ const migrateSecurityConfig = () => {
     const legacyFile = path.join(APP_CONFIG.configDir, 'security-tests.json');
     if (!fs.existsSync(legacyFile) || fs.existsSync(SECURITY_CONFIG_FILE)) return;
 
-    console.log('[SYSTEM] 📦 Migrating legacy Security configuration and history...');
+    log('SYSTEM', 'Migrating legacy Security configuration and history...');
     try {
         const legacyData = JSON.parse(fs.readFileSync(legacyFile, 'utf8'));
 
@@ -904,12 +909,12 @@ const migrateSecurityConfig = () => {
         delete cleanConfig.test_history;
 
         fs.writeFileSync(SECURITY_CONFIG_FILE, JSON.stringify(cleanConfig, null, 2));
-        console.log('[SYSTEM] ✅ Security configuration separation complete.');
+        log('SYSTEM', 'Security configuration separation complete.');
 
         // Cleanup
         fs.renameSync(legacyFile, legacyFile + '.migrated');
     } catch (e) {
-        console.error('Security migration failed', e);
+        log('SYSTEM', `Security migration failed: ${e}`, 'error');
     }
 };
 
@@ -927,7 +932,7 @@ const migrateApplicationsConfig = () => {
             const current = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
             const hasCategories = current.applications && current.applications.some((app: any) => app.category && app.category !== 'Uncategorized');
             if (hasCategories) return;
-            console.log('[SYSTEM] 🔄 Force-recreating Applications config to apply categorization...');
+            log('SYSTEM', 'Force-recreating Applications config to apply categorization...');
         } catch (e) {
             console.error('Failed to check existing applications config', e);
         }
@@ -1014,7 +1019,7 @@ const migrateApplicationsConfig = () => {
 
     const unifiedConfig = { control, applications };
     fs.writeFileSync(APPLICATIONS_CONFIG_FILE, JSON.stringify(unifiedConfig, null, 2));
-    console.log('[SYSTEM] ✅ Applications configuration consolidated.');
+    log('SYSTEM', 'Applications configuration consolidated.');
 
     // Cleanup
     try {
@@ -1055,7 +1060,7 @@ const migrateVyosConfig = () => {
 
     const unifiedConfig = { routers, sequences, runCounter };
     fs.writeFileSync(VYOS_CONFIG_FILE, JSON.stringify(unifiedConfig, null, 2));
-    console.log('[SYSTEM] ✅ VyOS configuration consolidated.');
+    log('SYSTEM', 'VyOS configuration consolidated.');
 
     // Cleanup
     try {
@@ -1118,7 +1123,7 @@ const getNextTestId = (): number => {
         fs.writeFileSync(TEST_COUNTER_FILE, JSON.stringify({ counter: nextId }));
         return nextId;
     } catch (e) {
-        console.error('Error managing test counter:', e);
+        log('SYSTEM', `Error managing test counter: ${e}`, 'error');
         return Date.now(); // Fallback to timestamp
     }
 };
@@ -1195,7 +1200,7 @@ const logTest = (...args: any[]) => {
             if (stats.size > MAX_LOG_SIZE) {
                 const rotatedFile = `${TEST_LOG_FILE}.${Date.now()}`;
                 fs.renameSync(TEST_LOG_FILE, rotatedFile);
-                console.log(`[TEST-LOG] Rotated log file to: ${rotatedFile}`);
+                log('SYSTEM', `Rotated log file to: ${rotatedFile}`);
             }
         }
 
@@ -1218,7 +1223,7 @@ const healLogFiles = () => {
     if (!fs.existsSync(resultsFile)) return;
 
     try {
-        if (DEBUG) console.log('[SYSTEM] 🧹 Healing log files...');
+        if (DEBUG) log('SYSTEM', 'Healing log files...', 'debug');
         const content = fs.readFileSync(resultsFile, 'utf8');
         const lines = content.split('\n');
         const validLines = lines.filter(line => {
@@ -1238,7 +1243,7 @@ const healLogFiles = () => {
             if (DEBUG) console.log('[SYSTEM] ✅ Log files are healthy.');
         }
     } catch (e: any) {
-        console.error('[SYSTEM] Failed to heal log files:', e.message);
+        log('SYSTEM', `Failed to heal log files: ${e.message}`, 'error');
     }
 };
 
@@ -1260,7 +1265,7 @@ const checkCommand = async (command: string): Promise<boolean> => {
 
 // Initialize available commands on startup
 const initializeCommands = async () => {
-    if (DEBUG) console.log(`[PLATFORM] Detected platform: ${PLATFORM}`);
+    if (DEBUG) log('SYSTEM', `Detected platform: ${PLATFORM}`, 'debug');
 
     // Check DNS command availability
     availableCommands.getent = await checkCommand('getent --version 2>/dev/null');
@@ -1274,9 +1279,9 @@ const initializeCommands = async () => {
 
     if (DEBUG) console.log('[PLATFORM] Available commands:', availableCommands);
 
-    if (!availableCommands.ping) console.warn('⚠️  WARNING: "ping" command not found. ICMP tests will fail.');
-    if (!availableCommands.nc) console.warn('⚠️  WARNING: "nc" (netcat) command not found. TCP port tests will fail.');
-    if (!availableCommands.dig && !availableCommands.nslookup) console.warn('⚠️  WARNING: No DNS tool found (dig/nslookup). DNS resolution might fail.');
+    if (!availableCommands.ping) log('SYSTEM', '"ping" command not found. ICMP tests will fail.', 'warn');
+    if (!availableCommands.nc) log('SYSTEM', '"nc" (netcat) command not found. TCP port tests will fail.', 'warn');
+    if (!availableCommands.dig && !availableCommands.nslookup) log('SYSTEM', 'No DNS tool found (dig/nslookup). DNS resolution might fail.', 'warn');
 
     // Start iperf3 server if available
     if (availableCommands.iperf3) {
@@ -1548,15 +1553,15 @@ const initializeDefaultConfigs = () => {
         };
 
         fs.writeFileSync(APPLICATIONS_CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
-        console.log(`Created default applications-config.json with ${defaultApps.length} applications`);
+        log('INIT', `Created default applications-config.json with ${defaultApps.length} applications`);
     }
 
     // ✅ Unified Initialization: Use the same logic as the runtime
     if (!fs.existsSync(interfacesFile)) {
-        console.log('🔍 No interfaces.txt found, creating from auto-detection...');
+        log('INIT', 'No interfaces.txt found, creating from auto-detection...');
         const defaultIface = getInterface();
         fs.writeFileSync(interfacesFile, defaultIface, 'utf8');
-        console.log(`✅ [INIT] Auto-configured interface: ${defaultIface}`);
+        log('INIT', `Auto-configured interface: ${defaultIface}`);
     } else {
         const content = fs.readFileSync(interfacesFile, 'utf8').trim();
         const firstLine = fs.readFileSync(interfacesFile, 'utf8').split('\n')[0].trim(); // Changed ifacePath to interfacesFile
@@ -1580,7 +1585,7 @@ const initializeDefaultConfigs = () => {
                 fs.writeFileSync(IOT_DEVICES_FILE, JSON.stringify(defaultData, null, 2), 'utf8');
                 console.log('✅ Initialized IoT devices from template');
             } catch (e) {
-                console.error('Error initializing IoT devices template:', e);
+                log('INIT', `Error initializing IoT devices template: ${e}`, 'error');
                 fs.writeFileSync(IOT_DEVICES_FILE, JSON.stringify({ network: { interface: 'eth0' }, devices: [] }, null, 2), 'utf8');
             }
         } else {
@@ -1594,7 +1599,7 @@ if (getUsers().length === 0) {
     const salt = bcrypt.genSaltSync(10);
     const hash = bcrypt.hashSync('admin', salt);
     saveUsers([{ username: 'admin', passwordHash: hash }]);
-    console.log('Created default admin user (admin/admin)');
+    log('INIT', 'Created default admin user (admin/admin)');
 }
 
 // Initialize default config files
@@ -6503,6 +6508,83 @@ app.get('/api/registry/status', authenticateToken, (req, res) => {
     };
 
     res.json(status);
+});
+
+/**
+ * Normalizes a user-provided string (IP, FQDN, or URL) into a full Stigix Controller URL.
+ */
+function normalizeControllerUrl(input: string): string {
+    if (!input) return '';
+    let url = input.trim();
+    
+    // 1. Add Protocol if missing
+    if (!url.startsWith('http')) {
+        url = `http://${url}`;
+    }
+
+    try {
+        const u = new URL(url);
+        
+        // 2. Add Default Port if missing (and not already specified)
+        // We check the host part to see if it contains a colon
+        const hostPart = url.split('://')[1] || '';
+        const portPart = hostPart.split('/')[0] || '';
+        if (!portPart.includes(':') && u.port === '') {
+            u.port = '8080';
+        }
+
+        // 3. Add Registry Path if missing
+        if (u.pathname === '/' || u.pathname === '') {
+            u.pathname = '/api/registry';
+        } else if (!u.pathname.includes('/api/registry')) {
+            u.pathname = u.pathname.replace(/\/$/, '') + '/api/registry';
+        }
+
+        return u.toString().replace(/\/$/, ''); // Remove trailing slash
+    } catch (e) {
+        return url; // Fallback to raw if URL parsing fails
+    }
+}
+
+app.post('/api/registry/static-leader', authenticateToken, async (req, res) => {
+    let { url } = req.body;
+    if (url) url = normalizeControllerUrl(url);
+    
+    try {
+        await registryManager.saveStaticLeader(url || null);
+        res.json({ status: 'ok', message: url ? 'Static leader saved' : 'Static leader removed', normalizedUrl: url });
+    } catch (e) {
+        log('SYSTEM', `Failed to save static leader: ${e}`, 'error');
+        res.status(500).json({ status: 'error', error: String(e) });
+    }
+});
+
+app.post('/api/registry/test-connectivity', authenticateToken, async (req, res) => {
+    let { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'Missing url or IP' });
+
+    url = normalizeControllerUrl(url);
+
+    try {
+        log('SYSTEM', `Testing connectivity to controller: ${url}`);
+        const controllerUrl = new URL(url);
+        // We ping the public version endpoint to verify it's a Stigix server
+        const testRes = await fetch(`${controllerUrl.origin}/api/version`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(5000)
+        });
+
+        if (testRes.ok) {
+            const data = await testRes.json();
+            res.json({ status: 'ok', data });
+        } else {
+            res.status(testRes.status).json({ status: 'error', error: `Controller returned ${testRes.status}` });
+        }
+    } catch (e) {
+        log('SYSTEM', `Connectivity test failed for ${url}: ${e}`, 'error');
+        res.status(500).json({ status: 'error', error: String(e) });
+    }
 });
 
 app.post('/api/iot/start-batch', authenticateToken, async (req, res) => {

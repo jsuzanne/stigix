@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { RegistryInstance } from './stigix-registry-client.js';
+import { log } from './utils/logger.js';
 
 /**
  * LocalRegistryServer - A lightweight in-memory registry for local peer discovery.
@@ -20,7 +21,7 @@ export class LocalRegistryServer {
             const lastSeen = inst.last_seen ? new Date(inst.last_seen).getTime() : 0;
             if (now - lastSeen > this.ttlSeconds * 1000) {
                 this.instances.delete(key);
-                console.log(`[LOCAL-REGISTRY] Pruned stale instance: ${inst.instance_id}`);
+                log('LOCAL-REGISTRY', `Pruned stale instance: ${inst.instance_id}`);
             }
         }
     }
@@ -46,7 +47,7 @@ export class LocalRegistryServer {
             };
 
             this.instances.set(key, instance);
-            // console.log(`[LOCAL-REGISTRY] Heartbeat from ${payload.instance_id} (${payload.ip_private})`);
+            // log('LOCAL-REGISTRY', `Heartbeat from ${payload.instance_id} (${payload.ip_private})`);
 
             return res.json({
                 status: 'ok',
@@ -90,7 +91,7 @@ export class LocalRegistryServer {
                 const targets = targetsManager.getMergedTargets();
                 return res.json(targets);
             } catch (e) {
-                console.error(`[LOCAL-REGISTRY] Error serving targets:`, e);
+                log('LOCAL-REGISTRY', `Error serving targets: ${e}`, 'error');
                 return res.status(500).json({ status: 'error', error: 'failed_to_get_targets' });
             }
         });

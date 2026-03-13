@@ -3,6 +3,7 @@ import os from 'os';
 import fs from 'fs';
 import net from 'net';
 import { spawn } from 'child_process';
+import { log } from './utils/logger.js';
 import { StigixRegistryClient, RegistryInstance } from './stigix-registry-client.js';
 
 /**
@@ -22,6 +23,8 @@ export class RegistryManager {
     private configDir: string;
     private statsFile: string;
     private stats: { reads: number; writes: number; since: string } = { reads: 0, writes: 0, since: new Date().toISOString() };
+    private lastAnnounceTime: number = 0;
+    private staticLeaderUrl: string | null = null;
 
     constructor(configDir: string) {
         this.configDir = configDir;
@@ -30,6 +33,45 @@ export class RegistryManager {
         
         this.client = StigixRegistryClient.fromEnv((usage) => this.handleUsage(usage));
         this.currentIp = this.detectPrivateIp(configDir);
+        this.loadStaticLeader();
+    }
+
+    private loadStaticLeader() {
+        try {
+            const staticFile = path.join(this.configDir, 'static-leader.json');
+            if (fs.existsSync(staticFile)) {
+                const data = JSON.parse(fs.readFileSync(staticFile, 'utf8'));
+                if (data.url) {
+                    this.staticLeaderUrl = data.url;
+                    log('REGISTRY', `Static Leader URL loaded: ${this.staticLeaderUrl}`);
+                }
+            }
+        } catch (e) {
+            log('REGISTRY', `Failed to load static leader config: ${e}`, 'error');
+        }
+    }
+
+    public async saveStaticLeader(url: string | null) {
+        try {
+            const staticFile = path.join(this.configDir, 'static-leader.json');
+            if (url) {
+                fs.writeFileSync(staticFile, JSON.stringify({ url, updatedAt: new Date().toISOString() }));
+                this.staticLeaderUrl = url;
+                log('REGISTRY', `Static Leader URL saved: ${url}`);
+                // Re-initialize client with the new URL
+                this.client.setLocalRegistryByUrl(url);
+            } else {
+                if (fs.existsSync(staticFile)) fs.unlinkSync(staticFile);
+                this.staticLeaderUrl = null;
+                this.client.resetToRemote();
+                log('REGISTRY', `Static Leader URL removed. Reverted to auto-discovery.`);
+            }
+            // Trigger a re-start logic or setup intervals again
+            await this.start();
+        } catch (e) {
+            log('REGISTRY', `Failed to save static leader config: ${e}`, 'error');
+            throw e;
+        }
     }
 
     private loadStats() {
@@ -42,7 +84,7 @@ export class RegistryManager {
                 }
             }
         } catch (e) {
-            console.error(`[REGISTRY] Failed to load stats from ${this.statsFile}`, e);
+            log('REGISTRY', `Failed to load stats from ${this.statsFile}: ${e}`, 'error');
         }
     }
 
@@ -50,7 +92,7 @@ export class RegistryManager {
         try {
             fs.writeFileSync(this.statsFile, JSON.stringify(this.stats, null, 2));
         } catch (e) {
-            console.error(`[REGISTRY] Failed to save stats to ${this.statsFile}`, e);
+            log('REGISTRY', `Failed to save stats to ${this.statsFile}: ${e}`, 'error');
         }
     }
 
@@ -77,13 +119,13 @@ export class RegistryManager {
                 if (netInfo) {
                     const ipv4 = netInfo.find(ni => ni.family === 'IPv4');
                     if (ipv4) {
-                        console.log(`[REGISTRY] Selected IP from interfaces.txt (${ifaceName}): ${ipv4.address}`);
+                        log('REGISTRY', `Selected IP from interfaces.txt (${ifaceName}): ${ipv4.address}`);
                         return ipv4.address;
                     }
                 }
             }
         } catch (e) {
-            console.warn(`[REGISTRY] Failed to read interfaces.txt for IP detection:`, e);
+            log('REGISTRY', `Failed to read interfaces.txt for IP detection: ${e}`, 'warn');
         }
 
         // 3. Heuristic fallback
@@ -143,7 +185,7 @@ export class RegistryManager {
             const pythonPath = process.env.PYTHON_PATH || 'python3';
             const scriptPath = path.join(process.cwd(), 'engines', 'getflow.py');
 
-            console.log(`[REGISTRY] Running identity auto-detection via ${scriptPath}...`);
+            log('REGISTRY', `Running identity auto-detection via ${scriptPath}...`);
 
             const proc = spawn(pythonPath, [scriptPath, '--auto-detect', '--json'], {
                 env: { ...process.env, PYTHONUNBUFFERED: '1' }
@@ -171,12 +213,12 @@ export class RegistryManager {
     async start() {
         const config = this.client.getConfig();
         if (!config.enabled) {
-            console.log(`[REGISTRY] Disabled by configuration.`);
+            log('REGISTRY', `Disabled by configuration.`);
             return;
         }
 
         // 1. Always detect identity for UI visibility
-        console.log(`[REGISTRY] Running identity auto-detection...`);
+        log('REGISTRY', `Running identity auto-detection...`);
         const identity = await this.autoDetectIdentity();
         this.detectedRole = identity.role;
         this.isBranchGateway = identity.isBg;
@@ -186,17 +228,17 @@ export class RegistryManager {
         if (mode === 'auto') {
             // Logic: Hub OR Branch Gateway => Potential Leader
             if (this.detectedRole === 'HUB' || this.isBranchGateway) {
-                console.log(`[REGISTRY] Auto-detected as HUB/BG. Promoting to LEADER candidate.`);
+                log('REGISTRY', `Auto-detected as HUB/BG. Promoting to LEADER candidate.`);
                 mode = 'leader';
             } else {
-                console.log(`[REGISTRY] Auto-detected as ${this.detectedRole || 'UNKNOWN'}. Defaulting to PEER.`);
+                log('REGISTRY', `Auto-detected as ${this.detectedRole || 'UNKNOWN'}. Defaulting to PEER.`);
                 mode = 'peer';
             }
         } else {
-            console.log(`[REGISTRY] Manual Mode Override: ${mode.toUpperCase()}`);
+            log('REGISTRY', `Manual Mode Override: ${mode.toUpperCase()}`);
         }
 
-        console.log(`[REGISTRY] Final Role: ${mode.toUpperCase()} for PoC: ${config.pocId}`);
+        log('REGISTRY', `Final Role: ${mode.toUpperCase()} for PoC: ${config.pocId}`);
 
         if (mode === 'leader') {
             // Leader Mode: Announce ourselves to Bootstrap Signal
@@ -204,21 +246,36 @@ export class RegistryManager {
             // Switch heartbeats to local server (self)
             this.client.setLocalRegistry('127.0.0.1');
         } else {
-            // Peer Mode: Try to find local leader via Bootstrap
-            const leader = await this.client.findLeader();
-            if (leader) {
-                console.log(`[REGISTRY] Local leader discovered at ${leader.ip}. Verifying reachability...`);
-                const isOpen = await this.isPortOpen(leader.ip, 8080); // Default port
-
-                if (isOpen) {
-                    this.leaderInfo = leader;
-                    this.client.setLocalRegistry(leader.ip);
-                    console.log(`[REGISTRY] Local leader reached successfully. Target URL: ${config.registryUrl}`);
-                } else {
-                    console.warn(`[REGISTRY] Local leader ${leader.ip} found but port 8080 is unreachable. Falling back to Cloudflare.`);
-                }
+            // Peer Mode: 
+            // 1. If we have a Static Leader URL, use it directly
+            if (this.staticLeaderUrl) {
+                log('REGISTRY', `Peer using STATIC LEADER: ${this.staticLeaderUrl}`);
+                this.client.setLocalRegistryByUrl(this.staticLeaderUrl);
+                
+                let displayName = 'static';
+                try {
+                    const u = new URL(this.staticLeaderUrl);
+                    displayName = u.hostname;
+                } catch (e) {}
+                
+                this.leaderInfo = { ip: displayName, id: displayName };
             } else {
-                console.log(`[REGISTRY] No local leader found. Using remote bootstrap (Cloudflare) at ${config.remoteUrl}`);
+                // 2. Otherwise, try to find local leader via Bootstrap (Cloudflare)
+                const leader = await this.client.findLeader();
+                if (leader) {
+                    log('REGISTRY', `Local leader discovered at ${leader.ip}. Verifying reachability...`);
+                    const isOpen = await this.isPortOpen(leader.ip, 8080); // Default port
+
+                    if (isOpen) {
+                        this.leaderInfo = leader;
+                        this.client.setLocalRegistry(leader.ip);
+                        log('REGISTRY', `Local leader reached successfully. Target URL: ${config.registryUrl}`);
+                    } else {
+                        log('REGISTRY', `Local leader ${leader.ip} found but port 8080 is unreachable. Falling back to Cloudflare.`, 'warn');
+                    }
+                } else {
+                    log('REGISTRY', `No local leader found. Using remote bootstrap (Cloudflare) at ${config.remoteUrl}`);
+                }
             }
         }
 
@@ -253,7 +310,7 @@ export class RegistryManager {
         // If we are the Leader, we still heartbeat slow to Cloudflare to save quota
         if (mode === 'peer' && config.registryUrl !== config.remoteUrl) {
             heartbeatMs = 60000; // 1 minute
-            console.log(`[REGISTRY] Local mode detected. Heartbeat increased to 60s.`);
+            log('REGISTRY', `Local mode detected. Heartbeat increased to 60s.`);
         }
 
         this.heartbeatInterval = setInterval(() => this.performHeartbeat(), heartbeatMs);
@@ -264,21 +321,24 @@ export class RegistryManager {
         const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
 
         // 1. Peer Recovery: If using Remote, try to find a Local Leader
-        if (mode === 'peer' && config.registryUrl === config.remoteUrl) {
+        if (mode === 'peer' && config.registryUrl === config.remoteUrl && !this.staticLeaderUrl) {
             const connected = await this.tryConnectToLocalLeader();
             if (!connected) {
                 // Safeguard: If no leader is found, do NOT register (POST) to Cloudflare.
                 // This ensures Cloudflare is only contacted in READ ONLY mode (findLeader/fetchInstances).
-                console.log(`[REGISTRY] No local leader found. Skipping registration to save Cloudflare KV Quota.`);
+                log('REGISTRY', `No local leader found. Skipping registration to save Cloudflare KV Quota.`);
                 return;
             }
         }
 
         // 2. Leader Maintenance: Periodic Announcement to Bootstrap (Cloudflare)
+        // 2. Leader Maintenance: Periodic Announcement to Bootstrap (Cloudflare)
         if (mode === 'leader') {
-            // Re-announce to Cloudflare occasionally (20% of heartbeats)
-            if (Math.random() > 0.8) {
+            // Re-announce to Cloudflare every 15 minutes (approx 3 heartbeats at 5-min intervals)
+            // This refreshes the 24h lease and prevents takeover by a new leader.
+            if (!this.lastAnnounceTime || Date.now() - this.lastAnnounceTime > 15 * 60 * 1000) {
                 await this.client.announceLeader(this.currentIp);
+                this.lastAnnounceTime = Date.now();
             }
         }
 
@@ -299,7 +359,7 @@ export class RegistryManager {
             // If local registration fails, it means the Leader is likely dead.
             // We MUST reset our registry URL to the Remote (Cloudflare) so that 
             // the next heartbeat will trigger a new findLeader() lookup.
-            console.log(`[REGISTRY] Local Leader heartbeat failed. Reverting to remote discovery via ${config.remoteUrl}`);
+            log('REGISTRY', `Local Leader heartbeat failed. Reverting to remote discovery via ${config.remoteUrl}`);
             this.client.resetToRemote();
             this.leaderInfo = null;
         }
@@ -312,11 +372,11 @@ export class RegistryManager {
             if (isOpen) {
                 this.leaderInfo = leader;
                 this.client.setLocalRegistry(leader.ip);
-                console.log(`[REGISTRY] Transitioning to local leader: http://${leader.ip}:8080/api/registry`);
+                log('REGISTRY', `Transitioning to local leader: http://${leader.ip}:8080/api/registry`);
                 this.setupIntervals();
                 return true;
             } else {
-                console.log(`[REGISTRY] Local leader ${leader.ip} found but port 8080 unreachable.`);
+                log('REGISTRY', `Local leader ${leader.ip} found but port 8080 unreachable.`);
             }
         }
         return false;
@@ -387,6 +447,8 @@ export class RegistryManager {
             detected_role: this.detectedRole,
             is_bg: this.isBranchGateway,
             current_mode: process.env.STIGIX_REGISTRY_MODE_CURRENT,
+            static_leader_url: this.staticLeaderUrl,
+            is_static_leader: !!this.staticLeaderUrl,
             stats: this.stats
         };
     }

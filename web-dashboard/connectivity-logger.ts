@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
+import { log } from './utils/logger.js';
 
 const appendFile = promisify(fs.appendFile);
 const readFile = promisify(fs.readFile);
@@ -59,7 +60,7 @@ export class ConnectivityLogger {
             // Invalidate stats cache so the next request reflects fresh data
             this.statsCache = null;
         } catch (error) {
-            console.error('[CONNECTIVITY_LOGGER] Failed to log result:', error);
+            log('CONNECTIVITY_LOGGER', `Failed to log result: ${error}`, 'error');
         }
     }
 
@@ -76,10 +77,10 @@ export class ConnectivityLogger {
                     counter++;
                 }
                 fs.renameSync(this.currentLogFile, rotatedFile);
-                console.log(`[CONNECTIVITY_LOGGER] Rotated log file to: ${rotatedFile}`);
+                log('CONNECTIVITY_LOGGER', `Rotated log file to: ${rotatedFile}`);
             }
         } catch (error) {
-            console.error('[CONNECTIVITY_LOGGER] Failed to rotate log:', error);
+            log('CONNECTIVITY_LOGGER', `Failed to rotate log: ${error}`, 'error');
         }
     }
 
@@ -99,7 +100,7 @@ export class ConnectivityLogger {
             }
             return deletedCount;
         } catch (error) {
-            console.error('[CONNECTIVITY_LOGGER] Failed to cleanup logs:', error);
+            log('CONNECTIVITY_LOGGER', `Failed to cleanup logs: ${error}`, 'error');
             return 0;
         }
     }
@@ -136,7 +137,7 @@ export class ConnectivityLogger {
                 total: filtered.length
             };
         } catch (error) {
-            console.error('[CONNECTIVITY_LOGGER] Failed to get results:', error);
+            log('CONNECTIVITY_LOGGER', `Failed to get results: ${error}`, 'error');
             return { results: [], total: 0 };
         }
     }
@@ -219,7 +220,7 @@ export class ConnectivityLogger {
             this.statsCache = { data: computedStats, timestamp: now, range: cacheRange };
             return computedStats;
         } catch (error) {
-            console.error('[CONNECTIVITY_LOGGER] Failed to compute stats:', error);
+            log('CONNECTIVITY_LOGGER', `Failed to compute stats: ${error}`, 'error');
             return null;
         }
     }

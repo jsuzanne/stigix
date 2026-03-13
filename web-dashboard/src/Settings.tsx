@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     RefreshCw, Download, AlertCircle, CheckCircle, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
-    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info
+    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Favicon } from './components/Favicon';
@@ -134,6 +134,9 @@ export default function Settings({ token }: { token: string }) {
     const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
     const [showTargetPorts, setShowTargetPorts] = useState(false);
     const [registryStatus, setRegistryStatus] = useState<any>(null);
+    const [staticLeaderUrl, setStaticLeaderUrl] = useState<string>('');
+    const [isTestingConnectivity, setIsTestingConnectivity] = useState(false);
+    const [connectivityResult, setConnectivityResult] = useState<{ success?: boolean; error?: string } | null>(null);
 
     const authHeaders = {
         'Authorization': `Bearer ${token}`,
@@ -299,6 +302,78 @@ export default function Settings({ token }: { token: string }) {
         }, 30000);
         return () => clearInterval(interval);
     }, [token]);
+
+    useEffect(() => {
+        if (registryStatus?.static_leader_url && !staticLeaderUrl) {
+            setStaticLeaderUrl(registryStatus.static_leader_url);
+        }
+    }, [registryStatus?.static_leader_url]);
+
+    const previewControllerUrl = (input: string) => {
+        if (!input) return '';
+        let val = input.trim();
+        if (!val.startsWith('http')) val = `http://${val}`;
+        try {
+            const url = new URL(val);
+            const hostPart = val.split('://')[1] || '';
+            const portPart = hostPart.split('/')[0] || '';
+            if (!portPart.includes(':') && url.port === '') url.port = '8080';
+            if (url.pathname === '/' || url.pathname === '') url.pathname = '/api/registry';
+            else if (!url.pathname.includes('/api/registry')) {
+                url.pathname = url.pathname.replace(/\/$/, '') + '/api/registry';
+            }
+            return url.toString().replace(/\/$/, '');
+        } catch (e) {
+            return val;
+        }
+    };
+
+    const handleTestConnectivity = async () => {
+        if (!staticLeaderUrl) return;
+        setIsTestingConnectivity(true);
+        setConnectivityResult(null);
+        try {
+            const res = await fetch('/api/registry/test-connectivity', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ url: staticLeaderUrl })
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                setConnectivityResult({ success: true });
+            } else {
+                setConnectivityResult({ success: false, error: data.error || 'Connection failed' });
+            }
+        } catch (e) {
+            setConnectivityResult({ success: false, error: String(e) });
+        } finally {
+            setIsTestingConnectivity(false);
+        }
+    };
+
+    const handleSaveStaticLeader = async (url: string | null) => {
+        setSaving(true);
+        try {
+            const res = await fetch('/api/registry/static-leader', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ url })
+            });
+            if (res.ok) {
+                showSuccess(url ? "Static Leader configured!" : "Reverted to auto-discovery");
+                // Refresh status
+                const sres = await fetch('/api/registry/status', { headers: authHeaders });
+                const sdata = await sres.json();
+                setRegistryStatus(sdata);
+            } else {
+                setErrorMsg("Failed to save static leader");
+            }
+        } catch (e) {
+            setErrorMsg(String(e));
+        } finally {
+            setSaving(false);
+        }
+    };
 
     // Handlers
     const GLOBAL_TOTAL = 1000;
@@ -667,7 +742,7 @@ export default function Settings({ token }: { token: string }) {
         { id: 'system', label: 'System Info' },
         { id: 'maintenance', label: 'System Maintenance', beta: true },
         { id: 'targets', label: 'Targets' },
-        { id: 'registry', label: 'Hybrid Registry', beta: true },
+        { id: 'registry', label: 'Target Controller', beta: true },
     ];
 
     return (
@@ -1451,8 +1526,8 @@ export default function Settings({ token }: { token: string }) {
                                 <Database size={20} />
                             </div>
                             <div>
-                                <h2 className="text-lg font-black text-text-primary tracking-tight">Hybrid Registry Dashboard</h2>
-                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Monitor peer-to-peer discovery and bootstrap state</p>
+                                <h2 className="text-lg font-black text-text-primary tracking-tight">Target Controller Dashboard</h2>
+                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Monitor peer-to-peer discovery and controller state</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1481,9 +1556,9 @@ export default function Settings({ token }: { token: string }) {
                             <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Nodes currently known to this instance</div>
                         </div>
                         <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-blue-500/30 transition-all">
-                            <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Detected Local IP</div>
-                            <div className="text-xl font-black text-text-primary font-mono group-hover:text-blue-500 transition-colors">{registryStatus?.detected_ip || 'N/A'}</div>
-                            <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Local address reported to registry</div>
+                            <div className="text-[10px] font-black text-text-muted uppercase tracking-widest">Detected Local IP</div>
+                            <div className="text-xl font-black text-text-primary font-mono group-hover:text-blue-500 transition-colors uppercase">{registryStatus?.detected_ip || 'N/A'}</div>
+                            <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Local address reported to controller</div>
                         </div>
                         <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-emerald-500/30 transition-all">
                             <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">PoC ID</div>
@@ -1491,10 +1566,113 @@ export default function Settings({ token }: { token: string }) {
                             <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Prisma SD-WAN TSG Context</div>
                         </div>
                         <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-amber-500/30 transition-all">
-                            <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Registry Sync</div>
-                            <div className="text-sm font-black text-text-primary truncate font-mono opacity-80 group-hover:text-amber-500 transition-colors">{registryStatus?.registry_url ? new URL(registryStatus.registry_url).hostname : 'N/A'}</div>
+                            <div className="text-[10px] font-black text-text-muted uppercase tracking-widest">Controller Sync</div>
+                            <div className="text-sm font-black text-text-primary truncate font-mono opacity-80 group-hover:text-amber-500 transition-colors uppercase">{registryStatus?.registry_url ? new URL(registryStatus.registry_url).hostname : 'N/A'}</div>
                             <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Current active discovery endpoint</div>
                         </div>
+                    </div>
+
+                    {/* Static Leader / Controller Configuration (Manual Override) */}
+                    <div className="bg-card-secondary/20 border-2 border-dashed border-border rounded-2xl p-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 bg-blue-500/10 rounded text-blue-500">
+                                    <SettingsIcon size={16} />
+                                </div>
+                                <h3 className="text-xs font-black text-text-primary uppercase tracking-wider">Static Controller Configuration</h3>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {registryStatus?.is_static_leader && (
+                                    <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center gap-1 shadow-sm animate-pulse">
+                                        <div className="w-1 h-1 rounded-full bg-blue-400" />
+                                        Static Override Active
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                            <div className="md:col-span-8 space-y-2">
+                                <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Manual Controller IP / FQDN / URL</label>
+                                <div className="relative group">
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. 192.168.1.50 or stigix.local"
+                                        value={staticLeaderUrl}
+                                        onChange={(e) => setStaticLeaderUrl(e.target.value)}
+                                        className="w-full bg-card hover:bg-card-hover border border-border focus:border-blue-500/50 rounded-xl px-4 py-2.5 text-xs font-mono transition-all pr-24"
+                                    />
+                                    {connectivityResult && (
+                                        <div className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
+                                            connectivityResult.success 
+                                                ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" 
+                                                : "bg-red-500/10 text-red-500 border-red-500/20"
+                                        }`}>
+                                            {connectivityResult.success ? (
+                                                <><CheckCircle size={10} /> Online</>
+                                            ) : (
+                                                <><XCircle size={10} /> {connectivityResult.error || "Failed"}</>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex flex-col gap-1 pl-1">
+                                    <p className="text-[9px] text-text-muted italic opacity-60">Configure a static IP or FQDN to reach the leader directly and bypass Cloudflare discovery.</p>
+                                    {staticLeaderUrl && (
+                                        <div className="flex items-center gap-1.5 mt-1">
+                                            <span className="text-[8px] font-black uppercase text-blue-500/60 tracking-widest">Resulting URL:</span>
+                                            <span className="text-[9px] font-mono text-text-secondary opacity-80 bg-blue-500/5 px-1.5 py-0.5 rounded border border-blue-500/10">
+                                                {previewControllerUrl(staticLeaderUrl)}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="md:col-span-4 flex gap-2">
+                                <button
+                                    onClick={handleTestConnectivity}
+                                    disabled={isTestingConnectivity || !staticLeaderUrl}
+                                    className="flex-1 bg-card hover:bg-card-hover border border-border rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all hover:border-blue-500/30 disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isTestingConnectivity ? <RefreshCw className="animate-spin" size={12} /> : <Zap size={12} className="text-blue-500" />}
+                                    Test
+                                </button>
+                                <button
+                                    onClick={() => handleSaveStaticLeader(staticLeaderUrl)}
+                                    disabled={saving || !staticLeaderUrl}
+                                    className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(37,99,235,0.2)] disabled:opacity-50"
+                                >
+                                    Save
+                                </button>
+                                {registryStatus?.is_static_leader && (
+                                    <button
+                                        onClick={() => {
+                                            setStaticLeaderUrl('');
+                                            handleSaveStaticLeader(null);
+                                        }}
+                                        className="p-2.5 bg-card hover:bg-red-500/10 border border-border hover:border-red-500/30 rounded-xl text-text-muted hover:text-red-500 transition-all"
+                                        title="Reset to Auto-Discovery"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {registryStatus?.mode === 'leader' && (
+                            <div className="mt-4 p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500">
+                                        <Globe size={18} />
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Local Controller Access</div>
+                                        <p className="text-[11px] font-bold text-text-secondary">Peers can manually reach this node at: <span className="font-mono text-emerald-400">http://{registryStatus?.detected_ip}:8080</span></p>
+                                    </div>
+                                </div>
+                                <Activity size={24} className="text-emerald-500 opacity-20" />
+                            </div>
+                        )}
                     </div>
 
                     {/* Details and Local Instances */}
@@ -1692,7 +1870,7 @@ export default function Settings({ token }: { token: string }) {
                             <MapPin size={20} />
                         </div>
                         <div>
-                            <h2 className="text-lg font-black text-text-primary tracking-tight">Targets Registry</h2>
+                            <h2 className="text-lg font-black text-text-primary tracking-tight">Targets Repository</h2>
                             <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Shared sdwan-voice-echo / stigix sites — reused across Speedtest, Voice, Security &amp; Failover</p>
                         </div>
                     </div>
@@ -1831,8 +2009,8 @@ export default function Settings({ token }: { token: string }) {
                                                 </span>
                                             )}
                                             {t.meta?.registry && (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center gap-1 shadow-[0_0_10px_rgba(59,130,246,0.2)]" title="Discovered automatically via the Hybrid Registry and cached in-memory">
-                                                    <Database size={8} /> Hub Discovery
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-500 border border-blue-500/30 flex items-center gap-1 shadow-sm" title="Discovered automatically via the Target Controller and cached in-memory">
+                                                    <Zap size={8} className="animate-pulse" /> Learned
                                                 </span>
                                             )}
                                         </div>

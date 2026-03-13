@@ -74,7 +74,7 @@ export class IoTManager extends EventEmitter {
             '--json-output'
         ];
 
-        console.log(`[IOT-DEBUG] Spawning process: python3 ${this.pythonScriptPath} ${args.join(' ')}`);
+        log('IOT', `Spawning process: python3 ${this.pythonScriptPath} ${args.join(' ')}`, 'debug');
 
         if (deviceConfig.ip_start) {
             args.push('--ip-static', deviceConfig.ip_start);
@@ -165,16 +165,13 @@ export class IoTManager extends EventEmitter {
         const process = this.devices.get(deviceId);
         if (!process) return;
 
-        console.log(`[IOT] Stopping device: ${deviceId}`);
+        log('IOT', `Stopping device: ${deviceId}`);
         process.kill('SIGTERM');
 
-        // Force kill after 5s if still alive
-        setTimeout(() => {
             if (this.devices.has(deviceId)) {
-                console.log(`[IOT] Device ${deviceId} still alive after SIGTERM, sending SIGKILL`);
+                log('IOT', `Device ${deviceId} still alive after SIGTERM, sending SIGKILL`, 'warn');
                 process.kill('SIGKILL');
             }
-        }, 5000);
     }
 
     async stopAll(): Promise<void> {

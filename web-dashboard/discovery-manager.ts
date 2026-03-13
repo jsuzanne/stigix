@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { log } from './utils/logger.js';
 
 export interface DiscoveredProbe {
     name: string;
@@ -238,7 +239,7 @@ export class DiscoveryManager {
         try {
             return JSON.parse(fs.readFileSync(this.discoveredFile, 'utf8'));
         } catch (e) {
-            console.error('Failed to read discovered probes:', e);
+            log('DISCOVERY', `Failed to read discovered probes: ${e}`, 'error');
             return [];
         }
     }

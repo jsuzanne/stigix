@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
+import { log } from './utils/logger.js';
 
 const writeFile = promisify(fs.writeFile);
 const appendFile = promisify(fs.appendFile);
@@ -66,7 +67,7 @@ export class TestLogger {
             const line = JSON.stringify(result) + '\n';
             await appendFile(this.currentLogFile, line, 'utf8');
         } catch (error) {
-            console.error('[TEST_LOGGER] Failed to log test:', error);
+            log('TEST_LOGGER', `Failed to log test: ${error}`, 'error');
         }
     }
 
@@ -96,10 +97,10 @@ export class TestLogger {
                 }
 
                 fs.renameSync(this.currentLogFile, finalRotatedFile);
-                console.log(`[TEST_LOGGER] Rotated log file to: ${finalRotatedFile}`);
+                log('TEST_LOGGER', `Rotated log file to: ${finalRotatedFile}`);
             }
         } catch (error) {
-            console.error('[TEST_LOGGER] Failed to rotate log:', error);
+            log('TEST_LOGGER', `Failed to rotate log: ${error}`, 'error');
         }
     }
 
@@ -121,13 +122,13 @@ export class TestLogger {
                 if (stats.mtimeMs < cutoffDate) {
                     await unlink(filePath);
                     deletedCount++;
-                    console.log(`[TEST_LOGGER] Deleted old log file: ${file}`);
+                    log('TEST_LOGGER', `Deleted old log file: ${file}`);
                 }
             }
 
             return deletedCount;
         } catch (error) {
-            console.error('[TEST_LOGGER] Failed to cleanup logs:', error);
+            log('TEST_LOGGER', `Failed to cleanup logs: ${error}`, 'error');
             return 0;
         }
     }
@@ -178,7 +179,7 @@ export class TestLogger {
                 total: filtered.length
             };
         } catch (error) {
-            console.error('[TEST_LOGGER] Failed to get results:', error);
+            log('TEST_LOGGER', `Failed to get results: ${error}`, 'error');
             return { results: [], total: 0 };
         }
     }
@@ -191,7 +192,7 @@ export class TestLogger {
             const allResults = await this.readAllResults();
             return allResults.find(r => r.id === id) || null;
         } catch (error) {
-            console.error('[TEST_LOGGER] Failed to get result by ID:', error);
+            log('TEST_LOGGER', `Failed to get result by ID: ${error}`, 'error');
             return null;
         }
     }
@@ -237,7 +238,7 @@ export class TestLogger {
 
             return stats;
         } catch (error) {
-            console.error('[TEST_LOGGER] Failed to get stats:', error);
+            log('TEST_LOGGER', `Failed to get stats: ${error}`, 'error');
             return {
                 totalTests: 0,
                 testsByType: { url: 0, dns: 0, threat: 0 },
@@ -264,7 +265,7 @@ export class TestLogger {
 
             return logFiles.length;
         } catch (error) {
-            console.error('[TEST_LOGGER] Failed to delete all logs:', error);
+            log('TEST_LOGGER', `Failed to delete all logs: ${error}`, 'error');
             return 0;
         }
     }
@@ -294,13 +295,13 @@ export class TestLogger {
                     }
                 }
                 if (corruptionFound) {
-                    console.warn(`[TEST_LOGGER] Found and skipped corrupted JSON lines in ${file}`);
+                    log('TEST_LOGGER', `Found and skipped corrupted JSON lines in ${file}`, 'warn');
                 }
             }
 
             return allResults;
         } catch (error) {
-            console.error('[TEST_LOGGER] Failed to read all results:', error);
+            log('TEST_LOGGER', `Failed to read all results: ${error}`, 'error');
             return [];
         }
     }

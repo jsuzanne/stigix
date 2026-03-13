@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import os from 'node:os';
+import { log } from './utils/logger.js';
 
 /**
  * StigixRegistryClient — A standalone library to interface with the Stigix Registry (Cloudflare Worker).
@@ -75,7 +76,7 @@ export class StigixRegistryClient {
      */
     private trackKvEstimate(endpoint: string, reads: number, writes: number, isRemote: boolean) {
         if (!isRemote) return;
-        console.log(`[REGISTRY-TRACKING] Cloudflare API -> Endpoint: ${endpoint} | Estimated KV Reads: ${reads} | Estimated KV Writes: ${writes}`);
+        log('REGISTRY-TRACKING', `Cloudflare API -> Endpoint: ${endpoint} | Estimated KV Reads: ${reads} | Estimated KV Writes: ${writes}`);
         
         if (this.onUsage) {
             this.onUsage({ reads, writes });
@@ -173,7 +174,7 @@ export class StigixRegistryClient {
             });
 
             if (!res.ok) {
-                console.error(`[REGISTRY] Registration failed at ${this.config.registryUrl}: ${res.status} ${await res.text()}`);
+                log('REGISTRY', `Registration failed at ${this.config.registryUrl}: ${res.status} ${await res.text()}`, 'error');
                 return null;
             }
 
@@ -187,7 +188,7 @@ export class StigixRegistryClient {
             }
             return data;
         } catch (e) {
-            console.error(`[REGISTRY] Network error during registration at ${this.config.registryUrl}:`, e);
+            log('REGISTRY', `Network error during registration at ${this.config.registryUrl}: ${e}`, 'error');
             return null;
         }
     }
@@ -207,9 +208,9 @@ export class StigixRegistryClient {
 
             if (!res.ok) {
                 if (res.status === 403) {
-                    console.warn(`[REGISTRY] Discovery forbidden at ${this.config.registryUrl}. PoC Key may be invalid or missing.`);
+                    log('REGISTRY', `Discovery forbidden at ${this.config.registryUrl}. PoC Key may be invalid or missing.`, 'warn');
                 } else {
-                    console.error(`[REGISTRY] Fetch instances failed at ${this.config.registryUrl}: ${res.status}`);
+                    log('REGISTRY', `Fetch instances failed at ${this.config.registryUrl}: ${res.status}`, 'error');
                 }
                 return [];
             }
@@ -223,7 +224,7 @@ export class StigixRegistryClient {
 
             return instances;
         } catch (e) {
-            console.error(`[REGISTRY] Network error during discovery:`, e);
+            log('REGISTRY', `Network error during discovery: ${e}`, 'error');
             return [];
         }
     }
@@ -245,7 +246,7 @@ export class StigixRegistryClient {
             const data = await res.json();
             return Array.isArray(data) ? data : [];
         } catch (e) {
-            console.error(`[REGISTRY] Network error fetching shared targets from ${this.config.registryUrl}:`, e);
+            log('REGISTRY', `Network error fetching shared targets from ${this.config.registryUrl}: ${e}`, 'error');
             return [];
         }
     }
@@ -268,7 +269,7 @@ export class StigixRegistryClient {
             
             return res.ok;
         } catch (e) {
-            console.error(`[REGISTRY] Failed to announce leader:`, e);
+            log('REGISTRY', `Failed to announce leader: ${e}`, 'error');
             return false;
         }
     }
@@ -295,7 +296,7 @@ export class StigixRegistryClient {
                 id: data.leader_id || 'unknown'
             };
         } catch (e) {
-            console.error(`[REGISTRY] Failed to find leader:`, e);
+            log('REGISTRY', `Failed to find leader: ${e}`, 'error');
             return null;
         }
     }
@@ -303,13 +304,26 @@ export class StigixRegistryClient {
     setLocalRegistry(leaderIp: string, port?: number) {
         const targetPort = port || process.env.STIGIX_REGISTRY_PORT || 8080;
         this.config.registryUrl = `http://${leaderIp}:${targetPort}/api/registry`;
-        console.log(`[REGISTRY] Switched to Local Leader: ${this.config.registryUrl}`);
+        log('REGISTRY', `Switched to Local Leader: ${this.config.registryUrl}`);
+    }
+
+    setLocalRegistryByUrl(url: string) {
+        // Ensure URL is clean and includes protocol
+        let cleanUrl = url.trim();
+        if (!cleanUrl.startsWith('http')) {
+            cleanUrl = `http://${cleanUrl}`;
+        }
+        if (!cleanUrl.includes('/api/registry')) {
+            cleanUrl = cleanUrl.replace(/\/$/, '') + '/api/registry';
+        }
+        this.config.registryUrl = cleanUrl;
+        log('REGISTRY', `Switched to Static Controller: ${this.config.registryUrl}`);
     }
 
     resetToRemote() {
         if (this.config.remoteUrl) {
             this.config.registryUrl = this.config.remoteUrl;
-            console.log(`[REGISTRY] Reset to Remote Bootstrap: ${this.config.registryUrl}`);
+            log('REGISTRY', `Reset to Remote Bootstrap: ${this.config.registryUrl}`);
         }
     }
 }

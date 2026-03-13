@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { log } from './utils/logger.js';
 
 /**
  * TargetScenario definition matches the configuration model.
@@ -46,13 +47,13 @@ export class TargetManager {
             if (fs.existsSync(this.configPath)) {
                 const data = fs.readFileSync(this.configPath, 'utf8');
                 this.scenarios = JSON.parse(data);
-                console.log(`[TARGET] Loaded ${this.scenarios.length} scenarios from ${this.configPath}`);
+                log('TARGET', `Loaded ${this.scenarios.length} scenarios from ${this.configPath}`);
             } else {
-                console.warn(`[TARGET] No scenarios file found at ${this.configPath}`);
+                log('TARGET', `No scenarios file found at ${this.configPath}`, 'warn');
                 this.scenarios = [];
             }
         } catch (error) {
-            console.error(`[TARGET] Error loading scenarios:`, error);
+            log('TARGET', `Error loading scenarios: ${error}`, 'error');
             this.scenarios = [];
         }
     }

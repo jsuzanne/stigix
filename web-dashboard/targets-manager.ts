@@ -17,6 +17,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { log } from './utils/logger.js';
 import { TargetDefinition, TargetCapability } from './src/types/targets.js';
 
 const EMPTY_CAPS: TargetCapability = {
@@ -57,7 +58,7 @@ export class TargetsManager {
             if (!fs.existsSync(this.configFile)) return [];
             return JSON.parse(fs.readFileSync(this.configFile, 'utf-8')) as TargetDefinition[];
         } catch (e: any) {
-            console.warn(`[TARGETS] Failed to load targets.json: ${e.message}`);
+            log('TARGETS', `Failed to load targets.json: ${e.message}`, 'warn');
             return [];
         }
     }
@@ -67,7 +68,7 @@ export class TargetsManager {
             fs.mkdirSync(this.configDir, { recursive: true });
             fs.writeFileSync(this.configFile, JSON.stringify(targets, null, 2), 'utf-8');
         } catch (e: any) {
-            console.error(`[TARGETS] Failed to save targets.json: ${e.message}`);
+            log('TARGETS', `Failed to save targets.json: ${e.message}`, 'error');
             throw e;
         }
     }

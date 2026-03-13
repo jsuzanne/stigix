@@ -119,7 +119,8 @@ async function handleSetLeader(request: Request, env: Env): Promise<Response> {
         return jsonResponse({ status: 'error', error: 'forbidden' }, 403);
     }
 
-    // --- LEASE MECHANISM (Race Condition Protection) ---
+    // Save leader info with a long TTL (86400s = 24 hours)
+    // Failover is handled by checking last_announced timestamp in the value itself.
     const leaderKey = `leader:${payload.poc_id}`;
     const existingLeaderVal = await env.STIGIX_REGISTRY.get(leaderKey);
     const requesterId = payload.leader_id || 'unknown';
@@ -127,34 +128,44 @@ async function handleSetLeader(request: Request, env: Env): Promise<Response> {
     if (existingLeaderVal) {
         try {
             const existing = JSON.parse(existingLeaderVal);
-            // If another leader is already active and NOT EXPIRED, reject this one
+            // FAILOVER LOGIC: If another leader is already active
             if (existing.id && existing.id !== requesterId) {
-                console.warn(`[ELECTION] Blocked race condition: ${requesterId} tried to hijack leader from ${existing.id}`);
-                return jsonResponse({
-                    status: 'error',
-                    error: 'conflict',
-                    details: 'A valid leader lease already exists for this PoC',
-                    active_leader: existing.id
-                }, 409);
+                const lastAnnounced = new Date(existing.last_announced).getTime();
+                const now = Date.now();
+                const silenceThreshold = 15 * 60 * 1000; // 15 minutes
+
+                // If the existing leader has been silent for less than 15 mins, block takeover
+                if (now - lastAnnounced < silenceThreshold) {
+                    console.warn(`[ELECTION] Blocked hijack attempt by ${requesterId}. Active leader ${existing.id} was seen ${Math.round((now - lastAnnounced) / 1000)}s ago.`);
+                    return jsonResponse({
+                        status: 'error',
+                        error: 'conflict',
+                        details: 'A valid leader lease already exists and is active',
+                        active_leader: existing.id,
+                        last_seen_seconds_ago: Math.round((now - lastAnnounced) / 1000)
+                    }, 409);
+                }
+                
+                console.log(`[ELECTION] Leader failover: ${requesterId} is taking over from silent leader ${existing.id} (last seen ${Math.round((now - lastAnnounced) / 60000)}m ago)`);
             }
         } catch (e) {
-            // If parse fails (legacy data), we overwrite below
+            // If parse fails (legacy data), we allow overwrite
         }
     }
 
-    // Save leader info with a long TTL (900s = 15 min)
     const leaderInfo = {
         ip: payload.leader_ip,
         id: requesterId,
         last_announced: new Date().toISOString()
     };
 
+    // 24 Hour TTL ensures peers always have a bootstrap target, even if the leader doesn't re-announce frequently.
     await env.STIGIX_REGISTRY.put(leaderKey, JSON.stringify(leaderInfo), {
-        expirationTtl: 900
+        expirationTtl: 86400
     });
 
     console.log(`[BOOTSTRAP] Leader lease granted/refreshed for PoC ${payload.poc_id}: ${payload.leader_ip} (ID: ${requesterId})`);
-    return jsonResponse({ status: 'ok', lease_expiration: 900 });
+    return jsonResponse({ status: 'ok', lease_expiration: 86400 });
 }
 
 // --- POST /register ---
