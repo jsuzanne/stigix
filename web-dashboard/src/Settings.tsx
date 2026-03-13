@@ -1481,18 +1481,18 @@ export default function Settings({ token }: { token: string }) {
                             <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Nodes currently known to this instance</div>
                         </div>
                         <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-blue-500/30 transition-all">
-                            <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Detected IP</div>
-                            <div className="text-xl font-black text-text-primary font-mono group-hover:text-blue-500 transition-colors">{registryStatus?.detected_ip || 'N/A'}</div>
+                            <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Detected Local IP</div>
+                            <div className="text-2xl font-black text-text-primary font-mono group-hover:text-blue-500 transition-colors">{registryStatus?.detected_ip || 'N/A'}</div>
                             <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Local address reported to registry</div>
                         </div>
                         <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-emerald-500/30 transition-all">
                             <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">PoC ID</div>
-                            <div className="text-sm font-black text-text-primary group-hover:text-emerald-500 transition-colors">{registryStatus?.poc_id || 'unconfigured'}</div>
+                            <div className="text-2xl font-black text-text-primary group-hover:text-emerald-500 transition-colors">{registryStatus?.poc_id || 'unconfigured'}</div>
                             <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Prisma SD-WAN TSG Context</div>
                         </div>
                         <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-amber-500/30 transition-all">
                             <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Registry Sync</div>
-                            <div className="text-[11px] font-black text-text-primary truncate font-mono opacity-80">{registryStatus?.registry_url ? new URL(registryStatus.registry_url).hostname : 'N/A'}</div>
+                            <div className="text-2xl font-black text-text-primary truncate font-mono opacity-80 group-hover:text-amber-500 transition-colors">{registryStatus?.registry_url ? new URL(registryStatus.registry_url).hostname : 'N/A'}</div>
                             <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Current active discovery endpoint</div>
                         </div>
                     </div>
@@ -1502,55 +1502,55 @@ export default function Settings({ token }: { token: string }) {
                         {/* Registry Details */}
                         <div className="lg:col-span-1 space-y-6">
                             <div className="bg-card p-6 border border-border rounded-2xl space-y-5 shadow-sm">
-                                <h3 className="text-[10px] font-black text-text-muted tracking-[0.2em] uppercase">Configuration State</h3>
+                                <h3 className="text-[11px] font-black text-text-muted tracking-[0.2em] uppercase">Configuration State</h3>
 
                                 <div className="space-y-4">
                                     <div className="space-y-1.5">
-                                        <div className="text-[8px] font-black text-text-muted tracking-widest uppercase">Bootstrap URL (Cloudflare)</div>
-                                        <div className="p-2.5 bg-card-secondary/50 border border-border rounded-xl font-mono text-[9px] text-text-secondary truncate">
+                                        <div className="text-[10px] font-black text-text-muted tracking-widest uppercase">Bootstrap URL (Cloudflare)</div>
+                                        <div className="p-2.5 bg-card-secondary/50 border border-border rounded-xl font-mono text-[11px] text-text-secondary truncate">
                                             {registryStatus?.remote_url || 'N/A'}
                                         </div>
                                     </div>
 
                                     <div className="space-y-1.5">
-                                        <div className="text-[8px] font-black text-text-muted tracking-widest uppercase">Active Registry</div>
-                                        <div className="p-2.5 bg-card-secondary/50 border border-border rounded-xl font-mono text-[9px] text-text-primary truncate flex items-center gap-2">
+                                        <div className="text-[10px] font-black text-text-muted tracking-widest uppercase">Active Registry</div>
+                                        <div className="p-2.5 bg-card-secondary/50 border border-border rounded-xl font-mono text-[11px] text-text-primary truncate flex items-center gap-2">
                                             {registryStatus?.registry_url === registryStatus?.remote_url ? (
-                                                <Globe size={10} className="text-blue-500" />
+                                                <Globe size={12} className="text-blue-500" />
                                             ) : (
-                                                <Server size={10} className="text-purple-500" />
+                                                <Server size={12} className="text-purple-500" />
                                             )}
                                             {registryStatus?.registry_url || 'N/A'}
                                         </div>
                                     </div>
 
                                     <div className="space-y-1.5 col-span-2">
-                                        <div className="text-[8px] font-black text-text-muted tracking-widest uppercase">Auto-Detection Identity</div>
+                                        <div className="text-[10px] font-black text-text-muted tracking-widest uppercase">Auto-Detection Identity</div>
                                         <div className="p-3 bg-card-secondary/50 border border-border rounded-xl space-y-2">
                                             <div className="flex items-center justify-between">
-                                                <span className="text-[9px] font-bold text-text-muted">Site Role:</span>
-                                                <span className={`text-[9px] font-black tracking-tight ${registryStatus?.detected_role === 'HUB' ? 'text-purple-500' : 'text-blue-500'}`}>
+                                                <span className="text-[11px] font-bold text-text-muted">Site Role:</span>
+                                                <span className={`text-[11px] font-black tracking-tight ${registryStatus?.detected_role === 'HUB' ? 'text-purple-500' : 'text-blue-500'}`}>
                                                     {registryStatus?.detected_role || 'UNKNOWN'}
                                                 </span>
                                             </div>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-[9px] font-bold text-text-muted">Branch Gateway:</span>
-                                                <span className="text-[9px] font-black text-text-primary px-1.5 py-0.5 rounded bg-card">{registryStatus?.is_bg ? 'YES' : 'NO'}</span>
+                                                <span className="text-[11px] font-bold text-text-muted">Branch Gateway:</span>
+                                                <span className="text-[11px] font-black text-text-primary px-1.5 py-0.5 rounded bg-card">{registryStatus?.is_bg ? 'YES' : 'NO'}</span>
                                             </div>
                                             <div className="flex items-center justify-between">
-                                                <span className="text-[9px] font-bold text-text-muted">Election Mode:</span>
-                                                <span className="text-[9px] font-black text-emerald-500 uppercase">{registryStatus?.current_mode || 'MANUAL'}</span>
+                                                <span className="text-[11px] font-bold text-text-muted">Election Mode:</span>
+                                                <span className="text-[11px] font-black text-emerald-500 uppercase">{registryStatus?.current_mode || 'MANUAL'}</span>
                                             </div>
                                         </div>
                                     </div>
 
                                     <div className="space-y-1.5">
-                                        <div className="text-[8px] font-black text-text-muted tracking-widest uppercase">PoC Registry Key</div>
-                                        <div className="p-2.5 bg-card-secondary/50 border border-border rounded-xl font-mono text-[9px] text-text-muted flex items-center justify-between">
+                                        <div className="text-[10px] font-black text-text-muted tracking-widest uppercase">PoC Registry Key</div>
+                                        <div className="p-2.5 bg-card-secondary/50 border border-border rounded-xl font-mono text-[11px] text-text-muted flex items-center justify-between">
                                             <div className="flex gap-1">
                                                 {registryStatus?.poc_key ? '••••••••••••••••' : 'None'}
                                             </div>
-                                            <Lock size={10} className="opacity-40" />
+                                            <Lock size={12} className="opacity-40" />
                                         </div>
                                     </div>
                                 </div>
@@ -1558,10 +1558,10 @@ export default function Settings({ token }: { token: string }) {
                                 <div className="pt-4 border-t border-border/50">
                                     <div className="p-4 bg-purple-600/5 border border-purple-500/10 rounded-xl space-y-2">
                                         <div className="flex items-center gap-2 text-purple-500">
-                                            <Info size={14} />
-                                            <span className="text-[9px] font-black uppercase tracking-widest">Hybrid Mode Info</span>
+                                            <Info size={16} />
+                                            <span className="text-[10px] font-black uppercase tracking-widest">Hybrid Mode Info</span>
                                         </div>
-                                        <p className="text-[9px] text-text-muted leading-relaxed font-bold opacity-70">
+                                        <p className="text-[10px] text-text-muted leading-relaxed font-bold opacity-80">
                                             {registryStatus?.mode === 'leader'
                                                 ? "This node is the Leader. It handles registration for all local peers and periodically syncs to Cloudflare for global discovery."
                                                 : registryStatus?.registry_url === registryStatus?.remote_url
@@ -1831,8 +1831,8 @@ export default function Settings({ token }: { token: string }) {
                                                 </span>
                                             )}
                                             {t.meta?.registry && (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1" title="Discovered automatically via the Registry">
-                                                    <Zap size={8} /> Auto
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center gap-1 shadow-[0_0_10px_rgba(59,130,246,0.2)]" title="Discovered automatically via the Hybrid Registry and cached in-memory">
+                                                    <Database size={8} /> Hub Discovery
                                                 </span>
                                             )}
                                         </div>

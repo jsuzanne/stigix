@@ -245,7 +245,7 @@ export class TargetsManager {
         const peers = this.registryManager.getPeers();
         const peerTargets = peers.map((p: any) => ({
             id: `reg-${p.instance_id}`,
-            name: `${p.meta?.site || p.instance_id} (Auto)`,
+            name: p.meta?.site || p.instance_id,
             host: p.ip_private,
             enabled: true,
             capabilities: {
