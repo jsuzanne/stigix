@@ -459,7 +459,7 @@ class XfrJobManager {
         }
     }
 
-    createJob(params: Partial<XfrTestParams>): string {
+    createJob(params: Partial<XfrTestParams>): { id: string; sequence_id: string } {
         this.sequenceCounter++;
         const seqId = `XFR-${this.sequenceCounter.toString().padStart(4, '0')}`;
         const id = `xfr_${new Date().toISOString().replace(/[:.]/g, '').replace('T', '_').slice(0, 15)}_${Math.floor(Math.random() * 10000)}`;
@@ -480,7 +480,7 @@ class XfrJobManager {
 
         this.jobs.set(id, job);
         this.saveHistory();
-        return id;
+        return { id, sequence_id: seqId };
     }
 
     getJob(id: string): XfrJob | undefined {
@@ -1968,7 +1968,7 @@ app.post('/api/tests/xfr', authenticateToken, (req, res) => {
         }
     }
 
-    const id = xfrManager.createJob({
+    const { id, sequence_id } = xfrManager.createJob({
         mode,
         host: target.host,
         port: target.port,
@@ -1980,11 +1980,12 @@ app.post('/api/tests/xfr', authenticateToken, (req, res) => {
         parallel_streams: parallel_streams || (mode === 'default' ? 4 : undefined),
     });
 
-    log('API', `[XFR] Created job ${id}. Starting execution...`);
+    console.log(`[DEBUG] Created XFR Job: id=${id}, sequence_id=${sequence_id}`);
+    log('API', `[XFR] Created job ${id} (${sequence_id}). Starting execution...`);
     xfrManager.startJob(id);
 
     log('API', `[XFR] Sending response for ${id}`);
-    res.json({ id, status: 'queued' });
+    res.json({ id, sequence_id, status: 'queued' });
 });
 
 app.get('/api/tests/xfr', authenticateToken, (req, res) => {

@@ -27,99 +27,177 @@ except ImportError:
     logger.error("Failed to import fastmcp. Please install it with: pip install fastmcp")
     sys.exit(1)
 
-# Import actual tool implementations
-from .tools.agents import list_agents_tool
-from .tools.tests import (
-    start_traffic_test_tool,
-    stop_traffic_test_tool,
-    get_test_status_tool,
-    list_tests_tool
-)
-from .tools.profiles import set_traffic_profile_tool
+# Import Stigix Orchestrator components
+from .lib.registry import RegistryClient
+from .lib.orchestrator import TestOrchestrator
+from .types import StigixEndpoint, TestStatus, TestRun
 
 # Initialize FastMCP
-mcp = FastMCP("sdwan-mcp-server")
+mcp = FastMCP("stigix-orchestrator")
 
+# Core services
+registry = RegistryClient()
+orchestrator = TestOrchestrator()
+
+def check_leader():
+    """Safety check: only the leader should expose central orchestration."""
+    is_leader = os.getenv("IS_LEADER", "true").lower() == "true"
+    if not is_leader:
+        raise RuntimeError("Service Unavailable: This instance is NOT the elected Target Controller (Leader).")
 
 # -----------------------------------------------------------------------------
 # Tool Definitions
 # -----------------------------------------------------------------------------
 
 @mcp.tool()
-async def list_agents() -> List[dict]:
+async def list_endpoints(kind: Optional[str] = None) -> List[dict]:
     """
-    List all configured SD-WAN traffic generator agents with their current status.
+    List available Stigix endpoints (Fabric nodes and Internet targets).
+    
+    Args:
+        kind: Optional filter ('fabric' or 'internet')
     """
-    return await list_agents_tool()
+    check_leader()
+    endpoints = await registry.list_endpoints(kind=kind)
+    return [e.model_dump() for e in endpoints]
 
 
 @mcp.tool()
-async def start_traffic_test(
-    agents: List[str],
-    profile: str,
-    duration_minutes: int,
-    label: Optional[str] = None
+async def run_test(
+    source_id: str,
+    target_id: str,
+    profile: str = "CONV-001",
+    duration: str = "30s",
+    bitrate: Optional[str] = None,
+    label: Optional[str] = None,
+    protocol: Optional[str] = None,
+    direction: Optional[str] = None,
+    pps: Optional[int] = None
 ) -> dict:
     """
-    Start a coordinated traffic generation test across multiple agents.
+    Start a coordinated traffic test. 
+    The source initiates (client) and the target receives (server).
+
+    PROFILES:
+    - 'xfr' (speedtest): Data transfer. Supports 'protocol', 'direction', 'bitrate'.
+    - 'conv' (convergence): Probe test. Long-running, supports 'pps', 'label'. Must be stopped using 'stop_test'.
+    - 'voice' / 'iot': Simulation.
     
     Args:
-        agents: List of agent IDs to include in the test
-        profile: Traffic profile name (voice, iot, enterprise)
-        duration_minutes: Test duration in minutes
-        label: Optional user-defined label for the test
+        source_id: Node ID (initiator).
+        target_id: Node ID(s) (receivers). Multi: 'T1,T2'.
+        profile: Test type ('xfr', 'speedtest', 'conv', 'voice', 'iot').
+        duration: [XFR ONLY] Duration (e.g. '30s'). Ignored for 'conv' (runs indefinitely).
+        bitrate: [XFR ONLY] (e.g. '200M').
+        pps: [CONV ONLY] (e.g. 100).
+        protocol: [XFR ONLY] ('tcp', 'udp', 'quic').
+        direction: [XFR ONLY] ('client-to-server', 'server-to-client', 'bidirectional').
+        label: [CONV ONLY] Custom label. Defaults to local CONV-XXXX id if empty.
     """
-    return await start_traffic_test_tool(
-        agents=agents,
-        profile=profile,
-        duration_minutes=duration_minutes,
-        label=label
-    )
+    check_leader()
+    
+    # Resolve source
+    source = await registry.get_endpoint(source_id)
+    if not source:
+        return {"error": f"Source endpoint '{source_id}' not found."}
+
+    # Resolve all targets
+    target_ids = [t.strip() for t in target_id.split(',')]
+    targets = []
+    for tid in target_ids:
+        target = await registry.get_endpoint(tid)
+        if not target:
+            return {"error": f"Target endpoint '{tid}' not found."}
+        targets.append(target)
+
+    try:
+        results = await orchestrator.run_tests(
+            source=source,
+            targets=targets,
+            profile=profile,
+            duration=duration,
+            bitrate=bitrate,
+            label=label,
+            protocol=protocol,
+            direction=direction,
+            pps=pps
+        )
+        
+        # Return individual TestRun model_dumps in a list
+        return {"tests": [t.model_dump() for t in results]}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @mcp.tool()
-async def stop_traffic_test(test_id: str) -> dict:
+async def get_test_status(test_id: str) -> dict:
     """
-    Stop a running traffic generation test and collect final statistics.
+    Get the status and metrics of a specific test.
     
     Args:
-        test_id: ID of the test to stop
+        test_id: The global test ID (e.g., G-20260313-ABCD) or a local ID (CONV-XXXX).
     """
-    return await stop_traffic_test_tool(test_id=test_id)
+    check_leader()
+    try:
+        status = await orchestrator.get_status(test_id)
+        return status.model_dump()
+    except ValueError as e:
+        return {"error": str(e)}
 
 
 @mcp.tool()
-async def get_test_status(test_id: Optional[str] = None) -> dict:
+async def stop_test(test_id: str) -> dict:
     """
-    Get current status of a test run.
+    Stop an active traffic test (especially for convergence tests).
     
     Args:
-        test_id: Test ID to check (optional, defaults to current running test)
+        test_id: The global test ID (e.g., G-20260313-ABCD) or a local ID (CONV-XXXX).
     """
-    return await get_test_status_tool(test_id=test_id)
+    check_leader()
+    try:
+        return await orchestrator.stop_test(test_id)
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @mcp.tool()
-async def list_tests(limit: int = 10) -> List[dict]:
+async def set_traffic_status(source_id: str, enabled: bool) -> dict:
     """
-    List recent test runs.
+    Start or stop application traffic generation on a specific node.
     
     Args:
-        limit: Maximum number of tests to return (default: 10)
+        source_id: ID of the node (must be kind='fabric')
+        enabled: True to start, False to stop
     """
-    return await list_tests_tool(limit=limit)
+    check_leader()
+    source = await registry.get_endpoint(source_id)
+    if not source:
+        return {"error": f"Node '{source_id}' not found."}
+    
+    try:
+        return await orchestrator.set_traffic_status(source, enabled)
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @mcp.tool()
-async def set_traffic_profile(agent_id: str, profile: str) -> dict:
+async def set_voice_status(source_id: str, enabled: bool) -> dict:
     """
-    Set the traffic profile for a specific agent.
+    Start or stop voice simulation on a specific node.
     
     Args:
-        agent_id: ID of the agent to update
-        profile: Profile name (voice, iot, enterprise)
+        source_id: ID of the node (must be kind='fabric')
+        enabled: True to start, False to stop
     """
-    return await set_traffic_profile_tool(agent_id=agent_id, profile=profile)
+    check_leader()
+    source = await registry.get_endpoint(source_id)
+    if not source:
+        return {"error": f"Node '{source_id}' not found."}
+    
+    try:
+        return await orchestrator.set_voice_status(source, enabled)
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # -----------------------------------------------------------------------------
@@ -127,19 +205,17 @@ async def set_traffic_profile(agent_id: str, profile: str) -> dict:
 # -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    logger.info(f"Entrypoint reached with __name__ == {__name__}")
     # Read configuration from environment
-    transport = os.getenv("MCP_TRANSPORT", "sse").lower()
-    port = int(os.getenv("MCP_PORT", "3100"))
+    transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
+    port = int(os.getenv("MCP_PORT", "3101"))
     host = os.getenv("MCP_HOST", "0.0.0.0")
     
-    logger.info(f"Starting MCP server with {transport} transport")
+    logger.info(f"Starting Stigix MCP Orchestrator with {transport} transport")
     
     if transport == "sse":
         logger.info(f"SSE endpoint: http://{host}:{port}/sse")
-        logger.info(f"Health check: http://{host}:{port}/health")
-        logger.info("For Claude Desktop, use: npx -y @modelcontextprotocol/inspector http://localhost:3100/sse")
         mcp.run(transport="sse", port=port, host=host)
     else:
         logger.info("STDIO transport (direct Claude Desktop connection)")
-        logger.info("Communicating via stdin/stdout")
         mcp.run(transport="stdio")
