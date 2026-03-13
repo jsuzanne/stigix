@@ -107,6 +107,7 @@ def favicon():
         return send_file(favicon_path, mimetype='image/png')
     return "", 404
 
+
 @app.route('/')
 def index():
     # Simple HTML UI

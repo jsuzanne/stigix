@@ -1576,6 +1576,7 @@ def main():
         target_site_name, target_site_id, matched_network, target_site_role, target_site_bg = find_site_by_ip(local_ip, site_lan_map, debug=args.debug)
 
         if not target_site_id:
+
             error_msg = {
                 "error": f"Could not find site matching local IP {local_ip}",
                 "local_ip": local_ip,

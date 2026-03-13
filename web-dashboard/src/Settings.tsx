@@ -103,7 +103,7 @@ const BetaBadge = ({ className }: { className?: string }) => (
 );
 
 export default function Settings({ token }: { token: string }) {
-    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry'>('distribution');
+    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService'>('distribution');
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -1878,8 +1878,8 @@ export default function Settings({ token }: { token: string }) {
                         ))}
                     </div>
                 </div>
-            )}
-        </div>
-    );
-}
+                )}
+            </div>
+        );
+    }
 
