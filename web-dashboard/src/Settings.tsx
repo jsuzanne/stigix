@@ -1482,17 +1482,17 @@ export default function Settings({ token }: { token: string }) {
                         </div>
                         <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-blue-500/30 transition-all">
                             <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Detected Local IP</div>
-                            <div className="text-2xl font-black text-text-primary font-mono group-hover:text-blue-500 transition-colors">{registryStatus?.detected_ip || 'N/A'}</div>
+                            <div className="text-xl font-black text-text-primary font-mono group-hover:text-blue-500 transition-colors">{registryStatus?.detected_ip || 'N/A'}</div>
                             <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Local address reported to registry</div>
                         </div>
                         <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-emerald-500/30 transition-all">
                             <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">PoC ID</div>
-                            <div className="text-2xl font-black text-text-primary group-hover:text-emerald-500 transition-colors">{registryStatus?.poc_id || 'unconfigured'}</div>
+                            <div className="text-lg font-black text-text-primary group-hover:text-emerald-500 transition-colors">{registryStatus?.poc_id || 'unconfigured'}</div>
                             <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Prisma SD-WAN TSG Context</div>
                         </div>
                         <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-amber-500/30 transition-all">
                             <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Registry Sync</div>
-                            <div className="text-2xl font-black text-text-primary truncate font-mono opacity-80 group-hover:text-amber-500 transition-colors">{registryStatus?.registry_url ? new URL(registryStatus.registry_url).hostname : 'N/A'}</div>
+                            <div className="text-sm font-black text-text-primary truncate font-mono opacity-80 group-hover:text-amber-500 transition-colors">{registryStatus?.registry_url ? new URL(registryStatus.registry_url).hostname : 'N/A'}</div>
                             <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Current active discovery endpoint</div>
                         </div>
                     </div>
