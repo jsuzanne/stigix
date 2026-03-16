@@ -25,30 +25,29 @@ The MCP Server provides a **natural language interface** to orchestrate multiple
 
 ### Key Features
 
-✅ **Multi-Agent Orchestration** - Control multiple traffic generators from one interface  
-✅ **Natural Language** - Use plain English/French with Claude Desktop  
-✅ **Zero Code Changes** - Completely independent, communicates via REST APIs only  
-✅ **Traffic Profiles** - Pre-configured templates for voice, IoT, enterprise traffic  
-✅ **Test Management** - Start, stop, monitor coordinated tests  
-✅ **Read-Only Safety** - Uses read-only volumes for existing config/logs  
+✅ **Multi-Agent Orchestration** - Control multiple traffic generators from one interface via the Cloudflare Registry.
+✅ **Natural Language** - Use plain English/French with Claude Desktop.
+✅ **Zero Code Changes** - Completely independent, communicates via REST APIs only.
+✅ **Traffic Profiles** - Pre-configured parameters for raw (XFR), convergence, voice, and IoT tests.
+✅ **Test Management** - Start, stop, monitor coordinated multi-target tests natively.
 
 ---
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────┐
 │  Claude Desktop     │  Natural Language Interface
 │  (User)             │
 └──────────┬──────────┘
            │
            ▼
-┌─────────────────────┐
-│  MCP Server         │  Python 3.12 + MCP Protocol
-│  (Docker Container) │
-└──────────┬──────────┘
-           │
-           ▼ REST APIs (JWT Auth)
+┌─────────────────────┐      1. Autodiscovery
+│  MCP Server         │ ────────────────────────► ┌──────────────────────┐
+│  (Docker Container) │                           │  Cloudflare Registry │
+└──────────┬──────────┘ ◄──────────────────────── └──────────────────────┘
+           │                 Returns active IPs
+           ▼ HTTP APIs (JWT Auth)
 ┌─────────────────────────────────────┐
 │  Traffic Generator Agents           │
 │  ┌─────────┐  ┌─────────┐  ┌──────┐│
@@ -58,11 +57,13 @@ The MCP Server provides a **natural language interface** to orchestrate multiple
 ```
 
 **Communication Flow:**
-1. User speaks to Claude Desktop in natural language
-2. Claude calls MCP tools (list_agents, start_test, etc.)
-3. MCP Server authenticates with JWT tokens
-4. REST API calls to each traffic generator agent
-5. Results aggregated and returned to Claude
+1. MCP Server queries the central Stigix Registry (`stigix-registry.stigix.workers.dev`) to find active nodes and their APIs.
+2. User speaks to Claude Desktop in natural language.
+3. Claude calls MCP tools (`list_endpoints`, `run_test`, `stop_test`).
+4. MCP Server authenticates with JWT tokens and executes REST API calls across agents.
+5. Results are aggregated, finalized, and returned to Claude.
+
+*(For detailed API endpoints, see `API_REFERENCE.md`)*
 
 ---
 
@@ -75,32 +76,21 @@ cd /path/to/stigix
 docker compose build mcp-server
 ```
 
-### 2. Configure Agents
+### 2. Configure Environment
 
-Create `config/agents.json`:
-
-```json
-{
-  "agents": [
-    {
-      "id": "paris",
-      "name": "Paris Branch",
-      "url": "http://sdwan-web-ui:8080",
-      "jwt_secret": "your-jwt-secret-from-docker-compose"
-    }
-  ]
-}
+The MCP server relies on the centralized Stigix Registry for node discovery. Ensure your `.env` contains:
+```env
+STIGIX_REGISTRY_URL=https://stigix-registry.stigix.workers.dev
+JWT_SECRET=your-global-secret
 ```
-
-> **Note**: The `jwt_secret` must match the `JWT_SECRET` environment variable in your docker-compose.yml for each agent.
 
 ### 3. Start the MCP Server
 
 ```bash
-# Option 1: Start with demo profile (recommended for testing)
-docker compose --profile demo up -d
+# Option 1: Start individually
+docker compose up -d mcp-server
 
-# Option 2: Add mcp-server to default services (remove profiles: ["demo"] from docker-compose.yml)
+# Option 2: Add mcp-server to default services by making sure it's untagged/enabled in docker-compose.yml
 docker compose up -d
 ```
 
@@ -113,132 +103,46 @@ docker compose logs mcp-server
 
 ---
 
-## Configuration
-
-### Agent Configuration (`config/agents.json`)
-
-Each agent requires:
-
-| Field | Description | Example |
-|-------|-------------|---------|
-| `id` | Unique identifier | `"paris"` |
-| `name` | Human-readable name | `"Paris Branch"` |
-| `url` | Base URL of web-ui API | `"http://sdwan-web-ui-paris:8080"` |
-| `jwt_secret` | JWT secret for auth | `"your-secret-key"` |
-
-**Multi-Agent Example:**
-
-```json
-{
-  "agents": [
-    {
-      "id": "paris",
-      "name": "Paris Branch",
-      "url": "http://sdwan-web-ui-paris:8080",
-      "jwt_secret": "paris-secret-123"
-    },
-    {
-      "id": "london",
-      "name": "London Branch",
-      "url": "http://sdwan-web-ui-london:8080",
-      "jwt_secret": "london-secret-456"
-    },
-    {
-      "id": "nyc",
-      "name": "New York Office",
-      "url": "http://sdwan-web-ui-nyc:8080",
-      "jwt_secret": "nyc-secret-789"
-    }
-  ]
-}
-```
-
----
-
 ## Natural Language Examples
 
-### List Available Agents
+### List Available Endpoints
 
 **English**: "What agents are available?"  
 **French**: "Quels sont les agents disponibles ?"
 
-**Claude calls**: `list_agents()`
+**Claude calls**: `list_endpoints()`
 
-**Response**:
-```json
-[
-  {"id": "paris", "name": "Paris Branch", "status": "running"},
-  {"id": "london", "name": "London Branch", "status": "stopped"}
-]
-```
+**Response**: Prints a topology of available clients and servers, their IP addresses, and capacities.
 
 ---
 
-### Start a Traffic Test
+### Start a Multi-Target Convergence Test
 
-**English**: "Start a 3-minute voice test on Paris and London"  
-**French**: "Lance un test voix de 3 minutes sur Paris et London"
+**English**: "Start a convergence test from Paris to London and NYC."  
+**French**: "Lance un test de convergence depuis Paris vers London et NYC à 50 pps."
 
-**Claude calls**: `start_traffic_test(agents=["paris", "london"], profile="voice", duration_minutes=3)`
+**Claude calls**: `run_test(source_id="paris", target_id="london,nyc", profile="conv", pps=50)`
 
-**Response**:
-```json
-{
-  "test_id": "test-20260205-1015",
-  "message": "Test started on 2/2 agent(s)"
-}
-```
+**Response**: Reports the auto-generated Job ID and the Local Sub-IDs for each target flow (ex: `CONV-0021`).
 
 ---
 
-### Check Test Status
+### Stop a Convergence Test
 
-**English**: "Show me the stats for the current test"  
-**French**: "Montre-moi les stats du test en cours"
+**English**: "Stop the convergence test on Paris."  
+**French**: "Arrête le test de convergence G-20260313-ABCD."
 
-**Claude calls**: `get_test_status()`
+**Claude calls**: `stop_test(test_id="G-20260313-ABCD")`
 
-**Response**:
-```json
-{
-  "id": "test-20260205-1015",
-  "status": "running",
-  "elapsed_seconds": 125,
-  "agents": [
-    {
-      "id": "paris",
-      "stats": {"total_requests": 850, "success_rate": 98.2}
-    }
-  ]
-}
-```
+**Response**: Sends the stop signal, waits for the backend grace period, and parses the final stabilised metrics (loss, latency, jitter).
 
 ---
 
-### Stop a Test
+### Start a Speedtest (XFR)
 
-**English**: "Stop test test-20260205-1015"  
-**French**: "Arrête le test test-20260205-1015"
+**English**: "Do a 30s bidirectional speedtest between Paris and NYC over UDP."  
 
-**Claude calls**: `stop_traffic_test(test_id="test-20260205-1015")`
-
----
-
-### List Recent Tests
-
-**English**: "List the last 5 tests"  
-**French**: "Liste les 5 derniers tests"
-
-**Claude calls**: `list_tests(limit=5)`
-
----
-
-### Change Traffic Profile
-
-**English**: "Switch Paris to IoT profile"  
-**French**: "Change Paris en profil IoT"
-
-**Claude calls**: `set_traffic_profile(agent_id="paris", profile="iot")`
+**Claude calls**: `run_test(source_id="paris", target_id="nyc", profile="xfr", duration="30s", protocol="udp", direction="bidirectional")`
 
 ---
 
@@ -246,48 +150,12 @@ Each agent requires:
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `list_agents` | List all configured agents with status | None |
-| `start_traffic_test` | Start coordinated test across agents | `agents`, `profile`, `duration_minutes`, `label?` |
-| `stop_traffic_test` | Stop test and collect final stats | `test_id` |
-| `get_test_status` | Get current test status | `test_id?` (defaults to current) |
-| `list_tests` | List recent test runs | `limit?` (default: 10) |
-| `set_traffic_profile` | Apply traffic profile to agent | `agent_id`, `profile` |
-
----
-
-## Traffic Profiles
-
-### Built-in Profiles
-
-#### `voice` - VoIP/UC Applications
-- Microsoft Teams
-- Zoom
-- Google Meet
-- Webex
-
-#### `iot` - IoT & Telemetry
-- IoT sensors
-- MQTT telemetry
-
-#### `enterprise` - Enterprise SaaS
-- Office 365
-- Gmail
-- Slack
-- Salesforce
-- GitHub
-
-### Custom Profiles
-
-Create custom profiles in `mcp-server/profiles/custom.txt`:
-
-```
-# Format: domain|weight|endpoint
-myapp.example.com|100|/api/v1
-internal.company.com|80|/health
-monitoring.example.com|60|/metrics
-```
-
-Then use: `set_traffic_profile(agent_id="paris", profile="custom")`
+| `list_endpoints` | Scans the Registry for available routers/servers. | None |
+| `run_test` | Starts a test (Speedtest, Convergence, etc.) from `source_id` to one/multiple `target_id`. | `source_id`, `target_id`, `profile`, `protocol`, `pps`, etc. |
+| `stop_test` | Stops a long-running convergence test and fetches final metrics. | `test_id` (Global or Local ID) |
+| `get_test_status`| Fetches live or historical metrics for a test. | `test_id` |
+| `set_traffic_status` | Enables/Disables background application traffic on an endpoint. | `endpoint_id`, `status` ("on"/"off") |
+| `set_voice_status` | Enables/Disables background VoIP QoS simulation. | `endpoint_id`, `status` |
 
 ---
 
@@ -323,160 +191,35 @@ Edit `%APPDATA%\Claude\claude_desktop_config.json` with the same content.
 
 After editing the config, **restart Claude Desktop** to load the MCP server.
 
-### Verify Integration
-
-In Claude Desktop, you should see the MCP server listed in the settings. Try asking:
-
-> "List the available SD-WAN agents"
-
 ---
 
 ## Troubleshooting
 
 ### MCP Server Not Appearing in Claude Desktop
 
-**Symptoms**: Claude doesn't recognize MCP commands
+**Symptoms**: Claude doesn't recognize MCP commands or says it has no tools.
 
 **Solutions**:
-1. Check config file syntax (valid JSON)
-2. Restart Claude Desktop completely
-3. Check container is running: `docker compose ps | grep mcp`
-4. Check logs: `docker compose logs mcp-server`
+1. Check `claude_desktop_config.json` syntax.
+2. Ensure the container name `sdwan-mcp` matches the one running on your local Docker engine (`docker ps`).
+3. Check MCP logs: `docker compose logs mcp-server`.
 
----
+### Empty Endpoint List
 
-### Agent Connection Errors
-
-**Symptoms**: "Failed to get status for agent X"
+**Symptoms**: `list_endpoints()` returns nothing.
 
 **Solutions**:
-1. Verify `config/agents.json` URLs are correct
-2. Check JWT secrets match docker-compose.yml
-3. Ensure agents are running: `docker compose ps`
-4. Test API manually:
-   ```bash
-   curl http://localhost:8080/api/status
-   ```
+1. Check network connectivity to the Cloudflare Worker URL.
+2. Ensure your backend agents are actively pinging the registry. Re-run `node heartbeat.js` or standard boot sequences on the agents.
 
----
+### Metrics are Zero when Stopping a Test
 
-### Profile Not Found
-
-**Symptoms**: "Profile not found: X"
+**Symptoms**: Claude returns 0% loss and 0 latency directly after a `stop_test`.
 
 **Solutions**:
-1. Check profile exists: `ls mcp-server/profiles/`
-2. Rebuild container if profiles were added after build:
-   ```bash
-   docker compose build mcp-server
-   docker compose up -d mcp-server
-   ```
-3. Check file permissions
+1. Ensure the `convergence_orchestrator.py` agent script is not crashing immediately on launch on the target node.
+2. The MCP waits up to 10 seconds for history resolution. Check the `convergence-history.jsonl` file on the remote `source_id` to see if logs are writing correctly.
 
 ---
 
-### Test Not Starting
-
-**Symptoms**: "Test started on 0/2 agent(s)"
-
-**Solutions**:
-1. Check agent status: `list_agents()`
-2. Verify JWT authentication is working
-3. Check agent logs: `docker compose logs sdwan-web-ui`
-4. Ensure `applications.txt` exists on each agent
-
----
-
-## Development
-
-### Running Locally (Outside Docker)
-
-```bash
-cd mcp-server
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set environment variables
-export PYTHONUNBUFFERED=1
-export LOG_LEVEL=DEBUG
-
-# Run server
-python -m src.server
-```
-
-### Testing Individual Tools
-
-```python
-import asyncio
-from src.tools.agents import list_agents_tool
-
-async def test():
-    agents = await list_agents_tool()
-    print(agents)
-
-asyncio.run(test())
-```
-
-### Adding New Tools
-
-1. Create tool function in `src/tools/`
-2. Register in `src/server.py`:
-   - Add to `list_tools()`
-   - Add to `call_tool()`
-3. Rebuild container
-4. Restart Claude Desktop
-
----
-
-## Security Considerations
-
-- ✅ JWT secrets should be strong and unique per agent
-- ✅ MCP server has read-only access to config/logs
-- ✅ All API calls use JWT authentication
-- ✅ No direct database access
-- ✅ Runs in isolated Docker container
-- ✅ Optional profile prevents accidental startup
-
----
-
-## File Structure
-
-```
-mcp-server/
-├── src/
-│   ├── server.py              # Main MCP server
-│   ├── types.py               # Pydantic models
-│   ├── lib/
-│   │   ├── config.py          # Agent configuration
-│   │   ├── storage.py         # Test persistence
-│   │   └── agent_client.py    # HTTP client
-│   └── tools/
-│       ├── agents.py          # list_agents tool
-│       ├── tests.py           # Test management tools
-│       └── profiles.py        # Profile management
-├── profiles/                  # Traffic profile templates
-│   ├── voice.txt
-│   ├── iot.txt
-│   └── enterprise.txt
-├── Dockerfile
-├── requirements.txt
-└── README.md
-```
-
----
-
-## Next Steps
-
-1. ✅ Configure `config/agents.json`
-2. ✅ Start MCP server with `--profile demo`
-3. ✅ Configure Claude Desktop
-4. ✅ Test with "List available agents"
-5. ✅ Run your first coordinated test
-
----
-
-**For more information**, see:
-- Main project: [README.md](../README.md)
-- MCP Protocol: https://modelcontextprotocol.io
-- Claude Desktop: https://claude.ai/desktop
+**For more API details**, see `API_REFERENCE.md`.
