@@ -4378,7 +4378,7 @@ const DEFAULT_SECURITY_CONFIG = {
     },
     sls_config: {
         enabled: !!(process.env.PRISMA_SDWAN_CLIENT_ID && process.env.PRISMA_SDWAN_CLIENT_SECRET),
-        tsg_id: process.env.PRISMA_SDWAN_TSGID || '',
+        tsg_id: process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID || '',
         client_id: process.env.PRISMA_SDWAN_CLIENT_ID || '',
         client_secret: process.env.PRISMA_SDWAN_CLIENT_SECRET || '',
         region: (process.env.PRISMA_SDWAN_REGION === 'Germany' || process.env.PRISMA_SDWAN_REGION?.toLowerCase().includes('eu')) ? 'eu' : 'prd',
@@ -4472,51 +4472,69 @@ class SLSClient {
     private tokenExpiry: number = 0;
 
     constructor(private config: any) {
+        // The baseUrl is still used by queryLogs, so keep this logic.
+        // authUrl is now hardcoded in authenticate(), and getDiagnostic() uses a specific endpoint.
         if (config.region === 'stg') {
             this.baseUrl = 'https://api.stg.sase.paloaltonetworks.com';
-            this.authUrl = 'https://auth.stg.paloaltonetworks.com/oauth2/access_token';
         } else if (config.region === 'eu') {
             this.baseUrl = 'https://api.eu.sase.paloaltonetworks.com';
-            this.authUrl = 'https://auth.paloaltonetworks.com/oauth2/access_token';
         } else {
             this.baseUrl = 'https://api.sase.paloaltonetworks.com';
-            this.authUrl = 'https://auth.paloaltonetworks.com/oauth2/access_token';
         }
     }
 
-    private async authenticate(): Promise<boolean> {
-        if (this.token && Date.now() < this.tokenExpiry) return true;
+    private async authenticate(): Promise<string | null> {
+        if (this.token && Date.now() < this.tokenExpiry) return this.token;
 
         try {
-            const params = new URLSearchParams();
-            params.append('grant_type', 'client_credentials');
-            params.append('scope', 'logging_service:read');
+            // align with Prisma SASE SDK (prisma_sase) 
+            const authUrl = 'https://auth.apps.paloaltonetworks.com/auth/v1/oauth2/access_token';
+            const auth = Buffer.from(`${this.config.client_id}:${this.config.client_secret}`).toString('base64');
+            
+            // SASE Scope requires tsg_id prefix for some deployments
+            const scope = `tsg_id:${this.config.tsg_id} logging_service:read email profile`;
 
-            const authHeader = Buffer.from(`${this.config.client_id}:${this.config.client_secret}`).toString('base64');
-
-            const response = await fetch(this.authUrl, {
+            const res = await fetch(authUrl, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Basic ${authHeader}`,
-                    'Content-Type': 'application/x-www-form-urlencoded'
+                    'Authorization': `Basic ${auth}`,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json'
                 },
-                body: params
+                body: new URLSearchParams({
+                    grant_type: 'client_credentials',
+                    scope: scope
+                })
             });
 
-            if (!response.ok) {
-                const err = await response.text();
-                log('SLS', `Authentication failed: ${response.status} ${err}`, 'error');
-                return false;
+            if (!res.ok) {
+                const err = await res.text();
+                throw new Error(`Auth failed (${res.status}): ${err}`);
             }
 
-            const data: any = await response.json();
+            const data = await res.json() as any;
             this.token = data.access_token;
-            this.tokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
-            return true;
+            this.tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000;
+            return this.token;
         } catch (error) {
             log('SLS', `Authentication error: ${error}`, 'error');
-            return false;
+            throw error;
         }
+    }
+
+    private getPanwRegion(region: string): string {
+        const mapping: Record<string, string> = {
+            'us': 'americas',
+            'us-east-1': 'americas',
+            'us-west-2': 'americas',
+            'eu': 'europe',
+            'de': 'europe',
+            'europe-west3': 'europe',
+            'jp': 'jp',
+            'sg': 'sg',
+            'au': 'au'
+        };
+        return mapping[region.toLowerCase()] || 'americas';
     }
 
     async queryLogs(query: string, startTime: number, endTime: number): Promise<any[]> {
@@ -4552,48 +4570,66 @@ class SLSClient {
         }
     }
 
-    async getDiagnostic(params: { srcIp: string, dstIp: string, dstPort: number, protocol: string, start: number, end: number }): Promise<any> {
-        // 1. Try Traffic Logs first
-        const protoNum = params.protocol.toLowerCase() === 'tcp' ? 6 : params.protocol.toLowerCase() === 'udp' ? 17 : 1;
-        const trafficQuery = `( addr.src in '${params.srcIp}' ) and ( addr.dst in '${params.dstIp}' ) and ( port.dst eq ${params.dstPort} ) and ( proto eq ${protoNum} )`;
-        
-        const trafficLogs = await this.queryLogs(trafficQuery, params.start - 30000, params.end + 60000);
-        
-        if (trafficLogs.length > 0) {
-            const logEntry = trafficLogs[0];
-            return {
-                action: logEntry.action, // 'allow', 'deny', 'drop', etc.
-                rule: logEntry.rule,
-                rule_uuid: logEntry.rule_uuid,
-                app: logEntry.app,
-                category: logEntry.category,
-                source_zone: logEntry.from,
-                dest_zone: logEntry.to,
-                flags: logEntry.flags,
-                session_end_reason: logEntry.session_end_reason,
-                security_profile: logEntry.security_profile || logEntry.profile,
-                source: 'Strata Logging Service (Traffic)'
-            };
+    async getDiagnostic(params: { srcIp: string, dstIp: string, dstPort: number, protocol: string, start: number, end: number }) {
+        try {
+            const token = await this.authenticate();
+            if (!token) {
+                log('SLS', 'Authentication failed for getDiagnostic', 'error');
+                return null;
+            }
+            const panwRegion = this.getPanwRegion(this.config.region);
+
+            // Using the new PANW Logging Service API structure
+            // API requires X-PAN-TSG-ID and X-PANW-Region for correct routing in SASE
+            const res = await fetch(`https://api.sase.paloaltonetworks.com/logging/v1/diagnostics`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'X-PAN-TSG-ID': this.config.tsg_id,
+                    'X-PANW-Region': panwRegion
+                },
+                body: JSON.stringify({
+                    filters: [
+                        { field: 'source_ip', operator: 'eq', value: params.srcIp },
+                        { field: 'dest_ip', operator: 'eq', value: params.dstIp },
+                        { field: 'dest_port', operator: 'eq', value: params.dstPort },
+                        { field: 'protocol', operator: 'eq', value: params.protocol.toLowerCase() }
+                    ],
+                    start_time: new Date(params.start).toISOString(),
+                    end_time: new Date(params.end).toISOString(),
+                    limit: 1
+                })
+            });
+
+            if (!res.ok) {
+                const err = await res.text();
+                log('SLS', `Diagnostic query failed: ${res.status} ${err}`, 'error');
+                return null;
+            }
+
+            const data = await res.json() as any;
+            if (data.items && data.items.length > 0) {
+                const logEntry = data.items[0];
+                return {
+                    action: logEntry.action,
+                    rule: logEntry.rule,
+                    rule_uuid: logEntry.rule_uuid,
+                    app: logEntry.app,
+                    category: logEntry.category,
+                    source_zone: logEntry.from,
+                    dest_zone: logEntry.to,
+                    flags: logEntry.flags,
+                    session_end_reason: logEntry.session_end_reason,
+                    security_profile: logEntry.security_profile || logEntry.profile,
+                    source: 'Strata Logging Service (Diagnostic)'
+                };
+            }
+            return null; // No logs found
+        } catch (error) {
+            log('SLS', `Diagnostic query error: ${error}`, 'error');
+            return null;
         }
-
-        // 2. Try Threat Logs if traffic not found or if we want more detail
-        const threatQuery = `( addr.src in '${params.srcIp}' ) and ( addr.dst in '${params.dstIp}' )`;
-        const threatLogs = await this.queryLogs(threatQuery, params.start - 30000, params.end + 60000);
-
-        if (threatLogs.length > 0) {
-            const logEntry = threatLogs[0];
-            return {
-                action: logEntry.action,
-                rule: logEntry.rule,
-                threat_name: logEntry.threat_name,
-                severity: logEntry.severity,
-                category: logEntry.category,
-                security_profile: logEntry.profile,
-                source: 'Strata Logging Service (Threat)'
-            };
-        }
-
-        return null; // No logs found
     }
 }
 
