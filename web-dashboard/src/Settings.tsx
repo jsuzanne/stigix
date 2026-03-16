@@ -266,9 +266,13 @@ export default function Settings({ token }: { token: string }) {
             .then(data => {
                 if (data && data.sls_config) {
                     setSlsConfig(data.sls_config);
+                } else {
+                    setSlsConfig({}); // Fix hang if sls_config is missing
                 }
             })
-            .catch(() => { });
+            .catch(() => { 
+                setSlsConfig({}); // Fix hang on error
+            });
 
         const fetchMcpStatus = () => {
             fetch('/api/admin/system/mcp-status', { headers: authHeaders })
@@ -2318,25 +2322,47 @@ export default function Settings({ token }: { token: string }) {
                                         </div>
                                     </div>
 
-                                    <button
-                                        onClick={async () => {
-                                            setSaving(true);
-                                            try {
-                                                const res = await fetch('/api/security/config', {
-                                                    method: 'POST',
-                                                    headers: authHeaders,
-                                                    body: JSON.stringify({ sls_config: slsConfig })
-                                                });
-                                                if (res.ok) showSuccess('SLS configuration saved');
-                                                else setErrorMsg('Failed to save SLS config');
-                                            } catch (err) { setErrorMsg('Network error'); }
-                                            finally { setSaving(false); }
-                                        }}
-                                        disabled={saving}
-                                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black tracking-[0.2em] transition-all shadow-lg shadow-blue-900/20 disabled:opacity-50"
-                                    >
-                                        {saving ? <RefreshCw className="animate-spin inline mr-2" size={14} /> : 'Save SLS Configuration'}
-                                    </button>
+                                    <div className="flex gap-4">
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const res = await fetch('/api/admin/security/defaults', { headers: authHeaders });
+                                                        const data = await res.json();
+                                                        if (data && data.sls_config) {
+                                                            setSlsConfig({
+                                                                ...data.sls_config,
+                                                                enabled: slsConfig.enabled, // Keep current toggle state
+                                                                auto_enrich: slsConfig.auto_enrich // Keep current toggle state
+                                                            });
+                                                            showSuccess('Credentials synced from system environment');
+                                                        }
+                                                    } catch (err) { setErrorMsg('Failed to sync defaults'); }
+                                                }}
+                                                className="flex-1 py-3 bg-card-hover hover:bg-card-secondary/50 text-text-primary rounded-xl text-[10px] font-black tracking-widest transition-all border border-border"
+                                            >
+                                                <RefreshCw size={14} className="inline mr-2" />
+                                                Sync from System
+                                            </button>
+                                        <button
+                                            onClick={async () => {
+                                                setSaving(true);
+                                                try {
+                                                    const res = await fetch('/api/security/config', {
+                                                        method: 'POST',
+                                                        headers: authHeaders,
+                                                        body: JSON.stringify({ sls_config: slsConfig })
+                                                    });
+                                                    if (res.ok) showSuccess('SLS configuration saved');
+                                                    else setErrorMsg('Failed to save SLS config');
+                                                } catch (err) { setErrorMsg('Network error'); }
+                                                finally { setSaving(false); }
+                                            }}
+                                            disabled={saving}
+                                            className="flex-[2] py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black tracking-[0.2em] transition-all shadow-lg shadow-blue-900/20 disabled:opacity-50"
+                                        >
+                                            {saving ? <RefreshCw className="animate-spin inline mr-2" size={14} /> : 'Save Configuration'}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 

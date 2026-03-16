@@ -4399,9 +4399,12 @@ const getSecurityConfig = () => {
 
         let migrated = false;
         // Basic sanity checks for missing fields
+        if (!config.dns_security) { config.dns_security = { ...DEFAULT_SECURITY_CONFIG.dns_security }; migrated = true; }
+        if (!config.threat_prevention) { config.threat_prevention = { ...DEFAULT_SECURITY_CONFIG.threat_prevention }; migrated = true; }
         if (!config.scheduled_execution) { config.scheduled_execution = { ...DEFAULT_SECURITY_CONFIG.scheduled_execution }; migrated = true; }
         if (!config.edlTesting) { config.edlTesting = { ...DEFAULT_SECURITY_CONFIG.edlTesting }; migrated = true; }
         if (!config.statistics) { config.statistics = { ...DEFAULT_SECURITY_CONFIG.statistics }; migrated = true; }
+        if (!config.sls_config) { config.sls_config = { ...DEFAULT_SECURITY_CONFIG.sls_config }; migrated = true; }
 
         if (migrated) saveSecurityConfig(config);
         return config;
@@ -5085,6 +5088,11 @@ app.get('/api/security/config', authenticateToken, (req, res) => {
     const config = getSecurityUIConfig();
     if (!config) return res.status(500).json({ error: 'Failed to read config' });
     res.json(config);
+});
+
+// API: Get Default Security Configuration (from ENV)
+app.get('/api/admin/security/defaults', authenticateToken, (req, res) => {
+    res.json(DEFAULT_SECURITY_CONFIG);
 });
 
 // API: Update Security Configuration
