@@ -470,3 +470,35 @@ class TestOrchestrator:
             except Exception as e:
                 logger.error(f"Failed to fetch VyOS history from {agent_id}: {e}")
                 return [{"error": str(e)}]
+
+    async def set_vyos_scenario_status(self, agent_id: str, sequence_id: str, enabled: bool) -> Dict[str, Any]:
+        """Enable or disable a specific VyOS configuration sequence on a node."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+            
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                # 1. Fetch current sequences to find the target object
+                sc_resp = await client.get(f"{agent.api_base_url}/api/vyos/sequences", headers=headers)
+                sc_resp.raise_for_status()
+                sequences = sc_resp.json()
+                
+                target_seq = next((s for s in sequences if s['id'] == sequence_id), None)
+                if not target_seq:
+                    return {"error": f"Sequence {sequence_id} not found on node {agent_id}"}
+                
+                # 2. Update the status
+                target_seq['enabled'] = enabled
+                
+                # 3. Save it back
+                save_resp = await client.post(f"{agent.api_base_url}/api/vyos/sequences", json=target_seq, headers=headers)
+                save_resp.raise_for_status()
+                
+                status_str = "enabled" if enabled else "disabled"
+                return {"success": True, "message": f"Sequence '{target_seq.get('name')}' {status_str} on {agent_id}"}
+            except Exception as e:
+                logger.error(f"Failed to set status for sequence {sequence_id} on {agent_id}: {e}")
+                return {"error": str(e)}

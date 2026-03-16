@@ -321,6 +321,21 @@ async def get_vyos_timeline(agent_id: str, limit: int = 20) -> List[dict]:
     return await orchestrator.get_vyos_history(agent_id, limit)
 
 
+@mcp.tool()
+async def set_vyos_scenario_status(agent_id: str, scenario_id: str, enabled: bool) -> dict:
+    """
+    Enable or disable a specific VyOS configuration sequence (scenario) on a node.
+    Use this to stop a cyclic scenario that interferes with manual actions.
+    
+    Args:
+        agent_id: ID of the Stigix node.
+        scenario_id: The ID of the sequence/scenario (e.g., 'seq-12345').
+        enabled: True to enable/start, False to disable/stop.
+    """
+    check_leader()
+    return await orchestrator.set_vyos_scenario_status(agent_id, scenario_id, enabled)
+
+
 # -----------------------------------------------------------------------------
 # Main Entry Point
 # -----------------------------------------------------------------------------

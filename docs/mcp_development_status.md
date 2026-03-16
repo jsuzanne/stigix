@@ -64,6 +64,7 @@ L'intégration MCP a été considérablement enrichie et fiabilisée pour offrir
 | `list_vyos_scenarios` | Liste les scénarios de configuration disponibles sur un nœud. |
 | `run_vyos_scenario` | Exécute un scénario VyOS sur un nœud (via `vyos_sdwan_ctl.py`). |
 | `get_vyos_timeline` | Affiche l'historique des actions de configuration d'un nœud. |
+| `set_vyos_scenario_status` | Active ou désactive un scénario (cycle) sur un nœud. |
 
 ## 🔜 Phase d'Enrichissement : Diagnostics Globaux & Sécurité
 
@@ -77,6 +78,7 @@ L'objectif est d'utiliser le `dashboard-data` du backend pour répondre à des q
 - *"Sur le node Paris, lance le scénario 'Failover-WAN' et montre-moi l'historique une fois terminé."*
 - *"Affiche le timeline VyOS pour le node 192.168.97.2."*
 - *"Quels sont les routeurs VyOS actuellement détectés par le node ubuntubr5 ?"*
+- *"Désactive le scénario 'Wan-Scenario' sur Raspi4-Ubuntu car il interfère avec mes actions."*
 
 ## Ce qu'il reste à faire (To-Do)
 
