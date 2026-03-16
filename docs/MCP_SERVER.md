@@ -106,7 +106,18 @@ Add the following to your `claude_desktop_config.json`:
 
 ## 💡 Usage Examples
 
-### 1. Performance & Troubleshooting
+### 1. Target Compatibility Rules (Important)
+Before launching a test, ensure the target endpoint supports the requested profile:
+
+- **`xfr` (Speedtest)**: Requires a Stigix node or a dedicated XFR target.
+- **`conv` (Convergence)**: Requires a Stigix Fabric node (it uses internal probing daemons).
+- **`voice` (VoIP)**: Requires a Stigix Fabric node (it uses the Voice Echo server).
+- **`iot` (Data)**: Requires a Stigix Fabric node.
+
+> [!TIP]
+> Use `list_endpoints` to check the `kind` and `capabilities` of each node before proposing a test.
+
+### 2. Performance & Troubleshooting
 **User:** *"Teams quality is bad at the Paris site, can you investigate?"*
 - `get_app_score(agent_id="Paris-BR1", app_name="Teams")`
 - `get_dem_summary(agent_id="Paris-BR1")`

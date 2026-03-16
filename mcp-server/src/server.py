@@ -69,26 +69,31 @@ async def run_test(
     pps: Optional[int] = None
 ) -> dict:
     """
-    Start a coordinated traffic test. 
+    Start a coordinated traffic test between Stigix endpoints.
     The source initiates (client) and the target receives (server).
 
+    TARGET CONSTRAINTS (CRITICAL):
+    - 'xfr': Target MUST be another Stigix node OR a dedicated XFR target.
+    - 'conv': Target MUST be a Stigix Fabric node (internal probe daemon required).
+    - 'voice': Target MUST be a Stigix Fabric node (voice echo server required).
+    - 'iot': Target MUST be a Stigix Fabric node.
+
     PROFILES:
-    - 'xfr' (speedtest): Data transfer. Supports 'protocol', 'direction', 'bitrate'.
-    - 'conv' (convergence): Probe test. Long-running, supports 'pps', 'label'. Must be stopped using 'stop_test'.
-    - 'voice' / 'iot': Simulation.
+    - 'xfr' (speedtest): Data transfer test.
+    - 'conv' (convergence): Network probe/failover test (Long-running).
+    - 'voice' / 'iot': Application-specific simulations.
     
     Args:
         source_id: Node ID (initiator).
-        target_id: Node ID(s) (receivers). Multi: 'T1,T2'.
+        target_id: Node ID(S) (receivers). Use comma-separated list for multi-target: 'T1,T2'.
         profile: Test type ('xfr', 'speedtest', 'conv', 'voice', 'iot').
-        duration: [XFR ONLY] Duration (e.g. '30s'). Ignored for 'conv' (runs indefinitely).
+        duration: [XFR ONLY] Duration (e.g. '30s'). Ignored for 'conv'.
         bitrate: [XFR ONLY] (e.g. '200M').
-        pps: [CONV ONLY] (e.g. 100).
+        pps: [CONV ONLY] Probe rate (e.g. 100).
         protocol: [XFR ONLY] ('tcp', 'udp', 'quic').
         direction: [XFR ONLY] ('client-to-server', 'server-to-client', 'bidirectional').
-        label: [CONV ONLY] Custom label. Defaults to local CONV-XXXX id if empty.
+        label: [CONV ONLY] Custom label for correlation.
     """
-    check_leader()
     
     # Resolve source
     source = await registry.get_endpoint(source_id)
@@ -131,7 +136,6 @@ async def get_test_status(test_id: str) -> dict:
     Args:
         test_id: The global test ID (e.g., G-20260313-ABCD) or a local ID (CONV-XXXX).
     """
-    check_leader()
     try:
         status = await orchestrator.get_status(test_id)
         return status.model_dump()
@@ -147,7 +151,6 @@ async def stop_test(test_id: str) -> dict:
     Args:
         test_id: The global test ID (e.g., G-20260313-ABCD) or a local ID (CONV-XXXX).
     """
-    check_leader()
     try:
         return await orchestrator.stop_test(test_id)
     except Exception as e:
@@ -163,7 +166,6 @@ async def set_traffic_status(source_id: str, enabled: bool) -> dict:
         source_id: ID of the node.
         enabled: True to start, False to stop.
     """
-    check_leader()
     source = await orchestrator.registry.get_endpoint(source_id)
     if not source:
         return {"error": f"Source {source_id} not found."}
@@ -180,7 +182,6 @@ async def set_traffic_rate(agent_id: str, rate: float) -> dict:
         rate: The delay in seconds between requests (0.1 to 10.0). 
               Lower is faster (0.1 = Turbo, 10.0 = Slow).
     """
-    check_leader()
     source = await orchestrator.registry.get_endpoint(agent_id)
     if not source:
         return {"error": f"Agent {agent_id} not found."}
@@ -202,7 +203,6 @@ async def set_voice_status(source_id: str, enabled: bool) -> dict:
         source_id: ID of the node (must be kind='fabric')
         enabled: True to start, False to stop
     """
-    check_leader()
     source = await registry.get_endpoint(source_id)
     if not source:
         return {"error": f"Node '{source_id}' not found."}
@@ -221,7 +221,6 @@ async def get_diagnostics(agent_id: str) -> dict:
     Args:
         agent_id: ID of the node.
     """
-    check_leader()
     return await orchestrator.get_agent_dashboard(agent_id)
 
 
@@ -234,7 +233,6 @@ async def get_app_score(agent_id: str, app_name: str) -> dict:
         agent_id: ID of the node.
         app_name: Name of the application (e.g., 'teams', 'zoom', 'webex', 'teams.microsoft.com').
     """
-    check_leader()
     data = await orchestrator.get_agent_dashboard(agent_id)
     if "error" in data:
         return data
@@ -313,7 +311,6 @@ async def run_security_probe(agent_id: str, probe_type: str, target: str) -> dic
         target: The domain, URL, or Scenario ID to test.
                 For 'threat', you can use 'STIGIX-EICAR-01' or a direct file URL.
     """
-    check_leader()
     return await orchestrator.trigger_security_test(agent_id, probe_type, target)
 
 
@@ -325,7 +322,6 @@ async def list_vyos_routers(agent_id: str) -> List[dict]:
     Args:
         agent_id: ID of the Stigix node managing the VyOS routers (e.g., 'Raspi4-Ubuntu').
     """
-    check_leader()
     return await orchestrator.list_vyos_routers(agent_id)
 
 
@@ -337,7 +333,6 @@ async def list_vyos_scenarios(agent_id: str) -> List[dict]:
     Args:
         agent_id: ID of the Stigix node (e.g., 'BR1-Ubuntu').
     """
-    check_leader()
     return await orchestrator.list_vyos_sequences(agent_id)
 
 
@@ -350,7 +345,6 @@ async def run_vyos_scenario(agent_id: str, scenario_id: str) -> dict:
         agent_id: ID of the Stigix node.
         scenario_id: The ID of the sequence to run (e.g., 'failover-paris').
     """
-    check_leader()
     return await orchestrator.run_vyos_sequence(agent_id, scenario_id)
 
 
@@ -363,7 +357,6 @@ async def get_vyos_timeline(agent_id: str, limit: int = 20) -> List[dict]:
         agent_id: ID of the Stigix node.
         limit: Number of recent actions to fetch (default 20).
     """
-    check_leader()
     return await orchestrator.get_vyos_history(agent_id, limit)
 
 
@@ -378,7 +371,6 @@ async def set_vyos_scenario_status(agent_id: str, scenario_id: str, enabled: boo
         scenario_id: The ID of the sequence/scenario (e.g., 'seq-12345').
         enabled: True to enable/start, False to disable/stop.
     """
-    check_leader()
     return await orchestrator.set_vyos_scenario_status(agent_id, scenario_id, enabled)
 
 
@@ -391,7 +383,6 @@ async def get_dem_summary(agent_id: str) -> dict:
     Args:
         agent_id: ID of the Stigix node.
     """
-    check_leader()
     return await orchestrator.get_dem_stats(agent_id)
 
 

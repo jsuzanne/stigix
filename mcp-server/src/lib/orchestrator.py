@@ -33,6 +33,29 @@ class TestOrchestrator:
         }
         return jwt.encode(payload, self.jwt_secret, algorithm="HS256")
 
+    def _validate_target_capabilities(self, target: StigixEndpoint, profile: str, is_xfr: bool, is_conv: bool, is_voice: bool):
+        """Ensures the target endpoint is technically capable of the requested test."""
+        caps = [c.lower() for c in target.capabilities]
+        
+        if is_xfr:
+            # XFR requires an XFR server (managed Stigix node or dedicated XFR target)
+            if "xfr-target" not in caps and target.kind != "fabric":
+                raise ValueError(f"Target {target.id} ({target.kind}) does not support XFR speedtests. Use a Fabric node or a dedicated XFR target.")
+        
+        elif is_conv:
+            # Convergence probes require the internal probe daemon (only on Fabric nodes)
+            if target.kind != "fabric":
+                raise ValueError(f"Target {target.id} ({target.kind}) does not support Convergence probes. This profile requires a Stigix Fabric endpoint.")
+        
+        elif is_voice:
+            # Voice requires a Voice Echo server (only on Fabric nodes or specific targets)
+            if "voice" not in caps and target.kind != "fabric":
+                raise ValueError(f"Target {target.id} ({target.kind}) does not support Voice simulation. This profile requires a Stigix Fabric endpoint.")
+        
+        elif "iot" in profile.lower():
+            if "iot" not in caps and target.kind != "fabric":
+                raise ValueError(f"Target {target.id} ({target.kind}) does not support IoT simulation.")
+
     async def run_tests(
         self, 
         source: StigixEndpoint, 
@@ -54,6 +77,11 @@ class TestOrchestrator:
         # Determine test type
         is_convergence_profile = any(k in profile.lower() for k in ["conv", "failover", "path", "probe"])
         is_xfr_profile = any(k in profile.lower() for k in ["xfr", "speedtest", "throughput"])
+        is_voice_profile = "voice" in profile.lower()
+
+        # Validate capabilities for ALL targets before starting any test
+        for target in targets:
+            self._validate_target_capabilities(target, profile, is_xfr_profile, is_convergence_profile, is_voice_profile)
         
         # Convert duration (e.g., '10s') to seconds
         duration_sec = 10
