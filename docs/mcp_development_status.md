@@ -27,24 +27,40 @@ L'intégration MCP a été considérablement enrichie et fiabilisée pour offrir
 ### 4. Simulation de Trafic (Voix & Data)
 - **API Traffic/Voice** : Implémentation de commandes Start/Stop pour le bruit de fond applicatif (`set_traffic_status`) et pour la simulation de flux voix QoS (`set_voice_status`).
 
-### 5. Clarté Cognitive pour l'IA
-- Refonte des `docstrings` des outils Python (`server.py`). Les arguments sont maintenant catégorisés par profil (ex: `[XFR ONLY]`, `[CONV ONLY]`) pour empêcher Claude de confondre les paramètres d'un speedtest avec ceux d'une convergence.
+### 6. Documentation Technique & API
+- **API Reference (`API_REFERENCE.md`)** : Création d'un guide technique listant tous les endpoints HTTP consommés par le MCP (XFR, Convergence, Voix, Traffic).
+- **Scan Exhaustif (`BACKEND_ROUTES_DUMP.md`)** : Extraction automatique de l'intégralité des routes (160+) du backend Stigix pour donner une visibilité totale aux développeurs.
 
 ## 🚧 Outils MCP Actuellement Disponibles
 
 | Nom de l'Outil | Description |
 | :--- | :--- |
-| `list_endpoints` | Récupère la topologie (routeurs, serveurs) et leur statut. |
-| `run_test` | Lance une sonde XFR (durée fixe, débit max) ou de Convergence (flux continu pps). |
-| `stop_test` | Arrête manuellement un test en cours (requis pour la convergence). |
-| `get_test_status`| Remonte les données en direct ou finales d'un test (ID `G-...` ou natif `XFR-...`). |
-| `set_traffic_status` | Active/Désactive la génération de trafic applicatif de fond. |
+| `list_endpoints` | Récupère la topologie (routeurs, serveurs) et leur statut via le Registry Cloudflare. |
+| `run_test` | Lance une sonde XFR (vitesse) ou de Convergence (failover continu). |
+| `stop_test` | Arrête un test et récupère les métriques finales stabilisées. |
+| `get_test_status`| Remonte les données en direct ou historiques d'un test. |
+| `set_traffic_status` | Active/Désactive la génération de trafic applicatif (SaaS). |
 | `set_voice_status` | Active/Désactive la simulation d'appels voix (QoS). |
 
-## 🔜 Ce qu'il reste à faire (To-Do)
+## 🔜 Phase d'Enrichissement : Diagnostics Globaux & Sécurité (En cours)
 
-- [ ] **Tests de Sécurité / Connectivité** : Implémenter le support pour les profils `security` et `connectivity` dans `orchestrator.py` afin de couvrir tous les types de tests disponibles.
-- [ ] **Consultation d'Historique** : Ajouter un outil `get_endpoint_history` permettant à l'IA de lister et analyser de manière autonome les derniers tests (XFR, CONV) exécutés sur un nœud donné.
-- [ ] **Diagnostics Avancés (Routage)** : Créer des outils de lecture des tables de routage (ex: via FRR ou `ip route`) pour que l'IA puisse diagnostiquer l'origine exacte d'un problème de connectivité signalé par les tests.
-- [ ] **Affinage des Erreurs** : Améliorer les retours d'erreurs HTTP (4xx/5xx) du `registry` et de l'`orchestrator` pour qu'ils contiennent plus de contexte utile pour l'agent IA.
-- [ ] **CI / Déploiement** : Intégrer les tests unitaires ou de validation du serveur MCP dans le pipeline GitHub Actions (en cohérence avec `DOC_CI_CD.md`).
+L'objectif est d'utiliser le `dashboard-data` du backend pour répondre à des questions complexes sur la performance "vécue" par les applications.
+
+### Nouvelles Capacités ciblées :
+- **Score de Performance Applicative** : Calculer le taux de succès (success vs errors) pour des apps spécifiques comme Teams, Zoom ou Webex.
+- **État Global du Système** : Interroger le CPU, le débit bit/s des conteneurs et le statut VoIP d'un seul coup.
+- **Tests de Sécurité Natifs** : Lancer et analyser des blocages DNS (Type Abortion), URL (Catégories) ou de Menaces (EICAR).
+
+### 📝 Exemples de questions tests pour l'IA :
+- *"Quel est le taux de réussite (success rate) de Microsoft Teams sur le node Hetzner ?"*
+- *"Est-ce que le trafic voix est actuellement démarré sur Paris ?"*
+- *"Lance un test de sécurité DNS pour 'abortion.com' sur London et confirme s'il est bloqué."*
+- *"Donne-moi le score MOS moyen des derniers appels voix sur le Hub."*
+- *"Quel est le score global de performance du node Raspi4 ?"*
+
+## Ce qu'il reste à faire (To-Do)
+
+- [ ] **Implémentation `get_dashboard_stats`** : Nouveau tool MCP pour agréger toutes les métriques d'un nœud.
+- [ ] **Implémentation `run_security_probe`** : Tool pour lancer les tests DNS/URL/EICAR.
+- [ ] **Affinage des Erreurs** : Améliorer les retours d'erreurs pour l'agent IA.
+- [ ] **CI / Déploiement** : Intégrer les tests unitaires du serveur MCP dans GitHub Actions.

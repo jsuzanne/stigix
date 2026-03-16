@@ -349,3 +349,54 @@ class TestOrchestrator:
                 "message": "Stop command sent, but timed out waiting for final metrics from backend. Check status later.",
                 "raw_response": response.json()
             }
+
+    async def get_agent_dashboard(self, agent_id: str) -> Dict[str, Any]:
+        """Fetch full dashboard data for a specific agent."""
+        agent = await self.registry.get_agent_by_id(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+            
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        url = f"{agent['url']}/api/admin/system/dashboard-data"
+        
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                logger.error(f"Failed to fetch dashboard for {agent_id}: {e}")
+                return {"error": str(e)}
+
+    async def trigger_security_test(self, agent_id: str, test_type: str, target: str) -> Dict[str, Any]:
+        """Trigger a security test (DNS, URL, or Threat)."""
+        agent = await self.registry.get_agent_by_id(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+            
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        
+        # Route mapping
+        if test_type == "dns":
+            url = f"{agent['url']}/api/security/dns-test"
+            payload = {"domain": target, "testName": "MCP Security Probe"}
+        elif test_type == "url":
+            url = f"{agent['url']}/api/security/url-test"
+            payload = {"url": target, "category": "MCP Diagnostic"}
+        elif test_type == "threat":
+            url = f"{agent['url']}/api/security/threat-test"
+            if target.startswith("STIGIX-"): # Scenario ID
+                payload = {"scenarioId": target}
+            else:
+                payload = {"endpoint": target}
+        else:
+            return {"error": f"Unsupported security test type: {test_type}"}
+            
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                logger.error(f"Security test {test_type} failed for {agent_id}: {e}")
+                return {"error": str(e)}

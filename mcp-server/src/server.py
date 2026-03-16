@@ -200,6 +200,77 @@ async def set_voice_status(source_id: str, enabled: bool) -> dict:
         return {"error": str(e)}
 
 
+@mcp.tool()
+async def get_diagnostics(agent_id: str) -> dict:
+    """
+    Fetch the full diagnostic dashboard for a node (CPU, Bitrate, App Stats, Voice, Peers).
+    
+    Args:
+        agent_id: ID of the node.
+    """
+    check_leader()
+    return await orchestrator.get_agent_dashboard(agent_id)
+
+
+@mcp.tool()
+async def get_app_score(agent_id: str, app_name: str) -> dict:
+    """
+    Calculate the success/error rate for a specific application on a node.
+    
+    Args:
+        agent_id: ID of the node.
+        app_name: Name of the application (e.g., 'teams', 'zoom', 'webex', 'teams.microsoft.com').
+    """
+    check_leader()
+    data = await orchestrator.get_agent_dashboard(agent_id)
+    if "error" in data:
+        return data
+        
+    stats = data.get("stats", {})
+    req_by_app = stats.get("requests_by_app", {})
+    err_by_app = stats.get("errors_by_app", {})
+    
+    # Try fuzzy matching
+    target_key = None
+    app_lower = app_name.lower()
+    for key in req_by_app.keys():
+        if app_lower in key.lower():
+            target_key = key
+            break
+            
+    if not target_key:
+        return {"error": f"Application '{app_name}' not found in stats. Available: {list(req_by_app.keys())[:5]}..."}
+        
+    requests = req_by_app.get(target_key, 0)
+    errors = err_by_app.get(target_key, 0)
+    success = requests - errors
+    rate = (success / requests * 100) if requests > 0 else 0
+    
+    return {
+        "agent": agent_id,
+        "app": target_key,
+        "total_requests": requests,
+        "errors": errors,
+        "success_rate": f"{rate:.2f}%",
+        "status": "Healthy" if rate > 95 else "Degraded" if rate > 50 else "Critical"
+    }
+
+
+@mcp.tool()
+async def run_security_probe(agent_id: str, probe_type: str, target: str) -> dict:
+    """
+    Launch a security test to check for policy enforcement (DNS, URL Filtering, or Threat/AV).
+    
+    Args:
+        agent_id: ID of the node.
+        probe_type: 'dns' (domain), 'url' (full url), or 'threat' (malware/EICAR).
+        target: The domain, URL, or Scenario ID to test.
+                For 'threat', you can use 'STIGIX-EICAR-01' or a direct file URL.
+    """
+    check_leader()
+    return await orchestrator.trigger_security_test(agent_id, probe_type, target)
+
+
 # -----------------------------------------------------------------------------
 # Main Entry Point
 # -----------------------------------------------------------------------------
