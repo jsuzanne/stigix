@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.1-patch.204] - 2026-03-16
+### Changed
+- **MCP Server**: Enabled **Distributed Orchestration**. Removed the `check_leader()` safety check, allowing n'importe quel nœud (Leader ou Peer) d'agir comme point d'entrée pour Claude Desktop. 🌐✨
+- **DevOps**: Enforced `MCP_PORT=3100` via environment variables for more reliable external access. 🔌
+
 ## [v1.2.1-patch.203] - 2026-03-16
 ### Added
 - **MCP Server**: Production-ready deployment to Stigix instances via `docker-compose.yml`. Supports SSE transport on port 3100. 🐳
