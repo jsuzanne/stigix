@@ -235,60 +235,40 @@ export class ConnectivityLogger {
                 .reverse(); // Newest first
 
             const allResults: ConnectivityResult[] = [];
+            const MAX_STALE_STREAK = 10;
             
             for (const file of logFiles) {
                 const filePath = path.join(this.logDir, file);
                 
-                // Read file line by line using a buffer to stay memory efficient
-                // while being able to stop early easily.
-                const fileStream = fs.createReadStream(filePath, { encoding: 'utf8' });
-                const rl = readline.createInterface({
-                    input: fileStream,
-                    terminal: false
-                });
+                // Using sync read for performance in this specific tight loop case
+                // as splitting and reversing large strings is actually very fast in V8
+                // compared to asynchronous line-by-line overhead for millions of lines.
+                const fileContent = fs.readFileSync(filePath, 'utf8');
+                const lines = fileContent.split('\n').filter(l => l.trim()).reverse();
 
-                const fileLines: ConnectivityResult[] = [];
-                for await (const line of rl) {
-                    if (!line.trim()) continue;
+                let staleStreak = 0;
+                for (const line of lines) {
                     try {
                         const result = JSON.parse(line) as ConnectivityResult;
                         
-                        // Skip if too old
+                        // Since lines are newest-first, first stale record means the rest might be too
                         if (minTimestamp && result.timestamp < minTimestamp) {
+                            staleStreak++;
+                            if (staleStreak >= MAX_STALE_STREAK) break;
                             continue;
                         }
 
-                        fileLines.push(result);
+                        staleStreak = 0;
+                        allResults.push(result);
                         
-                        // If we have a maxResults limit and it's a single file we are reading, 
-                        // we can't easily stop early because files are oldest-to-newest.
-                        // But we can limit the local buffer.
-                        if (maxResults && fileLines.length > maxResults) {
-                            fileLines.shift(); // Keep newest N lines
+                        if (maxResults && allResults.length >= maxResults) {
+                            return allResults;
                         }
                     } catch (e) { }
                 }
 
-                // Since we read oldest to newest, reverse to get newest first
-                for (const res of fileLines.reverse()) {
-                    allResults.push(res);
-                    if (maxResults && allResults.length >= maxResults) {
-                        fileStream.destroy();
-                        return allResults;
-                    }
-                }
-
-                // Optimization: if the earliest result in this file is already before our cutoff,
-                // we don't need to look at older files.
-                if (minTimestamp && fileLines.length > 0) {
-                    // fileLines[0] is now the OLDEST after the reverse loop? 
-                    // No, fileLines was reversed into allResults.
-                    // The original fileLines[0] was the oldest line from the file.
-                    // But we used .reverse() in the loop.
-                    // Let's just check the last one we added to fileLines before reverse.
-                }
-                
-                fileStream.destroy();
+                // If last batch of results from this file were all stale, older files will be too
+                if (minTimestamp && staleStreak >= MAX_STALE_STREAK) break;
             }
             return allResults;
         } catch (error) {
