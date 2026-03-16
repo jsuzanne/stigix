@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import readline from 'readline';
 import { promisify } from 'util';
 import { log } from './utils/logger.js';
 
@@ -25,6 +26,7 @@ export interface TestResult {
         error?: string;
         executionTime?: number;
         resolvedIp?: string;
+        slsDiagnostic?: any;
     };
 }
 
@@ -276,26 +278,34 @@ export class TestLogger {
     private async readAllResults(): Promise<TestResult[]> {
         try {
             const files = await readdir(this.logDir);
-            const logFiles = files.filter(f => f.startsWith('test-results') && f.endsWith('.jsonl'));
+            const logFiles = files
+                .filter(f => f.startsWith('test-results') && f.endsWith('.jsonl'))
+                .sort()
+                .reverse(); // Newest first
 
             const allResults: TestResult[] = [];
 
             for (const file of logFiles) {
                 const filePath = path.join(this.logDir, file);
-                const content = await readFile(filePath, 'utf8');
-                const lines = content.trim().split('\n').filter(l => l.length > 0);
+                
+                const fileStream = fs.createReadStream(filePath);
+                const rl = readline.createInterface({
+                    input: fileStream,
+                    terminal: false
+                });
 
-                let corruptionFound = false;
-                for (const line of lines) {
+                const fileLines: TestResult[] = [];
+                for await (const line of rl) {
+                    if (!line.trim()) continue;
                     try {
                         const result = JSON.parse(line);
-                        allResults.push(result);
-                    } catch (e) {
-                        corruptionFound = true;
-                    }
+                        fileLines.push(result);
+                    } catch (e) { }
                 }
-                if (corruptionFound) {
-                    log('TEST_LOGGER', `Found and skipped corrupted JSON lines in ${file}`, 'warn');
+
+                fileLines.reverse();
+                for (const res of fileLines) {
+                    allResults.push(res);
                 }
             }
 

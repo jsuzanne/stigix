@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Play, AlertTriangle, CheckCircle, XCircle, Clock, Download, Trash2, ChevronDown, ChevronUp, Copy, Filter, Link, Upload, RefreshCcw, ShieldAlert, Globe, ListTree, RefreshCw, MoreVertical, Settings, Database, Server, Info, Search, History as HistoryIcon } from 'lucide-react';
+import { Shield, Play, AlertTriangle, CheckCircle, XCircle, Clock, Download, Trash2, ChevronDown, ChevronUp, Copy, Filter, Link, Upload, RefreshCcw, ShieldAlert, Globe, ListTree, RefreshCw, MoreVertical, Settings, Database, Server, Info, Search, History as HistoryIcon, Zap, ChevronRight } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
 import { URL_CATEGORIES, DNS_TEST_DOMAINS } from '../shared/security-categories';
@@ -1901,6 +1901,61 @@ export default function Security({ token }: SecurityProps) {
                                                 </div>
                                                 <span className="text-blue-600 dark:text-blue-400 font-black uppercase text-[10px] tracking-widest block mb-2">Disposition Reasoning</span>
                                                 <p className="text-sm text-text-primary font-bold leading-relaxed uppercase tracking-tight">{selectedTest.details.reason}</p>
+                                            </div>
+                                        )}
+
+                                        {selectedTest.details.slsDiagnostic && (
+                                            <div className="mt-8 p-6 bg-slate-900/50 border border-slate-700/50 rounded-2xl relative overflow-hidden shadow-2xl">
+                                                <div className="absolute top-0 right-0 p-4 opacity-20">
+                                                    <Shield size={60} className="text-slate-400" />
+                                                </div>
+                                                <div className="flex items-center gap-3 mb-6">
+                                                    <div className="p-2 bg-blue-600/20 rounded-lg border border-blue-500/30">
+                                                        <Zap size={18} className="text-blue-500" />
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-blue-500 font-black uppercase text-[10px] tracking-widest block">Cloud Diagnostic</span>
+                                                        <h4 className="text-sm font-black text-text-primary uppercase tracking-tight">Strata Logging Service (SLS)</h4>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Mathed Rule</span>
+                                                        <span className="text-xs font-bold text-text-primary">{selectedTest.details.slsDiagnostic.rule || 'Unknown Rule'}</span>
+                                                    </div>
+                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Security Profile</span>
+                                                        <span className="text-xs font-bold text-text-primary">{selectedTest.details.slsDiagnostic.security_profile || 'None'}</span>
+                                                    </div>
+                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Application ID</span>
+                                                        <span className="text-xs font-mono font-bold text-blue-500 uppercase">{selectedTest.details.slsDiagnostic.app || 'Any'}</span>
+                                                    </div>
+                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">URL Category</span>
+                                                        <span className="text-xs font-bold text-text-primary uppercase">{selectedTest.details.slsDiagnostic.category || 'N/A'}</span>
+                                                    </div>
+                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Zone Insight</span>
+                                                        <span className="text-[10px] font-bold text-text-primary uppercase flex items-center gap-2">
+                                                            {selectedTest.details.slsDiagnostic.source_zone || '?'}
+                                                            <ChevronRight size={12} className="text-text-muted" />
+                                                            {selectedTest.details.slsDiagnostic.dest_zone || '?'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Cloud Action</span>
+                                                        <span className={twMerge(
+                                                            "px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border",
+                                                            selectedTest.details.slsDiagnostic.action === 'allow' 
+                                                                ? "bg-green-600/10 text-green-600 border-green-500/20" 
+                                                                : "bg-red-600/10 text-red-600 border-red-500/20"
+                                                        )}>
+                                                            {selectedTest.details.slsDiagnostic.action || 'Unknown'}
+                                                        </span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
                                     </div>

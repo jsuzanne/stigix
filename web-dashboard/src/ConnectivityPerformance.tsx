@@ -265,7 +265,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                 lastScore: last?.score || 0,
                 avgScore: reachable.length > 0 ? Math.round(reachable.reduce((acc, r) => acc + r.score, 0) / reachable.length) : 0,
                 avgLatency: reachable.length > 0 ? Math.round(reachable.reduce((acc, r) => acc + r.metrics.total_ms, 0) / reachable.length) : 0,
-                maxLatency: reachable.length > 0 ? Math.max(...reachable.map(r => r.metrics.total_ms)) : 0,
+                maxLatency: reachable.length > 0 ? reachable.reduce((max, r) => Math.max(max, r.metrics.total_ms), reachable[0].metrics.total_ms) : 0,
                 checks: endpointResults.length,
                 successRate: Math.round((reachable.length / endpointResults.length) * 100),
                 lastResult: last,

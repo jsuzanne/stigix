@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     RefreshCw, Download, AlertCircle, CheckCircle, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
-    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle
+    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Favicon } from './components/Favicon';
@@ -103,7 +103,7 @@ const BetaBadge = ({ className }: { className?: string }) => (
 );
 
 export default function Settings({ token }: { token: string }) {
-    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp'>('distribution');
+    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'strata'>('distribution');
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -148,6 +148,7 @@ export default function Settings({ token }: { token: string }) {
     // Convergence State
     const [convergenceThresholds, setConvergenceThresholds] = useState({ good: 1, degraded: 5, critical: 10 });
     const [mcpStatus, setMcpStatus] = useState<{ online: boolean; status?: string; transport?: string; url?: string; error?: string } | null>(null);
+    const [slsConfig, setSlsConfig] = useState<any>(null);
 
     const showSuccess = (msg: string) => {
         setSuccessMsg(msg);
@@ -258,6 +259,16 @@ export default function Settings({ token }: { token: string }) {
                 .catch(e => console.error("Failed to fetch registry status", e));
         };
         fetchRegistryStatus();
+
+        // Fetch SLS Config
+        fetch('/api/security/config', { headers: authHeaders })
+            .then(r => r.json())
+            .then(data => {
+                if (data && data.sls_config) {
+                    setSlsConfig(data.sls_config);
+                }
+            })
+            .catch(() => { });
 
         const fetchMcpStatus = () => {
             fetch('/api/admin/system/mcp-status', { headers: authHeaders })
@@ -762,6 +773,7 @@ export default function Settings({ token }: { token: string }) {
         { id: 'targets', label: 'Targets' },
         { id: 'registry', label: 'Target Controller', beta: true },
         { id: 'mcp', label: 'MCP Server', beta: true },
+        { id: 'strata', label: 'Strata Logging', beta: true },
     ];
 
     return (
@@ -2200,6 +2212,171 @@ export default function Settings({ token }: { token: string }) {
                         </div>
                     </div>
                 )}
+
+            {/* ─── Strata Logging Tab ─────────────────────────────────────── */}
+            {activeTab === 'strata' && (
+                <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 font-bold">
+                            <Database size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-black text-text-primary tracking-tight">Strata Logging Service (SLS)</h2>
+                            <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Enrich security test history with Prisma Access diagnostics</p>
+                        </div>
+                    </div>
+
+                    {!slsConfig ? (
+                        <div className="text-center text-text-muted text-xs font-bold tracking-widest animate-pulse py-12">Loading SLS Configuration...</div>
+                    ) : (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div className="space-y-6">
+                                <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-blue-600/10 rounded-lg text-blue-500">
+                                                <Power size={18} />
+                                            </div>
+                                            <span className="text-xs font-black text-text-primary uppercase tracking-wider">Service Status</span>
+                                        </div>
+                                        <button
+                                            onClick={() => setSlsConfig({ ...slsConfig, enabled: !slsConfig.enabled })}
+                                            className={cn(
+                                                "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none",
+                                                slsConfig.enabled ? "bg-blue-600" : "bg-card-hover"
+                                            )}
+                                        >
+                                            <span className={cn(
+                                                "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                                                slsConfig.enabled ? "translate-x-6" : "translate-x-1"
+                                            )} />
+                                        </button>
+                                    </div>
+
+                                    <div className="grid gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Tenant Service Group ID (TSG ID)</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. 777003"
+                                                value={slsConfig.tsg_id}
+                                                onChange={e => setSlsConfig({ ...slsConfig, tsg_id: e.target.value })}
+                                                className="w-full bg-card border border-border rounded-xl px-4 py-3 text-xs font-mono outline-none focus:ring-1 focus:ring-blue-500 transition-all font-black"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Client ID</label>
+                                            <input
+                                                type="text"
+                                                placeholder="Enter OAuth2 Client ID"
+                                                value={slsConfig.client_id}
+                                                onChange={e => setSlsConfig({ ...slsConfig, client_id: e.target.value })}
+                                                className="w-full bg-card border border-border rounded-xl px-4 py-3 text-xs font-mono outline-none focus:ring-1 focus:ring-blue-500 transition-all font-black"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Client Secret</label>
+                                            <div className="relative">
+                                                <input
+                                                    type="password"
+                                                    placeholder="••••••••••••••••"
+                                                    value={slsConfig.client_secret || ''}
+                                                    onChange={e => setSlsConfig({ ...slsConfig, client_secret: e.target.value })}
+                                                    className="w-full bg-card border border-border rounded-xl px-4 py-3 text-xs font-mono outline-none focus:ring-1 focus:ring-blue-500 transition-all pr-10 font-black"
+                                                />
+                                                <Lock size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted opacity-40" />
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-4">
+                                            <div className="flex-1 space-y-2">
+                                                <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Region</label>
+                                                <select
+                                                    value={slsConfig.region}
+                                                    onChange={e => setSlsConfig({ ...slsConfig, region: e.target.value })}
+                                                    className="w-full bg-card border border-border rounded-xl px-4 py-3 text-xs font-black tracking-widest outline-none focus:ring-1 focus:ring-blue-500 transition-all appearance-none"
+                                                >
+                                                    <option value="prd">Production (PRD)</option>
+                                                    <option value="stg">Staging (STG)</option>
+                                                </select>
+                                            </div>
+                                            <div className="flex-1 space-y-2">
+                                                <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Auto-Enrich</label>
+                                                <div 
+                                                    onClick={() => setSlsConfig({ ...slsConfig, auto_enrich: !slsConfig.auto_enrich })}
+                                                    className={cn(
+                                                        "w-full h-[46px] flex items-center justify-between px-4 border rounded-xl cursor-pointer transition-all",
+                                                        slsConfig.auto_enrich ? "bg-blue-600/10 border-blue-500/30 text-blue-500 font-black" : "bg-card border-border text-text-muted font-black"
+                                                    )}
+                                                >
+                                                    <span className="text-[10px] uppercase">Enabled</span>
+                                                    {slsConfig.auto_enrich && <CheckCircle2 size={14} />}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={async () => {
+                                            setSaving(true);
+                                            try {
+                                                const res = await fetch('/api/security/config', {
+                                                    method: 'POST',
+                                                    headers: authHeaders,
+                                                    body: JSON.stringify({ sls_config: slsConfig })
+                                                });
+                                                if (res.ok) showSuccess('SLS configuration saved');
+                                                else setErrorMsg('Failed to save SLS config');
+                                            } catch (err) { setErrorMsg('Network error'); }
+                                            finally { setSaving(false); }
+                                        }}
+                                        disabled={saving}
+                                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black tracking-[0.2em] transition-all shadow-lg shadow-blue-900/20 disabled:opacity-50"
+                                    >
+                                        {saving ? <RefreshCw className="animate-spin inline mr-2" size={14} /> : 'Save SLS Configuration'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div className="bg-blue-600/5 border border-blue-500/10 rounded-2xl p-6 space-y-4">
+                                    <div className="flex items-center gap-2 text-blue-500">
+                                        <Info size={18} />
+                                        <h3 className="text-xs font-black uppercase tracking-widest">About Strata Logging Integration</h3>
+                                    </div>
+                                    <p className="text-[11px] font-bold text-text-secondary leading-relaxed">
+                                        Strata Logging Service (SLS) provides deep insights into network traffic and security threats processed by Prisma Access and Prisma SD-WAN.
+                                    </p>
+                                    <ul className="text-[10px] font-bold text-text-muted space-y-2 pl-4">
+                                        <li className="list-disc">Automatically queries traffic logs after each security test.</li>
+                                        <li className="list-disc">Identifies specific security rules and profiles applied to the flow.</li>
+                                        <li className="list-disc">Provides detailed reasons for blocked or allowed traffic (e.g. App-ID, Threat ID).</li>
+                                        <li className="list-disc">Enriches the Telemetry Diagnostic view in the Security dashboard.</li>
+                                    </ul>
+                                    <div className="pt-2">
+                                        <p className="text-[9px] text-text-muted italic opacity-60 font-black">
+                                            Requires an OAuth2 Client with <code className="bg-card px-1 rounded">logging_service:read</code> scope.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="bg-card-secondary/20 border border-border rounded-2xl p-6 flex items-center justify-between">
+                                    <div className="flex items-center gap-3 font-black">
+                                        <Shield size={24} className="text-blue-500" />
+                                        <div>
+                                            <div className="text-[10px] text-text-primary uppercase tracking-widest">Global Security Context</div>
+                                            <p className="text-[11px] text-text-muted">Managed by TSG: <span className="font-mono text-text-secondary">{slsConfig.tsg_id || 'unconfigured'}</span></p>
+                                        </div>
+                                    </div>
+                                    <ShieldAlert size={24} className="opacity-10" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
             </div>
         );
     }

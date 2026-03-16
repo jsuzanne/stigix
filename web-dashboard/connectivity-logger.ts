@@ -211,8 +211,8 @@ export class ConnectivityLogger {
                 httpEndpoints: {
                     total: uniqueHttpEndpoints,
                     avgScore: activeHttpResults.length > 0 ? Math.round(activeHttpResults.reduce((acc, r) => acc + (r.score || 0), 0) / activeHttpResults.length) : 0,
-                    minScore: activeHttpResults.length > 0 ? Math.min(...activeHttpResults.map(r => r.score || 0)) : 0,
-                    maxScore: activeHttpResults.length > 0 ? Math.max(...activeHttpResults.map(r => r.score || 0)) : 0
+                    minScore: activeHttpResults.length > 0 ? activeHttpResults.reduce((min, r) => Math.min(min, r.score || 0), activeHttpResults[0].score || 0) : 0,
+                    maxScore: activeHttpResults.length > 0 ? activeHttpResults.reduce((max, r) => Math.max(max, r.score || 0), activeHttpResults[0].score || 0) : 0
                 },
                 flakyEndpoints,
                 lastCheckTime: allResults.length > 0 ? allResults[0].timestamp : null
@@ -252,31 +252,34 @@ export class ConnectivityLogger {
                     try {
                         const result = JSON.parse(line) as ConnectivityResult;
                         
-                        // If it's too old, we might be able to skip it, but since lines are usually 
-                        // chronological within a file (oldest first), we keep those >= minTimestamp.
+                        // Skip if too old
                         if (minTimestamp && result.timestamp < minTimestamp) {
                             continue;
                         }
+
                         fileLines.push(result);
+                        
+                        // If we have a maxResults limit and it's a single file we are reading, 
+                        // we can't easily stop early because files are oldest-to-newest.
+                        // But we can limit the local buffer.
+                        if (maxResults && fileLines.length > maxResults) {
+                            fileLines.shift(); // Keep newest N lines
+                        }
                     } catch (e) { }
                 }
 
-                // Since files are oldest-to-newest internally, but we want newest-first, 
-                // we reverse the lines we collected from this file.
-                fileLines.reverse();
-                
-                for (const res of fileLines) {
+                for (const res of fileLines.reverse()) {
                     allResults.push(res);
                     if (maxResults && allResults.length >= maxResults) {
                         fileStream.destroy(); // Close stream early
-                        return allResults;
+                        return allResults.slice(0, maxResults);
                     }
                 }
 
-                // If we've hit a file where the newest record is already older than our cutoff,
-                // and the files are reasonably chronological, we could technically stop.
-                // But for safety and because log rotation might overlap days, we continue until we have enough.
-                if (minTimestamp && fileLines.length > 0 && fileLines[0].timestamp < minTimestamp) {
+                // Optimization: if the earliest result in this file is already before our cutoff,
+                // we don't need to look at older files.
+                const oldestInFile = fileLines.length > 0 ? fileLines[fileLines.length - 1].timestamp : null;
+                if (minTimestamp && oldestInFile && oldestInFile <= minTimestamp) {
                     break;
                 }
             }

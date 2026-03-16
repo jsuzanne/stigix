@@ -2873,7 +2873,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
         if (endpoint.type.toLowerCase() === 'http' || endpoint.type.toLowerCase() === 'https') {
             const iface = getInterface();
             const ifaceFlag = (iface && iface !== 'eth0') ? `--interface ${iface}` : '';
-            const curlCmd = `curl -o /dev/null -s -L -w "time_namelookup=%{time_namelookup}\\ntime_connect=%{time_connect}\\ntime_appconnect=%{time_appconnect}\\ntime_starttransfer=%{time_starttransfer}\\ntime_total=%{time_total}\\nhttp_code=%{http_code}\\nremote_ip=%{remote_ip}\\nremote_port=%{remote_port}\\nsize_download=%{size_download}\\nspeed_download=%{speed_download}\\nssl_verify_result=%{ssl_verify_result}\\n" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' --max-time ${Math.floor(endpoint.timeout / 1000)} ${ifaceFlag} "${endpoint.target}"`;
+            const curlCmd = `timeout 15 curl -o /dev/null -s -L -w "time_namelookup=%{time_namelookup}\\ntime_connect=%{time_connect}\\ntime_appconnect=%{time_appconnect}\\ntime_starttransfer=%{time_starttransfer}\\ntime_total=%{time_total}\\nhttp_code=%{http_code}\\nremote_ip=%{remote_ip}\\nremote_port=%{remote_port}\\nsize_download=%{size_download}\\nspeed_download=%{speed_download}\\nssl_verify_result=%{ssl_verify_result}\\n" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' --max-time ${Math.floor(endpoint.timeout / 1000)} ${ifaceFlag} "${endpoint.target}"`;
 
             try {
                 const { stdout } = await execPromise(curlCmd);
@@ -2905,7 +2905,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
         } else if (endpoint.type.toLowerCase() === 'ping') {
             const iface = getInterface();
             const ifaceFlag = (iface && iface !== 'eth0') ? `-I ${iface}` : '';
-            const pingCommand = `ping -c 1 -W ${Math.floor(endpoint.timeout / 1000)} ${ifaceFlag} ${endpoint.target}`;
+            const pingCommand = `timeout 5 ping -c 1 -W ${Math.floor(endpoint.timeout / 1000)} ${ifaceFlag} ${endpoint.target}`;
             const pStart = Date.now();
             try {
                 const { stdout } = await execPromise(pingCommand);
@@ -2918,7 +2918,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
             } catch (e) { }
         } else if (endpoint.type.toLowerCase() === 'tcp') {
             const [ip, port] = endpoint.target.split(':');
-            const ncCommand = `nc -zv -w ${Math.floor(endpoint.timeout / 1000)} ${ip} ${port} 2>&1`;
+            const ncCommand = `timeout 5 nc -zv -w ${Math.floor(endpoint.timeout / 1000)} ${ip} ${port} 2>&1`;
             const tStart = Date.now();
             try {
                 await execPromise(ncCommand);
@@ -2927,7 +2927,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                 result.score = calculateDEMScore(result.endpointType, result.reachable, undefined, result.metrics);
             } catch (e) { }
         } else if (endpoint.type.toLowerCase() === 'dns') {
-            const dnsCommand = `dig +short +time=${Math.floor(endpoint.timeout / 1000)} google.com @${endpoint.target}`;
+            const dnsCommand = `timeout 5 dig +short +time=${Math.floor(endpoint.timeout / 1000)} google.com @${endpoint.target}`;
             const dStart = Date.now();
             try {
                 const { stdout } = await execPromise(dnsCommand);
@@ -2941,7 +2941,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
             const parts = endpoint.target.split(':');
             const host = parts[0];
             const port = parts[1] || '5201';
-            const iperfCmd = `iperf3 -u -c ${host} -p ${port} -b 50k -t 1 -J`;
+            const iperfCmd = `timeout 10 iperf3 -u -c ${host} -p ${port} -b 50k -t 1 -J`;
             const uStart = Date.now();
             try {
                 const { stdout } = await execPromise(iperfCmd);
@@ -4376,7 +4376,14 @@ const DEFAULT_SECURITY_CONFIG = {
         randomSampleSize: 50,
         maxElementsPerRun: 200
     },
-    test_history: []
+    sls_config: {
+        enabled: !!(process.env.PRISMA_SDWAN_CLIENT_ID && process.env.PRISMA_SDWAN_CLIENT_SECRET),
+        tsg_id: process.env.PRISMA_SDWAN_TSGID || '',
+        client_id: process.env.PRISMA_SDWAN_CLIENT_ID || '',
+        client_secret: process.env.PRISMA_SDWAN_CLIENT_SECRET || '',
+        region: (process.env.PRISMA_SDWAN_REGION === 'Germany' || process.env.PRISMA_SDWAN_REGION?.toLowerCase().includes('eu')) ? 'eu' : 'prd',
+        auto_enrich: true
+    }
 };
 
 // Helper: Get security config
@@ -4453,6 +4460,197 @@ const saveSecurityConfig = (config: any) => {
     }
 };
 
+// --- Strata Logging Service (SLS) API Client ---
+
+class SLSClient {
+    private baseUrl: string = 'https://api.paloaltonetworks.com';
+    private authUrl: string = 'https://auth.paloaltonetworks.com/oauth2/access_token';
+    private token: string | null = null;
+    private tokenExpiry: number = 0;
+
+    constructor(private config: any) {
+        if (config.region === 'stg') {
+            this.baseUrl = 'https://api.stg.sase.paloaltonetworks.com';
+            this.authUrl = 'https://auth.stg.paloaltonetworks.com/oauth2/access_token';
+        } else if (config.region === 'eu') {
+            this.baseUrl = 'https://api.eu.sase.paloaltonetworks.com';
+            this.authUrl = 'https://auth.paloaltonetworks.com/oauth2/access_token';
+        } else {
+            this.baseUrl = 'https://api.sase.paloaltonetworks.com';
+            this.authUrl = 'https://auth.paloaltonetworks.com/oauth2/access_token';
+        }
+    }
+
+    private async authenticate(): Promise<boolean> {
+        if (this.token && Date.now() < this.tokenExpiry) return true;
+
+        try {
+            const params = new URLSearchParams();
+            params.append('grant_type', 'client_credentials');
+            params.append('scope', 'logging_service:read');
+
+            const authHeader = Buffer.from(`${this.config.client_id}:${this.config.client_secret}`).toString('base64');
+
+            const response = await fetch(this.authUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Basic ${authHeader}`,
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: params
+            });
+
+            if (!response.ok) {
+                const err = await response.text();
+                log('SLS', `Authentication failed: ${response.status} ${err}`, 'error');
+                return false;
+            }
+
+            const data: any = await response.json();
+            this.token = data.access_token;
+            this.tokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
+            return true;
+        } catch (error) {
+            log('SLS', `Authentication error: ${error}`, 'error');
+            return false;
+        }
+    }
+
+    async queryLogs(query: string, startTime: number, endTime: number): Promise<any[]> {
+        if (!await this.authenticate()) return [];
+
+        try {
+            const response = await fetch(`${this.baseUrl}/logging-service/v2/query`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Content-Type': 'application/json',
+                    'X-PAN-TSG-ID': this.config.tsg_id
+                },
+                body: JSON.stringify({
+                    query,
+                    startTime: Math.floor(startTime / 1000),
+                    endTime: Math.floor(endTime / 1000),
+                    limit: 10
+                })
+            });
+
+            if (!response.ok) {
+                const err = await response.text();
+                log('SLS', `Query failed: ${response.status} ${err}`, 'error');
+                return [];
+            }
+
+            const data: any = await response.json();
+            return data.items || [];
+        } catch (error) {
+            log('SLS', `Query error: ${error}`, 'error');
+            return [];
+        }
+    }
+
+    async getDiagnostic(params: { srcIp: string, dstIp: string, dstPort: number, protocol: string, start: number, end: number }): Promise<any> {
+        // 1. Try Traffic Logs first
+        const protoNum = params.protocol.toLowerCase() === 'tcp' ? 6 : params.protocol.toLowerCase() === 'udp' ? 17 : 1;
+        const trafficQuery = `( addr.src in '${params.srcIp}' ) and ( addr.dst in '${params.dstIp}' ) and ( port.dst eq ${params.dstPort} ) and ( proto eq ${protoNum} )`;
+        
+        const trafficLogs = await this.queryLogs(trafficQuery, params.start - 30000, params.end + 60000);
+        
+        if (trafficLogs.length > 0) {
+            const logEntry = trafficLogs[0];
+            return {
+                action: logEntry.action, // 'allow', 'deny', 'drop', etc.
+                rule: logEntry.rule,
+                rule_uuid: logEntry.rule_uuid,
+                app: logEntry.app,
+                category: logEntry.category,
+                source_zone: logEntry.from,
+                dest_zone: logEntry.to,
+                flags: logEntry.flags,
+                session_end_reason: logEntry.session_end_reason,
+                security_profile: logEntry.security_profile || logEntry.profile,
+                source: 'Strata Logging Service (Traffic)'
+            };
+        }
+
+        // 2. Try Threat Logs if traffic not found or if we want more detail
+        const threatQuery = `( addr.src in '${params.srcIp}' ) and ( addr.dst in '${params.dstIp}' )`;
+        const threatLogs = await this.queryLogs(threatQuery, params.start - 30000, params.end + 60000);
+
+        if (threatLogs.length > 0) {
+            const logEntry = threatLogs[0];
+            return {
+                action: logEntry.action,
+                rule: logEntry.rule,
+                threat_name: logEntry.threat_name,
+                severity: logEntry.severity,
+                category: logEntry.category,
+                security_profile: logEntry.profile,
+                source: 'Strata Logging Service (Threat)'
+            };
+        }
+
+        return null; // No logs found
+    }
+}
+
+/**
+ * Enriches a test result with SLS diagnostics.
+ */
+async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<void> {
+    const config = getSecurityConfig();
+    if (!config.sls_config?.enabled || !config.sls_config?.client_id || !config.sls_config?.client_secret) {
+        return;
+    }
+
+    const sls = new SLSClient(config.sls_config);
+    
+    // Determine dstIp and dstPort from details
+    let dstIp = testResult.details?.resolvedIp || testResult.details?.domain || testResult.details?.url;
+    let dstPort = 80;
+    let protocol = 'tcp';
+
+    if (testResult.type === 'dns') {
+        protocol = 'udp';
+        dstPort = 53;
+        dstIp = testResult.details?.endpoint || '8.8.8.8';
+    } else if (testResult.type === 'url') {
+        dstPort = testResult.name.toLowerCase().includes('https') ? 443 : 80;
+    }
+
+    // Try to extract IP if it was a URL
+    if (dstIp && (dstIp.startsWith('http://') || dstIp.startsWith('https://'))) {
+        try {
+            const url = new URL(dstIp);
+            dstIp = url.hostname;
+        } catch (e) {}
+    }
+
+    if (!srcIp || !dstIp) return;
+
+    log('SLS', `Enriching test ${testResult.id} (${testResult.name}): src=${srcIp}, dst=${dstIp}`);
+
+    const diagnostic = await sls.getDiagnostic({
+        srcIp,
+        dstIp,
+        dstPort,
+        protocol,
+        start: testResult.timestamp,
+        end: testResult.timestamp + 10000 // Look within 10s of execution
+    });
+
+    if (diagnostic) {
+        testResult.details = {
+            ...testResult.details,
+            slsDiagnostic: diagnostic
+        };
+        log('SLS', `Enrichment successful for test ${testResult.id}: ${diagnostic.action} by rule ${diagnostic.rule}`);
+    } else {
+        log('SLS', `No diagnostic logs found for test ${testResult.id}`);
+    }
+}
+
+
 // Helper: Add test result to history
 const addTestResult = async (testType: string, testName: string, result: any, testId?: number, details?: any) => {
     const config = getSecurityConfig();
@@ -4490,6 +4688,21 @@ const addTestResult = async (testType: string, testName: string, result: any, te
         status: result.status || 'error',
         details: details || { ...result }
     };
+
+    // 4. Enrich with SLS if enabled
+    if (config.sls_config?.enabled && config.sls_config?.auto_enrich) {
+        try {
+            // We need srcIp for enrichment. In AIO container it's usually the external IP or interface IP.
+            const srcIp = process.env.STIGIX_IP || 'auto'; // Fallback to auto-detection in SLSClient if needed
+            if (srcIp === 'auto') {
+                // Future: add auto IP detection
+            }
+            await enrichWithSLS(testResult, srcIp);
+        } catch (e) {
+            log('SLS', `Enrichment error: ${e}`, 'warn');
+        }
+    }
+
     await testLogger.logTest(testResult);
 
     return id;
@@ -6094,9 +6307,14 @@ function startLogStreaming() {
     
     tailProcess.stdout.on('data', (data) => {
         const lines = data.toString().split('\n').filter((l: string) => l.trim());
-        lines.forEach((line: string) => {
-            io.emit('system:log', line);
-        });
+        if (lines.length > 50) {
+            // If too many lines at once, send in batches or just the last few to avoid overwhelming
+            io.emit('system:log:batch', lines.slice(-50));
+        } else {
+            lines.forEach((line: string) => {
+                io.emit('system:log', line);
+            });
+        }
     });
 
     tailProcess.stderr.on('data', (data) => {
