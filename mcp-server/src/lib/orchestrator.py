@@ -381,10 +381,12 @@ class TestOrchestrator:
         # Route mapping
         if test_type == "dns":
             url = f"{agent.api_base_url}/api/security/dns-test"
-            payload = {"domain": target, "testName": "MCP Security Probe"}
+            # Label: domain (MCP) to show target in history
+            payload = {"domain": target, "testName": f"{target} (MCP)"}
         elif test_type == "url":
             url = f"{agent.api_base_url}/api/security/url-test"
-            payload = {"url": target, "category": "MCP Diagnostic"}
+            # Label: target (MCP) to show target in history
+            payload = {"url": target, "category": f"{target} (MCP)"}
         elif test_type == "threat":
             url = f"{agent.api_base_url}/api/security/threat-test"
             if target.startswith("STIGIX-"): # Scenario ID
