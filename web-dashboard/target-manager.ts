@@ -66,7 +66,14 @@ export class TargetManager {
     constructor(configDir: string, baseUrl?: string) {
         this.configPath = path.join(configDir, 'target-scenarios.json');
         // Logic: 1. Constructor arg, 2. Env var, 3. Default production fallback
-        this.baseUrl = baseUrl || process.env.STIGIX_TARGET_BASE_URL || 'https://stigix-target.jlsuzanne.workers.dev';
+        let rawBase = baseUrl || process.env.STIGIX_TARGET_BASE_URL || 'https://stigix-target.jlsuzanne.workers.dev';
+        
+        // Robustness: ensure protocol exists
+        if (rawBase && !rawBase.startsWith('http')) {
+            rawBase = `https://${rawBase}`;
+        }
+        
+        this.baseUrl = rawBase;
         this.sharedKey = process.env.STIGIX_TARGET_SHARED_KEY || '';
         this.loadScenarios();
     }
