@@ -1064,7 +1064,14 @@ export default function Settings({ token }: { token: string }) {
                                                 <div className="text-[11px] font-black text-text-primary tracking-tight">{probe.name}</div>
                                                 <div className="text-[10px] text-text-muted font-mono tracking-tighter truncate max-w-[140px] opacity-70">
                                                     {probe.type === 'CLOUD'
-                                                        ? (cloudScenarios.find(s => s.id === probe.target)?.label || probe.target)
+                                                        ? (() => {
+                                                            const scenario = cloudScenarios.find(s => s.id === probe.target);
+                                                            if (scenario?.signedUrl) {
+                                                                // Display URL without protocol and key for cleanliness
+                                                                return scenario.signedUrl.replace(/^https?:\/\//, '').split('?')[0];
+                                                            }
+                                                            return probe.target;
+                                                        })()
                                                         : probe.target
                                                     }
                                                 </div>
