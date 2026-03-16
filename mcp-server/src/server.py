@@ -21,6 +21,17 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# DO NOT POLLUTE STDOUT (Reserved for JSON-RPC in stdio mode)
+# Redirect any accidental print or library log to stderr
+class StdoutRedirector:
+    def write(self, data):
+        sys.stderr.write(data)
+    def flush(self):
+        sys.stderr.flush()
+
+if os.getenv("MCP_TRANSPORT", "stdio").lower() == "stdio":
+    sys.stdout = StdoutRedirector()
+
 try:
     from fastmcp import FastMCP
 except ImportError:

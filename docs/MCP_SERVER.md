@@ -58,29 +58,29 @@ The MCP server is included by default in the Stigix `docker-compose.yml`. It sta
 ### 2. Remote Access
 Ensure port **3100** is reachable from your machine (or use an SSH tunnel).
 
-### 3. Claude Desktop Setup
+### 3. Claude Desktop Setup (Remote SSE)
 
-Depending on your OS, locate the configuration file (note the quotes for paths with spaces):
-- **macOS**: `"~/Library/Application Support/Claude/claude_desktop_config.json"`
-- **Windows**: `"%APPDATA%\Claude\claude_desktop_config.json"`
+To connect Claude on your Mac to a remote Stigix node (like BR8), use the dedicated **Stigix SSE Bridge**. This bridge converts the remote SSE stream to a clean local STDIO channel for Claude.
 
-Add the following configuration (you can add multiple servers for different nodes):
+Add this to your `"~/Library/Application Support/Claude/claude_desktop_config.json"`:
 
 ```json
 {
   "mcpServers": {
-    "stigix-leader": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/inspector", "http://192.168.122.15:3100/sse"]
-    },
     "stigix-br8": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/inspector", "http://192.168.203.102:3100/sse"]
+      "command": "/Users/jsuzanne/Github/stigix/mcp-server/.venv/bin/python3",
+      "args": [
+        "/Users/jsuzanne/Github/stigix/mcp-server/bridge.py",
+        "http://192.168.123.102:3100/sse"
+      ],
+      "env": {
+        "PYTHONPATH": "/Users/jsuzanne/Github/stigix/mcp-server"
+      }
     }
   }
 }
 ```
-*Replace `<NODE_IP>` with the IP of any Stigix instance.*
+*Replace `192.168.123.102` with the IP of your target node. This method is the most robust and silent.*
 
 ---
 
