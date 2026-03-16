@@ -46,42 +46,56 @@ L'intégration MCP a été considérablement enrichie et fiabilisée pour offrir
 
 ## 🛠️ Available MCP Tools
 
-| Component | Tool Name | Description | Example Query (Natural Language) |
+| Component | Tool Name | Description | Examples (Natural Language) |
 | :--- | :--- | :--- | :--- |
-| **Discovery** | `list_endpoints` | List Fabric nodes or Internet targets. | *"Quels sont les nodes actifs ?"* |
-| **Connectivity** | `run_test` | Start a traffic test (xfr, conv, voice). | *"Lance un speedtest entre BR1 et Paris."* |
-| **Connectivity** | `get_test_status` | Get metrics for a specific test. | *"Donne moi le résultat du test G-2026..."* |
-| **Connectivity** | `stop_test` | Stop a long-running convergence test. | *"Arrête la sonde vers 8.8.8.8."* |
-| **Management** | `set_traffic_status` | Start/stop global app traffic simulation. | *"Active le trafic applicatif sur Raspi4."* |
-| **Management** | `set_voice_status` | Start/stop voice simulation. | *"Lance la simulation de voix sur BR1."* |
-| **Maintenance** | `get_diagnostics` | Full node dashboard (CPU, Bitrate, etc.). | *"Check la santé globale du node BR1."* |
-| **Maintenance** | `get_app_score` | Success rate for a specific app (Teams, etc.). | *"Quel est le score Teams sur Raspi4 ?"* |
-| **Security** | `run_security_probe` | Test DNS/URL/Threat filtering. | *"Teste si le domaine malware.com est bloqué."* |
-| **VyOS** | `list_vyos_routers` | List managed VyOS routers. | *"Affiche les routeurs VyOS gérés par BR1."* |
-| **VyOS** | `list_vyos_scenarios` | List available config sequences. | *"Quels scénarios VyOS sont dispo sur Raspi ?"* |
-| **VyOS** | `run_vyos_scenario` | Run a specific config sequence. | *"Applique le scénario failover-paris."* |
-| **VyOS** | `get_vyos_timeline` | History of VyOS changes. | *"Quels ont été les derniers changements VyOS ?"* |
-| **VyOS** | `set_vyos_scenario_status` | Enable/Disable a cyclic scenario. | *"Désactive le scénario de flapping cyclique."* |
-| **DEM** | `get_dem_summary` | Global Experience summary and probe list. | *"Quel est l'état général des probes DEM ?"* |
-| **DEM** | `get_probe_details` | Rich metrics for a specific probe. | *"Donne moi les détails de la probe Google DNS."* |
+| **Discovery** | `list_endpoints` | List Fabric nodes or targets. | *"Nodes actifs ?", "Cibles internet ?", "List fabric terminaux"* |
+| **Traffic** | `run_test` | Start xfr, conv, voice, iot test. | *"Speedtest BR1->Paris", "Sonde vers 8.8.8.8 (100 PPS)"* |
+| **Traffic** | `get_test_status` | Get metrics for a specific test. | *"Résultat test G-2026...", "Stats CONV-1234"* |
+| **Traffic** | `stop_test` | Stop a long-running test. | *"Arrête la sonde 8.8.8.8", "Stop test CONV-567"* |
+| **Management** | `set_traffic_status` | Start/stop app traffic simulation. | *"Active trafic sur Raspi4", "Coupe simulation Londres"* |
+| **Management** | `set_traffic_rate` | Adjust generation speed (0.1s - 10s). | *"Turbo sur BR1 (0.1s)", "Ralentis Paris à 5s"* |
+| **Management** | `set_voice_status` | Start/stop voice simulation. | *"Lance simu voix BR1", "Stop VoIP Paris"* |
+| **Diagnostics** | `get_diagnostics` | Full node dashboard & health. | *"Santé node BR1", "Dashboard Raspi4", "CPU/RAM Paris"* |
+| **Diagnostics** | `get_app_score` | Success rate for a specific app. | *"Score Teams sur Raspi4", "Zoom stats Londres"* |
+| **Security** | `get_security_test_options` | Available targets (DNS/URL/Malware). | *"Options DNS ?", "Sites malware ?", "Threat scenarios"* |
+| **Security** | `run_security_probe` | Test DNS/URL/Threat filtering. | *"Teste malware.com", "Vérifie EICAR sur BR1"* |
+| **VyOS** | `list_vyos_routers` | List managed VyOS routers. | *"Routeurs VyOS gérés par BR1", "Équipements VyOS"* |
+| **VyOS** | `list_vyos_scenarios` | List config sequences (scenarios). | *"Scénarios dispo ?", "Séquences failover"* |
+| **VyOS** | `run_vyos_scenario` | Execute a config sequence. | *"Applique failover-paris", "Lance mission force-4g"* |
+| **VyOS** | `get_vyos_timeline` | History of VyOS changes. | *"Derniers changements VyOS", "Historique routeur"* |
+| **VyOS** | `set_vyos_scenario_status` | Enable/Disable a cyclic scenario. | *"Stoppe le flapping cyclique", "Désactive seq-123"* |
+| **DEM** | `get_dem_summary` | Global Experience score & status. | *"État global DEM", "Quelles sondes en erreur ?"* |
+| **DEM** | `get_probe_details` | Detailed metrics for one probe. | *"Détails probe Google DNS", "Analyse latency SaaS"* |
 
-## Usage Examples
+## Usage Examples (Deep Dive)
 
-### 1. Troubleshooting Performance
+### 1. Performance & Troubleshooting
 **User:** *"La qualité Teams est mauvaise sur le site de Paris, peux-tu regarder ?"*
-1. **AI:** Calls `get_app_score(agent_id="Paris-BR1", app_name="Teams")`.
-2. **AI:** Calls `get_dem_summary(agent_id="Paris-BR1")` to check underlying latency.
-3. **AI:** Analysis: *"Le score Teams est à 42% car la latence vers Microsoft a augmenté de 50ms sur le lien MPLS."*
+- `get_app_score(agent_id="Paris-BR1", app_name="Teams")`
+- `get_dem_summary(agent_id="Paris-BR1")`
+- `get_probe_details(agent_id="Paris-BR1", probe_name="Microsoft 365")`
+- `get_diagnostics(agent_id="Paris-BR1")`
 
 ### 2. Network Orchestration (VyOS)
 **User:** *"Le lien principal est tombé à Paris, bascule sur la 4G."*
-1. **AI:** Calls `list_vyos_scenarios(agent_id="Paris-BR1")` to find the right sequence.
-2. **AI:** Calls `run_vyos_scenario(agent_id="Paris-BR1", scenario_id="force-4g-failover")`.
+- `list_vyos_scenarios(agent_id="Paris-BR1")`
+- `run_vyos_scenario(agent_id="Paris-BR1", scenario_id="force-4g-failover")`
+- `get_vyos_timeline(agent_id="Paris-BR1")`
+- `set_vyos_scenario_status(...)` (Si un cycle auto interfére)
 
 ### 3. Security Validation
-**User:** *"Vérifie si la politique de filtrage URL est bien active."*
-1. **AI:** Calls `run_security_probe(agent_id="BR1", probe_type="url", target="http://gambling.com")`.
-2. **AI:** Confirms: *"Le site est bien bloqué (HTTP 403) par la gateway."*
+**User:** *"Vérifie si la politique de filtrage URL est bien active sur le node BR1."*
+- `get_security_test_options(probe_type="url")`
+- `run_security_probe(agent_id="BR1", probe_type="url", target="http://gambling.com")`
+- `run_security_probe(agent_id="BR1", probe_type="threat", target="STIGIX-EICAR-01")`
+- `run_security_probe(agent_id="BR1", probe_type="dns", target="test-phishing.testpanw.com")`
+
+### 4. Traffic Control & Simulation
+**User:** *"Je veux stresser le réseau depuis Londres."*
+- `set_traffic_status(source_id="London", enabled=true)`
+- `set_traffic_rate(agent_id="London", rate=0.1)` (Mode Turbo)
+- `run_test(source_id="London", target_id="Paris,DC1", profile="xfr", bitrate="200M")`
+- `get_test_status(test_id="...")`
 
 ---
 *Dernière mise à jour : 16 Mars 2026*

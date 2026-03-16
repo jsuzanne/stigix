@@ -39,11 +39,6 @@ mcp = FastMCP("stigix-orchestrator")
 registry = RegistryClient()
 orchestrator = TestOrchestrator()
 
-def check_leader():
-    """Safety check: only the leader should expose central orchestration."""
-    is_leader = os.getenv("IS_LEADER", "true").lower() == "true"
-    if not is_leader:
-        raise RuntimeError("Service Unavailable: This instance is NOT the elected Target Controller (Leader).")
 
 # -----------------------------------------------------------------------------
 # Tool Definitions
@@ -57,7 +52,6 @@ async def list_endpoints(kind: Optional[str] = None) -> List[dict]:
     Args:
         kind: Optional filter ('fabric' or 'internet')
     """
-    check_leader()
     endpoints = await registry.list_endpoints(kind=kind)
     return [e.model_dump() for e in endpoints]
 
@@ -411,7 +405,6 @@ async def get_probe_details(agent_id: str, probe_name: str) -> dict:
         agent_id: ID of the Stigix node.
         probe_name: Name or ID of the probe to investigate (e.g., 'Google DNS', 'SaaS App').
     """
-    check_leader()
     return await orchestrator.get_probe_performance(agent_id, probe_name)
 
 

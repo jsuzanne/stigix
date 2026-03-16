@@ -120,6 +120,7 @@ services:
       - "3100:3100"
     environment:
       - MCP_TRANSPORT=sse
+      - MCP_PORT=3100
       - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
       - LOG_LEVEL=INFO
     volumes:

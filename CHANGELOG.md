@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.1-patch.203] - 2026-03-16
+### Added
+- **MCP Server**: Production-ready deployment to Stigix instances via `docker-compose.yml`. Supports SSE transport on port 3100. 🐳
+- **Dashboard**: New **MCP Server** settings tab providing real-time health status, transport info, and ready-to-copy Claude Desktop configurations. 🚀
+- **Orchestration**: Implemented `set_traffic_rate` natural language tool to adjust the sleep interval (0.1s - 10.0s) of global traffic generation. 🚦
+- **Security**: Enhanced `run_security_probe` to return and log explicit destination URLs for better audit visibility. 🛡️
+- **Security**: Added `get_security_test_options` to help AI agents discover available threat vectors and targets. 🔍
+- **Backend API**: New `/api/admin/system/mcp-status` endpoint for monitoring the health of the orchestration service. 🩺
+
 ## [v1.2.1-patch.162] - 2026-03-11
 ### Changed
 - **DevOps**: Added optional `STIGIX_REGISTRY_ENABLED`, `STIGIX_SITE_NAME`, and `STIGIX_INSTANCE_ID` overrides to `docker-compose.stigix.yml` for easier configuration discovery. 🐳
