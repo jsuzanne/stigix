@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import readline from 'readline';
 import { promisify } from 'util';
 import { log } from './utils/logger.js';
 
@@ -211,8 +210,8 @@ export class ConnectivityLogger {
                 httpEndpoints: {
                     total: uniqueHttpEndpoints,
                     avgScore: activeHttpResults.length > 0 ? Math.round(activeHttpResults.reduce((acc, r) => acc + (r.score || 0), 0) / activeHttpResults.length) : 0,
-                    minScore: activeHttpResults.length > 0 ? activeHttpResults.reduce((min, r) => Math.min(min, r.score || 0), activeHttpResults[0].score || 0) : 0,
-                    maxScore: activeHttpResults.length > 0 ? activeHttpResults.reduce((max, r) => Math.max(max, r.score || 0), activeHttpResults[0].score || 0) : 0
+                    minScore: activeHttpResults.length > 0 ? Math.min(...activeHttpResults.map(r => r.score || 0)) : 0,
+                    maxScore: activeHttpResults.length > 0 ? Math.max(...activeHttpResults.map(r => r.score || 0)) : 0
                 },
                 flakyEndpoints,
                 lastCheckTime: allResults.length > 0 ? allResults[0].timestamp : null
@@ -235,35 +234,26 @@ export class ConnectivityLogger {
                 .reverse(); // Newest first
 
             const allResults: ConnectivityResult[] = [];
-            const MAX_STALE_STREAK = 10;
-            
+            // How many consecutive too-old lines before we stop scanning a file
+            const MAX_STALE_STREAK = 3;
+
             for (const file of logFiles) {
-                const filePath = path.join(this.logDir, file);
-                
-                // Using sync read for performance in this specific tight loop case
-                // as splitting and reversing large strings is actually very fast in V8
-                // compared to asynchronous line-by-line overhead for millions of lines.
-                const fileContent = fs.readFileSync(filePath, 'utf8');
-                const lines = fileContent.split('\n').filter(l => l.trim()).reverse();
+                const content = await readFile(path.join(this.logDir, file), 'utf8');
+                const lines = content.trim().split('\n').filter((l: string) => l.length > 0).reverse(); // Newest lines first
 
                 let staleStreak = 0;
                 for (const line of lines) {
                     try {
                         const result = JSON.parse(line) as ConnectivityResult;
-                        
-                        // Since lines are newest-first, first stale record means the rest might be too
+                        // Since lines are newest-first, first stale record means the rest are also stale
                         if (minTimestamp && result.timestamp < minTimestamp) {
                             staleStreak++;
                             if (staleStreak >= MAX_STALE_STREAK) break;
                             continue;
                         }
-
                         staleStreak = 0;
                         allResults.push(result);
-                        
-                        if (maxResults && allResults.length >= maxResults) {
-                            return allResults;
-                        }
+                        if (maxResults && allResults.length >= maxResults) return allResults;
                     } catch (e) { }
                 }
 
@@ -272,7 +262,6 @@ export class ConnectivityLogger {
             }
             return allResults;
         } catch (error) {
-            log('CONNECTIVITY_LOGGER', `Read failed: ${error}`, 'error');
             return [];
         }
     }
