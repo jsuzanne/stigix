@@ -155,8 +155,9 @@ const VOICE_COUNTER_FILE_LEGACY = path.join(APP_CONFIG.configDir, 'voice-counter
 const VOICE_STATS_FILE = path.join(APP_CONFIG.logDir, 'voice-stats.jsonl');
 const CONVERGENCE_HISTORY_FILE = path.join(APP_CONFIG.logDir, 'convergence-history.jsonl');
 const CONVERGENCE_STATS_FILE = '/tmp/convergence_stats.json';
-const CONVERGENCE_COUNTER_FILE = path.join(APP_CONFIG.configDir, 'convergence-counter.json');
+const CONVERGENCE_COUNTER_FILE = path.join(APP_CONFIG.configDir, 'test-counter-convergence.json');
 const CONVERGENCE_ENDPOINTS_FILE = path.join(APP_CONFIG.configDir, 'convergence-endpoints.json');
+const SYSTEM_APP_LOG = path.join(APP_CONFIG.logDir, 'app.log');
 
 // ─── Egress Path Enrichment Helpers ────────────────────────────────────────
 
@@ -6058,6 +6059,62 @@ app.get('/api/admin/system/dashboard-data', authenticateToken, async (req, res) 
         res.status(500).json({ error: 'Failed to aggregate dashboard data', details: e.message });
     }
 });
+
+// ─── System Wide Live Logs ──────────────────────────────────────────────────
+
+// Serve log history (last 500 lines)
+app.get('/api/admin/system/logs', authenticateToken, async (req, res) => {
+    try {
+        if (!fs.existsSync(SYSTEM_APP_LOG)) {
+            return res.json({ logs: ["Waiting for system logs to aggregate... (Try starting traffic or running a security test)"] });
+        }
+        const { stdout } = await promisify(exec)(`tail -n 500 "${SYSTEM_APP_LOG}"`);
+        const logs = stdout.toString().split('\n').filter(l => l.trim());
+        res.json({ logs: logs.reverse() }); // Newest first for initial load
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to read system logs' });
+    }
+});
+
+// Setup Live Streaming
+function startLogStreaming() {
+    log('SYSTEM', `Initiating live log streaming from ${SYSTEM_APP_LOG}...`);
+    
+    // Ensure file exists to avoid tail failure
+    if (!fs.existsSync(SYSTEM_APP_LOG)) {
+        try {
+            fs.writeFileSync(SYSTEM_APP_LOG, `[${new Date().toISOString()}] [SYSTEM] Log aggregation started.\n`);
+        } catch (e) {
+            log('SYSTEM', `Failed to create log file: ${SYSTEM_APP_LOG}. Is directory writable?`, 'error');
+            return;
+        }
+    }
+
+    const tailProcess = spawn('tail', ['-n', '0', '-f', SYSTEM_APP_LOG]);
+    
+    tailProcess.stdout.on('data', (data) => {
+        const lines = data.toString().split('\n').filter((l: string) => l.trim());
+        lines.forEach((line: string) => {
+            io.emit('system:log', line);
+        });
+    });
+
+    tailProcess.stderr.on('data', (data) => {
+        log('SYSTEM', `Log streamer stderr: ${data.toString()}`, 'error');
+    });
+
+    tailProcess.on('close', (code) => {
+        log('SYSTEM', `Log streamer exited with code ${code}. Restarting in 5s...`, 'warn');
+        setTimeout(startLogStreaming, 5000);
+    });
+
+    tailProcess.on('error', (err) => {
+        log('SYSTEM', `Log streamer spawn error: ${err.message}`, 'error');
+    });
+}
+
+// Start streaming when server starts (short delay to ensure io is ready)
+setTimeout(startLogStreaming, 2000);
 
 
 app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) => {

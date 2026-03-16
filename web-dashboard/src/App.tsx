@@ -11,7 +11,8 @@ import Iot from './Iot';
 import Vyos from './Vyos';
 import Speedtest from './Speedtest';
 import Topology from './Topology';
-import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe } from 'lucide-react';
+import LiveEvents from './LiveEvents';
+import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Toaster } from 'react-hot-toast';
@@ -53,7 +54,7 @@ interface SiteInfo {
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
-  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence'>(
+  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events'>(
     (localStorage.getItem('activeView') as any) || 'performance'
   );
 
@@ -913,6 +914,15 @@ export default function App() {
         >
           <Monitor size={18} /> Vyos Control <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">Beta</span>
         </button>
+        <button
+          onClick={() => setView('events')}
+          className={cn(
+            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
+            view === 'events' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
+          )}
+        >
+          <Terminal size={18} /> Live Events
+        </button>
         {/* SRT Tab hidden in v1.1.2-patch.28 */}
         {username === 'admin' && (
           <button
@@ -1430,6 +1440,8 @@ export default function App() {
           <SettingsComponent token={token!} />
         ) : view === 'speedtest' && features.xfr_enabled ? (
           <Speedtest token={token!} />
+        ) : view === 'events' ? (
+          <LiveEvents token={token!} />
         ) : (
           <div className="p-8 text-center text-text-muted font-bold uppercase tracking-widest">Select a module to begin</div>
         )
