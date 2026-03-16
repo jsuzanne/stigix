@@ -1034,7 +1034,7 @@ export default function Settings({ token }: { token: string }) {
                                         />
                                     )}
                                 </div>
-                                <div className="space-y-2 flex flex-col justify-end">
+                                <div className="space-y-2 flex flex-col justify-start pt-5">
                                     <button
                                         onClick={addProbe}
                                         className="w-full bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20"
