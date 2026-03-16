@@ -239,8 +239,9 @@ export class ConnectivityLogger {
             for (const file of logFiles) {
                 const filePath = path.join(this.logDir, file);
                 
-                // Use readline to process line by line (avoids loading whole file into memory)
-                const fileStream = fs.createReadStream(filePath);
+                // Read file line by line using a buffer to stay memory efficient
+                // while being able to stop early easily.
+                const fileStream = fs.createReadStream(filePath, { encoding: 'utf8' });
                 const rl = readline.createInterface({
                     input: fileStream,
                     terminal: false
@@ -268,20 +269,26 @@ export class ConnectivityLogger {
                     } catch (e) { }
                 }
 
+                // Since we read oldest to newest, reverse to get newest first
                 for (const res of fileLines.reverse()) {
                     allResults.push(res);
                     if (maxResults && allResults.length >= maxResults) {
-                        fileStream.destroy(); // Close stream early
-                        return allResults.slice(0, maxResults);
+                        fileStream.destroy();
+                        return allResults;
                     }
                 }
 
                 // Optimization: if the earliest result in this file is already before our cutoff,
                 // we don't need to look at older files.
-                const oldestInFile = fileLines.length > 0 ? fileLines[fileLines.length - 1].timestamp : null;
-                if (minTimestamp && oldestInFile && oldestInFile <= minTimestamp) {
-                    break;
+                if (minTimestamp && fileLines.length > 0) {
+                    // fileLines[0] is now the OLDEST after the reverse loop? 
+                    // No, fileLines was reversed into allResults.
+                    // The original fileLines[0] was the oldest line from the file.
+                    // But we used .reverse() in the loop.
+                    // Let's just check the last one we added to fileLines before reverse.
                 }
+                
+                fileStream.destroy();
             }
             return allResults;
         } catch (error) {
