@@ -5,6 +5,7 @@ import jwt
 import os
 from datetime import datetime, timedelta
 from typing import Dict, Optional
+from .registry import RegistryClient
 from ..types import TestRun, TestStatus, StigixEndpoint
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ class TestOrchestrator:
         # Store for mapping global_test_id -> {source_base_url, local_id}
         self._test_mappings: Dict[str, Dict] = {}
         self.jwt_secret = os.getenv("JWT_SECRET", "your-secure-secret-here")
+        self.registry = RegistryClient()
 
     def _generate_token(self) -> str:
         """Generates a JWT for agent authentication."""
@@ -352,12 +354,12 @@ class TestOrchestrator:
 
     async def get_agent_dashboard(self, agent_id: str) -> Dict[str, Any]:
         """Fetch full dashboard data for a specific agent."""
-        agent = await self.registry.get_agent_by_id(agent_id)
+        agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"error": f"Agent {agent_id} not found."}
             
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
-        url = f"{agent['url']}/api/admin/system/dashboard-data"
+        url = f"{agent.api_base_url}/api/admin/system/dashboard-data"
         
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
@@ -370,7 +372,7 @@ class TestOrchestrator:
 
     async def trigger_security_test(self, agent_id: str, test_type: str, target: str) -> Dict[str, Any]:
         """Trigger a security test (DNS, URL, or Threat)."""
-        agent = await self.registry.get_agent_by_id(agent_id)
+        agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"error": f"Agent {agent_id} not found."}
             
@@ -378,13 +380,13 @@ class TestOrchestrator:
         
         # Route mapping
         if test_type == "dns":
-            url = f"{agent['url']}/api/security/dns-test"
+            url = f"{agent.api_base_url}/api/security/dns-test"
             payload = {"domain": target, "testName": "MCP Security Probe"}
         elif test_type == "url":
-            url = f"{agent['url']}/api/security/url-test"
+            url = f"{agent.api_base_url}/api/security/url-test"
             payload = {"url": target, "category": "MCP Diagnostic"}
         elif test_type == "threat":
-            url = f"{agent['url']}/api/security/threat-test"
+            url = f"{agent.api_base_url}/api/security/threat-test"
             if target.startswith("STIGIX-"): # Scenario ID
                 payload = {"scenarioId": target}
             else:
