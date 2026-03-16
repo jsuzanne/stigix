@@ -109,5 +109,24 @@ services:
       - XFR_RATE_LIMIT=2
       - XFR_ALLOW_CIDR=0.0.0.0/0
 
+  # MCP Server - Natural Language Orchestration
+  mcp-server:
+    build:
+      context: .
+      dockerfile: mcp-server/Dockerfile
+    container_name: sdwan-mcp
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    environment:
+      - MCP_TRANSPORT=sse
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      web-ui:
+        condition: service_healthy
+
 volumes:
   traffic_logs:

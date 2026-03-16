@@ -163,19 +163,38 @@ async def stop_test(test_id: str) -> dict:
 @mcp.tool()
 async def set_traffic_status(source_id: str, enabled: bool) -> dict:
     """
-    Start or stop application traffic generation on a specific node.
+    Starts or stops the application traffic generation on a specific node.
     
     Args:
-        source_id: ID of the node (must be kind='fabric')
-        enabled: True to start, False to stop
+        source_id: ID of the node.
+        enabled: True to start, False to stop.
     """
     check_leader()
-    source = await registry.get_endpoint(source_id)
+    source = await orchestrator.registry.get_endpoint(source_id)
     if not source:
-        return {"error": f"Node '{source_id}' not found."}
+        return {"error": f"Source {source_id} not found."}
+    return await orchestrator.set_traffic_status(source, enabled)
+
+
+@mcp.tool()
+async def set_traffic_rate(agent_id: str, rate: float) -> dict:
+    """
+    Adjust the traffic generation speed (sleep interval between requests).
     
+    Args:
+        agent_id: ID of the node.
+        rate: The delay in seconds between requests (0.1 to 10.0). 
+              Lower is faster (0.1 = Turbo, 10.0 = Slow).
+    """
+    check_leader()
+    source = await orchestrator.registry.get_endpoint(agent_id)
+    if not source:
+        return {"error": f"Agent {agent_id} not found."}
+    
+    # Clip rate to reasonable values as per UI
+    clipped_rate = max(0.1, min(10.0, rate))
     try:
-        return await orchestrator.set_traffic_status(source, enabled)
+        return await orchestrator.set_traffic_rate(source, clipped_rate)
     except Exception as e:
         return {"error": str(e)}
 
@@ -257,9 +276,42 @@ async def get_app_score(agent_id: str, app_name: str) -> dict:
 
 
 @mcp.tool()
+async def get_security_test_options(probe_type: str) -> dict:
+    """
+    Get a list of available security test targets/categories for a specific probe type.
+    Use this to propose destinations to the user before running a test.
+    
+    Args:
+        probe_type: 'dns', 'url', or 'threat'.
+    """
+    options = {
+        "dns": [
+            {"name": "DNS Tunneling", "domain": "test-dnstun.testpanw.com"},
+            {"name": "Malware", "domain": "test-malware.testpanw.com"},
+            {"name": "Phishing", "domain": "test-phishing.testpanw.com"},
+            {"name": "Command & Control", "domain": "test-c2.testpanw.com"},
+            {"name": "DGA (Domain Generation Algorithm)", "domain": "test-dga.testpanw.com"}
+        ],
+        "url": [
+            {"category": "Abortion", "url": "http://urlfiltering.paloaltonetworks.com/test-abortion"},
+            {"category": "Adult Content", "url": "http://urlfiltering.paloaltonetworks.com/test-adult"},
+            {"category": "Malware", "url": "http://urlfiltering.paloaltonetworks.com/test-malware"},
+            {"category": "Phishing", "url": "http://urlfiltering.paloaltonetworks.com/test-phishing"},
+            {"category": "Proxy Avoidance", "url": "http://urlfiltering.paloaltonetworks.com/test-proxy-avoidance"}
+        ],
+        "threat": [
+            {"name": "Standard EICAR Scenario", "target": "STIGIX-EICAR-01", "description": "Cloud-based EICAR test scenario"},
+            {"name": "Direct EICAR Download (Hetzner)", "target": "http://142.132.193.157:8082/eicar.com.txt", "description": "Direct file download from Hetzner node"}
+        ]
+    }
+    return {"probe_type": probe_type, "options": options.get(probe_type, [])}
+
+
+@mcp.tool()
 async def run_security_probe(agent_id: str, probe_type: str, target: str) -> dict:
     """
     Launch a security test to check for policy enforcement (DNS, URL Filtering, or Threat/AV).
+    It is RECOMMENDED to use 'get_security_test_options' first to propose a destination to the user.
     
     Args:
         agent_id: ID of the node.

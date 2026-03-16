@@ -1,6 +1,6 @@
 # Stigix MCP Server - Development Status Report
 
-*Dernière mise à jour : 13 Mars 2026*
+*Dernière mise à jour : 16 Mars 2026*
 
 Ce document résume l'état d'avancement du développement du serveur MCP (Model Context Protocol) pour Stigix. Ce service permet à des agents IA (comme Claude) d'interagir nativement avec l'infrastructure Stigix via des commandes en langage naturel.
 
@@ -27,16 +27,24 @@ L'intégration MCP a été considérablement enrichie et fiabilisée pour offrir
 ### 4. Simulation de Trafic (Voix & Data)
 - **API Traffic/Voice** : Implémentation de commandes Start/Stop pour le bruit de fond applicatif (`set_traffic_status`) et pour la simulation de flux voix QoS (`set_voice_status`).
 
-### 6. Documentation Technique & API
+### 5. Validation de la Sécurité (DNS/URL/Threat)
+- **Sondes de Filtrage** : Implémentation de `run_security_probe` permettant de tester le blocage DNS, le filtrage d'URL (HTTP 403) et la détection de menaces (EICAR).
+- **Corrélation de Catégories** : Le MCP remonte désormais la catégorie de filtrage détectée par la gateway.
+
+### 6. Observabilité DEM (Digital Experience Monitoring)
+- **Score Applicatif** : Calcul automatisé du Success Rate pour des applications spécifiques (ex: Microsoft Teams) via `get_app_score`.
+- **Santé des Probes** : Vue synthétique de l'état des sondes (ICMP, HTTP, HTTPS) via `get_dem_summary` et diagnostic détaillé via `get_probe_details`.
+
+### 7. Documentation Technique & API
 - **API Reference (`API_REFERENCE.md`)** : Création d'un guide technique listant tous les endpoints HTTP consommés par le MCP (XFR, Convergence, Voix, Traffic).
 - **Scan Exhaustif (`BACKEND_ROUTES_DUMP.md`)** : Extraction automatique de l'intégralité des routes (160+) du backend Stigix pour donner une visibilité totale aux développeurs.
 
-### 7. Orchestration VyOS (Automates Config)
+### 8. Orchestration VyOS (Automates Config)
 - **Gestion des Routeurs** : Intégration complète des commandes VyOS via le script `vyos_sdwan_ctl.py`.
 - **Séquençage d'Actions** : Possibilité de piloter des scénarios complexes (sequences) qui modifient dynamiquement la configuration des routeurs (ex: basculement BGP, coupure WAN).
 - **Timeline & Historique** : Suivi des modifications de configuration via l'API d'historique VyOS.
 
-## Available MCP Tools
+## 🛠️ Available MCP Tools
 
 | Component | Tool Name | Description | Example Query (Natural Language) |
 | :--- | :--- | :--- | :--- |
@@ -78,21 +86,8 @@ L'intégration MCP a été considérablement enrichie et fiabilisée pour offrir
 ---
 *Dernière mise à jour : 16 Mars 2026*
 
-## 🔜 Phase d'Enrichissement : Diagnostics Globaux & Sécurité
-
-L'objectif est d'utiliser le `dashboard-data` du backend pour répondre à des questions complexes sur la performance "vécue" par les applications.
-
-### 📝 Exemples de questions tests pour l'IA :
-- *"Donne-moi un diagnostic complet du node Hetzner-Ubuntu."*
-- *"Quel est le taux de réussite (success rate) de Microsoft Teams sur le node Hetzner ?"*
-- *"Lance un test de sécurité DNS pour 'abortion.com' sur London."*
-- *"Quels sont les scénarios VyOS disponibles sur le node Raspi4-Ubuntu ?"*
-- *"Sur le node Paris, lance le scénario 'Failover-WAN' et montre-moi l'historique une fois terminé."*
-- *"Affiche le timeline VyOS pour le node 192.168.97.2."*
-- *"Quels sont les routeurs VyOS actuellement détectés par le node ubuntubr5 ?"*
-- *"Désactive le scénario 'Wan-Scenario' sur Raspi4-Ubuntu car il interfère avec mes actions."*
-
 ## Ce qu'il reste à faire (To-Do)
 
 - [ ] **Affinage des Erreurs** : Améliorer les retours d'erreurs pour l'agent IA.
 - [ ] **CI / Déploiement** : Intégrer les tests unitaires du serveur MCP dans GitHub Actions.
+- [ ] **Rapport de Convergence PDF** : Génération d'un résumé PDF des tests de convergence après arrêt.

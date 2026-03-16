@@ -103,7 +103,7 @@ const BetaBadge = ({ className }: { className?: string }) => (
 );
 
 export default function Settings({ token }: { token: string }) {
-    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService'>('distribution');
+    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp'>('distribution');
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -146,6 +146,7 @@ export default function Settings({ token }: { token: string }) {
     const [cloudScenarios, setCloudScenarios] = useState<any[]>([]);
     // Convergence State
     const [convergenceThresholds, setConvergenceThresholds] = useState({ good: 1, degraded: 5, critical: 10 });
+    const [mcpStatus, setMcpStatus] = useState<{ online: boolean; status?: string; transport?: string; url?: string; error?: string } | null>(null);
 
     const showSuccess = (msg: string) => {
         setSuccessMsg(msg);
@@ -251,8 +252,18 @@ export default function Settings({ token }: { token: string }) {
         };
         fetchRegistryStatus();
 
+        const fetchMcpStatus = () => {
+            fetch('/api/admin/system/mcp-status', { headers: authHeaders })
+                .then(r => r.json())
+                .then(setMcpStatus)
+                .catch(e => console.error("Failed to fetch MCP status", e));
+        };
+        fetchMcpStatus();
+        const mcpInterval = setInterval(fetchMcpStatus, 15000);
+
         return () => {
             clearInterval(sysInfoInterval);
+            clearInterval(mcpInterval);
         };
 
     }, [token]);
@@ -743,6 +754,7 @@ export default function Settings({ token }: { token: string }) {
         { id: 'maintenance', label: 'System Maintenance', beta: true },
         { id: 'targets', label: 'Targets' },
         { id: 'registry', label: 'Target Controller', beta: true },
+        { id: 'mcp', label: 'MCP Server', beta: true },
     ];
 
     return (
@@ -2056,6 +2068,91 @@ export default function Settings({ token }: { token: string }) {
                         ))}
                     </div>
                 </div>
+                )}
+
+                {activeTab === 'mcp' && (
+                    <div className="space-y-6">
+                        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+                            <div className="flex items-center gap-4 mb-6">
+                                <div className="p-3 bg-amber-500/10 rounded-xl">
+                                    <Terminal size={24} className="text-amber-500" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-3">
+                                        <h2 className="text-lg font-black text-text-primary tracking-tight">Model Context Protocol</h2>
+                                        <BetaBadge />
+                                    </div>
+                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Natural Language Orchestration Service</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                                <div className="bg-card-secondary/30 border border-border rounded-2xl p-4 flex flex-col items-center justify-center text-center space-y-2">
+                                    <div className="text-[8px] font-black text-text-muted uppercase tracking-[0.2em]">Service Status</div>
+                                    <div className={cn(
+                                        "flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase border",
+                                        mcpStatus?.online 
+                                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" 
+                                            : "bg-red-500/10 text-red-500 border-red-500/20"
+                                    )}>
+                                        <div className={cn("w-2 h-2 rounded-full", mcpStatus?.online ? "bg-emerald-500 animate-pulse" : "bg-red-500")} />
+                                        {mcpStatus?.online ? "Online" : "Offline"}
+                                    </div>
+                                </div>
+                                <div className="bg-card-secondary/30 border border-border rounded-2xl p-4 flex flex-col items-center justify-center text-center space-y-2">
+                                    <div className="text-[8px] font-black text-text-muted uppercase tracking-[0.2em]">Transport Mode</div>
+                                    <div className="text-xs font-black text-text-primary tracking-widest">{mcpStatus?.transport?.toUpperCase() || 'SSE'}</div>
+                                </div>
+                                <div className="bg-card-secondary/30 border border-border rounded-2xl p-4 flex flex-col items-center justify-center text-center space-y-2">
+                                    <div className="text-[8px] font-black text-text-muted uppercase tracking-[0.2em]">Exposed Port</div>
+                                    <div className="text-xs font-black text-text-primary tracking-widest">3100</div>
+                                </div>
+                            </div>
+
+                            <div className="bg-blue-600/5 border border-blue-500/20 rounded-2xl p-6 space-y-4">
+                                <div className="flex items-center gap-3 text-blue-500 mb-2">
+                                    <Globe size={18} />
+                                    <h3 className="text-xs font-black uppercase tracking-widest">Remote Claude Connection</h3>
+                                </div>
+                                <p className="text-xs text-text-secondary leading-relaxed font-bold opacity-80">
+                                    To control this Stigix instance via Claude Desktop on your Mac or PC, add the following to your <code className="bg-blue-500/10 px-1.5 py-0.5 rounded text-blue-400 font-mono">claude_desktop_config.json</code>:
+                                </p>
+                                <pre className="bg-black/40 border border-white/5 p-4 rounded-xl text-[11px] font-mono text-blue-300 overflow-x-auto shadow-inner">
+{`{
+  "mcpServers": {
+    "stigix-cloud": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/inspector",
+        "http://${window.location.hostname}:3100/sse"
+      ]
+    }
+  }
+}`}
+                                </pre>
+                                <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-500">
+                                    <AlertCircle size={14} />
+                                    <span className="text-[9px] font-black tracking-widest uppercase">Ensure port 3100 is accessible or reachable via SSH tunnel.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+                            <h3 className="text-xs font-black uppercase tracking-widest text-text-muted mb-4">Architecture Mesh</h3>
+                            <div className="bg-card-secondary/30 border border-border rounded-xl p-4 font-mono text-[10px] text-text-secondary leading-relaxed space-y-1">
+                                <div className="flex items-center gap-2 text-emerald-500 font-black">
+                                    <CheckCircle size={10} />
+                                    <span>[Mesh Ready] Full registry synchronization detected.</span>
+                                </div>
+                                <div className="pl-4 opacity-70">
+                                    • Orchestrator can pilot all learned nodes (managed & synthesized).<br />
+                                    • JWT-signed API calls between nodes are automated.<br />
+                                    • Discovery refresh every 5 minutes.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 )}
             </div>
         );

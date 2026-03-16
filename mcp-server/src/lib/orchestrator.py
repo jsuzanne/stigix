@@ -276,6 +276,18 @@ class TestOrchestrator:
             response.raise_for_status()
             return response.json()
 
+    async def set_traffic_rate(self, source: StigixEndpoint, sleep_interval: float) -> dict:
+        """Updates the traffic generation sleep interval (delay between requests)."""
+        api_url = f"{source.api_base_url}/api/traffic/settings"
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        payload = {"sleep_interval": sleep_interval}
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            logger.info(f"Updating traffic rate on {source.id} to {sleep_interval}s via {api_url}")
+            response = await client.post(api_url, json=payload, headers=headers)
+            response.raise_for_status()
+            return response.json()
+
     async def set_voice_status(self, source: StigixEndpoint, enabled: bool) -> dict:
         """Starts or stops the voice simulation."""
         api_url = f"{source.api_base_url}/api/voice/control"
@@ -396,14 +408,21 @@ class TestOrchestrator:
         else:
             return {"error": f"Unsupported security test type: {test_type}"}
             
+        logger.info(f"Triggering {test_type} security probe for agent {agent_id} on target: {target}")
+        
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
-                return response.json()
+                data = response.json()
+                # Enrich with target info for MCP visibility
+                if isinstance(data, dict):
+                    data["mcp_target"] = target
+                    data["mcp_api_url"] = url
+                return data
             except Exception as e:
-                logger.error(f"Security test {test_type} failed for {agent_id}: {e}")
-                return {"error": str(e)}
+                logger.error(f"Security test {test_type} failed for {agent_id} on {target}: {e}")
+                return {"error": str(e), "target": target}
 
     async def list_vyos_routers(self, agent_id: str) -> List[Dict[str, Any]]:
         """List VyOS routers managed by a specific Stigix node."""
