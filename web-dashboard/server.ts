@@ -98,11 +98,32 @@ const XFR_QUICK_TARGETS = QUICK_TARGETS_RAW.split(',')
     });
 
 
+/**
+ * Derives the Stigix Cloud Target URL from the Registry domain.
+ */
+function deriveCloudTargetBaseUrl(): string | undefined {
+    if (process.env.STIGIX_TARGET_BASE_URL) return process.env.STIGIX_TARGET_BASE_URL;
+    
+    const registryUrl = process.env.STIGIX_REGISTRY_URL;
+    if (registryUrl) {
+        try {
+            const url = new URL(registryUrl);
+            const domain = url.hostname.replace('stigix-registry.', '');
+            // Safeguard: ensure we don't end up with multiple dots if hostname was different
+            return `https://stigix-target.${domain.startsWith('.') ? domain.substring(1) : domain}`;
+        } catch (e) {
+            log('SYSTEM', `Failed to derive Cloud Target URL from registry URL: ${registryUrl}`, 'warn');
+        }
+    }
+    return undefined;
+}
+
+const cloudTargetBaseUrl = deriveCloudTargetBaseUrl();
 const registryManager = new RegistryManager(APP_CONFIG.configDir);
 const targetsManager = new TargetsManager(APP_CONFIG.configDir, XFR_QUICK_TARGETS, registryManager);
-const targetManager = new TargetManager(APP_CONFIG.configDir);
+const targetManager = new TargetManager(APP_CONFIG.configDir, cloudTargetBaseUrl);
 log('SYSTEM', `Targets Manager initialized`);
-log('SYSTEM', `Cloud Target Manager initialized`);
+log('SYSTEM', `Cloud Target Manager initialized${cloudTargetBaseUrl ? ' with base: ' + cloudTargetBaseUrl : ''}`);
 
 if (DEBUG) {
     log('SYSTEM', `📂 Configuration Directory: ${APP_CONFIG.configDir}`);

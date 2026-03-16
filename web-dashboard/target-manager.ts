@@ -32,9 +32,10 @@ export class TargetManager {
     private baseUrl: string;
     private sharedKey: string;
 
-    constructor(configDir: string) {
+    constructor(configDir: string, baseUrl?: string) {
         this.configPath = path.join(configDir, 'target-scenarios.json');
-        this.baseUrl = process.env.STIGIX_TARGET_BASE_URL || '';
+        // Logic: 1. Constructor arg, 2. Env var, 3. Default production fallback
+        this.baseUrl = baseUrl || process.env.STIGIX_TARGET_BASE_URL || 'https://stigix-target.jlsuzanne.workers.dev';
         this.sharedKey = process.env.STIGIX_TARGET_SHARED_KEY || '';
         this.loadScenarios();
     }

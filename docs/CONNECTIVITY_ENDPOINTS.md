@@ -56,3 +56,30 @@ You can add custom probes via the **Configuration** tab:
 
 > [!TIP]
 > Use the **HTTP (Scoring)** type for public SaaS applications to get a realistic measure of application-level latency.
+---
+
+## ☁️ Stigix Cloud (Shared Probes)
+
+Shared probes are hosted on the **Stigix Cloudflare infrastructure**. They provide a set of pre-configured scenarios that are accessible to all PoCs and tenants without manual configuration.
+
+### 📋 Available Scenarios
+
+| Scenario | Target Path | Description | Evaluation |
+| :--- | :--- | :--- | :--- |
+| **Info / Egress** | `/saas/info` | Identifies your public IP, Country, and Cloudflare POP (colo). | Connectivity check |
+| **Slow SaaS** | `/saas/slow` | Simulates a 5s backend delay. | Latency score (DEM) |
+| **Large Download** | `/download/large` | 10MB payload download to test throughput. | Throughput score |
+| **Security (EICAR)** | `/security/eicar` | Downloads the EICAR test string. | Security/Threat check |
+| **Error (500/503)** | `/saas/error/*` | Simulates server-side failures (HTTP 500, 503). | Availability check |
+
+### 🛠️ Configuration
+The Cloud base URL is automatically derived from your **Stigix Registry** domain (e.g., `stigix-target.stigix.io`).
+
+You can override this in your `.env` file if needed:
+```bash
+# Example override for custom staging environment
+STIGIX_TARGET_BASE_URL=https://stigix-staging.workers.dev
+```
+
+> [!NOTE]
+> Probes requiring authentication (Shared Key) are automatically signed by the backend using your `STIGIX_TARGET_SHARED_KEY`.

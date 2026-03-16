@@ -144,6 +144,7 @@ export default function Settings({ token }: { token: string }) {
     };
 
     const [cloudScenarios, setCloudScenarios] = useState<any[]>([]);
+    const [cloudConfig, setCloudConfig] = useState<{ baseUrl: string; hasKey: boolean; scenarioCount: number } | null>(null);
     // Convergence State
     const [convergenceThresholds, setConvergenceThresholds] = useState({ good: 1, degraded: 5, critical: 10 });
     const [mcpStatus, setMcpStatus] = useState<{ online: boolean; status?: string; transport?: string; url?: string; error?: string } | null>(null);
@@ -174,6 +175,12 @@ export default function Settings({ token }: { token: string }) {
                     const filtered = (data || []).filter((s: any) => s.id !== 'security-eicar');
                     setCloudScenarios(filtered);
                 })
+                .catch(() => { });
+
+            // Fetch Cloud Config
+            fetch('/api/target/config', { headers: authHeaders })
+                .then(r => r.json())
+                .then(setCloudConfig)
                 .catch(() => { });
 
             // Fetch ALL detected interfaces (secondary)
@@ -905,7 +912,20 @@ export default function Settings({ token }: { token: string }) {
                                 </div>
                                 <div>
                                     <h2 className="text-lg font-black text-text-primary tracking-tight">Synthetic Probes (DEM)</h2>
-                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Custom telemetry for real-time monitoring</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <p className="text-[10px] font-bold text-text-muted tracking-widest opacity-70">Custom telemetry for real-time monitoring</p>
+                                        {cloudConfig?.baseUrl && (
+                                            <>
+                                                <span className="text-[8px] text-text-muted opacity-30">•</span>
+                                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-600/5 border border-blue-500/10 rounded-full">
+                                                    <Globe size={10} className="text-blue-500/70" />
+                                                    <span className="text-[9px] font-black text-blue-500/70 tracking-tight uppercase">Cloud:</span>
+                                                    <code className="text-[9px] font-bold text-blue-400/80 tracking-tighter truncate max-w-[200px]">{cloudConfig.baseUrl}</code>
+                                                    {cloudConfig.hasKey && <span title="Signed with Shared Key"><Lock size={8} className="text-amber-500/50" /></span>}
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex gap-2">
