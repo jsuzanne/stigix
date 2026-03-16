@@ -60,10 +60,10 @@ L'intégration MCP a été considérablement enrichie et fiabilisée pour offrir
 | `get_diagnostics` | Récupère l'intégralité des métriques (CPU, Bitrate, Apps) d'un nœud. |
 | `get_app_score` | Calcule le taux de réussite (success rate) d'une application SaaS. |
 | `run_security_probe` | Lance un test de sécurité DNS, URL ou Malware (EICAR). |
-| `list_vyos_routers` | Liste les routeurs VyOS gérés. |
-| `list_vyos_scenarios` | Liste les séquences de configuration (scénarios) disponibles. |
-| `run_vyos_scenario` | Exécute un scénario VyOS (basé sur `vyos_sdwan_ctl.py`). |
-| `get_vyos_timeline` | Affiche l'historique des dernières actions de configuration. |
+| `list_vyos_routers` | Liste les routeurs VyOS gérés par un nœud spécifique. |
+| `list_vyos_scenarios` | Liste les scénarios de configuration disponibles sur un nœud. |
+| `run_vyos_scenario` | Exécute un scénario VyOS sur un nœud (via `vyos_sdwan_ctl.py`). |
+| `get_vyos_timeline` | Affiche l'historique des actions de configuration d'un nœud. |
 
 ## 🔜 Phase d'Enrichissement : Diagnostics Globaux & Sécurité
 
@@ -73,14 +73,12 @@ L'objectif est d'utiliser le `dashboard-data` du backend pour répondre à des q
 - *"Donne-moi un diagnostic complet du node Hetzner-Ubuntu."*
 - *"Quel est le taux de réussite (success rate) de Microsoft Teams sur le node Hetzner ?"*
 - *"Lance un test de sécurité DNS pour 'abortion.com' sur London."*
-- *"Quels sont les scénarios VyOS disponibles pour le réseau ?"*
-- *"Lance le scénario 'Failover-Paris' et montre-moi quand l'action est terminée."*
-- *"Donne-moi l'historique des 5 dernières actions VyOS."*
-- *"Quels sont les routeurs VyOS actuellement en ligne ?"*
+- *"Quels sont les scénarios VyOS disponibles sur le node Raspi4-Ubuntu ?"*
+- *"Sur le node Paris, lance le scénario 'Failover-WAN' et montre-moi l'historique une fois terminé."*
+- *"Affiche le timeline VyOS pour le node 192.168.97.2."*
+- *"Quels sont les routeurs VyOS actuellement détectés par le node ubuntubr5 ?"*
 
 ## Ce qu'il reste à faire (To-Do)
 
-- [ ] **Implémentation `get_dashboard_stats`** : Nouveau tool MCP pour agréger toutes les métriques d'un nœud.
-- [ ] **Implémentation `run_security_probe`** : Tool pour lancer les tests DNS/URL/EICAR.
 - [ ] **Affinage des Erreurs** : Améliorer les retours d'erreurs pour l'agent IA.
 - [ ] **CI / Déploiement** : Intégrer les tests unitaires du serveur MCP dans GitHub Actions.

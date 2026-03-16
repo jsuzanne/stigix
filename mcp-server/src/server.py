@@ -272,41 +272,53 @@ async def run_security_probe(agent_id: str, probe_type: str, target: str) -> dic
 
 
 @mcp.tool()
-async def list_vyos_routers() -> List[dict]:
-    """List all VyOS routers managed by the Stigix Controller."""
-    check_leader()
-    return await orchestrator.list_vyos_routers()
-
-
-@mcp.tool()
-async def list_vyos_scenarios() -> List[dict]:
-    """List available VyOS configuration sequences (scenarios)."""
-    check_leader()
-    return await orchestrator.list_vyos_sequences()
-
-
-@mcp.tool()
-async def run_vyos_scenario(scenario_id: str) -> dict:
+async def list_vyos_routers(agent_id: str) -> List[dict]:
     """
-    Execute a VyOS configuration sequence (scenario).
+    List all VyOS routers managed by a specific Stigix node.
     
     Args:
+        agent_id: ID of the Stigix node managing the VyOS routers (e.g., 'Raspi4-Ubuntu').
+    """
+    check_leader()
+    return await orchestrator.list_vyos_routers(agent_id)
+
+
+@mcp.tool()
+async def list_vyos_scenarios(agent_id: str) -> List[dict]:
+    """
+    List available VyOS configuration sequences (scenarios) on a specific Stigix node.
+    
+    Args:
+        agent_id: ID of the Stigix node (e.g., 'BR1-Ubuntu').
+    """
+    check_leader()
+    return await orchestrator.list_vyos_sequences(agent_id)
+
+
+@mcp.tool()
+async def run_vyos_scenario(agent_id: str, scenario_id: str) -> dict:
+    """
+    Execute a VyOS configuration sequence (scenario) on a specific Stigix node.
+    
+    Args:
+        agent_id: ID of the Stigix node.
         scenario_id: The ID of the sequence to run (e.g., 'failover-paris').
     """
     check_leader()
-    return await orchestrator.run_vyos_sequence(scenario_id)
+    return await orchestrator.run_vyos_sequence(agent_id, scenario_id)
 
 
 @mcp.tool()
-async def get_vyos_timeline(limit: int = 20) -> List[dict]:
+async def get_vyos_timeline(agent_id: str, limit: int = 20) -> List[dict]:
     """
-    Get the history of recent VyOS configuration changes and their status.
+    Get the history of recent VyOS configuration changes on a specific Stigix node.
     
     Args:
+        agent_id: ID of the Stigix node.
         limit: Number of recent actions to fetch (default 20).
     """
     check_leader()
-    return await orchestrator.get_vyos_history(limit)
+    return await orchestrator.get_vyos_history(agent_id, limit)
 
 
 # -----------------------------------------------------------------------------

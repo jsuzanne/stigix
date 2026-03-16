@@ -403,15 +403,13 @@ class TestOrchestrator:
                 logger.error(f"Security test {test_type} failed for {agent_id}: {e}")
                 return {"error": str(e)}
 
-    def _get_controller_base_url(self) -> str:
-        """Strip /api/registry from controller_url to get base dashboard API."""
-        if not self.registry.controller_url:
-            return "http://localhost:8080/api"
-        return self.registry.controller_url.replace("/registry", "")
-
-    async def list_vyos_routers(self) -> List[Dict[str, Any]]:
-        """List all discovered VyOS routers via controller."""
-        url = f"{self._get_controller_base_url()}/vyos/routers"
+    async def list_vyos_routers(self, agent_id: str) -> List[Dict[str, Any]]:
+        """List VyOS routers managed by a specific Stigix node."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return [{"error": f"Agent {agent_id} not found."}]
+            
+        url = f"{agent.api_base_url}/api/vyos/routers"
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
@@ -419,12 +417,16 @@ class TestOrchestrator:
                 response.raise_for_status()
                 return response.json()
             except Exception as e:
-                logger.error(f"Failed to list VyOS routers: {e}")
+                logger.error(f"Failed to list VyOS routers on {agent_id}: {e}")
                 return [{"error": str(e)}]
 
-    async def list_vyos_sequences(self) -> List[Dict[str, Any]]:
-        """List available VyOS configuration sequences."""
-        url = f"{self._get_controller_base_url()}/vyos/sequences"
+    async def list_vyos_sequences(self, agent_id: str) -> List[Dict[str, Any]]:
+        """List available VyOS configuration sequences on a specific node."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return [{"error": f"Agent {agent_id} not found."}]
+            
+        url = f"{agent.api_base_url}/api/vyos/sequences"
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
@@ -432,12 +434,16 @@ class TestOrchestrator:
                 response.raise_for_status()
                 return response.json()
             except Exception as e:
-                logger.error(f"Failed to list VyOS sequences: {e}")
+                logger.error(f"Failed to list VyOS sequences on {agent_id}: {e}")
                 return [{"error": str(e)}]
 
-    async def run_vyos_sequence(self, sequence_id: str) -> Dict[str, Any]:
-        """Trigger a VyOS sequence execution."""
-        url = f"{self._get_controller_base_url()}/vyos/sequences/run/{sequence_id}"
+    async def run_vyos_sequence(self, agent_id: str, sequence_id: str) -> Dict[str, Any]:
+        """Trigger a VyOS sequence execution on a specific node."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+            
+        url = f"{agent.api_base_url}/api/vyos/sequences/run/{sequence_id}"
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
@@ -445,12 +451,16 @@ class TestOrchestrator:
                 response.raise_for_status()
                 return response.json()
             except Exception as e:
-                logger.error(f"Failed to run VyOS sequence {sequence_id}: {e}")
+                logger.error(f"Failed to run VyOS sequence {sequence_id} on {agent_id}: {e}")
                 return {"error": str(e)}
 
-    async def get_vyos_history(self, limit: int = 50) -> List[Dict[str, Any]]:
-        """Fetch VyOS action history."""
-        url = f"{self._get_controller_base_url()}/vyos/history?limit={limit}"
+    async def get_vyos_history(self, agent_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Fetch VyOS action history from a specific node."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return [{"error": f"Agent {agent_id} not found."}]
+            
+        url = f"{agent.api_base_url}/api/vyos/history?limit={limit}"
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
@@ -458,5 +468,5 @@ class TestOrchestrator:
                 response.raise_for_status()
                 return response.json()
             except Exception as e:
-                logger.error(f"Failed to fetch VyOS history: {e}")
+                logger.error(f"Failed to fetch VyOS history from {agent_id}: {e}")
                 return [{"error": str(e)}]
