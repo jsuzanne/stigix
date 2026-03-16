@@ -59,18 +59,23 @@ The MCP server is included by default in the Stigix `docker-compose.yml`. It sta
 Ensure port **3100** is reachable from your machine (or use an SSH tunnel).
 
 ### 3. Claude Desktop Setup
-Add the following to your `claude_desktop_config.json`:
+
+Depending on your OS, locate the configuration file (note the quotes for paths with spaces):
+- **macOS**: `"~/Library/Application Support/Claude/claude_desktop_config.json"`
+- **Windows**: `"%APPDATA%\Claude\claude_desktop_config.json"`
+
+Add the following configuration (you can add multiple servers for different nodes):
 
 ```json
 {
   "mcpServers": {
-    "stigix-mesh": {
+    "stigix-leader": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/inspector",
-        "http://<NODE_IP>:3100/sse"
-      ]
+      "args": ["-y", "@modelcontextprotocol/inspector", "http://192.168.122.15:3100/sse"]
+    },
+    "stigix-br8": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/inspector", "http://192.168.203.102:3100/sse"]
     }
   }
 }

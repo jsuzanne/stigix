@@ -4,7 +4,7 @@ import httpx
 import jwt
 import os
 from datetime import datetime, timedelta
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 from .registry import RegistryClient
 from ..types import TestRun, TestStatus, StigixEndpoint
 
