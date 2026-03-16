@@ -289,6 +289,7 @@ async def get_security_test_options(probe_type: str) -> dict:
     """
     options = {
         "dns": [
+            {"name": "Abortion", "domain": "test-abortion.testpanw.com"},
             {"name": "DNS Tunneling", "domain": "test-dnstun.testpanw.com"},
             {"name": "Malware", "domain": "test-malware.testpanw.com"},
             {"name": "Phishing", "domain": "test-phishing.testpanw.com"},

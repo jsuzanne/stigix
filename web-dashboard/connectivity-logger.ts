@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import readline from 'readline';
 import { promisify } from 'util';
 import { log } from './utils/logger.js';
 
@@ -234,34 +235,54 @@ export class ConnectivityLogger {
                 .reverse(); // Newest first
 
             const allResults: ConnectivityResult[] = [];
-            // How many consecutive too-old lines before we stop scanning a file
-            const MAX_STALE_STREAK = 3;
-
+            
             for (const file of logFiles) {
-                const content = await readFile(path.join(this.logDir, file), 'utf8');
-                const lines = content.trim().split('\n').filter((l: string) => l.length > 0).reverse(); // Newest lines first
+                const filePath = path.join(this.logDir, file);
+                
+                // Use readline to process line by line (avoids loading whole file into memory)
+                const fileStream = fs.createReadStream(filePath);
+                const rl = readline.createInterface({
+                    input: fileStream,
+                    terminal: false
+                });
 
-                let staleStreak = 0;
-                for (const line of lines) {
+                const fileLines: ConnectivityResult[] = [];
+                for await (const line of rl) {
+                    if (!line.trim()) continue;
                     try {
                         const result = JSON.parse(line) as ConnectivityResult;
-                        // Since lines are newest-first, first stale record means the rest are also stale
+                        
+                        // If it's too old, we might be able to skip it, but since lines are usually 
+                        // chronological within a file (oldest first), we keep those >= minTimestamp.
                         if (minTimestamp && result.timestamp < minTimestamp) {
-                            staleStreak++;
-                            if (staleStreak >= MAX_STALE_STREAK) break;
                             continue;
                         }
-                        staleStreak = 0;
-                        allResults.push(result);
-                        if (maxResults && allResults.length >= maxResults) return allResults;
+                        fileLines.push(result);
                     } catch (e) { }
                 }
 
-                // If last batch of results from this file were all stale, older files will be too
-                if (minTimestamp && staleStreak >= MAX_STALE_STREAK) break;
+                // Since files are oldest-to-newest internally, but we want newest-first, 
+                // we reverse the lines we collected from this file.
+                fileLines.reverse();
+                
+                for (const res of fileLines) {
+                    allResults.push(res);
+                    if (maxResults && allResults.length >= maxResults) {
+                        fileStream.destroy(); // Close stream early
+                        return allResults;
+                    }
+                }
+
+                // If we've hit a file where the newest record is already older than our cutoff,
+                // and the files are reasonably chronological, we could technically stop.
+                // But for safety and because log rotation might overlap days, we continue until we have enough.
+                if (minTimestamp && fileLines.length > 0 && fileLines[0].timestamp < minTimestamp) {
+                    break;
+                }
             }
             return allResults;
         } catch (error) {
+            log('CONNECTIVITY_LOGGER', `Read failed: ${error}`, 'error');
             return [];
         }
     }
