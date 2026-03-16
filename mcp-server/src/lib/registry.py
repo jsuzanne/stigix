@@ -31,7 +31,14 @@ class RegistryClient:
         ]
 
     def _discover_controller(self) -> Optional[str]:
-        """Reads static-leader.json to find the Target Controller."""
+        """Discovers the Target Controller via ENV or static-leader.json."""
+        # 1. Check ENV override first (useful for remote control from workstation)
+        env_url = os.getenv("STIGIX_CONTROLLER_URL")
+        if env_url:
+            logger.info(f"Using Controller URL from ENV: {env_url}")
+            return env_url
+
+        # 2. Fallback to static-leader.json
         config_path = "/Users/jsuzanne/Github/stigix/config/static-leader.json"
         try:
             if os.path.exists(config_path):
@@ -39,7 +46,7 @@ class RegistryClient:
                     data = json.load(f)
                     url = data.get("url")
                     if url:
-                        logger.info(f"Discovered Controller URL: {url}")
+                        logger.info(f"Discovered Controller URL from config: {url}")
                         return url
         except Exception as e:
             logger.error(f"Failed to read controller config: {e}")
