@@ -42,21 +42,41 @@ L'intégration MCP a été considérablement enrichie et fiabilisée pour offrir
 | `set_traffic_status` | Active/Désactive la génération de trafic applicatif (SaaS). |
 | `set_voice_status` | Active/Désactive la simulation d'appels voix (QoS). |
 
-## 🔜 Phase d'Enrichissement : Diagnostics Globaux & Sécurité (En cours)
+### 7. Orchestration VyOS (Automates Config)
+- **Gestion des Routeurs** : Intégration complète des commandes VyOS via le script `vyos_sdwan_ctl.py`.
+- **Séquençage d'Actions** : Possibilité de piloter des scénarios complexes (sequences) qui modifient dynamiquement la configuration des routeurs (ex: basculement BGP, coupure WAN).
+- **Timeline & Historique** : Suivi des modifications de configuration via l'API d'historique VyOS.
+
+## 🚧 Outils MCP Actuellement Disponibles
+
+| Nom de l'Outil | Description |
+| :--- | :--- |
+| `list_endpoints` | Récupère la topologie (routeurs, serveurs) et leur statut via le Registry Cloudflare. |
+| `run_test` | Lance une sonde XFR (vitesse) ou de Convergence (failover continu). |
+| `stop_test` | Arrête un test et récupère les métriques finales stabilisées. |
+| `get_test_status`| Remonte les données en direct ou historiques d'un test. |
+| `set_traffic_status` | Active/Désactive la génération de trafic applicatif (SaaS). |
+| `set_voice_status` | Active/Désactive la simulation d'appels voix (QoS). |
+| `get_diagnostics` | Récupère l'intégralité des métriques (CPU, Bitrate, Apps) d'un nœud. |
+| `get_app_score` | Calcule le taux de réussite (success rate) d'une application SaaS. |
+| `run_security_probe` | Lance un test de sécurité DNS, URL ou Malware (EICAR). |
+| `list_vyos_routers` | Liste les routeurs VyOS gérés. |
+| `list_vyos_scenarios` | Liste les séquences de configuration (scénarios) disponibles. |
+| `run_vyos_scenario` | Exécute un scénario VyOS (basé sur `vyos_sdwan_ctl.py`). |
+| `get_vyos_timeline` | Affiche l'historique des dernières actions de configuration. |
+
+## 🔜 Phase d'Enrichissement : Diagnostics Globaux & Sécurité
 
 L'objectif est d'utiliser le `dashboard-data` du backend pour répondre à des questions complexes sur la performance "vécue" par les applications.
 
-### Nouvelles Capacités ciblées :
-- **Score de Performance Applicative** : Calculer le taux de succès (success vs errors) pour des apps spécifiques comme Teams, Zoom ou Webex.
-- **État Global du Système** : Interroger le CPU, le débit bit/s des conteneurs et le statut VoIP d'un seul coup.
-- **Tests de Sécurité Natifs** : Lancer et analyser des blocages DNS (Type Abortion), URL (Catégories) ou de Menaces (EICAR).
-
 ### 📝 Exemples de questions tests pour l'IA :
+- *"Donne-moi un diagnostic complet du node Hetzner-Ubuntu."*
 - *"Quel est le taux de réussite (success rate) de Microsoft Teams sur le node Hetzner ?"*
-- *"Est-ce que le trafic voix est actuellement démarré sur Paris ?"*
-- *"Lance un test de sécurité DNS pour 'abortion.com' sur London et confirme s'il est bloqué."*
-- *"Donne-moi le score MOS moyen des derniers appels voix sur le Hub."*
-- *"Quel est le score global de performance du node Raspi4 ?"*
+- *"Lance un test de sécurité DNS pour 'abortion.com' sur London."*
+- *"Quels sont les scénarios VyOS disponibles pour le réseau ?"*
+- *"Lance le scénario 'Failover-Paris' et montre-moi quand l'action est terminée."*
+- *"Donne-moi l'historique des 5 dernières actions VyOS."*
+- *"Quels sont les routeurs VyOS actuellement en ligne ?"*
 
 ## Ce qu'il reste à faire (To-Do)
 

@@ -271,6 +271,44 @@ async def run_security_probe(agent_id: str, probe_type: str, target: str) -> dic
     return await orchestrator.trigger_security_test(agent_id, probe_type, target)
 
 
+@mcp.tool()
+async def list_vyos_routers() -> List[dict]:
+    """List all VyOS routers managed by the Stigix Controller."""
+    check_leader()
+    return await orchestrator.list_vyos_routers()
+
+
+@mcp.tool()
+async def list_vyos_scenarios() -> List[dict]:
+    """List available VyOS configuration sequences (scenarios)."""
+    check_leader()
+    return await orchestrator.list_vyos_sequences()
+
+
+@mcp.tool()
+async def run_vyos_scenario(scenario_id: str) -> dict:
+    """
+    Execute a VyOS configuration sequence (scenario).
+    
+    Args:
+        scenario_id: The ID of the sequence to run (e.g., 'failover-paris').
+    """
+    check_leader()
+    return await orchestrator.run_vyos_sequence(scenario_id)
+
+
+@mcp.tool()
+async def get_vyos_timeline(limit: int = 20) -> List[dict]:
+    """
+    Get the history of recent VyOS configuration changes and their status.
+    
+    Args:
+        limit: Number of recent actions to fetch (default 20).
+    """
+    check_leader()
+    return await orchestrator.get_vyos_history(limit)
+
+
 # -----------------------------------------------------------------------------
 # Main Entry Point
 # -----------------------------------------------------------------------------
