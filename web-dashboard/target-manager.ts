@@ -23,6 +23,37 @@ export interface TargetProbeResult {
     data?: any; // For Egress Info (ip, country, pop)
 }
 
+const DEFAULT_SCENARIOS: TargetScenario[] = [
+    {
+        id: 'egress-info',
+        label: 'Info / Egress',
+        description: 'Identifies your public IP, Country and Cloudflare POP.',
+        path: '/saas/info',
+        category: 'info'
+    },
+    {
+        id: 'saas-slow',
+        label: 'Slow SaaS',
+        description: 'Simulates a 5s backend delay to test path selection.',
+        path: '/saas/slow',
+        category: 'saas'
+    },
+    {
+        id: 'download-large',
+        label: 'Large Download',
+        description: 'Downloads a 10MB payload to test throughput.',
+        path: '/download/large',
+        category: 'download'
+    },
+    {
+        id: 'security-eicar',
+        label: 'Security (EICAR)',
+        description: 'Downloads the EICAR test file to check security policies.',
+        path: '/security/eicar',
+        category: 'security'
+    }
+];
+
 /**
  * TargetManager - Manages Cloudflare Target scenarios and signs URLs with the shared key.
  */
@@ -50,12 +81,12 @@ export class TargetManager {
                 this.scenarios = JSON.parse(data);
                 log('TARGET', `Loaded ${this.scenarios.length} scenarios from ${this.configPath}`);
             } else {
-                log('TARGET', `No scenarios file found at ${this.configPath}`, 'warn');
-                this.scenarios = [];
+                log('TARGET', `No scenarios file found at ${this.configPath}. Using defaults.`, 'warn');
+                this.scenarios = DEFAULT_SCENARIOS;
             }
         } catch (error) {
-            log('TARGET', `Error loading scenarios: ${error}`, 'error');
-            this.scenarios = [];
+            log('TARGET', `Error loading scenarios: ${error}. Falling back to defaults.`, 'error');
+            this.scenarios = DEFAULT_SCENARIOS;
         }
     }
 

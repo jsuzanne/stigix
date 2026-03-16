@@ -993,23 +993,37 @@ export default function Settings({ token }: { token: string }) {
                                         {newProbe.type === 'CLOUD' ? 'Cloud scenario' : 'Target Uri / Ip'}
                                     </label>
                                     {newProbe.type === 'CLOUD' ? (
-                                        <select
-                                            className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-sm"
-                                            value={newProbe.target}
-                                            onChange={e => {
-                                                const scenario = cloudScenarios.find(s => s.id === e.target.value);
-                                                setNewProbe({
-                                                    ...newProbe,
-                                                    target: e.target.value,
-                                                    name: newProbe.name || scenario?.label || ''
-                                                });
-                                            }}
-                                        >
-                                            <option value="">Select Scenario...</option>
-                                            {cloudScenarios.map(s => (
-                                                <option key={s.id} value={s.id}>{s.label}</option>
-                                            ))}
-                                        </select>
+                                        <div className="space-y-3">
+                                            <div className="relative">
+                                                <select
+                                                    className="w-full bg-card border border-border text-text-primary rounded-xl pl-10 pr-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-sm appearance-none"
+                                                    value={newProbe.target}
+                                                    onChange={e => {
+                                                        const scenario = cloudScenarios.find(s => s.id === e.target.value);
+                                                        setNewProbe({
+                                                            ...newProbe,
+                                                            target: e.target.value,
+                                                            name: newProbe.name || scenario?.label || ''
+                                                        });
+                                                    }}
+                                                >
+                                                    <option value="">Select Scenario...</option>
+                                                    {cloudScenarios.map(s => (
+                                                        <option key={s.id} value={s.id}>{s.label}</option>
+                                                    ))}
+                                                </select>
+                                                <Globe size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted opacity-50" />
+                                                <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                                            </div>
+                                            {newProbe.target && (
+                                                <div className="px-1 flex gap-2 items-start animate-in fade-in slide-in-from-top-1 duration-300">
+                                                    <Info size={12} className="text-blue-500 mt-0.5 shrink-0" />
+                                                    <p className="text-[10px] font-medium text-text-muted leading-relaxed italic">
+                                                        {cloudScenarios.find(s => s.id === newProbe.target)?.description || 'No description available for this scenario.'}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
                                     ) : (
                                         <input
                                             type="text"
@@ -1038,8 +1052,13 @@ export default function Settings({ token }: { token: string }) {
                                         probe.enabled === false && "opacity-50"
                                     )}>
                                         <div className="flex items-center gap-4">
-                                            <div className="w-10 h-10 rounded-xl bg-blue-600/10 text-blue-600 dark:text-blue-400 flex items-center justify-center text-[10px] font-black">
-                                                {probe.type.substring(0, 3)}
+                                            <div className={cn(
+                                                "w-10 h-10 rounded-xl flex items-center justify-center text-[10px] font-black",
+                                                probe.type === 'CLOUD'
+                                                    ? "bg-purple-600/10 text-purple-600 dark:text-purple-400"
+                                                    : "bg-blue-600/10 text-blue-600 dark:text-blue-400"
+                                            )}>
+                                                {probe.type === 'CLOUD' ? <Globe size={18} /> : probe.type.substring(0, 3)}
                                             </div>
                                             <div>
                                                 <div className="text-[11px] font-black text-text-primary tracking-tight">{probe.name}</div>
