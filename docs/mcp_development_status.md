@@ -31,40 +31,52 @@ L'intégration MCP a été considérablement enrichie et fiabilisée pour offrir
 - **API Reference (`API_REFERENCE.md`)** : Création d'un guide technique listant tous les endpoints HTTP consommés par le MCP (XFR, Convergence, Voix, Traffic).
 - **Scan Exhaustif (`BACKEND_ROUTES_DUMP.md`)** : Extraction automatique de l'intégralité des routes (160+) du backend Stigix pour donner une visibilité totale aux développeurs.
 
-## 🚧 Outils MCP Actuellement Disponibles
-
-| Nom de l'Outil | Description |
-| :--- | :--- |
-| `list_endpoints` | Récupère la topologie (routeurs, serveurs) et leur statut via le Registry Cloudflare. |
-| `run_test` | Lance une sonde XFR (vitesse) ou de Convergence (failover continu). |
-| `stop_test` | Arrête un test et récupère les métriques finales stabilisées. |
-| `get_test_status`| Remonte les données en direct ou historiques d'un test. |
-| `set_traffic_status` | Active/Désactive la génération de trafic applicatif (SaaS). |
-| `set_voice_status` | Active/Désactive la simulation d'appels voix (QoS). |
-
 ### 7. Orchestration VyOS (Automates Config)
 - **Gestion des Routeurs** : Intégration complète des commandes VyOS via le script `vyos_sdwan_ctl.py`.
 - **Séquençage d'Actions** : Possibilité de piloter des scénarios complexes (sequences) qui modifient dynamiquement la configuration des routeurs (ex: basculement BGP, coupure WAN).
 - **Timeline & Historique** : Suivi des modifications de configuration via l'API d'historique VyOS.
 
-## 🚧 Outils MCP Actuellement Disponibles
+## Available MCP Tools
 
-| Nom de l'Outil | Description |
-| :--- | :--- |
-| `list_endpoints` | Récupère la topologie (routeurs, serveurs) et leur statut via le Registry Cloudflare. |
-| `run_test` | Lance une sonde XFR (vitesse) ou de Convergence (failover continu). |
-| `stop_test` | Arrête un test et récupère les métriques finales stabilisées. |
-| `get_test_status`| Remonte les données en direct ou historiques d'un test. |
-| `set_traffic_status` | Active/Désactive la génération de trafic applicatif (SaaS). |
-| `set_voice_status` | Active/Désactive la simulation d'appels voix (QoS). |
-| `get_diagnostics` | Récupère l'intégralité des métriques (CPU, Bitrate, Apps) d'un nœud. |
-| `get_app_score` | Calcule le taux de réussite (success rate) d'une application SaaS. |
-| `run_security_probe` | Lance un test de sécurité DNS, URL ou Malware (EICAR). |
-| `list_vyos_routers` | Liste les routeurs VyOS gérés par un nœud spécifique. |
-| `list_vyos_scenarios` | Liste les scénarios de configuration disponibles sur un nœud. |
-| `run_vyos_scenario` | Exécute un scénario VyOS sur un nœud (via `vyos_sdwan_ctl.py`). |
-| `get_vyos_timeline` | Affiche l'historique des actions de configuration d'un nœud. |
-| `set_vyos_scenario_status` | Active ou désactive un scénario (cycle) sur un nœud. |
+| Component | Tool Name | Description | Example Query (Natural Language) |
+| :--- | :--- | :--- | :--- |
+| **Discovery** | `list_endpoints` | List Fabric nodes or Internet targets. | *"Quels sont les nodes actifs ?"* |
+| **Connectivity** | `run_test` | Start a traffic test (xfr, conv, voice). | *"Lance un speedtest entre BR1 et Paris."* |
+| **Connectivity** | `get_test_status` | Get metrics for a specific test. | *"Donne moi le résultat du test G-2026..."* |
+| **Connectivity** | `stop_test` | Stop a long-running convergence test. | *"Arrête la sonde vers 8.8.8.8."* |
+| **Management** | `set_traffic_status` | Start/stop global app traffic simulation. | *"Active le trafic applicatif sur Raspi4."* |
+| **Management** | `set_voice_status` | Start/stop voice simulation. | *"Lance la simulation de voix sur BR1."* |
+| **Maintenance** | `get_diagnostics` | Full node dashboard (CPU, Bitrate, etc.). | *"Check la santé globale du node BR1."* |
+| **Maintenance** | `get_app_score` | Success rate for a specific app (Teams, etc.). | *"Quel est le score Teams sur Raspi4 ?"* |
+| **Security** | `run_security_probe` | Test DNS/URL/Threat filtering. | *"Teste si le domaine malware.com est bloqué."* |
+| **VyOS** | `list_vyos_routers` | List managed VyOS routers. | *"Affiche les routeurs VyOS gérés par BR1."* |
+| **VyOS** | `list_vyos_scenarios` | List available config sequences. | *"Quels scénarios VyOS sont dispo sur Raspi ?"* |
+| **VyOS** | `run_vyos_scenario` | Run a specific config sequence. | *"Applique le scénario failover-paris."* |
+| **VyOS** | `get_vyos_timeline` | History of VyOS changes. | *"Quels ont été les derniers changements VyOS ?"* |
+| **VyOS** | `set_vyos_scenario_status` | Enable/Disable a cyclic scenario. | *"Désactive le scénario de flapping cyclique."* |
+| **DEM** | `get_dem_summary` | Global Experience summary and probe list. | *"Quel est l'état général des probes DEM ?"* |
+| **DEM** | `get_probe_details` | Rich metrics for a specific probe. | *"Donne moi les détails de la probe Google DNS."* |
+
+## Usage Examples
+
+### 1. Troubleshooting Performance
+**User:** *"La qualité Teams est mauvaise sur le site de Paris, peux-tu regarder ?"*
+1. **AI:** Calls `get_app_score(agent_id="Paris-BR1", app_name="Teams")`.
+2. **AI:** Calls `get_dem_summary(agent_id="Paris-BR1")` to check underlying latency.
+3. **AI:** Analysis: *"Le score Teams est à 42% car la latence vers Microsoft a augmenté de 50ms sur le lien MPLS."*
+
+### 2. Network Orchestration (VyOS)
+**User:** *"Le lien principal est tombé à Paris, bascule sur la 4G."*
+1. **AI:** Calls `list_vyos_scenarios(agent_id="Paris-BR1")` to find the right sequence.
+2. **AI:** Calls `run_vyos_scenario(agent_id="Paris-BR1", scenario_id="force-4g-failover")`.
+
+### 3. Security Validation
+**User:** *"Vérifie si la politique de filtrage URL est bien active."*
+1. **AI:** Calls `run_security_probe(agent_id="BR1", probe_type="url", target="http://gambling.com")`.
+2. **AI:** Confirms: *"Le site est bien bloqué (HTTP 403) par la gateway."*
+
+---
+*Dernière mise à jour : 16 Mars 2026*
 
 ## 🔜 Phase d'Enrichissement : Diagnostics Globaux & Sécurité
 

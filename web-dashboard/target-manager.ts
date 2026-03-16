@@ -59,6 +59,13 @@ export class TargetManager {
     }
 
     /**
+     * Returns the raw list of scenarios (probes).
+     */
+    getProbes(): TargetScenario[] {
+        return this.scenarios;
+    }
+
+    /**
      * Returns the list of scenarios with signed URLs.
      */
     getScenarios(): TargetScenario[] {

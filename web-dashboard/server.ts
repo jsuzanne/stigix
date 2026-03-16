@@ -22,7 +22,7 @@ import { SiteManager } from './site-manager.js';
 import { DiscoveryManager, DiscoveredProbe } from './discovery-manager.js';
 import { createServer } from 'http';
 import { TargetsManager } from './targets-manager.js';
-import { TargetManager } from './target-manager.js';
+import { TargetManager, TargetScenario } from './target-manager.js';
 import { RegistryManager } from './registry-manager.js';
 import { LocalRegistryServer } from './local-registry-server.js';
 
@@ -5981,6 +5981,33 @@ app.get('/api/admin/system/dashboard-data', authenticateToken, async (req, res) 
             }
         } catch (e) { }
 
+        // 7. Digital Experience (DEM) Results (Non-blocking)
+        let demData: { globalHealth: number, httpEndpoints: { total: number, avgScore: number }, lastResults: any[] } = { 
+            globalHealth: 0, 
+            httpEndpoints: { total: 0, avgScore: 0 }, 
+            lastResults: [] 
+        };
+        try {
+            const activeProbes = targetManager.getProbes();
+            const activeIds = activeProbes.map((p: TargetScenario) => p.id);
+            const stats = await connectivityLogger.getStats({ timeRange: '24h', activeProbeIds: activeIds });
+            const { results } = await connectivityLogger.getResults({ limit: 50 });
+            
+            demData = {
+                globalHealth: stats?.globalHealth || 0,
+                httpEndpoints: stats?.httpEndpoints || { total: 0, avgScore: 0 },
+                lastResults: results.map(r => ({
+                    id: r.endpointId,
+                    name: r.endpointName,
+                    type: r.endpointType,
+                    score: r.score,
+                    total_ms: r.metrics.total_ms,
+                    reachable: r.reachable,
+                    timestamp: r.timestamp
+                }))
+            };
+        } catch (e) { }
+
         res.json({
             stats,
             status,
@@ -5991,6 +6018,7 @@ app.get('/api/admin/system/dashboard-data', authenticateToken, async (req, res) 
                 control: voiceControl,
                 stats: voiceStats
             },
+            dem: demData,
             registry: {
                 ...registryManager.getStatus(),
                 mode: process.env.STIGIX_REGISTRY_MODE || 'peer',

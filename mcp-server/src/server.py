@@ -336,6 +336,33 @@ async def set_vyos_scenario_status(agent_id: str, scenario_id: str, enabled: boo
     return await orchestrator.set_vyos_scenario_status(agent_id, scenario_id, enabled)
 
 
+@mcp.tool()
+async def get_dem_summary(agent_id: str) -> dict:
+    """
+    Get a summary of Digital Experience Monitoring (DEM) health and recent probe results.
+    Returns global health score and individual probe statuses.
+    
+    Args:
+        agent_id: ID of the Stigix node.
+    """
+    check_leader()
+    return await orchestrator.get_dem_stats(agent_id)
+
+
+@mcp.tool()
+async def get_probe_details(agent_id: str, probe_name: str) -> dict:
+    """
+    Get detailed performance metrics for a specific DEM probe (ICMP, HTTP, HTTPS, etc.).
+    Returns rich stats like score, total_ms, and reachability.
+    
+    Args:
+        agent_id: ID of the Stigix node.
+        probe_name: Name or ID of the probe to investigate (e.g., 'Google DNS', 'SaaS App').
+    """
+    check_leader()
+    return await orchestrator.get_probe_performance(agent_id, probe_name)
+
+
 # -----------------------------------------------------------------------------
 # Main Entry Point
 # -----------------------------------------------------------------------------

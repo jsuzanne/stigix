@@ -502,3 +502,53 @@ class TestOrchestrator:
             except Exception as e:
                 logger.error(f"Failed to set status for sequence {sequence_id} on {agent_id}: {e}")
                 return {"error": str(e)}
+
+    async def get_dem_stats(self, agent_id: str) -> Dict[str, Any]:
+        """Fetch Digital Experience Monitoring (DEM) stats from a node."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+            
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        url = f"{agent.api_base_url}/api/admin/system/dashboard-data"
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                return data.get("dem", {})
+            except Exception as e:
+                logger.error(f"Failed to fetch DEM stats for {agent_id}: {e}")
+                return {"error": str(e)}
+
+    async def get_probe_performance(self, agent_id: str, probe_name: str) -> Dict[str, Any]:
+        """Fetch detailed performance metrics for a specific probe."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+            
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        # In a real scenario, we might have a dedicated endpoint for rich details,
+        # but for now we'll fetch recently logged results and find the match.
+        url = f"{agent.api_base_url}/api/admin/system/dashboard-data"
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                dem = data.get("dem", {})
+                last_results = dem.get("lastResults", [])
+                
+                # Try exact match or fuzzy match by name/IP
+                probe_lower = probe_name.lower()
+                match = next((r for r in last_results if probe_lower in r.get("name", "").lower() or probe_lower in r.get("id", "").lower()), None)
+                
+                if not match:
+                    return {"error": f"Probe '{probe_name}' not found in recent results. Available: {[r.get('name') for r in last_results[:10]]}"}
+                
+                return match
+            except Exception as e:
+                logger.error(f"Failed to fetch probe details for {agent_id}: {e}")
+                return {"error": str(e)}
