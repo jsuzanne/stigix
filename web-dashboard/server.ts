@@ -4582,7 +4582,8 @@ class SLSClient {
 
             // Using the new PANW Logging Service API structure
             // API requires X-PAN-TSG-ID and X-PANW-Region for correct routing in SASE
-            const res = await fetch(`https://api.sase.paloaltonetworks.com/logging/v1/diagnostics`, {
+            const diagUrl = `${this.baseUrl}/logging/v1/diagnostics`;
+            const res = await fetch(diagUrl, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -4605,7 +4606,7 @@ class SLSClient {
 
             if (!res.ok) {
                 const err = await res.text();
-                log('SLS', `Diagnostic query failed: ${res.status} ${err}`, 'error');
+                log('SLS', `Diagnostic query failed: ${res.status} ${err} (URL: ${diagUrl})`, 'error');
                 return null;
             }
 
@@ -4632,6 +4633,26 @@ class SLSClient {
             return null;
         }
     }
+}
+
+async function getLatestEgressIp(): Promise<string | null> {
+    // 1. Check if we already have it from a recent cloud probe
+    try {
+        const connectivityFile = path.join(APP_CONFIG.configDir, 'connectivity.json');
+        if (fs.existsSync(connectivityFile)) {
+            const data = JSON.parse(fs.readFileSync(connectivityFile, 'utf8'));
+            const egressResult = data.results?.find((r: any) => r.id === 'egress-info');
+            if (egressResult?.data?.ip) return egressResult.data.ip;
+        }
+    } catch (e) { }
+
+    // 2. Fallback: Quick external check
+    try {
+        const res = await fetch('https://ifconfig.me/ip', { signal: AbortSignal.timeout(2000) });
+        if (res.ok) return (await res.text()).trim();
+    } catch (e) { }
+
+    return null;
 }
 
 /**
@@ -4732,12 +4753,17 @@ const addTestResult = async (testType: string, testName: string, result: any, te
     // 4. Enrich with SLS if enabled
     if (config.sls_config?.enabled && config.sls_config?.auto_enrich) {
         try {
-            // We need srcIp for enrichment. In AIO container it's usually the external IP or interface IP.
-            const srcIp = process.env.STIGIX_IP || 'auto'; // Fallback to auto-detection in SLSClient if needed
+            // We need srcIp for enrichment.
+            let srcIp = process.env.STIGIX_IP || 'auto';
             if (srcIp === 'auto') {
-                // Future: add auto IP detection
+                srcIp = await getLatestEgressIp() || 'auto';
             }
-            await enrichWithSLS(testResult, srcIp);
+            
+            if (srcIp !== 'auto') {
+                await enrichWithSLS(testResult, srcIp);
+            } else {
+                log('SLS', 'Enrichment skipped: No valid source IP found', 'warn');
+            }
         } catch (e) {
             log('SLS', `Enrichment error: ${e}`, 'warn');
         }
