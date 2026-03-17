@@ -2,7 +2,7 @@
 
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/jsuzanne/sdwan-traffic-gen)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.2.1--patch.162-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.1--patch.240-blue.svg)](https://github.com/jsuzanne/stigix/releases)
 
 A modern web-based SD-WAN traffic generator with real-time monitoring, customizable traffic patterns, and comprehensive security testing. Perfect for testing SD-WAN deployments, network QoS policies, and application performance.
 
@@ -112,6 +112,9 @@ The project is evolving rapidly with new features and refinements added in every
 - **Live VPN Topology**: Real-time visualization of SD-WAN overlay paths with intelligent peer device mapping and HUB filtering.
 - **Site Discovery**: Automatic discovery of Prisma SD-WAN LAN interfaces for path validation.
 - **Traffic Volume History**: Persistent metrics storage and historical visualization in the dashboard.
+- **Probe Management Modal**: Streamlined UI for adding/editing synthetic probes with improved validation and a functional Export button. 🛠️
+- **Cloud Egress Context**: Enhanced "System Info" tab with real-time public IP, geolocation, and ASN data for Cloud probes. 🌍
+- **MCP Bridge Setup**: New `setup-bridge.sh` script for automated local installation of the Claude MCP bridge. 🤖
 
 [View full changelog with all version details →](CHANGELOG.md)
 

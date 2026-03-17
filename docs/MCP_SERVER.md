@@ -58,20 +58,36 @@ The MCP server is included by default in the Stigix `docker-compose.yml`. It sta
 ### 2. Remote Access
 Ensure port **3100** is reachable from your machine (or use an SSH tunnel).
 
-### 3. Claude Desktop Setup (Remote SSE)
+### 3. Automated Local Setup (One-Liner)
+If you already have the repository cloned, run this command in your terminal to initialize the bridge environment automatically:
+```bash
+/Users/jsuzanne/Github/stigix/mcp-server/setup-bridge.sh
+```
+This script will create a virtual environment (`.venv`) and install all necessary dependencies for you.
 
-To connect Claude on your Mac to a remote Stigix node (like BR8), use the dedicated **Stigix SSE Bridge**. This bridge converts the remote SSE stream to a clean local STDIO channel for Claude.
+---
 
-Add this to your `"~/Library/Application Support/Claude/claude_desktop_config.json"`:
+## 🚦 Claude Desktop Configuration
 
+Stigix uses **Server-Sent Events (SSE)** for remote connectivity. Since Claude Desktop primarily supports **STDIO**, we use a lightweight **Bridge** script included in the repository.
+
+### 1. Locate your Configuration File
+Open the `claude_desktop_config.json` file on your machine:
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+### 2. Configure the Stigix Bridge
+Add a new entry under `mcpServers`. You can add multiple instances (e.g., Local, BR5, Orchestrator). 
+
+**Example configuration for a remote node (BR5):**
 ```json
 {
   "mcpServers": {
-    "stigix-br8": {
+    "stigix-br5": {
       "command": "/Users/jsuzanne/Github/stigix/mcp-server/.venv/bin/python3",
       "args": [
         "/Users/jsuzanne/Github/stigix/mcp-server/bridge.py",
-        "http://192.168.123.102:3100/sse"
+        "http://192.168.123.101:3100/sse"
       ],
       "env": {
         "PYTHONPATH": "/Users/jsuzanne/Github/stigix/mcp-server"
@@ -80,7 +96,25 @@ Add this to your `"~/Library/Application Support/Claude/claude_desktop_config.js
   }
 }
 ```
-*Replace `192.168.123.102` with the IP of your target node. This method is the most robust and silent.*
+
+> [!IMPORTANT]
+> - **Paths**: You **MUST** use absolute paths for the python executable and the `bridge.py` script.
+> - **URL**: Replace `192.168.123.101` with the IP of the Stigix instance you want to pilot.
+> - **Virtualenv**: Ensure the `.venv` in `mcp-server/` is initialized (`pip install -r requirements.txt`).
+
+### 3. Verify Connection
+1. **Restart Claude Desktop** completely.
+2. Click the 🔨 **hammer icon** (bottom right of the prompt box).
+3. If everything is correct, you should see **stigix-br5** with a green status and the full list of tools (e.g., `list_endpoints`, `run_test`).
+
+### 4. Troubleshooting
+If the server doesn't appear or shows a red error:
+- Check the bridge logs on macOS: `tail -f ~/Library/Logs/Claude/mcp-server-stigix-br5.log`
+- Manually test the bridge: 
+  ```bash
+  /Users/jsuzanne/Github/stigix/mcp-server/.venv/bin/python3 /Users/jsuzanne/Github/stigix/mcp-server/bridge.py http://<IP>:3100/sse
+  ```
+  If it says "Bridge initialized. Ready for Claude", the python setup is correct.
 
 ---
 

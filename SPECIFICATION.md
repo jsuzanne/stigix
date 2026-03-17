@@ -1,7 +1,7 @@
 # SD-WAN Traffic Generator — Technical Specification
 
-**Version**: `v1.2.1-patch.106`
-**Last Updated**: February 2026
+**Version**: `v1.2.1-patch.240`
+**Last Updated**: March 2026
 
 ---
 
@@ -137,6 +137,12 @@ graph TB
 | `getflow.py` | Prisma SD-WAN Flow Browser API integration |
 | `http_server.py` | HTTP target simulation for security testing |
 | `srt_orchestrator.py` | SRT stream orchestration |
+
+### MCP Server (`mcp-server`)
+- **Base Image**: `python:3.11-slim`
+- **Protocol**: Model Context Protocol (FastMCP)
+- **Bridge**: `bridge.py` (Local STDIO to Remote SSE)
+- **Purpose**: Natural language orchestration and distributed remote control
 
 ---
 
@@ -373,6 +379,8 @@ Multi-dimensional network quality monitoring from the branch:
 | **Docker Stats** | Container CPU/memory/network counters |
 | **Public IP** | Detected egress IP address |
 | **Active Probes** | Auto-registered Prisma SD-WAN probe status |
+| **Cloud Egress Context** | Real-time IP, Geo-location (City/Country), ASN, and Latency for Cloud probes |
+| **Signed Cloud URLs** | Display of real signed URLs (e.g., Cloudflare) for probe targets |
 
 ---
 
