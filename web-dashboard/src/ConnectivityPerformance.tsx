@@ -112,6 +112,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
     const [showDeleted, setShowDeleted] = useState(false);
     const [showInactive, setShowInactive] = useState(false);
     const [endpointConfigs, setEndpointConfigs] = useState<Map<string, any>>(new Map());
+    const [cloudScenarios, setCloudScenarios] = useState<any[]>([]);
 
     // Sorting state
     const [sortField, setSortField] = useState<string>('name');
@@ -129,16 +130,21 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
     // Phase 1: Load probes config immediately (fast endpoints < 200ms)
     const fetchProbesConfig = async () => {
         try {
-            const [activeRes, configsRes] = await Promise.all([
+            const [activeRes, configsRes, scenariosRes] = await Promise.all([
                 fetch('/api/connectivity/active-probes', { headers: authHeaders() }),
-                fetch('/api/connectivity/custom', { headers: authHeaders() })
+                fetch('/api/connectivity/custom', { headers: authHeaders() }),
+                fetch('/api/target/scenarios', { headers: authHeaders() })
             ]);
-            const [activeData, configsData] = await Promise.all([
+            const [activeData, configsData, scenariosData] = await Promise.all([
                 activeRes.json(),
-                configsRes.json()
+                configsRes.json(),
+                scenariosRes.json()
             ]);
             if (activeData.success) {
                 setActiveProbes(activeData.probes.map((p: any) => p.id));
+            }
+            if (Array.isArray(scenariosData)) {
+                setCloudScenarios(scenariosData);
             }
             const configMap = new Map();
             if (Array.isArray(configsData)) {
@@ -632,7 +638,11 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                         </div>
                                         <span className="text-[10px] text-text-muted font-mono truncate max-w-[220px]">
                                             {e.type === 'CLOUD'
-                                                ? (e.lastResult.url ? e.lastResult.url.replace(/^https?:\/\//, '').split('?')[0] : '---')
+                                                ? (() => {
+                                                    const scenario = cloudScenarios.find(s => s.id === e.lastResult.url || s.id === e.name.toLowerCase().replace(/\s+/g, '-'));
+                                                    if (scenario?.signedUrl) return scenario.signedUrl.replace(/^https?:\/\//, '').split('?')[0];
+                                                    return e.lastResult.url || '---';
+                                                })()
                                                 : e.lastResult.url
                                             }
                                         </span>

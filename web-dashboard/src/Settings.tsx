@@ -118,7 +118,7 @@ export default function Settings({ token }: { token: string }) {
     const [customProbes, setCustomProbes] = useState<CustomProbe[]>([]);
     const [newProbe, setNewProbe] = useState<CustomProbe>({ name: '', type: 'HTTP', target: '', timeout: 5000 });
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
-    const probeFormRef = useRef<HTMLDivElement>(null);
+    const [isProbeModalOpen, setIsProbeModalOpen] = useState(false);
 
     // Maintenance State (from System.tsx)
     const [status, setStatus] = useState<MaintenanceStatus | null>(null);
@@ -252,7 +252,7 @@ export default function Settings({ token }: { token: string }) {
                     // Look for 'egress-info' (case insensitive) or a probe of type CLOUD that has geo data
                     const egress = results.find((r: any) => 
                         r.endpointName.toLowerCase().includes('egress-info') || 
-                        (r.endpointType === 'CLOUD' && r.data?.public_ip)
+                        (r.endpointType === 'CLOUD' && r.data?.ip)
                     );
                     if (egress) setLatestEgressResult(egress);
                 })
@@ -577,12 +577,7 @@ export default function Settings({ token }: { token: string }) {
         const probe = customProbes[index];
         setNewProbe({ ...probe });
         setEditingIndex(index);
-        // Scroll to form
-        setTimeout(() => {
-            if (probeFormRef.current) {
-                probeFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        }, 100);
+        setIsProbeModalOpen(true);
     };
 
     const deleteProbe = async (index: number) => {
@@ -954,21 +949,8 @@ export default function Settings({ token }: { token: string }) {
                                     <Activity size={20} />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-black text-text-primary tracking-tight">Synthetic Probes (DEM)</h2>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <p className="text-[10px] font-bold text-text-muted tracking-widest opacity-70">Custom telemetry for real-time monitoring</p>
-                                        {cloudConfig?.baseUrl && (
-                                            <>
-                                                <span className="text-[8px] text-text-muted opacity-30">•</span>
-                                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-600/5 border border-blue-500/10 rounded-full">
-                                                    <Globe size={10} className="text-blue-500/70" />
-                                                    <span className="text-[9px] font-black text-blue-500/70 tracking-tight uppercase">Cloud:</span>
-                                                    <code className="text-[9px] font-bold text-blue-400/80 tracking-tighter truncate max-w-[200px]">{cloudConfig.baseUrl}</code>
-                                                    {cloudConfig.hasKey && <span title="Signed with Shared Key"><Lock size={8} className="text-amber-500/50" /></span>}
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
+                                    <h2 className="text-lg font-black text-text-primary tracking-tight">Active Monitoring Probes</h2>
+                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Real-time performance and availability tracking</p>
                                 </div>
                             </div>
                             <div className="flex gap-2">
@@ -980,8 +962,8 @@ export default function Settings({ token }: { token: string }) {
                                     Export
                                 </button>
                                 <input
-                                    type="file"
                                     id="import-probes"
+                                    type="file"
                                     className="hidden"
                                     accept=".json"
                                     onChange={(e) => {
@@ -1003,177 +985,212 @@ export default function Settings({ token }: { token: string }) {
                             </div>
                         </div>
 
-                         <div ref={probeFormRef} className="max-w-5xl mx-auto space-y-8">
-                             <div className={cn(
-                                 "grid grid-cols-1 md:grid-cols-5 gap-6 p-6 rounded-2xl border transition-all duration-300",
-                                 editingIndex !== null 
-                                     ? "bg-amber-500/5 border-amber-500/30 shadow-lg shadow-amber-500/5" 
-                                     : "bg-card-secondary/30 border-border shadow-inner"
-                             )}>
-                                <div className="space-y-2">
-                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">Probe Name</label>
-                                    <input
-                                        type="text"
-                                        placeholder="HQ-GATEWAY"
-                                        className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-sm"
-                                        value={newProbe.name}
-                                        onChange={e => setNewProbe({ ...newProbe, name: e.target.value })}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">Protocol</label>
-                                    <select
-                                        className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-sm"
-                                        value={newProbe.type}
-                                        onChange={e => setNewProbe({ ...newProbe, type: e.target.value as any, timeout: e.target.value === 'PING' ? 2000 : 5000 })}
+                        <div className="space-y-4">
+                            <div className="flex flex-col gap-4">
+                                <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                                    {/* Action Card: Add New */}
+                                    <div 
+                                        onClick={() => {
+                                            setNewProbe({ name: '', type: 'HTTP', target: '', timeout: 5000 });
+                                            setEditingIndex(null);
+                                            setIsProbeModalOpen(true);
+                                        }}
+                                        className="group bg-blue-600/5 border border-dashed border-blue-500/30 hover:border-blue-500/60 hover:bg-blue-600/10 rounded-2xl p-5 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all min-h-[120px]"
                                     >
-                                        <option value="HTTP">HTTP</option>
-                                        <option value="HTTPS">HTTPS</option>
-                                        <option value="PING">ICMP</option>
-                                        <option value="TCP">TCP</option>
-                                        <option value="DNS">DNS</option>
-                                        <option value="UDP">UDP</option>
-                                        <option value="CLOUD">Stigix Cloud</option>
-                                    </select>
-                                </div>
-                                <div className="md:col-span-2 space-y-2">
-                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">
-                                        {newProbe.type === 'CLOUD' ? 'Cloud scenario' : 'Target Uri / Ip'}
-                                    </label>
-                                    {newProbe.type === 'CLOUD' ? (
-                                        <div className="space-y-3">
-                                            <div className="relative">
-                                                <select
-                                                    className="w-full bg-card border border-border text-text-primary rounded-xl pl-10 pr-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-sm appearance-none"
-                                                    value={newProbe.target}
-                                                    onChange={e => {
-                                                        const scenario = cloudScenarios.find(s => s.id === e.target.value);
-                                                        setNewProbe({
-                                                            ...newProbe,
-                                                            target: e.target.value,
-                                                            name: newProbe.name || scenario?.label || ''
-                                                        });
-                                                    }}
-                                                >
-                                                    <option value="">Select Scenario...</option>
-                                                    {cloudScenarios.map(s => (
-                                                        <option key={s.id} value={s.id}>{s.label}</option>
-                                                    ))}
-                                                </select>
-                                                <Globe size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted opacity-50" />
-                                                <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                                            </div>
-                                            {newProbe.target && (
-                                                <div className="px-1 flex gap-2 items-start animate-in fade-in slide-in-from-top-1 duration-300">
-                                                    <Info size={12} className="text-blue-500 mt-0.5 shrink-0" />
-                                                    <p className="text-[10px] font-medium text-text-muted leading-relaxed italic">
-                                                        {cloudScenarios.find(s => s.id === newProbe.target)?.description || 'No description available for this scenario.'}
+                                        <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-900/40 group-hover:scale-110 transition-transform">
+                                            <Plus size={20} />
+                                        </div>
+                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500">Configure New Probe</span>
+                                    </div>
+
+                                    {customProbes.map((probe, idx) => (
+                                        <div key={idx} className={cn(
+                                            "group bg-card border border-border hover:border-blue-500/30 rounded-2xl p-5 pr-2 flex items-center justify-between transition-all shadow-sm",
+                                            probe.enabled === false && "opacity-50"
+                                        )}>
+                                            <div className="flex items-center gap-4">
+                                                <div className={cn(
+                                                    "w-10 h-10 rounded-xl flex items-center justify-center text-[10px] font-black",
+                                                    probe.type === 'CLOUD'
+                                                        ? "bg-purple-600/10 text-purple-600 dark:text-purple-400"
+                                                        : "bg-blue-600/10 text-blue-600 dark:text-blue-400"
+                                                )}>
+                                                    {probe.type === 'CLOUD' ? <Globe size={20} /> : <Activity size={18} />}
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <h4 className="text-[11px] font-black text-text-primary tracking-tight">{probe.name}</h4>
+                                                        <span className={cn(
+                                                            "text-[8px] px-1.5 py-0.5 rounded font-black tracking-widest",
+                                                            probe.type === 'CLOUD' ? "bg-purple-600/10 text-purple-500" : "bg-blue-600/10 text-blue-500"
+                                                        )}>{probe.type}</span>
+                                                    </div>
+                                                    <p className="text-[9px] font-bold text-text-muted truncate max-w-[140px] mt-0.5 opacity-60">
+                                                        {probe.type === 'CLOUD'
+                                                            ? (() => {
+                                                                const scenario = cloudScenarios.find(s => s.id === probe.target);
+                                                                if (scenario?.signedUrl) return scenario.signedUrl.replace(/^https?:\/\//, '').split('?')[0];
+                                                                return probe.target || 'Stigix Scenario';
+                                                            })()
+                                                            : (probe.target || 'localhost')
+                                                        }
                                                     </p>
                                                 </div>
-                                            )}
+                                            </div>
+                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => startEditProbe(idx)}
+                                                    className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
+                                                    title="Edit Probe"
+                                                >
+                                                    <Edit2 size={14} />
+                                                </button>
+                                                <button
+                                                    onClick={() => deleteProbe(idx)}
+                                                    className="p-2 hover:bg-red-600/10 rounded-xl text-text-muted hover:text-red-500 transition-all"
+                                                    title="Remove Probe"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
                                         </div>
-                                    ) : (
-                                        <input
-                                            type="text"
-                                            placeholder={newProbe.type === 'DNS' ? '8.8.8.8' : 'google.com'}
-                                            className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-sm"
-                                            value={newProbe.target}
-                                            onChange={e => setNewProbe({ ...newProbe, target: e.target.value })}
-                                        />
-                                    )}
+                                    ))}
                                 </div>
-                                 <div className="space-y-2 flex flex-col justify-start pt-5">
-                                     <button
-                                         onClick={addProbe}
-                                         className={cn(
-                                             "w-full px-6 py-2.5 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg",
-                                             editingIndex !== null
-                                                 ? "bg-amber-600 hover:bg-amber-500 text-white shadow-amber-900/20"
-                                                 : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
-                                         )}
-                                     >
-                                         {editingIndex !== null ? <RefreshCw size={16} className="animate-in spin-in duration-500" /> : <Plus size={16} />}
-                                         {editingIndex !== null ? 'Update Probe' : 'Add Probe'}
-                                     </button>
-                                     {editingIndex !== null && (
-                                         <button 
-                                             onClick={() => {
-                                                 setEditingIndex(null);
-                                                 setNewProbe({ name: '', type: 'HTTP', target: '', timeout: 5000 });
-                                             }}
-                                             className="mt-2 text-[9px] font-black text-text-muted hover:text-red-500 uppercase tracking-widest transition-colors"
-                                         >
-                                             Cancel Edit
-                                         </button>
-                                     )}
-                                 </div>
                             </div>
+                        </div>
 
-                            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-2">
-                                {customProbes.map((probe, idx) => (
-                                    <div key={idx} className={cn(
-                                        "group bg-card border border-border hover:border-blue-500/30 rounded-2xl p-5 pr-2 flex items-center justify-between transition-all shadow-sm",
-                                        probe.enabled === false && "opacity-50"
-                                    )}>
-                                        <div className="flex items-center gap-4">
+                        {/* Probe Modal */}
+                        {isProbeModalOpen && (
+                            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300" onClick={() => setIsProbeModalOpen(false)}>
+                                <div className={cn(
+                                    "bg-card border rounded-2xl w-full max-w-xl shadow-2xl transition-all duration-300 scale-in-center",
+                                    editingIndex !== null ? "border-amber-500/30" : "border-border"
+                                )} onClick={e => e.stopPropagation()}>
+                                    <div className="p-6 border-b border-border flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
                                             <div className={cn(
-                                                "w-10 h-10 rounded-xl flex items-center justify-center text-[10px] font-black",
-                                                probe.type === 'CLOUD'
-                                                    ? "bg-purple-600/10 text-purple-600 dark:text-purple-400"
-                                                    : "bg-blue-600/10 text-blue-600 dark:text-blue-400"
+                                                "p-2 rounded-lg",
+                                                editingIndex !== null ? "bg-amber-500/10 text-amber-500" : "bg-blue-600/10 text-blue-600"
                                             )}>
-                                                {probe.type === 'CLOUD' ? <Globe size={18} /> : probe.type.substring(0, 3)}
+                                                {editingIndex !== null ? <Edit2 size={20} /> : <Plus size={20} />}
                                             </div>
                                             <div>
-                                                <div className="text-[11px] font-black text-text-primary tracking-tight">{probe.name}</div>
-                                                <div className="text-[10px] text-text-muted font-mono tracking-tighter truncate max-w-[140px] opacity-70">
-                                                    {probe.type === 'CLOUD'
-                                                        ? (() => {
-                                                            const scenario = cloudScenarios.find(s => s.id === probe.target);
-                                                            if (scenario?.signedUrl) {
-                                                                // Display URL without protocol and key for cleanliness
-                                                                return scenario.signedUrl.replace(/^https?:\/\//, '').split('?')[0];
-                                                            }
-                                                            return probe.target;
-                                                        })()
-                                                        : probe.target
-                                                    }
-                                                </div>
+                                                <h3 className="text-lg font-black text-text-primary tracking-tight">
+                                                    {editingIndex !== null ? 'Edit Probe' : 'Configure New Probe'}
+                                                </h3>
+                                                <p className="text-[10px] text-text-muted font-bold tracking-widest uppercase opacity-70">
+                                                    {editingIndex !== null ? `Modifying ${newProbe.name}` : 'Define a new monitoring endpoint'}
+                                                </p>
                                             </div>
                                         </div>
-                                        <div className="flex gap-1.5 px-2">
+                                        <button onClick={() => setIsProbeModalOpen(false)} className="p-2 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors">
+                                            <XCircle size={24} />
+                                        </button>
+                                    </div>
+
+                                    <div className="p-8 space-y-6">
+                                        <div className="grid grid-cols-2 gap-6">
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">Probe Name</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="HQ-GATEWAY"
+                                                    className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                                    value={newProbe.name}
+                                                    onChange={e => setNewProbe({ ...newProbe, name: e.target.value })}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">Protocol</label>
+                                                <select
+                                                    className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                                    value={newProbe.type}
+                                                    onChange={e => setNewProbe({ ...newProbe, type: e.target.value as any, timeout: e.target.value === 'PING' ? 2000 : 5000 })}
+                                                >
+                                                    <option value="HTTP">HTTP</option>
+                                                    <option value="HTTPS">HTTPS</option>
+                                                    <option value="PING">ICMP (Ping)</option>
+                                                    <option value="TCP">TCP Port</option>
+                                                    <option value="DNS">DNS Query</option>
+                                                    <option value="UDP">UDP Stream</option>
+                                                    <option value="CLOUD">Stigix Cloud Target</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">
+                                                {newProbe.type === 'CLOUD' ? 'Cloud scenario' : 'Target URL / IP Address'}
+                                            </label>
+                                            {newProbe.type === 'CLOUD' ? (
+                                                <div className="space-y-3">
+                                                    <div className="relative">
+                                                        <select
+                                                            className="w-full bg-card-secondary border border-border text-text-primary rounded-xl pl-10 pr-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner appearance-none transition-all"
+                                                            value={newProbe.target}
+                                                            onChange={e => {
+                                                                const scenario = cloudScenarios.find(s => s.id === e.target.value);
+                                                                setNewProbe({
+                                                                    ...newProbe,
+                                                                    target: e.target.value,
+                                                                    name: newProbe.name || scenario?.label || ''
+                                                                });
+                                                            }}
+                                                        >
+                                                            <option value="">Select Scenario...</option>
+                                                            {cloudScenarios.map(s => (
+                                                                <option key={s.id} value={s.id}>{s.label}</option>
+                                                            ))}
+                                                        </select>
+                                                        <Globe size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-blue-500/50" />
+                                                        <ChevronDown size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                                                    </div>
+                                                    {newProbe.target && (
+                                                        <div className="p-3 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl flex gap-3 items-start animate-in zoom-in-95 duration-300">
+                                                            <Info size={14} className="text-blue-500 mt-0.5 shrink-0" />
+                                                            <p className="text-[10px] font-bold text-text-secondary leading-relaxed opacity-80">
+                                                                {cloudScenarios.find(s => s.id === newProbe.target)?.description || 'No description available for this scenario.'}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <input
+                                                    type="text"
+                                                    placeholder={newProbe.type === 'DNS' ? '8.8.8.8' : 'google.com'}
+                                                    className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                                    value={newProbe.target}
+                                                    onChange={e => setNewProbe({ ...newProbe, target: e.target.value })}
+                                                />
+                                            )}
+                                        </div>
+
+                                        <div className="flex justify-end gap-3 pt-4">
                                             <button
-                                                onClick={() => toggleProbeEnabled(idx)}
+                                                onClick={() => setIsProbeModalOpen(false)}
+                                                className="px-6 py-3 rounded-xl text-[10px] font-black tracking-[0.2em] text-text-muted hover:text-text-primary hover:bg-card-secondary transition-all"
+                                            >
+                                                CANCEL
+                                            </button>
+                                            <button
+                                                onClick={() => { addProbe(); setIsProbeModalOpen(false); }}
                                                 className={cn(
-                                                    "p-2 rounded-xl transition-all",
-                                                    probe.enabled ? "text-green-500 hover:bg-green-500/10" : "text-text-muted hover:bg-card-hover"
+                                                    "px-8 py-3 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg",
+                                                    editingIndex !== null
+                                                        ? "bg-amber-600 hover:bg-amber-500 text-white shadow-amber-900/40"
+                                                        : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40"
                                                 )}
-                                                title="Toggle Probe"
                                             >
-                                                <Power size={14} />
-                                            </button>
-                                            <button
-                                                onClick={() => startEditProbe(idx)}
-                                                className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
-                                                title="Edit Probe"
-                                            >
-                                                <Edit2 size={14} />
-                                            </button>
-                                            <button
-                                                onClick={() => deleteProbe(idx)}
-                                                className="p-2 hover:bg-red-600/10 rounded-xl text-text-muted hover:text-red-500 transition-all"
-                                                title="Remove Probe"
-                                            >
-                                                <Trash2 size={14} />
+                                                {editingIndex !== null ? <RefreshCw size={14} className="animate-in spin-in duration-500" /> : <CheckCircle2 size={14} />}
+                                                {editingIndex !== null ? 'UPDATE PROBE' : 'SAVE CONFIGURATION'}
                                             </button>
                                         </div>
                                     </div>
-                                ))}
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 )}
-
                 {activeTab === 'distribution' && (
                     <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
                         <div className="flex items-center justify-between">
@@ -1530,6 +1547,61 @@ export default function Settings({ token }: { token: string }) {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Cloud Egress Context */}
+                        {latestEgressResult && (
+                            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4 animate-in slide-in-from-top-4 duration-500 mb-8 overflow-hidden relative group">
+                                <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.07] transition-opacity">
+                                    <Globe size={120} />
+                                </div>
+                                <div className="flex items-center justify-between relative z-10">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-blue-600/10 text-blue-500 flex items-center justify-center shadow-inner">
+                                            <Globe size={20} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight uppercase">Cloud Egress Context</h3>
+                                            <p className="text-[9px] font-bold text-text-muted tracking-widest uppercase opacity-70">Rich Metadata from Cloud Probes</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1 opacity-60">Last Updated</div>
+                                        <div className="text-[10px] font-mono font-bold text-text-primary">
+                                            {latestEgressResult.timestamp ? new Date(latestEgressResult.timestamp).toLocaleTimeString() : 'Recent'}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
+                                    <div className="bg-card-secondary/40 border border-border/50 rounded-xl p-4 space-y-1">
+                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-widest">Public IP</div>
+                                        <div className="text-sm font-black text-blue-500 font-mono tracking-tight">{latestEgressResult.data?.ip || '---'}</div>
+                                    </div>
+                                    <div className="bg-card-secondary/40 border border-border/50 rounded-xl p-4 space-y-1">
+                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-widest text-center">Location</div>
+                                        <div className="text-xs font-bold text-text-primary text-center truncate italic">
+                                            {latestEgressResult.data?.city && latestEgressResult.data?.country 
+                                                ? `${latestEgressResult.data.city}, ${latestEgressResult.data.country}`
+                                                : (latestEgressResult.data?.country || 'Unknown Location')}
+                                        </div>
+                                    </div>
+                                    <div className="bg-card-secondary/40 border border-border/50 rounded-xl p-4 space-y-1">
+                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-widest text-right">Provider</div>
+                                        <div className="text-[10px] font-bold text-text-primary text-right truncate">
+                                            {latestEgressResult.data?.aso || latestEgressResult.data?.asn || '---'}
+                                        </div>
+                                    </div>
+                                    <div className="bg-card-secondary/40 border border-border/50 rounded-xl p-4 space-y-1 flex flex-col justify-center items-center">
+                                        <div className="text-[8px] font-black text-text-muted uppercase tracking-widest flex items-center gap-1">
+                                            <Zap size={10} className="text-amber-500" /> Latency
+                                        </div>
+                                        <div className="text-sm font-black text-amber-500 font-mono">
+                                            {latestEgressResult.metrics?.total_ms?.toFixed(1) || '0.0'}<span className="text-[9px] ml-0.5">ms</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="pt-8 border-t border-border/50">
                             <div className="flex items-center gap-3 mb-8">
