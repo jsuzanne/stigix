@@ -98,6 +98,8 @@ Login: admin / admin
 
 ## 🔧 Advanced Configuration
 
+For a full list of supported settings, see the **[Environment Variables Reference](file:///Users/jsuzanne/Github/stigix/docs/ENVIRONMENT_VARIABLES.md)**.
+
 ### 1. Change Port (if 8080 is already in use)
 
 In `docker-compose.yml`:

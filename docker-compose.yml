@@ -21,34 +21,45 @@ services:
       - ./docker-compose.yml:/app/docker-compose.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - NODE_ENV=production
-      - PORT=8080
-      - PRISMA_SDWAN_REGION=${PRISMA_SDWAN_REGION:-}
-      - PRISMA_SDWAN_TSGID=${PRISMA_SDWAN_TSGID:-}
+      # --- General & Web UI ---
+      - PORT=8080                                      # Internal port for the Dashboard
+      - JWT_SECRET=${JWT_SECRET:-your-secure-secret}   # Secret for session tokens (CHANGE THIS!)
+      - DEBUG=${DEBUG:-false}                          # Enable verbose backend logging
+      
+      # --- Prisma SD-WAN API Credentials ---
+      # Required for site auto-detection, flow browse and SaaS enrichment
+      - PRISMA_SDWAN_REGION=${PRISMA_SDWAN_REGION:-us} # Portal region (us, eu, de, fr...)
+      - PRISMA_SDWAN_TSGID=${PRISMA_SDWAN_TSGID:-}     # Tenant Service Group ID
       - PRISMA_SDWAN_CLIENT_ID=${PRISMA_SDWAN_CLIENT_ID:-}
       - PRISMA_SDWAN_CLIENT_SECRET=${PRISMA_SDWAN_CLIENT_SECRET:-}
-      - TARGET_IP=${TARGET_IP:-142.132.193.157}
-      - CONFIG_DIR=/app/config
-      - LOG_DIR=/var/log/sdwan-traffic-gen
-      - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-7}
-      - LOG_MAX_SIZE_MB=${LOG_MAX_SIZE_MB:-100}
-      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
-      # Default connectivity probes (User customized)
-      - CONNECTIVITY_HTTP_1=DC1-App:http://192.168.203.100
-      - CONNECTIVITY_HTTP_2=BGW7-App:http://192.168.203.100
-      - CONNECTIVITY_HTTP_3=Branch-Router-http:http://192.168.206.10
-      - CONNECTIVITY_PING_1=Branch-Router-ping:192.168.206.10
-      - CONNECTIVITY_PING_2=Hetzner-Server-ping:142.132.193.157
+
+      # --- Traffic Generator (Synthetic SaaS) ---
+      - AUTO_START_TRAFFIC=${AUTO_START_TRAFFIC:-true} # Start traffic on boot
+      - SLEEP_BETWEEN_REQUESTS=${SLEEP_BETWEEN_REQUESTS:-1} # Delay between requests (sec)
+      - CLIENT_ID=${CLIENT_ID:-client01}               # Identifier for traffic logs
+
+      # --- XFR Bandwidth Target ---
+      - XFR_PORT=${XFR_PORT:-9000}                     # Port for bandwidth testing
+      - XFR_MAX_DURATION=${XFR_MAX_DURATION:-60}       # Max test duration (sec)
+      - XFR_RATE_LIMIT=${XFR_RATE_LIMIT:-2}            # Max bandwidth rate (Mbps)
+      - XFR_ALLOW_CIDR=${XFR_ALLOW_CIDR:-0.0.0.0/0}    # Restrict XFR access by IP
+
       # --- Registry & Discovery ---
       - STIGIX_REGISTRY_ENABLED=${STIGIX_REGISTRY_ENABLED:-true}
-      - STIGIX_REGISTRY_URL=${STIGIX_REGISTRY_URL:-https://stigix-registry.jlsuzanne.workers.dev}
-      - STIGIX_REGISTRY_MODE=${STIGIX_REGISTRY_MODE:-peer}
+      - STIGIX_SITE_NAME=${STIGIX_SITE_NAME:-}         # Display name in the dashboard
+      - STIGIX_INSTANCE_ID=${STIGIX_INSTANCE_ID:-}     # Unique node ID
       - STIGIX_REGISTRY_HEARTBEAT_SEC=${STIGIX_REGISTRY_HEARTBEAT_SEC:-300}
       - STIGIX_REGISTRY_DISCOVERY_SEC=${STIGIX_REGISTRY_DISCOVERY_SEC:-120}
-      # --- Stigix Cloud Probes ---
-      - STIGIX_TARGET_BASE_URL=${STIGIX_TARGET_BASE_URL:-}
-      - STIGIX_TARGET_SHARED_KEY=${STIGIX_TARGET_SHARED_KEY:-}
-      - STIGIX_TARGET_MASTER_KEY=${STIGIX_TARGET_MASTER_KEY:-}
+      - STIGIX_REGISTRY_MODE=${STIGIX_REGISTRY_MODE:-peer} # 'peer' or 'leader'
+
+      # --- Stigix Cloud & Probes ---
+      - STIGIX_REGISTRY_URL=${STIGIX_REGISTRY_URL:-https://stigix-registry.jlsuzanne.workers.dev}
+      - STIGIX_TARGET_BASE_URL=${STIGIX_TARGET_BASE_URL:-} # Cloud Target Worker URL
+      - STIGIX_TARGET_SHARED_KEY=${STIGIX_TARGET_SHARED_KEY:-} # Legacy static key
+      - STIGIX_TARGET_MASTER_KEY=${STIGIX_TARGET_MASTER_KEY:-} # Global multi-tenant secret
+
+      # --- Performance ---
+      - DASHBOARD_REFRESH_MS=${DASHBOARD_REFRESH_MS:-3000} # UI data polling rate
     healthcheck:
       test: [ "CMD-SHELL", "test -f /app/config/applications.txt -o -f /app/config/applications-config.json" ]
       interval: 5s

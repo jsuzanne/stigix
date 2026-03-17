@@ -4,3 +4,4 @@ compatibility_date = "2024-01-01"
 
 [vars]
 SHARED_KEY = "stigix-target-2026-hV9pQ3zL8sR2"
+MASTER_SIGNATURE_KEY = "Stigix2026"
