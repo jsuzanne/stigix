@@ -4491,8 +4491,9 @@ class SLSClient {
             const authUrl = 'https://auth.apps.paloaltonetworks.com/auth/v1/oauth2/access_token';
             const auth = Buffer.from(`${this.config.client_id}:${this.config.client_secret}`).toString('base64');
             
-            // SASE Scope requires tsg_id prefix for some deployments
-            const scope = `tsg_id:${this.config.tsg_id} logging_service:read email profile`;
+            // SASE Scope for service accounts usually only requires tsg_id.
+            // Permissions are inherited from the Service Account roles within that TSG.
+            const scope = `tsg_id:${this.config.tsg_id}`;
 
             const res = await fetch(authUrl, {
                 method: 'POST',
