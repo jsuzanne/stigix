@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { log } from './utils/logger.js';
 
 /**
@@ -74,7 +75,21 @@ export class TargetManager {
         }
         
         this.baseUrl = rawBase;
-        this.sharedKey = process.env.STIGIX_TARGET_SHARED_KEY || '';
+        
+        // Key Derivation logic:
+        // 1. Explicit env var override
+        // 2. Dynamic derivation from TSG/Client IDs (matches Registry PoC Key logic)
+        let key = process.env.STIGIX_TARGET_SHARED_KEY || '';
+        if (!key) {
+            const pocId = process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID;
+            const clientId = process.env.PRISMA_SDWAN_CLIENT_ID;
+            if (pocId && clientId) {
+                key = crypto.createHash('md5').update(`${pocId}:${clientId}:stigix-v1`).digest('hex');
+                log('TARGET', `Derived shared key from TSG/Client ID for base: ${this.baseUrl}`);
+            }
+        }
+
+        this.sharedKey = key;
         this.loadScenarios();
     }
 
