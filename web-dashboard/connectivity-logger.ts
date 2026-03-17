@@ -234,31 +234,40 @@ export class ConnectivityLogger {
                 .reverse(); // Newest first
 
             const allResults: ConnectivityResult[] = [];
-            // How many consecutive too-old lines before we stop scanning a file
-            const MAX_STALE_STREAK = 3;
-
+            
             for (const file of logFiles) {
-                const content = await readFile(path.join(this.logDir, file), 'utf8');
-                const lines = content.trim().split('\n').filter((l: string) => l.length > 0).reverse(); // Newest lines first
+                const filePath = path.join(this.logDir, file);
+                const stats = await stat(filePath);
+                
+                // If the entire file is older than our cutoff, skip it
+                if (minTimestamp && stats.mtimeMs < minTimestamp) continue;
 
-                let staleStreak = 0;
+                // For large files, we still want to read from the end.
+                // Simple optimization: if the file is small, read it all. 
+                // If large, we'd ideally use a stream or read-from-end buffer, 
+                // but for now, we'll just parse lines more carefully.
+                const content = await readFile(filePath, 'utf8');
+                const lines = content.trim().split('\n').reverse(); // Newest lines first
+
+                let staleInARow = 0;
                 for (const line of lines) {
+                    if (!line.trim()) continue;
                     try {
                         const result = JSON.parse(line) as ConnectivityResult;
-                        // Since lines are newest-first, first stale record means the rest are also stale
                         if (minTimestamp && result.timestamp < minTimestamp) {
-                            staleStreak++;
-                            if (staleStreak >= MAX_STALE_STREAK) break;
+                            staleInARow++;
+                            // If we see 5 lines in a row (newest-first) that are older than our cutoff,
+                            // the rest of this file (and older files) are definitely too old.
+                            if (staleInARow > 5) break; 
                             continue;
                         }
-                        staleStreak = 0;
+                        staleInARow = 0;
                         allResults.push(result);
                         if (maxResults && allResults.length >= maxResults) return allResults;
                     } catch (e) { }
                 }
-
-                // If last batch of results from this file were all stale, older files will be too
-                if (minTimestamp && staleStreak >= MAX_STALE_STREAK) break;
+                
+                if (minTimestamp && staleInARow > 5) break;
             }
             return allResults;
         } catch (error) {

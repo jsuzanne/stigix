@@ -580,11 +580,11 @@ export default function App() {
     fetchFeatures();
 
 
-    // The "Single Clock" - Everything high-freq (1s baseline)
+    // The "Single Clock" - Everything high-freq (3s baseline)
     const interval = setInterval(() => {
       fetchDashboardData();
       fetchTrafficStatus();
-    }, 1000);
+    }, 3000);
 
     // RESTORE FAST POLLING (500ms) for Failover specifically when on that tab
     let fastInterval: any = null;
