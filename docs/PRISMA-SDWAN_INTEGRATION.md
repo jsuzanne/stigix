@@ -104,10 +104,28 @@ When configured, the application unlocks:
 ### Overview
 In v1.2.1, the dashboard includes a real-time visualization of the SD-WAN VPN Topology directly in the Site Entity detail view. This allows you to see the health and status of every tunnel from the selected site to its peers.
 
+### How to Achieve This
+1. **Configure Prisma SASE Credentials**: Ensure `PRISMA_SDWAN_CLIENT_ID`, `CLIENT_SECRET`, and `TSG_ID` are correctly set in your `.env`.
+2. **Enable Site Detection**: The local site must be correctly identified by the system (shown in the dashboard header). This happens automatically if the container's IP matches a LAN subnet in Prisma SD-WAN.
+3. **Open Topology**: Navigate to the **Performance** tab and click on the **Topology** icon for a specific site or click the global **Topology** button in the header.
+
 ### Features
 - **Real-time Status**: Tunnels are categorized as `ACTIVE` (routing traffic), `BACKUP` (usable but idle), or `DOWN` (link failure).
 - **Intelligent Peer Mapping**: Automatically resolves peer device names (e.g., `DC1-R1`) by matching element IDs from the VPN status API.
+- **Logical vs Physical Perspectives**:
+    - **Overlay View**: Shows logical VPN paths between sites.
+    - **Physical View**: Shows underlay connectivity, including local interfaces and termination points.
 - **HUB Filtering**: A dedicated **HUB** toggle allows you to isolate tunnels connected to Data Centers (`DC`) or Branch Gateways (`BRGW`), excluding standard branch-to-branch mesh links.
+
+### Screenshots
+
+#### Overlay View
+Displays the logical SD-WAN fabric health.
+![VPN Topology Overlay](/Users/jsuzanne/Github/stigix/docs/screenshots/10-Topology/Overlay view.png)
+
+#### Physical View
+Displays the underlay interface status and termination points.
+![VPN Topology Physical](/Users/jsuzanne/Github/stigix/docs/screenshots/10-Topology/physical view.png)
 
 ### Data Flow
 1. The UI calls the backend which spawns `getflow.py --build-topology`.

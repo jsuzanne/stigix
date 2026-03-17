@@ -26,8 +26,8 @@ export interface TestResult {
         error?: string;
         executionTime?: number;
         resolvedIp?: string;
-        slsDiagnostic?: any;
     };
+    slsDiagnostic?: any;
 }
 
 export interface LogStats {

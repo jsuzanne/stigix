@@ -161,6 +161,31 @@ const SYSTEM_APP_LOG = path.join(APP_CONFIG.logDir, 'app.log');
 
 // ─── Egress Path Enrichment Helpers ────────────────────────────────────────
 
+/**
+ * Check if a TCP port is active on a given host.
+ */
+function isPortActive(host: string, port: number, timeout = 1000): Promise<boolean> {
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        const timer = setTimeout(() => {
+            socket.destroy();
+            resolve(false);
+        }, timeout);
+
+        socket.connect(port, host, () => {
+            clearTimeout(timer);
+            socket.destroy();
+            resolve(true);
+        });
+
+        socket.on('error', () => {
+            clearTimeout(timer);
+            socket.destroy();
+            resolve(false);
+        });
+    });
+}
+
 // Debug mode: set DEBUG=true in .env or docker-compose env to enable verbose logging
 const debugMode = process.env.DEBUG === 'true';
 const dbg = (...args: any[]) => {
@@ -345,6 +370,23 @@ async function fetchFavicon(domain: string, endpoint: string = '/'): Promise<str
         dbg('ICON', `Error discoverng icon for ${domain}: ${e.message}`);
         return null;
     }
+}
+
+/**
+ * Returns the first non-internal private IPv4 address.
+ */
+function getLocalPrivateIp(): string | null {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+        const iface = interfaces[name];
+        if (!iface) continue;
+        for (const addr of iface) {
+            if (addr.family === 'IPv4' && !addr.internal) {
+                return addr.address;
+            }
+        }
+    }
+    return null;
 }
 
 function getIconCache(): Record<string, IconCacheEntry> {
@@ -4476,10 +4518,11 @@ class SLSClient {
         // authUrl is now hardcoded in authenticate(), and getDiagnostic() uses a specific endpoint.
         if (config.region === 'stg') {
             this.baseUrl = 'https://api.stg.sase.paloaltonetworks.com';
-        } else if (config.region === 'eu') {
+        } else if (config.region?.toLowerCase().includes('eu')) {
             this.baseUrl = 'https://api.eu.sase.paloaltonetworks.com';
         } else {
-            this.baseUrl = 'https://api.sase.paloaltonetworks.com';
+            // Default to us (prd) which is more reliable than global endpoint for diagnostics
+            this.baseUrl = 'https://api.us.sase.paloaltonetworks.com';
         }
     }
 
@@ -4701,13 +4744,10 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
     });
 
     if (diagnostic) {
-        testResult.details = {
-            ...testResult.details,
-            slsDiagnostic: diagnostic
-        };
-        log('SLS', `Enrichment successful for test ${testResult.id}: ${diagnostic.action} by rule ${diagnostic.rule}`);
+        testResult.slsDiagnostic = diagnostic;
+        log('SLS', `Enrichment successful for test ${testResult.id}: ${diagnostic.action} by rule ${diagnostic.rule} (src=${srcIp})`);
     } else {
-        log('SLS', `No diagnostic logs found for test ${testResult.id}`);
+        log('SLS', `No diagnostic logs found for test ${testResult.id} (src=${srcIp})`);
     }
 }
 
@@ -4761,6 +4801,15 @@ const addTestResult = async (testType: string, testName: string, result: any, te
             
             if (srcIp !== 'auto') {
                 await enrichWithSLS(testResult, srcIp);
+                
+                // If no diagnostic found with public IP, try private IP
+                if (!testResult.slsDiagnostic) {
+                    const privateIp = getLocalPrivateIp();
+                    if (privateIp && privateIp !== srcIp) {
+                        log('SLS', `No logs with public IP ${srcIp}, trying private IP ${privateIp}...`);
+                        await enrichWithSLS(testResult, privateIp);
+                    }
+                }
             } else {
                 log('SLS', 'Enrichment skipped: No valid source IP found', 'warn');
             }
@@ -6210,6 +6259,33 @@ app.get('/api/admin/system/info', authenticateToken, async (req, res) => {
     } catch (e: any) {
         console.error('[API] /api/admin/system/info error:', e.message);
         res.status(500).json({ error: 'Failed to retrieve system info' });
+    }
+});
+
+/**
+ * Model Context Protocol (MCP) Status Reporting
+ * Reports whether the MCP server is listening on port 3100 (SSE).
+ */
+app.get('/api/admin/system/mcp-status', authenticateToken, async (req, res) => {
+    try {
+        const mcpPort = parseInt(process.env.MCP_PORT || '3100');
+        const isOnline = await isPortActive('127.0.0.1', mcpPort);
+
+        if (DEBUG) log('SYSTEM', `MCP Health Check: port=${mcpPort} online=${isOnline}`, 'debug');
+
+        res.json({
+            online: isOnline,
+            status: isOnline ? 'Active' : 'Offline',
+            transport: 'SSE',
+            url: `http://${req.hostname}:${mcpPort}/sse`
+        });
+    } catch (e: any) {
+        log('SYSTEM', `MCP status check failed: ${e.message}`, 'error');
+        res.status(200).json({ 
+            online: false, 
+            status: 'Error',
+            error: e.message 
+        });
     }
 });
 

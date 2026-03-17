@@ -79,7 +79,7 @@ This project is my way to turn all that lab and demo experience into an open-sou
 ### 📊 Monitoring & Analytics
 - **Real-time Logs** - Live log streaming with WebSocket updates
 - **Statistics Dashboard** - Success/failure rates, latency metrics, bandwidth tracking
-- **Live VPN Topology Overlay** - Real-time visualization of SD-WAN tunnels with path status (Active/Backup/Down) and HUB-specific filtering.
+- **Live VPN Topology Overlay** - Real-time visualization of SD-WAN tunnels with path status (Active/Backup/Down) and HUB-specific filtering. Directly from Prisma SASE API.
 - **Persistent Logging** - JSONL storage with 7-day retention and auto-rotation
 - **Search & Filter** - Find specific tests quickly with powerful search
 - **Export Capabilities** - Download results in JSON, CSV, or JSONL format
@@ -202,6 +202,15 @@ Network impairment orchestration (latency, loss, rate-limiting) on VyOS routers.
 <img src="docs/screenshots/08-Vyos-Control/27.png" alt="VyOS Control" width="800">
 
 **[View all VyOS Control screenshots →](docs/screenshots/08-Vyos-Control)** (5 images)
+
+---
+
+### 🌐 VPN Topology
+Real-time visualization of SD-WAN overlay paths with intelligent peer device mapping and HUB filtering.
+
+<img src="docs/screenshots/10-Topology/Overlay view.png" alt="VPN Topology Overlay" width="800">
+
+**[View all Topology screenshots →](docs/screenshots/10-Topology)** (3 images)
 
 ---
 
