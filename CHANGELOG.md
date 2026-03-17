@@ -5,19 +5,101 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.1-patch.239] - 2026-03-17
+### Added
+- **Build Optimization**: Implemented **Fast Patch Builds**. Patch versions now default to `linux/amd64` only, significantly reducing CI turnaround time. ⚡
+- **Dashboard**: Added **Cloud Egress Context** card in System Info, showing real-time IP, Geo, and ASN data from Stigix Cloud. 🌍
+- **UX**: Automatic scrolling to probe form in Settings when editing. 🖱️
+- **UX**: New "Update Mode" visual feedback for probes (orange button, cancel option). ✨
+### Fixed
+- **MCP Server**: Fixed Docker healthcheck (switched from `/health` to `/sse`) and corrected build paths in `Dockerfile`. 🩺
+- **MCP Server**: Updated Claude config to support remote **Ubuntu-BR5** instance connectivity. 🔌
+
+## [v1.2.1-patch.236] - 2026-03-17
+### Added
+- **Documentation**: New `docs/ENVIRONMENT_VARIABLES.md` providing a comprehensive reference for all Stigix settings. 📚
+- **DevOps**: Enhanced `docker-compose.yml` with descriptive inline comments and refreshed `.env.example`. 🐳
+
+## [v1.2.1-patch.235] - 2026-03-17
+### Added
+- **Security**: Implemented **Multi-Tenant Master Signature** security for Cloud Probes. Uses SHA-256 HMAC of TSG and Master Key for stateless verification. 🔐🛡️
+
+## [v1.2.1-patch.234] - 2026-03-17
+### Added
+- **Security**: Introduced dynamic key derivation for Cloud Probes (MD5 hash of TSG, ClientID, and salt). 🔑
+### Performance
+- **Dashboard**: Optimized data fetching by reducing polling frequency to 3s and streamlining `/api/admin/system/dashboard-data`. 🚀
+
+## [v1.2.1-patch.231] - 2026-03-16
+### Fixed
+- **SLS**: Fixed authentication endpoint and scope in `SLSClient`. Added support for `PRISMA_SDWAN_TSG_ID` env var. 🛠️🛡️
+
+## [v1.2.1-patch.229] - 2026-03-16
+### Added
+- **SLS**: Automatic credential population from system environment. 🩺
+### Fixed
+- **SLS**: Resolved configuration page "loading forever" issue. 🛠️
+
+## [v1.2.1-patch.213] - 2026-03-17
+### Fixed
+- **Connectivity**: Enabled robust URL parsing for cloud probes to handle complex scenarios and query strings. 🌐🛠️
+
+## [v1.2.1-patch.210] - 2026-03-17
+### Added
+- **Cloud Connectivity**: Integrated Stigix Cloud shared probes directly into the Performance dashboard. 📡✨
+
+## [v1.2.1-patch.208] - 2026-03-17
+### Added
+- **MCP Server**: Implemented "Absolute Silent Mode" and improved `bridge.py` robustness for long-running orchestration. 🔇🤝
+
+## [v1.2.1-patch.207] - 2026-03-17
+### Added
+- **MCP Server**: Support for `STIGIX_CONTROLLER_URL` environment variable for remote orchestration workflows. 🌐
+### Fixed
+- **SSE**: Suppressed redundant log noise for clean terminal output. 📝
+
+## [v1.2.1-patch.205] - 2026-03-16
+### Added
+- **MCP Server**: Added target validation and profile compatibility documentation to the `run_test` natural language tool. 📚🛡️
+
 ## [v1.2.1-patch.204] - 2026-03-16
 ### Changed
-- **MCP Server**: Enabled **Distributed Orchestration**. Removed the `check_leader()` safety check, allowing n'importe quel nœud (Leader ou Peer) d'agir comme point d'entrée pour Claude Desktop. 🌐✨
-- **DevOps**: Enforced `MCP_PORT=3100` via environment variables for more reliable external access. 🔌
+- **MCP Server**: Enabled **Distributed Orchestration**. Removed the `check_leader()` safety check, allowing any node (Leader or Peer) to host the Claude Desktop entry point. 🌐✨
+- **DevOps**: Enforced `MCP_PORT=3100` via environment variables for reliable external access. 🔌
 
 ## [v1.2.1-patch.203] - 2026-03-16
 ### Added
-- **MCP Server**: Production-ready deployment to Stigix instances via `docker-compose.yml`. Supports SSE transport on port 3100. 🐳
-- **Dashboard**: New **MCP Server** settings tab providing real-time health status, transport info, and ready-to-copy Claude Desktop configurations. 🚀
-- **Orchestration**: Implemented `set_traffic_rate` natural language tool to adjust the sleep interval (0.1s - 10.0s) of global traffic generation. 🚦
-- **Security**: Enhanced `run_security_probe` to return and log explicit destination URLs for better audit visibility. 🛡️
-- **Security**: Added `get_security_test_options` to help AI agents discover available threat vectors and targets. 🔍
-- **Backend API**: New `/api/admin/system/mcp-status` endpoint for monitoring the health of the orchestration service. 🩺
+- **MCP Server**: Production-ready deployment via `docker-compose.yml`. Supports SSE transport on port 3100. 🐳
+- **Dashboard**: New MCP Server settings tab with real-time health and Claude config generator. 🚀
+- **Orchestration**: New `set_traffic_rate` tool to adjust global generation speed (0.1s - 10.0s). 🚦
+
+## [v1.2.1-patch.192] - 2026-03-12
+### Added
+- **Registry**: Implemented flexible registry bootstrap snapshot for faster cold starts. 📡🚀
+
+## [v1.2.1-patch.182] - 2026-03-12
+### Added
+- **Cloud Probes**: Integrated Stigix Cloud performance probes. 📡✨
+### Fixed
+- **Express**: Resolved critical wildcard route crash in Express 5 by migrating to path-to-regexp v8 compatible syntax. 🛠️🔥
+
+## [v1.2.1-patch.181] - 2026-03-12
+### Performance
+- **Registry**: Moved leader recovery to the discovery loop (30s retry) for better failover resilience. 🚀
+
+## [v1.2.1-patch.179] - 2026-03-12
+### Changed
+- **Registry**: Implemented **Adaptive Heartbeats** (60s local / 300s remote) and faster discovery cycles (30s). ⏲️📡
+
+## [v1.2.1-patch.169] - 2026-03-11
+### Added
+- **Registry**: Implemented automatic **Leader Election** with quota protection to prevent split-brain scenarios. 👑🛡️
+- **Registry**: New hybrid UI for monitoring Peer and Leader health status. 📊
+
+## [v1.2.1-patch.163] - 2026-03-11
+### Added
+- **Autodiscovery**: Initial release of specialized `stigix-registry-debug` Skill. 📚
+- **Documentation**: Finalized troubleshooting and autodiscovery guides. 📖
 
 ## [v1.2.1-patch.162] - 2026-03-11
 ### Changed
