@@ -1,6 +1,13 @@
 const EICAR =
   'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
 
+async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -16,25 +23,40 @@ export default {
     let size = searchParams.get("size") || "10m";
     let code = parseInt(searchParams.get("code") || "500", 10);
 
-    // ---------- Auth simple par clé partagée ----------
+    // ---------- Auth simple par clé partagée ou Signature Maître ----------
+    const masterKey = env.MASTER_SIGNATURE_KEY;
     const sharedKey = env.SHARED_KEY;
-    const urlKey = searchParams.get("key");
-    const headerKey = headers.get("X-Stigix-Key");
-    const providedKey = urlKey || headerKey;
+    const providedKey = searchParams.get("key");
+    const tsgId = searchParams.get("tsg");
 
     const isRootInfoOnly = pathname === "/" && mode === "info";
-    const isProtectedMode = !isRootInfoOnly; // tout sauf "/" info-only
+    const isProtectedMode = !isRootInfoOnly;
 
-    const authorized =
-      !sharedKey || // si pas de clé définie, tout est ouvert
-      (providedKey && providedKey === sharedKey);
+    let authorized = false;
+    if (!isProtectedMode) {
+      authorized = true;
+    } else if (masterKey && tsgId && providedKey) {
+      // Logic Signature Maître : key === SHA256(tsg + ":" + masterKey)
+      const expectedKey = await sha256(`${tsgId}:${masterKey}`);
+      authorized = providedKey === expectedKey;
+    } else if (sharedKey) {
+      // Fallback Clé Partagée Statique
+      const headerKey = headers.get("X-Stigix-Key");
+      const urlKey = searchParams.get("key");
+      const keyToValue = urlKey || headerKey;
+      authorized = keyToValue === sharedKey;
+    } else if (!masterKey && !sharedKey) {
+      // Si aucune sécurité n'est configurée, on laisse passer
+      authorized = true;
+    }
 
-    if (isProtectedMode && !authorized) {
+    if (!authorized) {
       return new Response(
         JSON.stringify(
           {
             error: "Unauthorized",
-            hint: "Provide valid key as ?key= or X-Stigix-Key",
+            tsg: tsgId || "not provided",
+            hint: "Provide valid key as ?key= or X-Stigix-Key. For multi-tenant, provide ?tsg=",
           },
           null,
           2

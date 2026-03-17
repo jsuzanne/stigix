@@ -76,16 +76,25 @@ export class TargetManager {
         
         this.baseUrl = rawBase;
         
-        // Key Derivation logic:
-        // 1. Explicit env var override
-        // 2. Dynamic derivation from TSG/Client IDs (matches Registry PoC Key logic)
+        // Master Signature Architecture (Multi-tenant):
+        // 1. Explicit env var override (legacy/debug)
+        // 2. Master Key + TSG ID (production/multi-tenant)
         let key = process.env.STIGIX_TARGET_SHARED_KEY || '';
-        if (!key) {
-            const pocId = process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID;
+        
+        // If no explicit key, we use the Master Signature approach
+        const masterKey = process.env.STIGIX_TARGET_MASTER_KEY;
+        const tsgId = process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID || '';
+
+        if (masterKey && tsgId) {
+            // key = SHA256(tsgId + ":" + masterKey)
+            key = crypto.createHash('sha256').update(`${tsgId}:${masterKey}`).digest('hex');
+            log('TARGET', `Master Signature generated for TSG ${tsgId}`);
+        } else if (!key && tsgId) {
+            // Legacy/PoC Fallback
             const clientId = process.env.PRISMA_SDWAN_CLIENT_ID;
-            if (pocId && clientId) {
-                key = crypto.createHash('md5').update(`${pocId}:${clientId}:stigix-v1`).digest('hex');
-                log('TARGET', `Derived shared key from TSG/Client ID for base: ${this.baseUrl}`);
+            if (clientId) {
+                key = crypto.createHash('sha256').update(`${tsgId}:${clientId}:stigix-v1`).digest('hex');
+                log('TARGET', `Derived PoC key from TSG/Client ID`);
             }
         }
 
@@ -134,6 +143,9 @@ export class TargetManager {
             // Injects shared key
             if (this.sharedKey) {
                 url.searchParams.set('key', this.sharedKey);
+                // Also inject TSG for the worker to know which signature to verify
+                const tsgId = process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID;
+                if (tsgId) url.searchParams.set('tsg', tsgId);
             }
 
             // Injects default params

@@ -48,6 +48,7 @@ services:
       # --- Stigix Cloud Probes ---
       - STIGIX_TARGET_BASE_URL=${STIGIX_TARGET_BASE_URL:-}
       - STIGIX_TARGET_SHARED_KEY=${STIGIX_TARGET_SHARED_KEY:-}
+      - STIGIX_TARGET_MASTER_KEY=${STIGIX_TARGET_MASTER_KEY:-}
     healthcheck:
       test: [ "CMD-SHELL", "test -f /app/config/applications.txt -o -f /app/config/applications-config.json" ]
       interval: 5s
