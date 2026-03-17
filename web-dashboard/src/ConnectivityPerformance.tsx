@@ -630,9 +630,9 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                                 </span>
                                             )}
                                         </div>
-                                        <span className="text-[10px] text-text-muted font-mono truncate max-w-[200px]">
-                                            {e.type === 'CLOUD' && e.lastResult.data?.public_ip
-                                                ? `${e.lastResult.data.public_ip} (${e.lastResult.data.country}${e.lastResult.data.colo ? ` - ${e.lastResult.data.colo}` : ''})`
+                                        <span className="text-[10px] text-text-muted font-mono truncate max-w-[220px]">
+                                            {e.type === 'CLOUD'
+                                                ? (e.lastResult.url ? e.lastResult.url.replace(/^https?:\/\//, '').split('?')[0] : '---')
                                                 : e.lastResult.url
                                             }
                                         </span>

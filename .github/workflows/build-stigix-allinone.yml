@@ -105,8 +105,14 @@ jobs:
             echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
             echo "🚀 FULL BUILD: AMD64 + ARM64 (Manual)"
           elif [[ $GITHUB_REF == refs/tags/* ]]; then
-            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-            echo "🌍 RELEASE BUILD: AMD64 + ARM64 (Tag)"
+            VERSION=${GITHUB_REF#refs/tags/v}
+            if [[ "$VERSION" == *"-patch."* ]]; then
+              echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+              echo "⚡ FAST PATCH BUILD: AMD64 ONLY ($VERSION)"
+            else
+              echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
+              echo "🌍 RELEASE BUILD: AMD64 + ARM64 ($VERSION)"
+            fi
           else
             echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
             echo "⚡ FAST BUILD: AMD64 ONLY (Main/Branch)"

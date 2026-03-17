@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     RefreshCw, Download, AlertCircle, CheckCircle, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
@@ -118,6 +118,7 @@ export default function Settings({ token }: { token: string }) {
     const [customProbes, setCustomProbes] = useState<CustomProbe[]>([]);
     const [newProbe, setNewProbe] = useState<CustomProbe>({ name: '', type: 'HTTP', target: '', timeout: 5000 });
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
+    const probeFormRef = useRef<HTMLDivElement>(null);
 
     // Maintenance State (from System.tsx)
     const [status, setStatus] = useState<MaintenanceStatus | null>(null);
@@ -126,6 +127,7 @@ export default function Settings({ token }: { token: string }) {
 
     // System Info State
     const [systemInfo, setSystemInfo] = useState<any>(null);
+    const [latestEgressResult, setLatestEgressResult] = useState<any>(null);
 
     // Targets State
     const [targets, setTargets] = useState<TargetDefinition[]>([]);
@@ -241,6 +243,24 @@ export default function Settings({ token }: { token: string }) {
         fetchSystemInfo();
         const sysInfoInterval = setInterval(fetchSystemInfo, 5000);
 
+        // Fetch Latest Egress Info
+        const fetchEgressInfo = () => {
+            fetch('/api/connectivity/results?limit=50', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(data => {
+                    const results = data.results || [];
+                    // Look for 'egress-info' (case insensitive) or a probe of type CLOUD that has geo data
+                    const egress = results.find((r: any) => 
+                        r.endpointName.toLowerCase().includes('egress-info') || 
+                        (r.endpointType === 'CLOUD' && r.data?.public_ip)
+                    );
+                    if (egress) setLatestEgressResult(egress);
+                })
+                .catch(() => { });
+        };
+        fetchEgressInfo();
+        const egressInterval = setInterval(fetchEgressInfo, 30000);
+
         // Fetch Convergence Thresholds
         fetch('/api/config/convergence', { headers: { 'Authorization': `Bearer ${token}` } })
             .then(r => r.json())
@@ -286,6 +306,7 @@ export default function Settings({ token }: { token: string }) {
         return () => {
             clearInterval(sysInfoInterval);
             clearInterval(mcpInterval);
+            clearInterval(egressInterval);
         };
 
     }, [token]);
@@ -556,6 +577,12 @@ export default function Settings({ token }: { token: string }) {
         const probe = customProbes[index];
         setNewProbe({ ...probe });
         setEditingIndex(index);
+        // Scroll to form
+        setTimeout(() => {
+            if (probeFormRef.current) {
+                probeFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }, 100);
     };
 
     const deleteProbe = async (index: number) => {
@@ -792,7 +819,7 @@ export default function Settings({ token }: { token: string }) {
                         <div>
                             <div className="flex items-center gap-3">
                                 <h2 className="text-2xl font-black text-text-primary tracking-tight">Settings</h2>
-                                <span className="text-[10px] text-text-muted font-bold tracking-widest opacity-60">Control Center • {status?.current || 'v1.2.1-patch.112'}</span>
+                                <span className="text-[10px] text-text-muted font-bold tracking-widest opacity-60">Control Center • {status?.current || 'v1.2.1-patch.237'}</span>
                             </div>
                             <div className="flex items-center gap-4 mt-1">
                                 {tabs.map((tab) => (
@@ -976,8 +1003,13 @@ export default function Settings({ token }: { token: string }) {
                             </div>
                         </div>
 
-                        <div className="max-w-5xl mx-auto space-y-8">
-                            <div className="grid grid-cols-1 md:grid-cols-5 gap-6 bg-card-secondary/30 p-6 rounded-2xl border border-border shadow-inner">
+                         <div ref={probeFormRef} className="max-w-5xl mx-auto space-y-8">
+                             <div className={cn(
+                                 "grid grid-cols-1 md:grid-cols-5 gap-6 p-6 rounded-2xl border transition-all duration-300",
+                                 editingIndex !== null 
+                                     ? "bg-amber-500/5 border-amber-500/30 shadow-lg shadow-amber-500/5" 
+                                     : "bg-card-secondary/30 border-border shadow-inner"
+                             )}>
                                 <div className="space-y-2">
                                     <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1">Probe Name</label>
                                     <input
@@ -1050,15 +1082,31 @@ export default function Settings({ token }: { token: string }) {
                                         />
                                     )}
                                 </div>
-                                <div className="space-y-2 flex flex-col justify-start pt-5">
-                                    <button
-                                        onClick={addProbe}
-                                        className="w-full bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20"
-                                    >
-                                        <Plus size={16} />
-                                        {editingIndex !== null ? 'Update' : 'Add Probe'}
-                                    </button>
-                                </div>
+                                 <div className="space-y-2 flex flex-col justify-start pt-5">
+                                     <button
+                                         onClick={addProbe}
+                                         className={cn(
+                                             "w-full px-6 py-2.5 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg",
+                                             editingIndex !== null
+                                                 ? "bg-amber-600 hover:bg-amber-500 text-white shadow-amber-900/20"
+                                                 : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
+                                         )}
+                                     >
+                                         {editingIndex !== null ? <RefreshCw size={16} className="animate-in spin-in duration-500" /> : <Plus size={16} />}
+                                         {editingIndex !== null ? 'Update Probe' : 'Add Probe'}
+                                     </button>
+                                     {editingIndex !== null && (
+                                         <button 
+                                             onClick={() => {
+                                                 setEditingIndex(null);
+                                                 setNewProbe({ name: '', type: 'HTTP', target: '', timeout: 5000 });
+                                             }}
+                                             className="mt-2 text-[9px] font-black text-text-muted hover:text-red-500 uppercase tracking-widest transition-colors"
+                                         >
+                                             Cancel Edit
+                                         </button>
+                                     )}
+                                 </div>
                             </div>
 
                             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-2">

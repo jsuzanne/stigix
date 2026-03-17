@@ -59,9 +59,9 @@ git tag $NEW_VER
 git push origin $NEW_VER
 ```
 
-This triggers GitHub Actions (`build-stigix-allinone.yml` and `docker-build.yml`) which automatically creates:
-- **Multi-platform images (AMD64 + ARM64)**: Only for official tags (`v*`). This ensures Raspberry Pi compatibility.
-- **Fast AMD64-only images**: For pushes to the `main` branch (updating `latest`).
+This triggers GitHub Actions which automatically creates:
+- **Fast AMD64-only images**: For "patch" versions (e.g., `v1.2.1-patch.239`) and pushes to the `main` branch. This speeds up the development CI cycle.
+- **Multi-platform images (AMD64 + ARM64)**: Only for official stable tags (e.g. `v1.2.1`). This ensures Raspberry Pi compatibility for releases.
 
 ### 5 — Verify CI Visibility
 

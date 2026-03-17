@@ -25,8 +25,19 @@ echo ""
 # Ensure buildx is set up
 docker buildx create --use --name multiplatform-builder 2>/dev/null || docker buildx use multiplatform-builder
 
-# Build arguments
-BUILD_ARGS="--platform linux/amd64,linux/arm64"
+# Determine platforms
+# Default to AMD64 for development speed, ARM64 added for stable tags
+if [[ "$VERSION" == *"-patch."* ]] || [ "$2" = "--no-push" ]; then
+    DEFAULT_PLATFORMS="linux/amd64"
+    echo "⚡ Fast Build Mode: Building for $DEFAULT_PLATFORMS only"
+else
+    DEFAULT_PLATFORMS="linux/amd64,linux/arm64"
+    echo "🌍 Release Build Mode: Building for $DEFAULT_PLATFORMS"
+fi
+
+PLATFORM_FLAG=${PLATFORMS:-$DEFAULT_PLATFORMS}
+BUILD_ARGS="--platform $PLATFORM_FLAG"
+
 if [ -n "$PUSH_FLAG" ]; then
     BUILD_ARGS="$BUILD_ARGS --push"
 else

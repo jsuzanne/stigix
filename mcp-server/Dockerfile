@@ -3,12 +3,12 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Install dependencies
-COPY requirements.txt .
+COPY mcp-server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
-COPY src/ ./src/
-COPY profiles/ ./profiles/
+COPY mcp-server/src/ ./src/
+COPY mcp-server/profiles/ ./profiles/
 
 # Volumes will be mounted at runtime
 VOLUME ["/app/config", "/app/logs", "/app/data"]
@@ -24,7 +24,7 @@ ENV MCP_HOST=0.0.0.0
 
 # Healthcheck for SSE endpoint
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s \
-    CMD python -c "import httpx; httpx.get('http://localhost:3100/health', timeout=2)" || exit 1
+    CMD python -c "import httpx; httpx.get('http://localhost:3100/sse', timeout=2)" || exit 1
 
 # Expose SSE port
 EXPOSE 3100
