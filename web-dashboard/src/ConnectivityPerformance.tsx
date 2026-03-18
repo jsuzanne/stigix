@@ -282,7 +282,14 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
         }).filter(e => {
             if (!showDeleted && activeProbes.length > 0 && !activeProbes.includes(e.id)) return false;
             if (!showInactive && !e.enabled) return false; // Filter out inactive if not showing
-            if (filterType !== 'ALL' && e.type !== filterType) return false;
+            
+            // Filtering logic
+            if (filterType === 'PRISMA') {
+                if (e.source !== 'discovery') return false;
+            } else if (filterType !== 'ALL' && e.type !== filterType) {
+                return false;
+            }
+            
             if (searchQuery && !e.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
             return true;
         }).sort((a: any, b: any) => {
@@ -487,7 +494,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                         />
                     </div>
                     <div className="flex p-1 bg-card-secondary rounded-lg border border-border">
-                        {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD'].map(t => (
+                        {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD', 'PRISMA'].map(t => (
                             <button
                                 key={t}
                                 onClick={() => setFilterType(t)}

@@ -6346,9 +6346,8 @@ app.get('/api/containers/stats', authenticateToken, async (req, res) => {
 
         res.json(stats);
     } catch (e: any) {
-        // If docker is not available or fails, return empty array instead of 500
-        // to avoid crashing the frontend polling logic.
-        res.json([]);
+        // If docker is not available or fails, return an error object
+        res.json({ error: e.message || 'Failed to connect to Docker daemon' });
     }
 });
 

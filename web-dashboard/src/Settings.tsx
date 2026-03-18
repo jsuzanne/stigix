@@ -1801,7 +1801,7 @@ export default function Settings({ token }: { token: string }) {
                                             ) : (
                                                 <tr>
                                                     <td colSpan={7} className="px-4 py-12 text-center text-text-muted font-bold tracking-widest opacity-50 uppercase">
-                                                        {systemInfo?.mode === 'Host Mode' ? 'No containers visible in Host Mode' : 'No container metrics available'}
+                                                         {(containerStats as any)?.error ? (containerStats as any).error : (systemInfo?.mode === 'Host Mode' ? 'No containers visible in Host Mode' : 'No container metrics available')}
                                                     </td>
                                                 </tr>
                                             )}
