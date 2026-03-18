@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.1-patch.244] - 2026-03-18
+### Added
+- **Connectivity**: Added **PRISMA** filter to Connectivity Performance view to isolate auto-discovered probes. 🛡️🔍
+### Fixed
+- **Dashboard**: Improved **Docker stats** error reporting. Displays specific connectivity errors (e.g., daemon unreachable on Mac) instead of an empty table. 🐳🩺
+
+## [v1.2.1-patch.243] - 2026-03-18
+### Added
+- **Dashboard**: Integrated **Live Docker Container Stats** (CPU %, Mem Usage/%, Net/Block I/O, PIDs) into System Info. 📊🐳
+- **Settings**: Renamed "Strata Logging" to **Prisma SASE API**. 🛡️
+- **Settings**: Implemented UI-based Prisma credential management with local persistence in `prisma-config.json`. ⚙️
+- **Connectivity**: Standardized probe icons (🌐 Cloud, 🛡️ Prisma, ⚡ Manual) across all views for visual consistency. ✨🌐
+
 ## [v1.2.1-patch.239] - 2026-03-17
 ### Added
 - **Build Optimization**: Implemented **Fast Patch Builds**. Patch versions now default to `linux/amd64` only, significantly reducing CI turnaround time. ⚡
