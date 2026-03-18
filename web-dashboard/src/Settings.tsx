@@ -129,6 +129,7 @@ export default function Settings({ token }: { token: string }) {
     // System Info State
     const [systemInfo, setSystemInfo] = useState<any>(null);
     const [latestEgressResult, setLatestEgressResult] = useState<any>(null);
+    const [containerStats, setContainerStats] = useState<any[]>([]);
 
     // Targets State
     const [targets, setTargets] = useState<TargetDefinition[]>([]);
@@ -244,6 +245,16 @@ export default function Settings({ token }: { token: string }) {
         fetchSystemInfo();
         const sysInfoInterval = setInterval(fetchSystemInfo, 5000);
 
+        // Fetch Live Container Stats
+        const fetchContainerStats = () => {
+            fetch('/api/containers/stats', { headers: authHeaders })
+                .then(r => r.json())
+                .then(setContainerStats)
+                .catch(() => { });
+        };
+        fetchContainerStats();
+        const containerStatsInterval = setInterval(fetchContainerStats, 5000);
+
         // Fetch Latest Egress Info
         const fetchEgressInfo = () => {
             fetch('/api/connectivity/results?limit=50', { headers: { 'Authorization': `Bearer ${token}` } })
@@ -308,6 +319,7 @@ export default function Settings({ token }: { token: string }) {
             clearInterval(sysInfoInterval);
             clearInterval(mcpInterval);
             clearInterval(egressInterval);
+            clearInterval(containerStatsInterval);
         };
 
     }, [token]);
@@ -988,6 +1000,22 @@ export default function Settings({ token }: { token: string }) {
 
                         <div className="space-y-4">
                             <div className="flex flex-col gap-4">
+                                {/* Probe Icons Legend */}
+                                <div className="flex flex-wrap items-center gap-6 px-6 py-3 bg-card-secondary/30 border border-border rounded-xl">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-lg bg-purple-600/10 text-purple-600 flex items-center justify-center"><Globe size={14} /></div>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-text-muted">Cloud Scenario</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-lg bg-indigo-600/10 text-indigo-600 flex items-center justify-center"><Shield size={14} /></div>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-text-muted">Prisma SD-WAN Peer</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-lg bg-amber-600/10 text-amber-600 flex items-center justify-center"><Activity size={14} /></div>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-text-muted">Manual Probe</span>
+                                    </div>
+                                </div>
+
                                 <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                                     {/* Action Card: Add New */}
                                     <div 
@@ -1731,6 +1759,56 @@ export default function Settings({ token }: { token: string }) {
                                     </div>
                                 </div>
                             )}
+
+                            {/* Live Docker Stats */}
+                            <div className="pt-8 border-t border-border/50">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 font-bold">
+                                        <Database size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-black text-text-primary tracking-tight uppercase">Live Docker Containers</h3>
+                                        <p className="text-[9px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Real-time resource utilization</p>
+                                    </div>
+                                </div>
+
+                                <div className="overflow-x-auto rounded-xl border border-border">
+                                    <table className="w-full text-left text-[10px] border-collapse">
+                                        <thead>
+                                            <tr className="bg-card-secondary/50 border-b border-border">
+                                                <th className="px-4 py-2 font-black uppercase tracking-widest text-text-muted">Name</th>
+                                                <th className="px-4 py-2 font-black uppercase tracking-widest text-text-muted">CPU %</th>
+                                                <th className="px-4 py-2 font-black uppercase tracking-widest text-text-muted">Mem Usage</th>
+                                                <th className="px-4 py-2 font-black uppercase tracking-widest text-text-muted">Mem %</th>
+                                                <th className="px-4 py-2 font-black uppercase tracking-widest text-text-muted">Net I/O</th>
+                                                <th className="px-4 py-2 font-black uppercase tracking-widest text-text-muted">Block I/O</th>
+                                                <th className="px-4 py-2 font-black uppercase tracking-widest text-text-muted">PIDs</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border/50">
+                                            {containerStats.length > 0 ? (
+                                                containerStats.map((container, idx) => (
+                                                    <tr key={container.ID || idx} className="hover:bg-card-secondary/30 transition-colors">
+                                                        <td className="px-4 py-2 font-bold text-text-primary">{container.Name}</td>
+                                                        <td className="px-4 py-2 font-mono text-purple-400">{container.CPUPerc}</td>
+                                                        <td className="px-4 py-2 font-mono text-text-secondary">{container.MemUsage}</td>
+                                                        <td className="px-4 py-2 font-mono text-indigo-400">{container.MemPerc}</td>
+                                                        <td className="px-4 py-2 font-mono text-text-secondary">{container.NetIO}</td>
+                                                        <td className=" px-4 py-2 font-mono text-text-secondary">{container.BlockIO}</td>
+                                                        <td className="px-4 py-2 font-mono text-text-secondary">{container.PIDs}</td>
+                                                    </tr>
+                                                ))
+                                            ) : (
+                                                <tr>
+                                                    <td colSpan={7} className="px-4 py-12 text-center text-text-muted font-bold tracking-widest opacity-50 uppercase">
+                                                        {systemInfo?.mode === 'Host Mode' ? 'No containers visible in Host Mode' : 'No container metrics available'}
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}

@@ -627,14 +627,17 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                     <div className="flex flex-col">
                                         <div className="flex items-center gap-2">
                                             <span className="text-sm font-bold text-text-primary group-hover:text-blue-500 transition-colors uppercase tracking-tight">{e.name}</span>
-                                            {e.source === 'discovery' && (
-                                                <span className={cn(
-                                                    "px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-widest flex items-center gap-1",
-                                                    e.stale ? "bg-orange-500/20 text-orange-500" : "bg-blue-500/20 text-blue-500"
-                                                )}>
-                                                    <Globe size={10} /> {e.stale && "STALE"}
-                                                </span>
-                                            )}
+                                            <span className={cn(
+                                                "px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-widest flex items-center gap-1",
+                                                e.type === 'CLOUD'
+                                                    ? "bg-purple-600/10 text-purple-600"
+                                                    : e.source === 'discovery'
+                                                        ? (e.stale ? "bg-orange-500/20 text-orange-500" : "bg-indigo-600/10 text-indigo-600")
+                                                        : "bg-amber-600/10 text-amber-600"
+                                            )}>
+                                                {e.type === 'CLOUD' ? <Globe size={10} /> : e.source === 'discovery' ? <Shield size={10} /> : <Activity size={10} />}
+                                                {e.stale && "STALE"}
+                                            </span>
                                         </div>
                                         <span className="text-[10px] text-text-muted font-mono truncate max-w-[220px]">
                                             {e.type === 'CLOUD'

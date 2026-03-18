@@ -6329,6 +6329,30 @@ app.get('/api/admin/system/info', authenticateToken, async (req, res) => {
 });
 
 /**
+ * API: Get Live Docker Container Stats
+ * Runs 'docker stats' and returns parsed JSON objects.
+ */
+app.get('/api/containers/stats', authenticateToken, async (req, res) => {
+    try {
+        const { stdout } = await promisify(exec)("docker stats --no-stream --format '{{ json . }}'");
+        const lines = stdout.trim().split('\n').filter(l => l.trim());
+        const stats = lines.map(line => {
+            try {
+                return JSON.parse(line);
+            } catch (e) {
+                return null;
+            }
+        }).filter(s => s !== null);
+
+        res.json(stats);
+    } catch (e: any) {
+        // If docker is not available or fails, return empty array instead of 500
+        // to avoid crashing the frontend polling logic.
+        res.json([]);
+    }
+});
+
+/**
  * Model Context Protocol (MCP) Status Reporting
  * Reports whether the MCP server is listening on port 3100 (SSE).
  */
