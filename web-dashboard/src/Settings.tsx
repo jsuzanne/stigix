@@ -31,6 +31,7 @@ interface CustomProbe {
     target: string;
     timeout: number;
     enabled?: boolean;
+    source?: 'discovery' | 'manual' | 'cloud';
 }
 
 interface MaintenanceStatus {
@@ -103,7 +104,7 @@ const BetaBadge = ({ className }: { className?: string }) => (
 );
 
 export default function Settings({ token }: { token: string }) {
-    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'strata'>('distribution');
+    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata'>('distribution');
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -799,7 +800,7 @@ export default function Settings({ token }: { token: string }) {
         { id: 'targets', label: 'Targets' },
         { id: 'registry', label: 'Target Controller', beta: true },
         { id: 'mcp', label: 'MCP Server', beta: true },
-        { id: 'strata', label: 'Strata Logging', beta: true },
+        { id: 'prisma-api', label: 'Prisma SASE API', beta: true },
     ];
 
     return (
@@ -1003,58 +1004,82 @@ export default function Settings({ token }: { token: string }) {
                                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500">Configure New Probe</span>
                                     </div>
 
-                                    {customProbes.map((probe, idx) => (
-                                        <div key={idx} className={cn(
-                                            "group bg-card border border-border hover:border-blue-500/30 rounded-2xl p-5 pr-2 flex items-center justify-between transition-all shadow-sm",
-                                            probe.enabled === false && "opacity-50"
-                                        )}>
-                                            <div className="flex items-center gap-4">
-                                                <div className={cn(
-                                                    "w-10 h-10 rounded-xl flex items-center justify-center text-[10px] font-black",
-                                                    probe.type === 'CLOUD'
-                                                        ? "bg-purple-600/10 text-purple-600 dark:text-purple-400"
-                                                        : "bg-blue-600/10 text-blue-600 dark:text-blue-400"
-                                                )}>
-                                                    {probe.type === 'CLOUD' ? <Globe size={20} /> : <Activity size={18} />}
-                                                </div>
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <h4 className="text-[11px] font-black text-text-primary tracking-tight">{probe.name}</h4>
-                                                        <span className={cn(
-                                                            "text-[8px] px-1.5 py-0.5 rounded font-black tracking-widest",
-                                                            probe.type === 'CLOUD' ? "bg-purple-600/10 text-purple-500" : "bg-blue-600/10 text-blue-500"
-                                                        )}>{probe.type}</span>
+                                    {customProbes.map((probe, idx) => {
+                                        const isDiscovery = (probe as any).source === 'discovery';
+                                        const isCloud = probe.type === 'CLOUD';
+                                        
+                                        return (
+                                            <div key={idx} className={cn(
+                                                "group bg-card border border-border hover:border-blue-500/30 rounded-2xl p-5 pr-4 flex items-center justify-between transition-all shadow-sm",
+                                                probe.enabled === false && "opacity-60 bg-card-secondary/30"
+                                            )}>
+                                                <div className="flex items-center gap-4">
+                                                    <div className={cn(
+                                                        "w-12 h-12 rounded-2xl flex items-center justify-center text-[10px] font-black shadow-inner transition-colors",
+                                                        isCloud 
+                                                            ? "bg-purple-600/10 text-purple-600 dark:text-purple-400" 
+                                                            : isDiscovery 
+                                                                ? "bg-indigo-600/10 text-indigo-600 dark:text-indigo-400"
+                                                                : "bg-amber-600/10 text-amber-600 dark:text-amber-500"
+                                                    )}>
+                                                        {isCloud ? <Globe size={24} /> : isDiscovery ? <Shield size={24} /> : <Activity size={24} />}
                                                     </div>
-                                                    <p className="text-[9px] font-bold text-text-muted truncate max-w-[140px] mt-0.5 opacity-60">
-                                                        {probe.type === 'CLOUD'
-                                                            ? (() => {
-                                                                const scenario = cloudScenarios.find(s => s.id === probe.target);
-                                                                if (scenario?.signedUrl) return scenario.signedUrl.replace(/^https?:\/\//, '').split('?')[0];
-                                                                return probe.target || 'Stigix Scenario';
-                                                            })()
-                                                            : (probe.target || 'localhost')
-                                                        }
-                                                    </p>
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <h4 className="text-[12px] font-black text-text-primary tracking-tight">{probe.name}</h4>
+                                                            <span className={cn(
+                                                                "text-[8px] px-2 py-0.5 rounded-full font-black tracking-widest uppercase",
+                                                                isCloud ? "bg-purple-600/10 text-purple-500" : isDiscovery ? "bg-indigo-600/10 text-indigo-500" : "bg-amber-600/10 text-amber-500"
+                                                            )}>
+                                                                {isDiscovery ? 'Prisma' : isCloud ? 'Cloud' : probe.type}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[9px] font-bold text-text-muted truncate max-w-[180px] mt-1 opacity-60">
+                                                            {probe.type === 'CLOUD'
+                                                                ? (() => {
+                                                                    const scenario = cloudScenarios.find(s => s.id === probe.target);
+                                                                    if (scenario?.signedUrl) return scenario.signedUrl.replace(/^https?:\/\//, '').split('?')[0];
+                                                                    return probe.target || 'Stigix Scenario';
+                                                                })()
+                                                                : (probe.target || 'localhost')
+                                                            }
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => toggleProbeEnabled(idx)}
+                                                        className={cn(
+                                                            "p-2.5 rounded-xl transition-all flex items-center gap-2",
+                                                            probe.enabled !== false 
+                                                                ? "bg-green-600/10 text-green-600 hover:bg-green-600/20" 
+                                                                : "bg-card-secondary text-text-muted hover:bg-red-600/10 hover:text-red-500"
+                                                        )}
+                                                        title={probe.enabled !== false ? "Disable Probe" : "Enable Probe"}
+                                                    >
+                                                        <Power size={14} className={probe.enabled !== false ? "drop-shadow-[0_0_8px_rgba(22,163,74,0.4)]" : ""} />
+                                                    </button>
+                                                    
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity border-l border-border/50 pl-2 ml-1">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); startEditProbe(idx); }}
+                                                            className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
+                                                            title="Edit Probe"
+                                                        >
+                                                            <Edit2 size={14} />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); deleteProbe(idx); }}
+                                                            className="p-2 hover:bg-red-600/10 rounded-xl text-text-muted hover:text-red-500 transition-all"
+                                                            title="Remove Probe"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button
-                                                    onClick={() => startEditProbe(idx)}
-                                                    className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
-                                                    title="Edit Probe"
-                                                >
-                                                    <Edit2 size={14} />
-                                                </button>
-                                                <button
-                                                    onClick={() => deleteProbe(idx)}
-                                                    className="p-2 hover:bg-red-600/10 rounded-xl text-text-muted hover:text-red-500 transition-all"
-                                                    title="Remove Probe"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>
@@ -2337,16 +2362,16 @@ export default function Settings({ token }: { token: string }) {
                     </div>
                 )}
 
-            {/* ─── Strata Logging Tab ─────────────────────────────────────── */}
-            {activeTab === 'strata' && (
+            {/* ─── Prisma SASE API Tab ─────────────────────────────────────── */}
+            {activeTab === 'prisma-api' && (
                 <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 font-bold">
-                            <Database size={24} />
+                            <Shield size={24} />
                         </div>
                         <div>
-                            <h2 className="text-lg font-black text-text-primary tracking-tight">Strata Logging Service (SLS)</h2>
-                            <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Enrich security test history with Prisma Access diagnostics</p>
+                            <h2 className="text-lg font-black text-text-primary tracking-tight">Prisma SASE API Integration</h2>
+                            <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Global credentials for site detection, flow status, and SLS diagnostics</p>
                         </div>
                     </div>
 
@@ -2489,11 +2514,11 @@ export default function Settings({ token }: { token: string }) {
                             <div className="space-y-6">
                                 <div className="bg-blue-600/5 border border-blue-500/10 rounded-2xl p-6 space-y-4">
                                     <div className="flex items-center gap-2 text-blue-500">
-                                        <Info size={18} />
-                                        <h3 className="text-xs font-black uppercase tracking-widest">About Strata Logging Integration</h3>
+                                        <Shield size={18} />
+                                        <h3 className="text-xs font-black uppercase tracking-widest">About Prisma SASE Integration</h3>
                                     </div>
                                     <p className="text-[11px] font-bold text-text-secondary leading-relaxed">
-                                        Strata Logging Service (SLS) provides deep insights into network traffic and security threats processed by Prisma Access and Prisma SD-WAN.
+                                        Prisma SASE APls provide deep insights into network traffic, security threats, and site health across Prisma Access and Prisma SD-WAN.
                                     </p>
                                     <ul className="text-[10px] font-bold text-text-muted space-y-2 pl-4">
                                         <li className="list-disc">Automatically queries traffic logs after each security test.</li>

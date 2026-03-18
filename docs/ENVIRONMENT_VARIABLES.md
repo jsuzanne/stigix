@@ -25,8 +25,9 @@ Required for site auto-detection, flow status, and SaaS data enrichment.
 |----------|-------------|---------|
 | `STIGIX_REGISTRY_ENABLED` | Enable peer discovery via global registry | `true` |
 | `STIGIX_REGISTRY_URL` | URL of the Stigix Cloudflare Registry | `https://stigix-registry.jlsuzanne.workers.dev` |
-| `STIGIX_TARGET_BASE_URL` | Base URL for Stigix Cloud Probes (EICAR, Download) | - |
-| `STIGIX_TARGET_MASTER_KEY`| **[Patch 235]** Global secret for multi-tenant probe signing | - |
+| `STIGIX_TARGET_BASE_URL` | Base URL for Stigix Cloud Probes (EICAR, Download) | `https://stigix-target.jlsuzanne.workers.dev` |
+| `STIGIX_TARGET_MASTER_KEY`| Global secret used with `PRISMA_SDWAN_TSGID` to generate dynamic per-tenant signatures (Production/Multi-tenant) | - |
+| `STIGIX_TARGET_SHARED_KEY`| Explicit static key for signing (Legacy/Debug/Standalone) | - |
 | `STIGIX_SITE_NAME` | Display name for this instance in the registry | Auto-detected |
 
 ## 🚀 Traffic Generator (Synthetic)

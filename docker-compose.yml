@@ -23,7 +23,7 @@ services:
     environment:
       # --- General & Web UI ---
       - PORT=8080                                      # Internal port for the Dashboard
-      - JWT_SECRET=${JWT_SECRET:-your-secure-secret}   # Secret for session tokens (CHANGE THIS!)
+      - JWT_SECRET=${JWT_SECRET:-stigix-default-secret-2026} # Secret for session tokens (MATCH WITH MCP!)
       - DEBUG=${DEBUG:-false}                          # Enable verbose backend logging
       
       # --- Prisma SD-WAN API Credentials ---
@@ -137,7 +137,7 @@ services:
     environment:
       - MCP_TRANSPORT=sse
       - MCP_PORT=3100
-      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
+      - JWT_SECRET=${JWT_SECRET:-stigix-default-secret-2026}
       - LOG_LEVEL=INFO
     volumes:
       - ./config:/app/config:ro

@@ -66,7 +66,12 @@ services:
       - XFR_MAX_DURATION=60
       - XFR_RATE_LIMIT=2
       - XFR_ALLOW_CIDR=0.0.0.0/0
-      
+      # --- Stigix Cloud & Probes ---
+      - STIGIX_REGISTRY_URL=${STIGIX_REGISTRY_URL:-https://stigix-registry.jlsuzanne.workers.dev}
+      - STIGIX_TARGET_BASE_URL=${STIGIX_TARGET_BASE_URL:-}
+      - STIGIX_TARGET_SHARED_KEY=${STIGIX_TARGET_SHARED_KEY:-}
+      - STIGIX_TARGET_MASTER_KEY=${STIGIX_TARGET_MASTER_KEY:-}
+
     healthcheck:
       test: ["CMD-SHELL", "supervisorctl status || exit 1"]
       interval: 30s

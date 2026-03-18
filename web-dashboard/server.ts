@@ -83,6 +83,57 @@ const APP_CONFIG = {
     logDir: path.resolve(process.env.LOG_DIR || (fs.existsSync('/var/log/sdwan-traffic-gen') ? '/var/log/sdwan-traffic-gen' : path.join(PROJECT_ROOT, 'logs')))
 };
 
+const PRISMA_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'prisma-config.json');
+
+/**
+ * Loads global Prisma SASE API configuration from disk and updates process.env.
+ */
+function loadPrismaConfig() {
+    try {
+        if (fs.existsSync(PRISMA_CONFIG_FILE)) {
+            const data = fs.readFileSync(PRISMA_CONFIG_FILE, 'utf8');
+            const config = JSON.parse(data);
+            if (config.tsg_id) process.env.PRISMA_SDWAN_TSGID = config.tsg_id;
+            if (config.client_id) process.env.PRISMA_SDWAN_CLIENT_ID = config.client_id;
+            if (config.client_secret) process.env.PRISMA_SDWAN_CLIENT_SECRET = config.client_secret;
+            if (config.region) process.env.PRISMA_SDWAN_REGION = config.region;
+            log('SYSTEM', `Loaded global Prisma configuration from ${PRISMA_CONFIG_FILE}`);
+        }
+    } catch (e) {
+        log('SYSTEM', `Failed to load Prisma configuration: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
+    }
+}
+
+/**
+ * Saves global Prisma SASE API configuration to disk.
+ */
+function savePrismaConfig(config: any) {
+    try {
+        const data = {
+            tsg_id: config.tsg_id || '',
+            client_id: config.client_id || '',
+            client_secret: config.client_secret || '',
+            region: config.region || 'prd',
+            updated_at: new Date().toISOString()
+        };
+        fs.writeFileSync(PRISMA_CONFIG_FILE, JSON.stringify(data, null, 2));
+        
+        // Propagate to process.env immediately
+        process.env.PRISMA_SDWAN_TSGID = data.tsg_id;
+        process.env.PRISMA_SDWAN_CLIENT_ID = data.client_id;
+        process.env.PRISMA_SDWAN_CLIENT_SECRET = data.client_secret;
+        process.env.PRISMA_SDWAN_REGION = data.region;
+        
+        return true;
+    } catch (e) {
+        log('SYSTEM', `Failed to save Prisma configuration: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
+        return false;
+    }
+}
+
+// Load global config at startup
+loadPrismaConfig();
+
 const DEBUG = process.env.DEBUG === 'true';
 
 // Quick Targets for XFR: "Label1:IP1,Label2:IP2"
@@ -5204,7 +5255,17 @@ app.get('/api/security/config', authenticateToken, (req, res) => {
 
 // API: Get Default Security Configuration (from ENV)
 app.get('/api/admin/security/defaults', authenticateToken, (req, res) => {
-    res.json(DEFAULT_SECURITY_CONFIG);
+    // Dynamically rebuild based on current environment (now including prisma-config.json overrides)
+    const defaults = JSON.parse(JSON.stringify(DEFAULT_SECURITY_CONFIG));
+    defaults.sls_config = {
+        enabled: !!(process.env.PRISMA_SDWAN_CLIENT_ID && process.env.PRISMA_SDWAN_CLIENT_SECRET),
+        tsg_id: process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID || '',
+        client_id: process.env.PRISMA_SDWAN_CLIENT_ID || '',
+        client_secret: process.env.PRISMA_SDWAN_CLIENT_SECRET || '',
+        region: (process.env.PRISMA_SDWAN_REGION === 'Germany' || process.env.PRISMA_SDWAN_REGION?.toLowerCase().includes('eu')) ? 'eu' : 'prd',
+        auto_enrich: true
+    };
+    res.json(defaults);
 });
 
 // API: Update Security Configuration
@@ -5212,11 +5273,16 @@ app.post('/api/security/config', authenticateToken, (req, res) => {
     const config = getSecurityConfig();
     if (!config) return res.status(500).json({ error: 'Failed to read config' });
 
-    const { url_filtering, dns_security, threat_prevention, scheduled_execution } = req.body;
+    const { url_filtering, dns_security, threat_prevention, scheduled_execution, sls_config } = req.body;
 
     if (url_filtering) config.url_filtering = url_filtering;
     if (dns_security) config.dns_security = dns_security;
     if (threat_prevention) config.threat_prevention = threat_prevention;
+    if (sls_config) {
+        config.sls_config = sls_config;
+        // Also save to global Prisma config for other managers
+        savePrismaConfig(sls_config);
+    }
     if (scheduled_execution !== undefined) {
         config.scheduled_execution = scheduled_execution;
         // Re-initialize all schedulers with new settings

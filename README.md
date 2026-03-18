@@ -703,6 +703,22 @@ environment:
 
 ---
 
+### Traffic Fails in Proxmox/LXC/Host Mode
+
+**Issue:** Stigix traffic fails to start or network operations (like Voice/IoT simulation) fail when running in Host Network mode on certain virtualized stacks (Proxmox → LXC → Ubuntu → Docker).
+
+**Solution:** This is often due to insufficient container privileges for low-level network operations (NET_ADMIN, NET_RAW).
+- **Trusted Lab Fix:** Enable `privileged: true` in your `docker-compose.yml` for the Stigix container.
+- **Alternative:** Add specific capabilities:
+  ```yaml
+  cap_add:
+    - NET_ADMIN
+    - NET_RAW
+  ```
+> **Warning:** Use `privileged: true` only in trusted lab setups, as it significantly reduces container isolation and increases host security risk.
+
+---
+
 ## 🔒 Security
 
 ### Production Deployment Checklist

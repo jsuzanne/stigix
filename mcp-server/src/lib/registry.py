@@ -17,7 +17,7 @@ class RegistryClient:
     
     def __init__(self):
         self.controller_url = self._discover_controller()
-        self.jwt_secret = os.getenv("JWT_SECRET", "your-secure-secret-here")
+        self.jwt_secret = os.getenv("JWT_SECRET", "stigix-default-secret-2026")
         self._mock_endpoints = [
             StigixEndpoint(
                 id="branch-paris-1",
@@ -122,11 +122,14 @@ class RegistryClient:
                             )
                             merged_endpoints[host] = endpoint
             except Exception as e:
-                logger.warning(f"Discovery failed for {targets_api}: {e}")
-
+                if hasattr(e, 'response') and e.response.status_code in [401, 403]:
+                    logger.error(f"Authentication failed for {targets_api} (Status {e.response.status_code}). Check if JWT_SECRET matches between Web UI and MCP.")
+                else:
+                    logger.warning(f"Discovery failed for {targets_api}: {e}")
+        
         endpoints = list(merged_endpoints.values())
         if not endpoints:
-            logger.error("All discovery sources failed. Using fallback.")
+            logger.error("All discovery sources failed (Dashboard may be unreachable or JWT_SECRET mismatch). Using fallback.")
             return self._mock_endpoints
         
         if kind:
