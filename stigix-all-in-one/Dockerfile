@@ -28,9 +28,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dos2unix \
     ca-certificates \
     supervisor \
-    docker.io \
-    docker-compose \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Docker CLI and Docker Compose (Static Binaries)
+RUN set -x && \
+    ARCH=$(uname -m) && \
+    case "$ARCH" in \
+        x86_64)  DOCKER_ARCH="x86_64";  COMPOSE_ARCH="x86_64" ;; \
+        aarch64) DOCKER_ARCH="aarch64"; COMPOSE_ARCH="aarch64" ;; \
+        *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
+    esac && \
+    DOCKER_VER="29.3.0" && \
+    COMPOSE_VER="v2.26.1" && \
+    curl -fsSL "https://download.docker.com/linux/static/stable/${DOCKER_ARCH}/docker-${DOCKER_VER}.tgz" | \
+    tar -xzC /usr/local/bin --strip-components=1 docker/docker && \
+    curl -fsSL "https://github.com/docker/compose/releases/download/${COMPOSE_VER}/docker-compose-linux-${COMPOSE_ARCH}" \
+    -o /usr/local/bin/docker-compose && \
+    chmod +x /usr/local/bin/docker /usr/local/bin/docker-compose && \
+    mkdir -p /usr/local/lib/docker/cli-plugins && \
+    ln -s /usr/local/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Install Node.js 20
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \

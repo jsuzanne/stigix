@@ -6917,22 +6917,41 @@ app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) =
             } else if (composeFile) {
                 // Try 'docker compose' first, then 'docker-compose'
                 let baseCmd = 'docker compose';
+                
+                // Diagnostic: Check for binaries in common paths
+                const dockerPath = '/usr/local/bin/docker';
+                const dockerComposePath = '/usr/local/bin/docker-compose';
+                const hasDocker = fs.existsSync(dockerPath) || fs.existsSync('/usr/bin/docker');
+                const hasCompose = fs.existsSync(dockerComposePath) || fs.existsSync('/usr/bin/docker-compose');
+
+                console.log(`[MAINTENANCE-INIT] Type: ${type}, Compose: ${composeFile}, hasDocker: ${hasDocker}, hasCompose: ${hasCompose}`);
+                G_UPGRADE_STATUS.logs.push(`[DIAGNOSTIC] PATH: ${process.env.PATH}`);
+                G_UPGRADE_STATUS.logs.push(`[DIAGNOSTIC] Docker: ${hasDocker ? 'PRESENT' : 'MISSING'}, Compose: ${hasCompose ? 'PRESENT' : 'MISSING'}`);
+
                 try {
-                    // 'which' is a reliable way to check for binary existence
-                    await promisify(exec)('which docker-compose');
-                    baseCmd = 'docker-compose';
-                } catch (e) {
+                    // Force full path if exists to avoid PATH issues in supervisor environment
+                    const resolvedDocker = fs.existsSync(dockerPath) ? dockerPath : 'docker';
+                    const resolvedCompose = fs.existsSync(dockerComposePath) ? dockerComposePath : 'docker-compose';
+
+                    // Try to detect what works
                     try {
-                        await promisify(exec)('docker compose version');
-                        baseCmd = 'docker compose';
-                    } catch (e2) {
+                        await promisify(exec)(`${resolvedCompose} version`);
+                        baseCmd = resolvedCompose;
+                    } catch (e) {
                         try {
-                             await promisify(exec)('docker --version');
-                             baseCmd = 'docker'; // Fallback to pure docker if compose is missing but docker is there
-                        } catch (e3) {
-                             throw new Error('Neither "docker-compose" nor "docker compose" were found in the container.');
+                            await promisify(exec)(`${resolvedDocker} compose version`);
+                            baseCmd = `${resolvedDocker} compose`;
+                        } catch (e2) {
+                            try {
+                                await promisify(exec)(`${resolvedDocker} --version`);
+                                baseCmd = resolvedDocker;
+                            } catch (e3) {
+                                throw new Error(`Neither "docker-compose" nor "docker compose" found. (Checked ${resolvedDocker}, ${resolvedCompose}, and PATH)`);
+                            }
                         }
                     }
+                } catch (err: any) {
+                    throw new Error(`Docker detection failed: ${err.message}`);
                 }
                 
                 if (baseCmd === 'docker') {
