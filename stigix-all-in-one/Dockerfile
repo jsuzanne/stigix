@@ -37,14 +37,21 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Install xfr binary
+# Install xfr binary (Speedtest)
+# Install xfr binary (Speedtest)
+ARG XFR_VERSION=latest
 ARG TARGETARCH
 RUN case ${TARGETARCH} in \
     "amd64")  ARCH="x86_64-unknown-linux-musl" ;; \
     "arm64")  ARCH="aarch64-unknown-linux-gnu" ;; \
     *)        ARCH="x86_64-unknown-linux-musl" ;; \
     esac && \
-    curl -L "https://github.com/lance0/xfr/releases/latest/download/xfr-${ARCH}.tar.gz" | tar xz -C /usr/local/bin xfr
+    if [ "${XFR_VERSION}" = "latest" ]; then \
+      URL="https://github.com/lance0/xfr/releases/latest/download/xfr-${ARCH}.tar.gz"; \
+    else \
+      URL="https://github.com/lance0/xfr/releases/download/${XFR_VERSION}/xfr-${ARCH}.tar.gz"; \
+    fi && \
+    curl -L "$URL" | tar xz -C /usr/local/bin xfr
 
 # Copy Web Dashboard production files
 COPY web-dashboard/package*.json ./
