@@ -12,7 +12,7 @@ FROM public.ecr.aws/docker/library/python:3.12-slim
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     jq \
     iproute2 \
@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     supervisor \
     docker.io \
-    docker-compose-plugin \
+    docker-compose \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20
