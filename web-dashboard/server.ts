@@ -6809,7 +6809,7 @@ app.post('/api/admin/maintenance/upgrade', authenticateToken, async (req, res) =
         try {
             const pullCmd = fs.existsSync(path.join(rootDir, 'docker-compose.yml'))
                 ? (version ? `TAG=${version} docker compose pull` : 'docker compose pull')
-                : `docker pull jsuzanne/sdwan-web-ui:${pullTarget} && docker pull jsuzanne/sdwan-traffic-gen:${pullTarget} && docker pull jsuzanne/sdwan-voice-gen:${pullTarget} && docker pull jsuzanne/sdwan-voice-echo:${pullTarget}`;
+                : `docker pull jsuzanne/stigix:${pullTarget}`;
 
             G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Executing: ${pullCmd}`);
 
@@ -6848,12 +6848,10 @@ app.post('/api/admin/maintenance/upgrade', authenticateToken, async (req, res) =
                         G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Running: docker compose up -d`);
                         execSync('docker compose up -d', { cwd: '/app' });
                     } else {
-                        // Fallback: forcefully restart containers by name if no compose file is mapped
-                        G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] No compose file found, falling back to docker run/restart`);
+                        // Fallback: forcefully restart the unified container
+                        G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] No compose file found, falling back to docker restart stigix`);
                         try {
-                            // This is a best-effort fallback if docker-compose up -d is not available
-                            // Usually, watchtower or similar is better for pure docker upgrades
-                            execSync('docker restart sdwan-traffic-gen sdwan-voice-gen sdwan-web-ui');
+                            execSync('docker restart stigix');
                         } catch (e) {
                             G_UPGRADE_STATUS.logs.push(`[WARN] Fallback restart failed: ${e}`);
                         }
@@ -6913,7 +6911,10 @@ app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) =
 
             let cmd = '';
 
-            if (composeFile) {
+            if (type === 'restart') {
+                // Internal soft restart via supervisor - fast and secure
+                cmd = 'supervisorctl restart all';
+            } else if (composeFile) {
                 // Try 'docker compose' first, then 'docker-compose'
                 let baseCmd = 'docker compose';
                 try {
@@ -6925,18 +6926,25 @@ app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) =
                         await promisify(exec)('docker compose version');
                         baseCmd = 'docker compose';
                     } catch (e2) {
-                        throw new Error('Neither "docker-compose" nor "docker compose" were found in the container.');
+                        try {
+                             await promisify(exec)('docker --version');
+                             baseCmd = 'docker'; // Fallback to pure docker if compose is missing but docker is there
+                        } catch (e3) {
+                             throw new Error('Neither "docker-compose" nor "docker compose" were found in the container.');
+                        }
                     }
                 }
-                cmd = type === 'redeploy'
-                    ? `${baseCmd} -f ${composeFile} up -d`
-                    : `${baseCmd} -f ${composeFile} restart`;
+                
+                if (baseCmd === 'docker') {
+                    cmd = 'docker restart stigix';
+                } else {
+                    cmd = type === 'redeploy'
+                        ? `${baseCmd} -f ${composeFile} up -d`
+                        : `${baseCmd} -f ${composeFile} restart`;
+                }
             } else {
-                // Fallback to pure docker commands based on typical container names
-                cmd = type === 'redeploy'
-                    // Redeploy without compose might not pick up new envs, but restarting helps 
-                    ? `docker restart sdwan-traffic-gen sdwan-voice-gen sdwan-web-ui`
-                    : `docker restart sdwan-traffic-gen sdwan-voice-gen sdwan-web-ui`;
+                // Fallback to pure docker commands
+                cmd = 'docker restart stigix';
             }
 
             G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Executing: ${cmd}`);

@@ -20,6 +20,7 @@ services:
       - ./config:/app/config
       - ./logs:/var/log/sdwan-traffic-gen
       - ./mcp-data:/app/mcp-data
+      - /var/run/docker.sock:/var/run/docker.sock
       
     environment:
       # --- General & Web UI ---

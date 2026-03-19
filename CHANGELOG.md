@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.1-patch.250] - 2026-03-19
+### Fixed
+- **Maintenance**: Fixed "System Maintenance" menu functionality. 🛠️🔄
+    - Added **Docker CLI** and **Docker Compose** to the All-in-One image.
+    - Implemented **Soft Service Restart** using `supervisorctl` for instant internal reloads.
+    - Added mandatory **Docker Socket mount** in `docker-compose.yml` to support full upgrades and redeployments from the UI.
+    - Corrected upgrade logic to target the unified `stigix` container instead of legacy images.
+
 ## [v1.2.1-patch.249] - 2026-03-19
 ### Fixed
 - **Topology**: Resolved overlay tunnel misalignment where lines terminated outside branch circuit boxes when a Hub was selected. 🛠️📍

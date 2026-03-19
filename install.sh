@@ -8,7 +8,7 @@ set -e
 INSTALL_MODE="both"
 DRY_RUN=false
 REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/main"
-COMPOSE_URL="$REPO_URL/docker-compose.example.stigix.yml"
+COMPOSE_URL="$REPO_URL/docker-compose.yml"
 
 show_help() {
     echo "🚀 Stigix All-in-One - Installation Script"
@@ -57,13 +57,13 @@ echo "✅ Docker is running."
 OS_TYPE=$(uname)
 if [[ "$OS_TYPE" == "Linux" ]] && ! grep -qi microsoft /proc/version 2>/dev/null; then
     echo "🐧 Platform: Native Linux detected. (Using host mode for full features)"
-    COMPOSE_URL="$REPO_URL/docker-compose.example.stigix.yml"
+    COMPOSE_URL="$REPO_URL/docker-compose.yml"
 elif [[ "$OS_TYPE" == "Darwin" ]]; then
     echo "🍎 Platform: macOS detected. (Host mode has limitations on macOS, using bridge mode)"
-    COMPOSE_URL="$REPO_URL/docker-compose.example.bridge.yml"
+    COMPOSE_URL="$REPO_URL/docker-compose.yml"
 else
     echo "🪟 Platform: WSL/Windows or unknown detected. (Using bridge mode)"
-    COMPOSE_URL="$REPO_URL/docker-compose.example.bridge.yml"
+    COMPOSE_URL="$REPO_URL/docker-compose.yml"
 fi
 
 # 2. Interactive Mode Selection if script is run without arguments and not piped
