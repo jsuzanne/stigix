@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.1-patch.245] - 2026-03-19
+### Added
+- **Targets**: Integrated **Local Target Service Control** widget into Settings. 🌐⚡
+- **Persistence**: Target service mode now survives restarts via `target-config.json` persistence. 💾
+- **Documentation**: Refreshed `docs/TARGET_CAPABILITIES.md` to reflect integrated services and dashboard control. 📚
+### Refactored
+- **UI**: Redesigned the **Targets** tab with a responsive grid layout for better organization. ✨
+
 ## [v1.2.1-patch.244] - 2026-03-18
 ### Added
 - **Connectivity**: Added **PRISMA** filter to Connectivity Performance view to isolate auto-discovered probes. 🛡️🔍

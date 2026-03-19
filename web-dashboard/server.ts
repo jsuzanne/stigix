@@ -2444,6 +2444,34 @@ app.get('/api/target/proxy/{*path}', authenticateToken, async (req, res) => {
     }
 });
 
+// --- Local Target Service API ---
+const TARGET_SERVICE_URL = process.env.TARGET_SERVICE_URL || 'http://localhost:8082';
+
+app.get('/api/target-service/status', authenticateToken, async (req, res) => {
+    try {
+        const response = await fetch(`${TARGET_SERVICE_URL}/api/status`);
+        if (!response.ok) throw new Error(`Target service returned ${response.status}`);
+        const data = await response.json();
+        res.json(data);
+    } catch (error: any) {
+        // Silently fail to avoid UI noise if service is down, but return error for frontend
+        res.status(502).json({ error: 'target_service_unreachable', details: error.message });
+    }
+});
+
+app.post('/api/target-service/mode', authenticateToken, async (req, res) => {
+    const { mode } = req.body;
+    if (!mode) return res.status(400).json({ error: 'mode_required' });
+    
+    try {
+        const response = await fetch(`${TARGET_SERVICE_URL}/set-mode?mode=${mode}`);
+        if (!response.ok) throw new Error(`Target service returned ${response.status}`);
+        res.json({ success: true, mode });
+    } catch (error: any) {
+        res.status(502).json({ error: 'target_service_failed', details: error.message });
+    }
+});
+
 // Status Check (Unprotected for local health check?) 
 // We can make a specific /health endpoint for Docker if needed, but for now protect all.
 

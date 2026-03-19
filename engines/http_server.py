@@ -1,9 +1,10 @@
 import os
 import time
+import json
 import random
 import threading
 import logging
-from flask import Flask, Response, request, send_file
+from flask import Flask, Response, request, send_file, jsonify
 
 # Initialize Flask App
 app = Flask(__name__)
@@ -12,6 +13,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 # --- Configuration & State ---
 class AppState:
     def __init__(self):
+        # Default config path
+        self.config_path = os.environ.get('TARGET_CONFIG_PATH', '/app/config/target-config.json')
+        if not os.path.exists(os.path.dirname(self.config_path)):
+             # Fallback for local dev if /app/config doesn't exist
+             self.config_path = 'target-config.json'
+
         self.mode = os.environ.get('APP_MODE', 'NORMAL')  # NORMAL, ALWAYS_SLOW, RANDOM_SLOW, LOOPING_SLOW
         self.slow_delay = float(os.environ.get('SLOW_DELAY_SECONDS', 5.0))
         self.loop_slow = float(os.environ.get('LOOP_SLOW_SECONDS', 60.0))
@@ -19,6 +26,38 @@ class AppState:
         self.random_prob = float(os.environ.get('RANDOM_SLOW_PROBABILITY', 0.5))
         self.current_loop_state = 'NORMAL'  # For LOOPING_SLOW mode
         self.eicar_path = os.environ.get('EICAR_FILE_PATH', '/opt/sdwan-target/eicar.com.txt')
+        
+        # Load persisted config if available
+        self.load()
+
+    def load(self):
+        if os.path.exists(self.config_path):
+            try:
+                with open(self.config_path, 'r') as f:
+                    data = json.load(f)
+                    self.mode = data.get('mode', self.mode)
+                    self.slow_delay = float(data.get('slow_delay', self.slow_delay))
+                    self.loop_slow = float(data.get('loop_slow', self.loop_slow))
+                    self.loop_normal = float(data.get('loop_normal', self.loop_normal))
+                    self.random_prob = float(data.get('random_prob', self.random_prob))
+                    logging.info(f"Loaded config from {self.config_path}: {self.mode}")
+            except Exception as e:
+                logging.error(f"Error loading config: {e}")
+
+    def save(self):
+        try:
+            data = {
+                'mode': self.mode,
+                'slow_delay': self.slow_delay,
+                'loop_slow': self.loop_slow,
+                'loop_normal': self.loop_normal,
+                'random_prob': self.random_prob
+            }
+            with open(self.config_path, 'w') as f:
+                json.dump(data, f, indent=4)
+            logging.info(f"Saved config to {self.config_path}")
+        except Exception as e:
+            logging.error(f"Error saving config: {e}")
 
     def get_status(self):
         return {
@@ -165,11 +204,16 @@ def index():
     """
     return html
 
+@app.route('/api/status')
+def get_json_status():
+    return jsonify(state.get_status())
+
 @app.route('/set-mode')
 def set_mode():
     new_mode = request.args.get('mode')
     if new_mode in ['NORMAL', 'ALWAYS_SLOW', 'RANDOM_SLOW', 'LOOPING_SLOW']:
         state.mode = new_mode
+        state.save() # Persist changes
         logging.info(f"Mode switched to: {state.mode}")
         return f"Mode set to {state.mode}", 200
     return "Invalid mode", 400

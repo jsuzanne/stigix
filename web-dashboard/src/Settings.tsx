@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     RefreshCw, Download, AlertCircle, CheckCircle, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
-    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert
+    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Favicon } from './components/Favicon';
@@ -82,6 +82,16 @@ type TargetDefinition = {
     };
 };
 
+interface TargetServiceStatus {
+    mode: 'NORMAL' | 'ALWAYS_SLOW' | 'RANDOM_SLOW' | 'LOOPING_SLOW';
+    slow_delay: number;
+    loop_slow: number;
+    loop_normal: number;
+    random_prob: number;
+    current_loop_state: string;
+    error?: string;
+}
+
 const EMPTY_TARGET_CAPS: TargetCapability = {
     voice: true, convergence: true, xfr: true, security: true, connectivity: true,
 };
@@ -128,6 +138,48 @@ export default function Settings({ token }: { token: string }) {
 
     // System Info State
     const [systemInfo, setSystemInfo] = useState<any>(null);
+    const [targetServiceStatus, setTargetServiceStatus] = useState<TargetServiceStatus | null>(null);
+
+    // Fetch Target Service Status
+    const fetchTargetServiceStatus = async () => {
+        try {
+            const res = await fetch('/api/target-service/status', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setTargetServiceStatus(data);
+            } else {
+                setTargetServiceStatus({ error: 'Unreachable' } as any);
+            }
+        } catch (e) {
+            setTargetServiceStatus({ error: 'Connection failed' } as any);
+        }
+    };
+
+    const setTargetServiceMode = async (mode: string) => {
+        try {
+            const res = await fetch('/api/target-service/mode', {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ mode })
+            });
+            if (res.ok) {
+                fetchTargetServiceStatus();
+            }
+        } catch (e) {
+            console.error('Failed to set mode:', e);
+        }
+    };
+
+    useEffect(() => {
+        fetchTargetServiceStatus();
+        const interval = setInterval(fetchTargetServiceStatus, 5000);
+        return () => clearInterval(interval);
+    }, []);
     const [latestEgressResult, setLatestEgressResult] = useState<any>(null);
     const [containerStats, setContainerStats] = useState<any[]>([]);
 
@@ -2172,109 +2224,195 @@ export default function Settings({ token }: { token: string }) {
                         </div>
                     </div>
 
-                    {/* ── Add / Edit Form ── */}
-                    <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-5 shadow-inner">
-                        <h3 className="text-[10px] font-black text-text-muted tracking-[0.2em] uppercase">
-                            {editingTargetId ? '✏️ Edit Target' : '➕ New Target'}
-                        </h3>
-                        {targetError && (
-                            <div className="flex items-center gap-2 text-red-500 text-[10px] font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">
-                                <AlertCircle size={12} />{targetError}
-                            </div>
-                        )}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em]">Site Name</label>
-                                <input
-                                    type="text"
-                                    placeholder="DC1, Branch-Paris…"
-                                    value={newTarget.name}
-                                    onChange={e => setNewTarget({ ...newTarget, name: e.target.value })}
-                                    className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-emerald-500 text-[11px] font-black tracking-wider shadow-sm"
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em]">IP Address or FQDN</label>
-                                <input
-                                    type="text"
-                                    placeholder="192.168.1.100 or mysite.example.com"
-                                    value={newTarget.host}
-                                    onChange={e => setNewTarget({ ...newTarget, host: e.target.value })}
-                                    className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-emerald-500 text-[11px] font-black font-mono tracking-wider shadow-sm"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Capability Toggles */}
-                        <div className="space-y-1.5">
-                            <label className="text-[9px] font-black text-text-muted tracking-[0.2em]">Capabilities</label>
-                            <div className="flex flex-wrap gap-2">
-                                {CAP_LABELS.map(({ key, label, color }) => (
-                                    <button
-                                        key={key}
-                                        onClick={() => setNewTarget(t => ({ ...t, capabilities: { ...t.capabilities, [key]: !t.capabilities[key] } }))}
-                                        className={cn(
-                                            "px-3 py-1.5 rounded-lg text-[10px] font-black border transition-all",
-                                            newTarget.capabilities[key]
-                                                ? `bg-${color}-600/10 text-${color}-500 border-${color}-500/30`
-                                                : "bg-card text-text-muted border-border hover:border-text-muted"
-                                        )}
-                                    >
-                                        {label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Port Overrides (collapsed) */}
-                        <div>
-                            <button
-                                onClick={() => setShowTargetPorts(p => !p)}
-                                className="text-[9px] font-black text-text-muted tracking-widest flex items-center gap-1.5 hover:text-text-primary transition-colors"
-                            >
-                                {showTargetPorts ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                PORT OVERRIDES (OPTIONAL)
-                            </button>
-                            {showTargetPorts && (
-                                <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3">
-                                    {[
-                                        { key: 'voice', label: 'Voice', placeholder: '6100' },
-                                        { key: 'convergence', label: 'Conv.', placeholder: '6200' },
-                                        { key: 'iperf', label: 'Iperf', placeholder: '5201' },
-                                        { key: 'http', label: 'HTTP', placeholder: '8082' },
-                                        { key: 'xfr', label: 'XFR', placeholder: '5201' },
-                                    ].map(({ key, label, placeholder }) => (
-                                        <div key={key} className="space-y-1">
-                                            <label className="text-[9px] font-black text-text-muted">{label}</label>
-                                            <input
-                                                type="number"
-                                                placeholder={placeholder}
-                                                value={(newTarget.ports as any)?.[key] ?? ''}
-                                                onChange={e => setNewTarget(t => ({
-                                                    ...t,
-                                                    ports: { ...t.ports, [key]: e.target.value ? parseInt(e.target.value) : undefined }
-                                                }))}
-                                                className="w-full bg-card border border-border text-text-primary rounded-lg px-3 py-2 text-[10px] font-mono outline-none focus:ring-1 focus:ring-emerald-500"
-                                            />
-                                        </div>
-                                    ))}
+                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                        {/* ── Add / Edit Form ── */}
+                        <div className="lg:col-span-3 bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-5 shadow-inner">
+                            <h3 className="text-[10px] font-black text-text-muted tracking-[0.2em] uppercase">
+                                {editingTargetId ? '✏️ Edit Target' : '➕ New Target'}
+                            </h3>
+                            {targetError && (
+                                <div className="flex items-center gap-2 text-red-500 text-[10px] font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">
+                                    <AlertCircle size={12} />{targetError}
                                 </div>
                             )}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em]">Site Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="DC1, Branch-Paris…"
+                                        value={newTarget.name}
+                                        onChange={e => setNewTarget({ ...newTarget, name: e.target.value })}
+                                        className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-emerald-500 text-[11px] font-black tracking-wider shadow-sm"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em]">IP Address or FQDN</label>
+                                    <input
+                                        type="text"
+                                        placeholder="192.168.1.100 or mysite.example.com"
+                                        value={newTarget.host}
+                                        onChange={e => setNewTarget({ ...newTarget, host: e.target.value })}
+                                        className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-emerald-500 text-[11px] font-black font-mono tracking-wider shadow-sm"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Capability Toggles */}
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em]">Capabilities</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {CAP_LABELS.map(({ key, label, color }) => (
+                                        <button
+                                            key={key}
+                                            onClick={() => setNewTarget(t => ({ ...t, capabilities: { ...t.capabilities, [key]: !t.capabilities[key] } }))}
+                                            className={cn(
+                                                "px-3 py-1.5 rounded-lg text-[10px] font-black border transition-all",
+                                                newTarget.capabilities[key]
+                                                    ? `bg-${color}-600/10 text-${color}-500 border-${color}-500/30`
+                                                    : "bg-card text-text-muted border-border hover:border-text-muted"
+                                            )}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Port Overrides (collapsed) */}
+                            <div>
+                                <button
+                                    onClick={() => setShowTargetPorts(p => !p)}
+                                    className="text-[9px] font-black text-text-muted tracking-widest flex items-center gap-1.5 hover:text-text-primary transition-colors"
+                                >
+                                    {showTargetPorts ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                    PORT OVERRIDES (OPTIONAL)
+                                </button>
+                                {showTargetPorts && (
+                                    <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3">
+                                        {[
+                                            { key: 'voice', label: 'Voice', placeholder: '6100' },
+                                            { key: 'convergence', label: 'Conv.', placeholder: '6200' },
+                                            { key: 'iperf', label: 'Iperf', placeholder: '5201' },
+                                            { key: 'http', label: 'HTTP', placeholder: '8082' },
+                                            { key: 'xfr', label: 'XFR', placeholder: '5201' },
+                                        ].map(({ key, label, placeholder }) => (
+                                            <div key={key} className="space-y-1">
+                                                <label className="text-[9px] font-black text-text-muted">{label}</label>
+                                                <input
+                                                    type="number"
+                                                    placeholder={placeholder}
+                                                    value={(newTarget.ports as any)?.[key] ?? ''}
+                                                    onChange={e => setNewTarget(t => ({
+                                                        ...t,
+                                                        ports: { ...t.ports, [key]: e.target.value ? parseInt(e.target.value) : undefined }
+                                                    }))}
+                                                    className="w-full bg-card border border-border text-text-primary rounded-lg px-3 py-2 text-[10px] font-mono outline-none focus:ring-1 focus:ring-emerald-500"
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex gap-2 justify-end">
+                                {editingTargetId && (
+                                    <button onClick={cancelEditTarget} className="px-4 py-2 text-text-muted hover:text-text-primary text-[10px] font-black tracking-widest transition-colors">
+                                        Cancel
+                                    </button>
+                                )}
+                                <button
+                                    onClick={saveTarget}
+                                    className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
+                                >
+                                    <Plus size={14} />
+                                    {editingTargetId ? 'Update Target' : 'Add Target'}
+                                </button>
+                            </div>
                         </div>
 
-                        <div className="flex gap-2 justify-end">
-                            {editingTargetId && (
-                                <button onClick={cancelEditTarget} className="px-4 py-2 text-text-muted hover:text-text-primary text-[10px] font-black tracking-widest transition-colors">
-                                    Cancel
-                                </button>
-                            )}
-                            <button
-                                onClick={saveTarget}
-                                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
-                            >
-                                <Plus size={14} />
-                                {editingTargetId ? 'Update Target' : 'Add Target'}
-                            </button>
+                        {/* ── Local Target Service Control ── */}
+                        <div className="lg:col-span-2 bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-5 shadow-inner flex flex-col">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-[10px] font-black text-text-muted tracking-[0.2em] uppercase flex items-center gap-2">
+                                    <Globe size={12} className="text-emerald-500" />
+                                    Local Target Service
+                                </h3>
+                                <div className="flex items-center gap-1.5">
+                                    <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", targetServiceStatus?.error ? "bg-red-500" : "bg-emerald-500")} />
+                                    <span className="text-[8px] font-black text-text-muted tracking-widest uppercase">
+                                        {targetServiceStatus?.error ? 'Offline' : 'Online'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4 flex-1">
+                                <div className="bg-card/50 border border-border rounded-xl p-4 space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Current Mode</span>
+                                        <span className={cn(
+                                            "px-2 py-0.5 rounded text-[10px] font-black tracking-tight",
+                                            targetServiceStatus?.mode === 'NORMAL' ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-400"
+                                        )}>
+                                            {targetServiceStatus?.mode || 'Unknown'}
+                                        </span>
+                                    </div>
+                                    {targetServiceStatus?.mode === 'LOOPING_SLOW' && (
+                                        <div className="flex justify-between items-center text-[9px] font-bold text-text-muted">
+                                            <span>Loop State</span>
+                                            <span className="text-text-primary uppercase">{targetServiceStatus.current_loop_state}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    {[
+                                        { id: 'NORMAL', label: 'Fast', icon: Zap },
+                                        { id: 'ALWAYS_SLOW', label: 'Always Slow', icon: Activity },
+                                        { id: 'RANDOM_SLOW', label: 'Random Slow', icon: RefreshCw },
+                                        { id: 'LOOPING_SLOW', label: 'Looping Slow', icon: Layers }
+                                    ].map(({ id, label, icon: Icon }) => (
+                                        <button
+                                            key={id}
+                                            onClick={() => setTargetServiceMode(id)}
+                                            disabled={targetServiceStatus?.mode === id}
+                                            className={cn(
+                                                "p-3 rounded-xl border transition-all flex flex-col items-center gap-1.5 group",
+                                                targetServiceStatus?.mode === id
+                                                    ? "bg-emerald-600/20 border-emerald-500/50 text-emerald-400 shadow-[0_0_15px_-5px_rgba(16,185,129,0.3)]"
+                                                    : "bg-card border-border text-text-muted hover:border-emerald-500/30 hover:text-text-primary disabled:opacity-50"
+                                            )}
+                                        >
+                                            <Icon size={14} className={cn(targetServiceStatus?.mode === id ? "text-emerald-500" : "text-text-muted group-hover:text-emerald-400")} />
+                                            <span className="text-[9px] font-black tracking-widest uppercase text-center">{label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="pt-4 border-t border-border space-y-2">
+                                <h4 className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Test Links</h4>
+                                <div className="grid grid-cols-1 gap-1.5">
+                                    {[
+                                        { label: 'Health Check', path: '/ok', color: 'emerald' },
+                                        { label: 'Variable Latency', path: '/slow', color: 'amber' },
+                                        { label: 'Security Test', path: '/eicar.com.txt', color: 'red' }
+                                    ].map(({ label, path, color }) => (
+                                        <a
+                                            key={path}
+                                            href={`http://${window.location.hostname}:8082${path}`}
+                                            target="_blank"
+                                            className="flex items-center justify-between p-2 rounded-lg bg-card/30 border border-border hover:border-emerald-500/30 transition-all group"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-1 h-1 rounded-full bg-${color}-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]`} />
+                                                <span className="text-[10px] font-bold text-text-muted group-hover:text-text-primary">{label}</span>
+                                            </div>
+                                            <span className="text-[9px] font-mono text-text-muted opacity-50 group-hover:opacity-100">{path}</span>
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     </div>
 
