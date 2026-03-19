@@ -1,149 +1,68 @@
+# SD-WAN Traffic Generator - All-in-One Deployment
+# This configuration runs EVERYTHING (Dashboard, Traffic Gen, Voice, Echo, XFR, MCP) 
+# inside a single container.
+#
+# Usage: 
+#   docker compose up -d
+
 services:
-  # Web Dashboard - Starts first and generates config
-  web-ui:
-    build:
-      context: .
-      dockerfile: web-dashboard/Dockerfile
-    container_name: sdwan-web-ui
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-    restart: unless-stopped
+  stigix:
+    image: jsuzanne/stigix:stable
+    container_name: stigix
+    network_mode: host
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    ports:
-      - "8080:8080"
+    restart: unless-stopped
+    
+    # Volumes for persistence
     volumes:
       - ./config:/app/config
-      - traffic_logs:/var/log/sdwan-traffic-gen
-      - ./VERSION:/app/VERSION:ro
-      - ./docker-compose.yml:/app/docker-compose.yml:ro
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ./logs:/var/log/sdwan-traffic-gen
+      - ./mcp-data:/app/mcp-data
+      
     environment:
       # --- General & Web UI ---
-      - PORT=8080                                      # Internal port for the Dashboard
-      - JWT_SECRET=${JWT_SECRET:-stigix-default-secret-2026} # Secret for session tokens (MATCH WITH MCP!)
-      - DEBUG=${DEBUG:-false}                          # Enable verbose backend logging
+      - PORT=8080
+      - JWT_SECRET=${JWT_SECRET:-your-secure-secret-here}
+      - DEBUG=${DEBUG:-false}
       
       # --- Prisma SD-WAN API Credentials ---
-      # Required for site auto-detection, flow browse and SaaS enrichment
-      - PRISMA_SDWAN_REGION=${PRISMA_SDWAN_REGION:-us} # Portal region (us, eu, de, fr...)
-      - PRISMA_SDWAN_TSGID=${PRISMA_SDWAN_TSGID:-}     # Tenant Service Group ID
+      - PRISMA_SDWAN_REGION=${PRISMA_SDWAN_REGION:-}
+      - PRISMA_SDWAN_TSGID=${PRISMA_SDWAN_TSGID:-}
       - PRISMA_SDWAN_CLIENT_ID=${PRISMA_SDWAN_CLIENT_ID:-}
       - PRISMA_SDWAN_CLIENT_SECRET=${PRISMA_SDWAN_CLIENT_SECRET:-}
 
-      # --- Traffic Generator (Synthetic SaaS) ---
-      - AUTO_START_TRAFFIC=${AUTO_START_TRAFFIC:-true} # Start traffic on boot
-      - SLEEP_BETWEEN_REQUESTS=${SLEEP_BETWEEN_REQUESTS:-1} # Delay between requests (sec)
-      - CLIENT_ID=${CLIENT_ID:-client01}               # Identifier for traffic logs
+      # --- Traffic Generator Settings ---
+      - AUTO_START_TRAFFIC=${AUTO_START_TRAFFIC:-true}
+      - SLEEP_BETWEEN_REQUESTS=${SLEEP_BETWEEN_REQUESTS:-1}
+      - CLIENT_ID=${CLIENT_ID:-client01}
 
       # --- XFR Bandwidth Target ---
-      - XFR_PORT=${XFR_PORT:-9000}                     # Port for bandwidth testing
-      - XFR_MAX_DURATION=${XFR_MAX_DURATION:-60}       # Max test duration (sec)
-      - XFR_RATE_LIMIT=${XFR_RATE_LIMIT:-2}            # Max bandwidth rate (Mbps)
-      - XFR_ALLOW_CIDR=${XFR_ALLOW_CIDR:-0.0.0.0/0}    # Restrict XFR access by IP
+      - XFR_PORT=${XFR_PORT:-9000}
+      - XFR_MAX_DURATION=${XFR_MAX_DURATION:-60}
+      - XFR_RATE_LIMIT=${XFR_RATE_LIMIT:-2}
+      - XFR_ALLOW_CIDR=${XFR_ALLOW_CIDR:-0.0.0.0/0}
 
-      # --- Registry & Discovery ---
+      # --- Target Ports ---
+      - TARGET_HTTP_PORT=8082
+
+      # --- Registry & Discovery (Optional Overrides) ---
       - STIGIX_REGISTRY_ENABLED=${STIGIX_REGISTRY_ENABLED:-true}
-      - STIGIX_SITE_NAME=${STIGIX_SITE_NAME:-}         # Display name in the dashboard
-      - STIGIX_INSTANCE_ID=${STIGIX_INSTANCE_ID:-}     # Unique node ID
+      - STIGIX_SITE_NAME=${STIGIX_SITE_NAME:-}
+      - STIGIX_INSTANCE_ID=${STIGIX_INSTANCE_ID:-}
       - STIGIX_REGISTRY_HEARTBEAT_SEC=${STIGIX_REGISTRY_HEARTBEAT_SEC:-300}
       - STIGIX_REGISTRY_DISCOVERY_SEC=${STIGIX_REGISTRY_DISCOVERY_SEC:-120}
-      - STIGIX_REGISTRY_MODE=${STIGIX_REGISTRY_MODE:-peer} # 'peer' or 'leader'
-
+      - STIGIX_REGISTRY_MODE=${STIGIX_REGISTRY_MODE:-peer}
       # --- Stigix Cloud & Probes ---
       - STIGIX_REGISTRY_URL=${STIGIX_REGISTRY_URL:-https://stigix-registry.jlsuzanne.workers.dev}
-      - STIGIX_TARGET_BASE_URL=${STIGIX_TARGET_BASE_URL:-} # Cloud Target Worker URL
-      - STIGIX_TARGET_SHARED_KEY=${STIGIX_TARGET_SHARED_KEY:-} # Legacy static key
-      - STIGIX_TARGET_MASTER_KEY=${STIGIX_TARGET_MASTER_KEY:-} # Global multi-tenant secret
+      - STIGIX_TARGET_BASE_URL=${STIGIX_TARGET_BASE_URL:-}
+      - STIGIX_TARGET_SHARED_KEY=${STIGIX_TARGET_SHARED_KEY:-}
+      - STIGIX_TARGET_MASTER_KEY=${STIGIX_TARGET_MASTER_KEY:-}
 
-      # --- Performance ---
-      - DASHBOARD_REFRESH_MS=${DASHBOARD_REFRESH_MS:-3000} # UI data polling rate
     healthcheck:
-      test: [ "CMD-SHELL", "test -f /app/config/applications.txt -o -f /app/config/applications-config.json" ]
-      interval: 5s
-      timeout: 3s
+      test: [ "CMD-SHELL", "test -f /app/config/applications-config.json -o -f /app/config/applications.txt" ]
+      interval: 10s
+      timeout: 5s
       retries: 5
-      start_period: 10s
-
-  # Traffic Generator - Starts after web-ui is healthy
-  traffic-gen:
-    build:
-      context: .
-      dockerfile: Dockerfile.traffic-gen
-    container_name: sdwan-traffic-gen
-    restart: unless-stopped
-    volumes:
-      - ./config:/opt/sdwan-traffic-gen/config
-      - traffic_logs:/var/log/sdwan-traffic-gen
-    environment:
-      - SLEEP_BETWEEN_REQUESTS=${SLEEP_BETWEEN_REQUESTS:-1}
-    depends_on:
-      web-ui:
-        condition: service_healthy
-
-  # Voice Traffic Generator (RTP/Voice)
-  voice-gen:
-    build:
-      context: .
-      dockerfile: Dockerfile.voice
-    container_name: sdwan-voice-gen
-    restart: unless-stopped
-    network_mode: host
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    volumes:
-      - ./config:/app/config
-      - traffic_logs:/var/log/sdwan-traffic-gen
-    depends_on:
-      web-ui:
-        condition: service_healthy
-
-  # Voice Echo Server (Local target for testing)
-  voice-echo:
-    image: jsuzanne/sdwan-voice-echo:stable
-    container_name: sdwan-voice-echo
-    network_mode: host
-    restart: unless-stopped
-    environment:
-      - DEBUG=True
-    volumes:
-      - ./engines:/app/engines
-      - ./VERSION:/app/VERSION:ro
-
-  # XFR Speedtest Target (Local target for testing)
-  xfr-target:
-    image: jsuzanne/xfr-target:stable
-    container_name: xfr-target
-    network_mode: host
-    restart: unless-stopped
-    environment:
-      - XFR_PORT=9000
-      - XFR_MAX_DURATION=60
-      - XFR_RATE_LIMIT=2
-      - XFR_ALLOW_CIDR=0.0.0.0/0
-
-  # MCP Server - Natural Language Orchestration
-  mcp-server:
-    build:
-      context: .
-      dockerfile: mcp-server/Dockerfile
-    container_name: sdwan-mcp
-    restart: unless-stopped
-    ports:
-      - "3100:3100"
-    environment:
-      - MCP_TRANSPORT=sse
-      - MCP_PORT=3100
-      - JWT_SECRET=${JWT_SECRET:-stigix-default-secret-2026}
-      - LOG_LEVEL=INFO
-    volumes:
-      - ./config:/app/config:ro
-    depends_on:
-      web-ui:
-        condition: service_healthy
-
-volumes:
-  traffic_logs:
+      start_period: 20s

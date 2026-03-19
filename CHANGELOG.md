@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.1-patch.248] - 2026-03-19
+### Added
+- **Deployment**: Consolidated all Stigix components into a single **All-in-One** container managed by `supervisord`. 🐳📦
+- **Installation**: Unified installation experience with the new `install.sh` script (renamed from `install-stigix.sh`). 🚀
+- **UX**: Refined **Targets Repository** with a balanced 50/50 layout and enhanced "Local Target Service" controls. ✨
+- **UX**: Implemented **Segmented Control** for mode switching and high-visibility **Status Chips** (READY/IMPAIRED/OFFLINE). 📊
+- **UX**: Added **Recently Added** quick-list and **Demo Tips** to the New Remote Target card to optimize space. 💡
+- **UX**: Renamed **XFR** to **Speedtest** for better clarity and alignment with user expectations. 📊
+### Removed
+- **Beta**: Officially removed "Beta" flags for **Bandwidth Test** and **Vyos Control**, marking them as stable platform features. ✅
+
 ## [v1.2.1-patch.245] - 2026-03-19
 ### Added
 - **Targets**: Integrated **Local Target Service Control** widget into Settings. 🌐⚡

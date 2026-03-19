@@ -1,11 +1,41 @@
 #!/bin/bash
-# Quick install script for Stigix
-# Version: 1.1.2-patch.33.40
+# Install script for Stigix All-in-One (Migration Draft)
+# Usage: ./install-stigix.sh [options]
 
 set -e
 
+# Default values
+INSTALL_MODE="both"
+DRY_RUN=false
+REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/main"
+COMPOSE_URL="$REPO_URL/docker-compose.example.stigix.yml"
 
-echo "🚀 Stigix - Installation"
+show_help() {
+    echo "🚀 Stigix All-in-One - Installation Script"
+    echo "Usage: ./install-stigix.sh [options]"
+    echo ""
+    echo "Options:"
+    echo "  --mode <target|source|both>  Set the deployment mode (Default: both)"
+    echo "  --dry-run, -d                Download files and show what would happen without starting Docker"
+    echo "  --help, -h                   Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  curl -sfL https://raw.githubusercontent.com/jsuzanne/stigix/main/install-stigix.sh | bash -s -- --mode both"
+    echo "  curl -sfL https://raw.githubusercontent.com/jsuzanne/stigix/main/install-stigix.sh | bash -s -- --mode target --dry-run"
+    exit 0
+}
+
+# Parse command line arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --mode|-m) INSTALL_MODE="$2"; shift 2 ;;
+        --dry-run|-d) DRY_RUN=true; shift ;;
+        --help|-h) show_help ;;
+        *) echo "Unknown parameter passed: $1"; show_help ;;
+    esac
+done
+
+echo "🚀 Stigix (All-in-One) - Installation"
 echo "=========================================="
 
 # 1. Prerequisite Check: Docker
@@ -14,7 +44,6 @@ if ! command -v docker &> /dev/null; then
     echo "Please install Docker first: https://docs.docker.com/get-docker/"
     exit 1
 fi
-
 
 if ! docker info &> /dev/null; then
     echo "❌ Error: Docker is installed but not running."
@@ -26,234 +55,139 @@ echo "✅ Docker is running."
 
 # OS Detection
 OS_TYPE=$(uname)
-if [[ "$OS_TYPE" == "Darwin" ]]; then
-    echo "🍎 Platform: macOS detected. (Host Mode has limitations on macOS)"
-elif [[ "$OS_TYPE" == "Linux" ]]; then
-    echo "🐧 Platform: Linux detected."
+if [[ "$OS_TYPE" == "Linux" ]] && ! grep -qi microsoft /proc/version 2>/dev/null; then
+    echo "🐧 Platform: Native Linux detected. (Using host mode for full features)"
+    COMPOSE_URL="$REPO_URL/docker-compose.example.stigix.yml"
+elif [[ "$OS_TYPE" == "Darwin" ]]; then
+    echo "🍎 Platform: macOS detected. (Host mode has limitations on macOS, using bridge mode)"
+    COMPOSE_URL="$REPO_URL/docker-compose.example.bridge.yml"
 else
-    echo "💻 Platform: $OS_TYPE detected."
+    echo "🪟 Platform: WSL/Windows or unknown detected. (Using bridge mode)"
+    COMPOSE_URL="$REPO_URL/docker-compose.example.bridge.yml"
 fi
 
-# 2. Configuration & Mode Selection
-REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/main"
-
-# Handle command line arguments
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        --target) INSTALL_MODE="2"; shift ;;
-        --dashboard) INSTALL_MODE="1"; shift ;;
-        *) shift ;;
-    esac
-done
-
-# Default to Full Dashboard if no flag provided
-if [ -z "$INSTALL_MODE" ]; then
-    INSTALL_MODE="1"
-    echo "📌 Installing Full Dashboard (use --target flag for Target Site only)"
-fi
-
-if [ "$INSTALL_MODE" == "2" ]; then
-    echo "🎯 Mode: Target Site (Echo Server)"
-    INSTALL_DIR="stigix-target"
-    
-    # Platform-specific for target mode too
-    if [[ "$OS_TYPE" == "Linux" ]] && ! grep -qi microsoft /proc/version 2>/dev/null; then
-        COMPOSE_FILE="docker-compose.target-host.yml"
-        echo "🐧 Native Linux detected - Using host mode for echo responder"
-    else
-        COMPOSE_FILE="docker-compose.target.yml"
-    fi
-else
-    echo "🖥️  Mode: Full Dashboard"
-    INSTALL_DIR="stigix"
-    
-    # Select compose file based on platform
-    if [[ "$OS_TYPE" == "Linux" ]]; then
-        # Check if this is WSL2 (Windows Subsystem for Linux)
-        if grep -qi microsoft /proc/version 2>/dev/null; then
-            echo "🪟 WSL2 detected - Using bridge mode (Host mode not recommended on WSL2)"
-            COMPOSE_FILE="docker-compose.example.yml"
-        else
-            echo "🐧 Native Linux detected - Using host mode for full IoT/Voice simulation support"
-            COMPOSE_FILE="docker-compose.host.yml"
-        fi
-    elif [[ "$OS_TYPE" == "Darwin" ]]; then
-        echo "🍎 macOS detected - Using bridge mode (Host mode not supported on macOS)"
-        COMPOSE_FILE="docker-compose.example.yml"
-    else
-        echo "💻 Unknown platform - Using bridge mode (safe default)"
-        COMPOSE_FILE="docker-compose.example.yml"
-    fi
-fi
-
-# 3. Check for Existing Installation
-if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+# 2. Interactive Mode Selection if script is run without arguments and not piped
+# We check if stdin is a terminal to allow interactive prompt
+if [ -t 0 ] && [ "$INSTALL_MODE" == "both" ] && [[ ! " $@ " =~ " --mode " ]]; then
     echo ""
-    echo "📂 Existing installation detected in $INSTALL_DIR"
-    echo "1) Update config & restart services (Upgrade)"
-    echo "2) Fresh Re-install (Overwrite configuration)"
-    echo "3) Exit"
-    read -p "Select an option [1-3]: " EXIST_CHOICE
+    echo "📌 Choose Deployment Mode:"
+    echo "1) Both (Source + Target) [Default] - Runs Dashboard, Traffic Gen, and Echo targets"
+    echo "2) Target Only - Deploys only the Echo/XFR targets"
+    echo "3) Source Only - Deploys only the Dashboard and Traffic Gen"
+    read -p "Select an option [1-3] (Default: 1): " MODE_CHOICE
     
-    case $EXIST_CHOICE in
-        1)
-            echo "🔄 Upgrading existing installation..."
-            cd "$INSTALL_DIR"
-            echo "📦 Syncing configuration ($COMPOSE_FILE)..."
-            curl -sSL -o docker-compose.yml "$REPO_URL/$COMPOSE_FILE"
-            
-            echo "🔧 Pulling latest images..."
-            docker compose pull || echo "⚠️  Pull failed, trying to start anyway..."
-            docker compose up -d
-            echo "✅ Upgrade complete!"
-            exit 0
-            ;;
-        2)
-            echo "⚠️  Overwriting existing installation..."
-            ;;
-        *)
-            echo "👋 Exiting."
-            exit 0
-            ;;
+    case $MODE_CHOICE in
+        2) INSTALL_MODE="target" ;;
+        3) INSTALL_MODE="source" ;;
+        *) INSTALL_MODE="both" ;;
     esac
 fi
 
-# 4. Setup Directory
+echo "🎯 Selected Mode: $INSTALL_MODE"
+INSTALL_DIR="stigix"
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
-# 5. Download Configuration
-echo "📦 Downloading configuration ($COMPOSE_FILE)..."
-curl -sSL -o docker-compose.yml "$REPO_URL/$COMPOSE_FILE"
+# 3. Download Configuration
+echo "📦 Downloading Base Configuration from GitHub..."
+curl -sSL -o docker-compose.yml "$COMPOSE_URL"
+
+# 4. Mode-specific adjustments (Creating the right docker-compose/env)
+echo "STIGIX_ROLE=$INSTALL_MODE" > .env
+
+# Base UI/Traffic Gen Config
+if [ "$INSTALL_MODE" == "both" ] || [ "$INSTALL_MODE" == "source" ]; then
+    echo "AUTO_START_TRAFFIC=true" >> .env
+    echo "SLEEP_BETWEEN_REQUESTS=1" >> .env
+fi
+
+# 5. Add Commented Templates for common configurations
+cat <<EOF >> .env
+
+# --- Prisma SD-WAN Integration (Optional) ---
+# PRISMA_SDWAN_TSGID=YOUR_TSG_ID
+# PRISMA_SDWAN_REGION=Germany
+# PRISMA_SDWAN_CLIENT_ID="your-client-id@tsgid.iam.panserviceaccount.com"
+# PRISMA_SDWAN_CLIENT_SECRET="your-client-secret"
+
+# --- Registry & Autodiscovery (Optional) ---
+# STIGIX_REGISTRY_ENABLED=true
+# STIGIX_REGISTRY_URL=https://stigix-registry.jlsuzanne.workers.dev
+# STIGIX_INSTANCE_ID=local-node-$(hostname | cut -d'.' -f1)
+
+# --- Stigix Cloud Probes (Signed URLs) ---
+# The Target Worker URL where scenarios are hosted
+STIGIX_TARGET_BASE_URL=https://stigix-target.jlsuzanne.workers.dev
+
+# Master Key Architecture (Production/Multi-tenant)
+# Used with PRISMA_SDWAN_TSGID to generate dynamic per-tenant signatures
+# STIGIX_TARGET_MASTER_KEY=
+
+# Shared Key (Legacy/Debug)
+# Explicit static key for signature verification if not using Master Key
+# STIGIX_TARGET_SHARED_KEY=
+
+# Site name for dashboard display
+STIGIX_SITE_NAME=$(hostname | cut -d'.' -f1)
+EOF
+
+# Adjust the docker-compose.yml based on mode if needed
+if [ "$INSTALL_MODE" == "target" ]; then
+    echo "🔧 Adjusting docker-compose for TARGET mode..."
+    # You could use sed to remove exposed ports like 8080 or 3100 if we wanted,
+    # but since network_mode is host, ports are bound by the apps directly.
+    echo "TARGET_ONLY=true" >> .env
+elif [ "$INSTALL_MODE" == "source" ]; then
+    echo "🔧 Adjusting docker-compose for SOURCE mode..."
+    echo "SOURCE_ONLY=true" >> .env
+fi
+
+mkdir -p ./config ./logs ./mcp-data
+
+echo "✅ Files prepared in $PWD"
+
+# 5. Dry Run or Execution
+if [ "$DRY_RUN" = true ]; then
+    echo ""
+    echo "🛑 [DRY RUN] Mode enabled. No containers were started."
+    echo "📂 The following files have been created:"
+    ls -la
+    echo ""
+    echo "🔍 To start the environment manually, run:"
+    echo "    cd $(pwd)"
+    echo "    docker compose pull"
+    echo "    docker compose up -d"
+    echo "=========================================="
+    exit 0
+fi
 
 # 6. Start Services
-echo "🔧 Pulling images and starting services..."
-MAX_RETRIES=3
-RETRY_COUNT=0
-PULL_SUCCESS=false
+echo "🔧 Pulling images and starting Stigix All-in-One..."
+docker compose pull || echo "⚠️  Pull failed, trying to start anyway..."
 
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if docker compose pull; then
-        PULL_SUCCESS=true
-        break
-    else
-        RETRY_COUNT=$((RETRY_COUNT+1))
-        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-            echo "⚠️  Docker Hub timeout or network error (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying in 10s..."
-            sleep 10
-        fi
-    fi
-done
-
-if [ "$PULL_SUCCESS" = false ]; then
-    echo "❌ Pull failed after $MAX_RETRIES attempts. Trying to start with existing images if any..."
-fi
-
-# Create config directory
-mkdir -p ./config
-
-# Create .env file with auto-start enabled (if not exists)
-if [ ! -f .env ]; then
-    echo "AUTO_START_TRAFFIC=true" > .env
-    echo "SLEEP_BETWEEN_REQUESTS=1" >> .env
-    echo "✅ Created .env with auto-start traffic enabled"
-fi
-
-# Pre-flight port check for dashboard mode
-if [ "$INSTALL_MODE" != "2" ]; then
+# Pre-flight port check for dashboard
+if [ "$INSTALL_MODE" != "target" ]; then
     echo "🔍 Checking if port 8080 is available..."
     if command -v lsof &> /dev/null; then
         if lsof -i :8080 > /dev/null 2>&1; then
             echo "❌ Error: Port 8080 is already in use by another application on your host."
-            echo "This can prevent the Web UI from loading correctly (e.g. 'Cannot GET /')."
-            echo "Please stop the application using port 8080 (like a local Node server) before proceeding."
-            exit 1
-        fi
-    elif command -v nc &> /dev/null; then
-        if nc -z 127.0.0.1 8080 > /dev/null 2>&1; then
-            echo "❌ Error: Port 8080 is already in use by another application on your host."
-            echo "This can prevent the Web UI from loading correctly (e.g. 'Cannot GET /')."
-            echo "Please stop the application using port 8080 before proceeding."
             exit 1
         fi
     fi
-    echo "✅ Port 8080 is available."
 fi
 
-# Start services
-echo "🔧 Starting services..."
 docker compose up -d
-
-# Wait for containers to initialize
-echo "⏳ Waiting for containers to be ready..."
-sleep 5
-
-# Detect network interface INSIDE the container (not on host)
-echo "🔍 [INSTALLER] Detecting network interface from container..."
-
-# Determine which container to query based on installation mode
-if [[ "$INSTALL_MODE" == "2" ]]; then
-    CONTAINER_SERVICE="sdwan-voice-echo"
-else
-    CONTAINER_SERVICE="sdwan-traffic-gen"
-fi
-
-# Query the container for its default network interface
-CONTAINER_IFACE=$(docker compose exec -T "$CONTAINER_SERVICE" sh -c "ip route 2>/dev/null | grep '^default' | awk '{print \$5}' | head -n 1" 2>/dev/null || echo "")
-
-# Verify the detected interface has internet connectivity
-if [[ -n "$CONTAINER_IFACE" ]] && [[ "$CONTAINER_IFACE" != "lo" ]]; then
-    echo "🔍 [INSTALLER] Testing connectivity on ${CONTAINER_IFACE}..."
-
-    # Quick ping test to 8.8.8.8 (Google DNS) to verify internet access
-    if docker compose exec -T "$CONTAINER_SERVICE" sh -c "ping -c 1 -W 2 -I $CONTAINER_IFACE 8.8.8.8 >/dev/null 2>&1" 2>/dev/null; then
-        echo "✅ [INSTALLER] Interface ${CONTAINER_IFACE} has internet connectivity"
-    else
-        echo "⚠️  [INSTALLER] Interface ${CONTAINER_IFACE} failed connectivity test"
-        echo "🔄 [INSTALLER] Searching for working interface..."
-
-        # Try to find an interface that actually has internet access
-        CONTAINER_IFACE=$(docker compose exec -T "$CONTAINER_SERVICE" sh -c '
-            for iface in $(ip -o link show | awk -F": " '"'"'{print $2}'"'"' | grep -v "^lo$"); do
-                if ping -c 1 -W 2 -I $iface 8.8.8.8 >/dev/null 2>&1; then
-                    echo $iface
-                    break
-                fi
-            done
-        ' 2>/dev/null)
-
-        if [[ -n "$CONTAINER_IFACE" ]]; then
-            echo "✅ [INSTALLER] Found working interface: ${CONTAINER_IFACE}"
-        else
-            echo "⚠️  [INSTALLER] No interface passed connectivity test, falling back to eth0"
-            CONTAINER_IFACE="eth0"
-        fi
-    fi
-else
-    echo "⚠️  [INSTALLER] Auto-detection failed, using eth0 (Docker default)"
-    CONTAINER_IFACE="eth0"
-fi
-
-# Write the detected interface to config file
-echo "$CONTAINER_IFACE" > ./config/interfaces.txt
-
-# Restart containers to apply the interface configuration
-echo "🔄 Applying network configuration..."
-docker compose restart
-
-echo "✅ Network interface configured: $CONTAINER_IFACE"
 
 echo ""
 echo "=========================================="
-echo "✅ Installation / Update complete!"
+echo "✅ Stigix All-in-One Installation complete!"
 echo ""
 
-if [ "$INSTALL_MODE" == "2" ]; then
-    echo "🎯 Target Site is active on port 6200/UDP (Echo)."
-    echo "📝 Check logs: docker compose logs -f"
+if [ "$INSTALL_MODE" == "target" ]; then
+    echo "🎯 Target Site is active (XFR: 9000, Voice: 6100, Probes: 6200, iPerf: 5201)."
 else
     echo "📊 Dashboard: http://localhost:8080"
     echo "🔑 Login: admin / admin"
-    echo "📝 Check logs: docker compose logs -f"
 fi
+echo "📝 Check logs: cd stigix && docker compose logs -f"
 echo "=========================================="

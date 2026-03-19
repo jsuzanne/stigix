@@ -2,7 +2,7 @@
 
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/jsuzanne/sdwan-traffic-gen)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.2.1--patch.240-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.1--patch.246-blue.svg)](https://github.com/jsuzanne/stigix/releases)
 
 A modern web-based SD-WAN traffic generator with real-time monitoring, customizable traffic patterns, and comprehensive security testing. Perfect for testing SD-WAN deployments, network QoS policies, and application performance.
 
@@ -280,7 +280,7 @@ docker ps
 We provide an interactive installation script that configures the **Stigix All-in-One** container for your environment.
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install-stigix.sh | bash
+curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash
 ```
 
 **What to expect:**
@@ -301,34 +301,6 @@ Select an option [1-3] (Default: 1): 1
 🔧 Pulling images and starting Stigix All-in-One...
 ```
 
-**What to expect (macOS Example):**
-```text
-🚀 Stigix - Installation
-==========================================
-✅ Docker is running.
-🍎 Platform: macOS detected. (Host Mode has limitations on macOS)
-📌 Installing Full Dashboard (use --target flag for Target Site only)
-🖥️  Mode: Full Dashboard
-🍎 macOS detected - Using bridge mode (Host mode not supported on macOS)
-📦 Downloading configuration (docker-compose.example.yml)...
-🔧 Pulling images and starting services...
-[+] pull 61/61
- ✔ Image jsuzanne/sdwan-voice-gen:stable   Pulled                                        22.9s
- ✔ Image jsuzanne/sdwan-voice-echo:stable  Pulled                                        21.1s
- ✔ Image jsuzanne/sdwan-web-ui:stable      Pulled                                        29.0s
- ✔ Image jsuzanne/sdwan-traffic-gen:stable Pulled                                        21.2s
-✅ Created .env with auto-start traffic enabled
-🔧 Starting services...
-[+] up 5/5
- ✔ Network sdwan-traffic-gen_sdwan-network Created                                        0.0s
- ✔ Container sdwan-voice-echo              Created                                        0.3s
- ✔ Container sdwan-web-ui                  Healthy                                        5.9s
- ✔ Container sdwan-voice-gen               Created                                        0.0s
- ✔ Container sdwan-traffic-gen             Created                                        0.0s
-⏳ Waiting for containers to be ready...
-🔍 [INSTALLER] Detecting network interface from container...
-✅ Installation complete! Access dashboard at: http://localhost:8080
-```
 
 This will:
 - ✅ Check if Docker is installed and running
@@ -342,7 +314,7 @@ This will:
 **Credentials:** `admin` / `admin` (change after first login)
 
 > **Advanced flags:** You can bypass interactivity using `--mode <both|source|target>` or simulate the install with `--dry-run`. Example:
-> `curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install-stigix.sh | bash -s -- --mode target`
+> `curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash -s -- --mode target`
 
 > **Windows Users:** The one-liner installation script is not supported in PowerShell. Please follow the **[Windows Installation Guide](docs/WINDOWS_INSTALL.md)** for step-by-step instructions.
 
@@ -352,23 +324,15 @@ This will:
 
 If you prefer not to use the install script, you can download the compose file manually.
 
-**Linux (Host Mode):**
 ```bash
 mkdir -p stigix && cd stigix
-curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.example.stigix.yml
+# Download the consolidated compose file
+curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.yml
+# Start the All-in-One container
 docker compose up -d
-open http://localhost:8080
 ```
 
-**macOS/WSL (Bridge Mode):**
-```bash
-mkdir -p stigix && cd stigix
-curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.example.bridge.yml
-docker compose up -d
-open http://localhost:8080
-```
-
-> **Legacy Separated Containers:** Stigix is now distributed as a single All-in-One image (`jsuzanne/stigix`) managed by supervisord. The legacy separated images (`sdwan-web-ui`, `sdwan-voice`, etc.) and the old `install.sh` script are deprecated but still available in the repository for advanced/legacy use cases.
+> **Consolidated Architecture:** Stigix is now distributed as a single All-in-One image (`jsuzanne/stigix`) managed by supervisord. This simplifies deployment and ensures all components (Dashboard, Traffic Gen, Voice, Echo, XFR, MCP) are always in sync.
 
 
 
@@ -545,7 +509,7 @@ docker compose down
 docker compose up -d --build
 
 # Check resource usage
-docker stats sdwan-web-ui sdwan-traffic-gen
+docker stats stigix
 
 # Access container shell
 docker compose exec web-ui sh
@@ -567,46 +531,33 @@ docker compose logs --no-color > logs-export.txt
                          │
                          ▼
         ┌────────────────────────────────────────┐
-        │       Web Dashboard (React)            │
-        │   - Authentication (JWT)               │
-        │   - Real-time logs                     │
-        │   - Statistics & monitoring            │
-        │   - Configuration UI                   │
-        │   - Security testing                   │
-        │   Port: 8080                           │
-        └────────────┬───────────────────────────┘
-                     │
-                     │ API Calls
-                     ▼
-        ┌────────────────────────────────────────┐
-        │    Backend API (Node.js/Express)       │
-        │   - Config management                  │
-        │   - Log aggregation                    │
-        │   - Connectivity testing               │
-        │   - Stats calculation                  │
-        │   - Security test execution            │
-        └────────────┬───────────────────────────┘
-                     │
-                     │ Shared Volumes
-                     ▼
-        ┌────────────────────────────────────────┐
-        │   Traffic Generator (Python)           │
-        │   - HTTP/HTTPS requests                │
-        │   - Multi-threading                    │
-        │   - Realistic headers                  │
-        │   - Network interface binding          │
-        └────────────┬───────────────────────────┘
-                     │
-                     │ Network Traffic
-                     ▼
+        │        Stigix All-in-One Container     │
+        │   ┌──────────────────────────────┐     │
+        │   │    Web Dashboard (React)     │     │
+        │   └──────────────┬───────────────┘     │
+        │                  ▼                     │
+        │   ┌──────────────────────────────┐     │
+        │   │  Backend API (Node.js/Exp)   │     │
+        │   └──────────────┬───────────────┘     │
+        │                  ▼                     │
+        │   ┌──────────────────────────────┐     │
+        │   │   Traffic Generator (Python) │     │
+        │   └──────────────┬───────────────┘     │
+        │                  ▼                     │
+        │   ┌──────────────────────────────┐     │
+        │   │   Target Services (HTTP/XFR) │     │
+        │   └──────────────┬───────────────┘     │
+        └──────────────────┼─────────────────────┘
+                           │
+                           ▼
         ┌────────────────────────────────────────┐
         │         Internet / SD-WAN              │
-        │   (Google, Microsoft 365, etc.)        │
         └────────────────────────────────────────┘
 
 Shared Volumes:
-  • config/  - Unified configuration files (applications-config.json, vyos-config.json, etc.)
-  • logs/    - Traffic logs, test results, statistics
+  • config/  - Unified configuration (apps, probes, prisma, vyos)
+  • logs/    - Traffic logs and statistics
+  • mcp-data/ - Persistence for MCP server state
 ```
 
 ---
@@ -632,8 +583,7 @@ Shared Volumes:
 docker compose pull
 
 # Or manually pull images
-docker pull jsuzanne/sdwan-web-ui:stable
-docker pull jsuzanne/sdwan-traffic-gen:stable
+docker pull jsuzanne/stigix:stable
 ```
 
 ### Port 8080 already in use
@@ -767,16 +717,9 @@ The Stigix has **two separate systems**:
 
 ## 📦 Docker Images
 
-### Main Image (All-in-One)
+### Official Image (All-in-One)
 The recommended deployment method uses a single unified image encompassing all components:
 - **Stigix All-in-One:** [`jsuzanne/stigix:stable`](https://hub.docker.com/r/jsuzanne/stigix)
-
-### Legacy Images (Separated Components)
-For advanced use cases or deployments needing isolated scaling, the original separated images remain available:
-- **Web UI:** [`jsuzanne/sdwan-web-ui:stable`](https://hub.docker.com/r/jsuzanne/sdwan-web-ui)
-- **Traffic Generator:** [`jsuzanne/sdwan-traffic-gen:stable`](https://hub.docker.com/r/jsuzanne/sdwan-traffic-gen)
-- **Voice Generator:** [`jsuzanne/sdwan-voice-gen:stable`](https://hub.docker.com/r/jsuzanne/sdwan-voice-gen)
-- **Voice Echo:** [`jsuzanne/sdwan-voice-echo:stable`](https://hub.docker.com/r/jsuzanne/sdwan-voice-echo)
 
 All images are automatically built for **AMD64** and **ARM64** architectures.
 

@@ -2,11 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     RefreshCw, Download, AlertCircle, CheckCircle, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
-    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers
+    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers,
+    Clipboard, ExternalLink
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Favicon } from './components/Favicon';
 import { twMerge } from 'tailwind-merge';
+import { toast } from 'react-hot-toast';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -848,7 +850,7 @@ export default function Settings({ token }: { token: string }) {
     const CAP_LABELS: { key: keyof TargetCapability; label: string; color: string }[] = [
         { key: 'voice', label: 'Voice', color: 'blue' },
         { key: 'convergence', label: 'Convergence', color: 'purple' },
-        { key: 'xfr', label: 'XFR', color: 'cyan' },
+        { key: 'xfr', label: 'Speedtest', color: 'cyan' },
         { key: 'security', label: 'Security', color: 'red' },
         { key: 'connectivity', label: 'Connectivity', color: 'green' },
     ];
@@ -2154,7 +2156,7 @@ export default function Settings({ token }: { token: string }) {
                                                             <td className="py-4 px-4">
                                                                 <div className="flex gap-1">
                                                                     {inst.capabilities?.voice && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" title="Voice" />}
-                                                                    {inst.capabilities?.xfr && <div className="w-1.5 h-1.5 rounded-full bg-cyan-500" title="XFR" />}
+                                                                    {inst.capabilities?.xfr && <div className="w-1.5 h-1.5 rounded-full bg-cyan-500" title="Speedtest" />}
                                                                     {inst.capabilities?.convergence && <div className="w-1.5 h-1.5 rounded-full bg-purple-500" title="Convergence" />}
                                                                     {inst.capabilities?.security && <div className="w-1.5 h-1.5 rounded-full bg-red-500" title="Security" />}
                                                                 </div>
@@ -2224,12 +2226,21 @@ export default function Settings({ token }: { token: string }) {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* ── Add / Edit Form ── */}
-                        <div className="lg:col-span-3 bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-5 shadow-inner">
-                            <h3 className="text-[10px] font-black text-text-muted tracking-[0.2em] uppercase">
-                                {editingTargetId ? '✏️ Edit Target' : '➕ New Target'}
-                            </h3>
+                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-5 shadow-inner">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-[10px] font-black text-text-muted tracking-[0.2em] uppercase flex items-center gap-2">
+                                    {editingTargetId ? '✏️ Edit Target' : '📡 New Remote Target'}
+                                </h3>
+                                <button
+                                    onClick={saveTarget}
+                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
+                                >
+                                    {editingTargetId ? <Edit2 size={12} /> : <Plus size={12} />}
+                                    {editingTargetId ? 'Update' : 'Add Target'}
+                                </button>
+                            </div>
                             {targetError && (
                                 <div className="flex items-center gap-2 text-red-500 text-[10px] font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">
                                     <AlertCircle size={12} />{targetError}
@@ -2295,7 +2306,7 @@ export default function Settings({ token }: { token: string }) {
                                             { key: 'convergence', label: 'Conv.', placeholder: '6200' },
                                             { key: 'iperf', label: 'Iperf', placeholder: '5201' },
                                             { key: 'http', label: 'HTTP', placeholder: '8082' },
-                                            { key: 'xfr', label: 'XFR', placeholder: '5201' },
+                                            { key: 'xfr', label: 'Speedtest', placeholder: '5201' },
                                         ].map(({ key, label, placeholder }) => (
                                             <div key={key} className="space-y-1">
                                                 <label className="text-[9px] font-black text-text-muted">{label}</label>
@@ -2315,78 +2326,103 @@ export default function Settings({ token }: { token: string }) {
                                 )}
                             </div>
 
-                            <div className="flex gap-2 justify-end">
-                                {editingTargetId && (
+                            {editingTargetId && (
+                                <div className="flex gap-2 justify-end">
                                     <button onClick={cancelEditTarget} className="px-4 py-2 text-text-muted hover:text-text-primary text-[10px] font-black tracking-widest transition-colors">
                                         Cancel
                                     </button>
-                                )}
-                                <button
-                                    onClick={saveTarget}
-                                    className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
-                                >
-                                    <Plus size={14} />
-                                    {editingTargetId ? 'Update Target' : 'Add Target'}
-                                </button>
-                            </div>
+                                </div>
+                            )}
+
+                            {/* Recently Added manual targets (Demo filler) */}
+                            {!editingTargetId && targets.filter(t => !t.meta?.registry).length > 0 && (
+                                <div className="pt-4 border-t border-border/50 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Recently Added</h4>
+                                        <span className="text-[8px] font-bold text-text-muted/50 tracking-tighter italic">Last 3 Manual</span>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        {targets.filter(t => !t.meta?.registry).slice(-3).reverse().map(t => (
+                                            <div key={t.id} className="flex items-center justify-between px-3 py-2 bg-card/20 border border-border/30 rounded-xl group/item">
+                                                <div className="flex items-center gap-2 overflow-hidden">
+                                                    <MapPin size={10} className="text-emerald-500 shrink-0" />
+                                                    <span className="text-[10px] font-bold text-text-muted truncate group-hover/item:text-text-primary transition-colors">{t.name}</span>
+                                                </div>
+                                                <span className="text-[9px] font-mono text-text-muted/40 shrink-0">{t.host}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="p-3 bg-blue-600/5 border border-blue-500/10 rounded-xl">
+                                        <div className="flex items-start gap-2">
+                                            <Info size={12} className="text-blue-400 shrink-0 mt-0.5" />
+                                            <p className="text-[9px] leading-relaxed text-blue-400/80 font-medium italic">
+                                                Tip: Use these targets to simulate multi-site traffic flows in the Performance dashboard.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* ── Local Target Service Control ── */}
-                        <div className="lg:col-span-2 bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-5 shadow-inner flex flex-col">
+                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-5 shadow-inner flex flex-col">
                             <div className="flex items-center justify-between">
                                 <h3 className="text-[10px] font-black text-text-muted tracking-[0.2em] uppercase flex items-center gap-2">
                                     <Globe size={12} className="text-emerald-500" />
                                     Local Target Service
                                 </h3>
-                                <div className="flex items-center gap-1.5">
-                                    <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", targetServiceStatus?.error ? "bg-red-500" : "bg-emerald-500")} />
-                                    <span className="text-[8px] font-black text-text-muted tracking-widest uppercase">
-                                        {targetServiceStatus?.error ? 'Offline' : 'Online'}
-                                    </span>
+                                <div className="flex items-center gap-2">
+                                    {(() => {
+                                        const isOffline = targetServiceStatus?.error || !targetServiceStatus;
+                                        const isNormal = targetServiceStatus?.mode === 'NORMAL';
+                                        if (isOffline) return (
+                                            <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 text-[9px] font-black tracking-widest shadow-sm">OFFLINE</span>
+                                        );
+                                        if (isNormal) return (
+                                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[9px] font-black tracking-widest shadow-sm">READY</span>
+                                        );
+                                        return (
+                                            <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[9px] font-black tracking-widest shadow-sm">IMPAIRED</span>
+                                        );
+                                    })()}
                                 </div>
                             </div>
 
-                            <div className="space-y-4 flex-1">
-                                <div className="bg-card/50 border border-border rounded-xl p-4 space-y-2">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Current Mode</span>
-                                        <span className={cn(
-                                            "px-2 py-0.5 rounded text-[10px] font-black tracking-tight",
-                                            targetServiceStatus?.mode === 'NORMAL' ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-400"
-                                        )}>
-                                            {targetServiceStatus?.mode || 'Unknown'}
-                                        </span>
+                            <div className="space-y-6 flex-1">
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center px-1">
+                                        <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Service Mode</span>
+                                        {targetServiceStatus?.mode === 'LOOPING_SLOW' && (
+                                            <div className="flex items-center gap-1.5 text-[8px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                                                <RefreshCw size={8} className="animate-spin" />
+                                                LOOPING: {targetServiceStatus.current_loop_state}
+                                            </div>
+                                        )}
                                     </div>
-                                    {targetServiceStatus?.mode === 'LOOPING_SLOW' && (
-                                        <div className="flex justify-between items-center text-[9px] font-bold text-text-muted">
-                                            <span>Loop State</span>
-                                            <span className="text-text-primary uppercase">{targetServiceStatus.current_loop_state}</span>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                    {[
-                                        { id: 'NORMAL', label: 'Fast', icon: Zap },
-                                        { id: 'ALWAYS_SLOW', label: 'Always Slow', icon: Activity },
-                                        { id: 'RANDOM_SLOW', label: 'Random Slow', icon: RefreshCw },
-                                        { id: 'LOOPING_SLOW', label: 'Looping Slow', icon: Layers }
-                                    ].map(({ id, label, icon: Icon }) => (
-                                        <button
-                                            key={id}
-                                            onClick={() => setTargetServiceMode(id)}
-                                            disabled={targetServiceStatus?.mode === id}
-                                            className={cn(
-                                                "p-3 rounded-xl border transition-all flex flex-col items-center gap-1.5 group",
-                                                targetServiceStatus?.mode === id
-                                                    ? "bg-emerald-600/20 border-emerald-500/50 text-emerald-400 shadow-[0_0_15px_-5px_rgba(16,185,129,0.3)]"
-                                                    : "bg-card border-border text-text-muted hover:border-emerald-500/30 hover:text-text-primary disabled:opacity-50"
-                                            )}
-                                        >
-                                            <Icon size={14} className={cn(targetServiceStatus?.mode === id ? "text-emerald-500" : "text-text-muted group-hover:text-emerald-400")} />
-                                            <span className="text-[9px] font-black tracking-widest uppercase text-center">{label}</span>
-                                        </button>
-                                    ))}
+                                    
+                                    {/* Segmented Control Mode Switcher */}
+                                    <div className="bg-card/50 border border-border rounded-xl p-1 flex gap-1 shadow-inner">
+                                        {[
+                                            { id: 'NORMAL', label: 'Fast' },
+                                            { id: 'RANDOM_SLOW', label: 'Random' },
+                                            { id: 'ALWAYS_SLOW', label: 'Always' },
+                                            { id: 'LOOPING_SLOW', label: 'Loop' }
+                                        ].map(({ id, label }) => (
+                                            <button
+                                                key={id}
+                                                onClick={() => setTargetServiceMode(id)}
+                                                disabled={targetServiceStatus?.mode === id}
+                                                className={cn(
+                                                    "flex-1 py-2 px-1 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all duration-200",
+                                                    targetServiceStatus?.mode === id
+                                                        ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow-sm"
+                                                        : "text-text-muted hover:text-text-primary hover:bg-card-hover border border-transparent"
+                                                )}
+                                            >
+                                                {label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
 
@@ -2394,23 +2430,49 @@ export default function Settings({ token }: { token: string }) {
                                 <h4 className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Test Links</h4>
                                 <div className="grid grid-cols-1 gap-1.5">
                                     {[
-                                        { label: 'Health Check', path: '/ok', color: 'emerald' },
-                                        { label: 'Variable Latency', path: '/slow', color: 'amber' },
-                                        { label: 'Security Test', path: '/eicar.com.txt', color: 'red' }
-                                    ].map(({ label, path, color }) => (
-                                        <a
-                                            key={path}
-                                            href={`http://${window.location.hostname}:8082${path}`}
-                                            target="_blank"
-                                            className="flex items-center justify-between p-2 rounded-lg bg-card/30 border border-border hover:border-emerald-500/30 transition-all group"
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <div className={`w-1 h-1 rounded-full bg-${color}-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]`} />
-                                                <span className="text-[10px] font-bold text-text-muted group-hover:text-text-primary">{label}</span>
+                                        { label: 'Health Check (Clean Flow)', path: '/ok', color: 'emerald' },
+                                        { label: 'WAN Brownout (Simulated Delay)', path: '/slow', color: 'amber' },
+                                        { label: 'Security Block (IPS/AV Test)', path: '/eicar.com.txt', color: 'red' }
+                                    ].map(({ label, path, color }) => {
+                                        const fullUrl = `http://${window.location.hostname}:8082${path}`;
+                                        return (
+                                            <div
+                                                key={path}
+                                                className="flex flex-col gap-1 p-2 rounded-lg bg-card/30 border border-border hover:border-emerald-500/30 transition-all group"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-1 h-1 rounded-full bg-${color}-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]`} />
+                                                        <span className="text-[10px] font-bold text-text-muted group-hover:text-text-primary">{label}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button
+                                                            onClick={() => {
+                                                                navigator.clipboard.writeText(fullUrl);
+                                                                toast.success('Link copied!');
+                                                            }}
+                                                            className="p-1 hover:bg-emerald-500/10 text-text-muted hover:text-emerald-500 rounded transition-colors"
+                                                            title="Copy URL"
+                                                        >
+                                                            <Clipboard size={10} />
+                                                        </button>
+                                                        <a
+                                                            href={fullUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="p-1 hover:bg-emerald-500/10 text-text-muted hover:text-emerald-500 rounded transition-colors"
+                                                            title="Open in new tab"
+                                                        >
+                                                            <ExternalLink size={10} />
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                                <div className="text-[9px] font-mono text-emerald-500/70 truncate px-1">
+                                                    {fullUrl}
+                                                </div>
                                             </div>
-                                            <span className="text-[9px] font-mono text-text-muted opacity-50 group-hover:opacity-100">{path}</span>
-                                        </a>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>
