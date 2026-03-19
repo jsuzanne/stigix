@@ -879,6 +879,26 @@ let G_UPGRADE_STATUS: UpgradeStatus = {
     startTime: null
 };
 
+// --- PERSISTENT REDEPLOY STATUS ---
+// Check if we just came back from a redeploy
+try {
+    const redeployPendingFile = path.join(PROJECT_ROOT, 'config', '.redeploy_pending');
+    if (fs.existsSync(redeployPendingFile)) {
+        console.log('[MAINTENANCE-BOOT] Found .redeploy_pending marker. Setting status to complete.');
+        G_UPGRADE_STATUS = {
+            inProgress: false,
+            version: 'finished',
+            stage: 'complete',
+            logs: [`[${new Date().toISOString()}] 🚀 Container recreated successfully. Maintenance complete.`],
+            error: null,
+            startTime: Date.now()
+        };
+        fs.unlinkSync(redeployPendingFile);
+    }
+} catch (e) {
+    console.error('[MAINTENANCE-BOOT] Failed to check/clear redeploy marker:', e);
+}
+
 const getInterface = (): string => {
     const interfacesFile = path.join(APP_CONFIG.configDir, 'interfaces.txt');
 
@@ -6645,7 +6665,9 @@ app.get('/api/admin/maintenance/version', authenticateToken, async (req, res) =>
                 });
                 const latestTag = sortedTags[0];
                 latestVersion = latestTag.replace(/^v/, '');
-                updateAvailable = (latestVersion !== currentVersion);
+                // Normalize currentVersion for comparison (if it has 'v' prefix)
+                const normalizedCurrent = currentVersion.replace(/^v/, '');
+                updateAvailable = (latestVersion !== normalizedCurrent);
             }
         } catch (e) {
             if (!githubFetchErrorLogged) {
@@ -6964,6 +6986,16 @@ app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) =
             } else {
                 // Fallback to pure docker commands
                 cmd = 'docker restart stigix';
+            }
+
+            if (type === 'redeploy') {
+                try {
+                    const redeployPendingFile = path.join(PROJECT_ROOT, 'config', '.redeploy_pending');
+                    fs.writeFileSync(redeployPendingFile, JSON.stringify({ timestamp: Date.now() }));
+                    G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Persistence marker created: .redeploy_pending`);
+                } catch (pe) {
+                    console.error('[MAINTENANCE] Failed to write redeploy marker:', pe);
+                }
             }
 
             G_UPGRADE_STATUS.logs.push(`[${new Date().toISOString()}] Executing: ${cmd}`);
