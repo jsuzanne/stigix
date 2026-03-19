@@ -1,7 +1,5 @@
 
 
-Here is an exhaustive Markdown-style explanation of all current Stigix Target options, based on your latest Worker code (including MASTER_SIGNATURE_KEY / SHARED_KEY logic and all paths/modes).
-
 ***
 
 # Stigix Cloudflare Target – Options \& Examples
