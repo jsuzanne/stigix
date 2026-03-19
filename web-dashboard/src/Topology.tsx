@@ -202,7 +202,7 @@ const SiteNode = ({ data }: any) => {
                             {/* Hidden target handle for direct site-to-site overlay edges. Terminate at BOTTOM for Hubs too. */}
                             <Handle
                                 type="target"
-                                position={Position.Bottom}
+                                position={isHub ? Position.Bottom : Position.Top}
                                 id={`target-circuit:${w.devName}:${w.name}`}
                                 className="!w-full !h-1 !opacity-0"
                             />
