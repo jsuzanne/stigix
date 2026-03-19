@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     supervisor \
     docker.io \
-    docker-compose-v2 \
+    docker-compose-plugin \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20
