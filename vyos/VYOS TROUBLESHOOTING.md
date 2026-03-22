@@ -66,7 +66,6 @@ Common commands include:
 - `get-info` — retrieve general router information
 - `simple-block` / `simple-unblock` — manage blackhole routes (`ip route null`)
 - `set-qos` — configure simulated latency, loss, or QoS metrics
-- `fw-block` / `fw-unblock` — Apply or remove firewall-based blocking (not recommended, use `simple-block` instead)
 
 The VyOS API supports operations for reading information and applying configuration through its HTTP API endpoints, including `/retrieve` and `/configure`.
 
