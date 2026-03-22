@@ -49,7 +49,6 @@ ls
 You will find Python scripts such as:
 
 - `vyos_sdwan_ctl.py`
-- `VYOS_FIREWALL_INTEGRATION.md` (legacy firewall documentation)
 
 ---
 
