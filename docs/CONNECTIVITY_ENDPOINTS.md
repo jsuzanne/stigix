@@ -13,20 +13,34 @@ The platform supports three primary probe types, each measuring different aspect
 - **Metrics**: 
   - **Latency (ms)**: Time to first byte.
   - **Status**: Success (2xx/3xx) or Failure (4xx/5xx/Timeout).
-- **Scoring**: Impacted by DNS resolution time, TCP handshake, and TLS negotiation.
+- **Scoring**: Weighted calculation: `100 - (30% Latency + 35% TTFB + 25% TLS)`. Penalized heavily if Latency > 2s, TTFB > 1s, or TLS Handshake > 800ms.
 
 ### 2. PING (Network Reachability)
 - **Mechanism**: Sends standard ICMP Echo Requests.
 - **Metrics**: 
   - **RTT (ms)**: Round-trip time.
-  - **Loss (%)**: Percentage of packets timed out.
-- **Scoring**: Basic network layer reachability across the SD-WAN fabric.
+- **Scoring**: Good if < 100ms (Score 100). Reaches 0 at 500ms.
 
 ### 3. DNS (Resolution Speed)
-- **Mechanism**: Queries the target domain against the system's configured DNS servers.
+- **Mechanism**: Queries the target domain.
 - **Metrics**:
-  - **Resolution Time (ms)**: How long it takes to map the hostname to an IP.
-- **Scoring**: Critical for monitoring umbrella/SIG performance or local DNS cache issues.
+  - **Resolution Time (ms)**: Real-world mapping speed.
+- **Scoring**: Good if < 80ms (Score 100). Reaches 0 at 400ms.
+
+### 4. UDP (Voice/Real-time Quality)
+- **Mechanism**: UDP reachability probe.
+- **Scoring**: `100 - (Loss % * 10) - Jitter penalty`. Jitter over 30ms reduces the score (max -50). 10% packet loss results in a score of **0**.
+
+## 🏆 Scoring Methodology
+
+All probes return a score from **0 to 100**.
+
+| Score | Rating | Meaning |
+| :--- | :--- | :--- |
+| **80 - 100** | **Excellent** | Optimal performance, no user impact. |
+| **50 - 79** | **Fair** | Noticeable latency or jitter; potential for degraded experience. |
+| **1 - 49** | **Poor** | Severe degradation; high probability of user complaints. |
+| **0** | **Critical** | Resource unreachable or returning server error (HTTP 5xx). |
 
 ---
 
@@ -64,13 +78,13 @@ Shared probes are hosted on the **Stigix Cloudflare infrastructure**. They provi
 
 ### 📋 Available Scenarios
 
-| Scenario | Target Path | Description | Evaluation |
+| Scenario | Target Path | Description | Evaluation / Scoring |
 | :--- | :--- | :--- | :--- |
-| **Info / Egress** | `/saas/info` | Identifies your public IP, Country, and Cloudflare POP (colo). | Connectivity check |
-| **Slow SaaS** | `/saas/slow` | Simulates a 5s backend delay. | Latency score (DEM) |
-| **Large Download** | `/download/large` | 10MB payload download to test throughput. | Throughput score |
-| **Security (EICAR)** | `/security/eicar` | Downloads the EICAR test string. | Security/Threat check |
-| **Error (500/503)** | `/saas/error/*` | Simulates server-side failures (HTTP 500, 503). | Availability check |
+| **Info / Egress** | `/saas/info` | Identifies your public IP, Country, and POP. | Success = **100** |
+| **Slow SaaS** | `/saas/slow` | Simulates a 5s backend delay. | **Score 100** if < 200ms; reaches **0** at 5s. |
+| **Large Download** | `/download/large` | 10MB payload download. | **Score 100** if < 1s; reaches **0** at 10s. |
+| **Security (EICAR)** | `/security/eicar` | Downloads the EICAR test string. | Success Reachable = **100** |
+| **Error (500/503)** | `/saas/error/*` | Simulates server-side failures (5xx). | Failure = **0** |
 
 ### 🛠️ Configuration
 The Cloud base URL is automatically derived from your **Stigix Registry** domain (e.g., `stigix-target.stigix.io`).
