@@ -460,6 +460,18 @@ function TopologyContent({ token }: TopologyProps) {
             localStorage.setItem('stigix_topology_visible_sites', JSON.stringify(visibleSiteIds));
         }
     }, [visibleSiteIds]);
+    
+    // Helper to identify Hub-like sites (HUB role, Branch Gateway, or specific naming)
+    const isHubLike = useCallback((s: any) => {
+        if (!s) return false;
+        const role = (s.element_cluster_role || s.site_role || '').toUpperCase();
+        const name = (s.site_name || '').toLowerCase();
+        const isBG = s.branch_gateway === true || s.branch_gateway === 'true';
+        return role === 'HUB' || isBG || 
+               name.includes('dc') || name.includes('datacenter') || name.includes('data center') ||
+               name.includes('brgw') || name.includes('branch gateway') ||
+               name.includes('hub') || name.includes('azure') || name.includes('aws');
+    }, []);
 
     const processTopology = useCallback((data: any) => {
         if (!data.sites) return;
@@ -472,15 +484,8 @@ function TopologyContent({ token }: TopologyProps) {
         const newNodes: Node[] = [];
         const newEdges: Edge[] = [];
 
-        // Identify Hubs vs Spokes
-        const hubs = filteredSites.filter((s: any) =>
-            s.element_cluster_role === 'HUB' ||
-            s.site_name.includes('DC') ||
-            s.site_name.includes('BRGW') ||
-            s.site_name.toLowerCase().includes('azure') ||
-            s.site_name.toLowerCase().includes('aws')
-        );
-        const spokes = filteredSites.filter((s: any) => !hubs.includes(s));
+        const hubs = filteredSites.filter(isHubLike);
+        const spokes = filteredSites.filter((s: any) => !isHubLike(s));
 
         // Identify unique WAN Networks (Clouds)
         const publicWanNetworks = new Set<string>();
@@ -564,19 +569,7 @@ function TopologyContent({ token }: TopologyProps) {
         // --- EDGES CHANGE BASED ON MODE ---
         if (logicalViewSiteId) {
             const selectedSite = data.sites.find((s: any) => s.site_id === logicalViewSiteId);
-            // Hide logical view if the selected site is hidden by filter
-            if (visibleSiteIds && !visibleSiteIds.includes(logicalViewSiteId)) {
-                setLogicalViewSiteId(null);
-                return;
-            }
-
-            const isSelectedSiteHub = selectedSite && (
-                selectedSite.element_cluster_role === 'HUB' ||
-                selectedSite.site_name.includes('DC') ||
-                selectedSite.site_name.includes('BRGW') ||
-                selectedSite.site_name.toLowerCase().includes('azure') ||
-                selectedSite.site_name.toLowerCase().includes('aws')
-            );
+            const isSelectedSiteHub = selectedSite && isHubLike(selectedSite);
 
             // mode LOGICAL: Draw direct site-to-site tunnels relative to selected site
             data.sites.forEach((site: any) => {
@@ -601,13 +594,7 @@ function TopologyContent({ token }: TopologyProps) {
                             if (!isSelectedSiteHub) {
                                 const peerSiteId = isSourceSelected ? c.peer_site_id : site.site_id;
                                 const peerSite = data.sites.find((s: any) => s.site_id === peerSiteId);
-                                const isPeerHub = peerSite && (
-                                    peerSite.element_cluster_role === 'HUB' ||
-                                    peerSite.site_name.includes('DC') ||
-                                    peerSite.site_name.includes('BRGW') ||
-                                    peerSite.site_name.toLowerCase().includes('azure') ||
-                                    peerSite.site_name.toLowerCase().includes('aws')
-                                );
+                                const isPeerHub = peerSite && isHubLike(peerSite);
                                 if (!isPeerHub) return;
                             }
 
@@ -959,7 +946,7 @@ function TopologyContent({ token }: TopologyProps) {
                                     </button>
                                     <button
                                         onClick={() => {
-                                            const hubs = topology.sites.filter((s: any) => s.element_cluster_role === 'HUB' || s.site_name.includes('DC')).map((s: any) => s.site_id);
+                                            const hubs = topology.sites.filter(isHubLike).map((s: any) => s.site_id);
                                             setVisibleSiteIds(hubs);
                                         }}
                                         className="py-2 px-3 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-xl text-[10px] font-black uppercase tracking-widest text-blue-500 transition-all flex items-center justify-center gap-2"
@@ -968,7 +955,7 @@ function TopologyContent({ token }: TopologyProps) {
                                     </button>
                                     <button
                                         onClick={() => {
-                                            const spokes = topology.sites.filter((s: any) => s.element_cluster_role !== 'HUB' && !s.site_name.includes('DC')).map((s: any) => s.site_id);
+                                            const spokes = topology.sites.filter((s: any) => !isHubLike(s)).map((s: any) => s.site_id);
                                             setVisibleSiteIds(spokes);
                                         }}
                                         className="py-2 px-3 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 rounded-xl text-[10px] font-black uppercase tracking-widest text-green-500 transition-all flex items-center justify-center gap-2"
@@ -982,7 +969,7 @@ function TopologyContent({ token }: TopologyProps) {
                                     {topology.sites
                                         .filter((s: any) => s.site_name.toLowerCase().includes(filterSearch.toLowerCase()))
                                         .map((site: any) => {
-                                            const isHub = site.element_cluster_role === 'HUB' || site.site_name.includes('DC');
+                                            const isHub = isHubLike(site);
                                             const isVisible = visibleSiteIds === null || visibleSiteIds.includes(site.site_id);
 
                                             return (
@@ -1297,7 +1284,12 @@ function TopologyContent({ token }: TopologyProps) {
                                                                             if (pathFilter === 'ACTIVE') return p.isRoutingActive;
                                                                             if (pathFilter === 'BACKUP') return (p.isRoutingUsable || p.isLinkUp) && !p.isRoutingActive;
                                                                             if (pathFilter === 'DOWN') return !p.isRoutingActive && !p.isRoutingUsable && !p.isLinkUp;
-                                                                            if (pathFilter === 'HUB') return p.peerSite.startsWith('DC') || p.peerSite.startsWith('BRGW') || p.peerDevice.startsWith('DC') || p.peerDevice.startsWith('BRGW');
+                                                                            if (pathFilter === 'HUB') {
+                                                                                const ps = p.peerSite.toLowerCase();
+                                                                                const pd = p.peerDevice.toLowerCase();
+                                                                                return ps.startsWith('dc') || ps.startsWith('brgw') || ps.includes('datacenter') || ps.includes('data center') || ps.includes('hub') ||
+                                                                                       pd.startsWith('dc') || pd.startsWith('brgw') || pd.includes('hub');
+                                                                            }
                                                                             return true;
                                                                         });
 

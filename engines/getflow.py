@@ -1109,7 +1109,8 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
     for site_id in all_site_ids:
         site_obj = site_id_to_obj[site_id]
         site_name = site_obj.get('name', 'Unknown')
-        site_role = site_obj.get('element_cluster_role', 'UNKNOWN')
+        element_cluster_role = site_obj.get('element_cluster_role', 'UNKNOWN')
+        branch_gateway = site_obj.get('branch_gateway', False)
         address = site_obj.get('address') or {}
 
         devices_out = []
@@ -1348,7 +1349,9 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
         site_entry = {
             'site_id': site_id,
             'site_name': site_name,
-            'site_role': site_role,
+            'site_role': element_cluster_role,
+            'element_cluster_role': element_cluster_role,
+            'branch_gateway': branch_gateway,
             'address': {
                 'city': address.get('city'),
                 'country': address.get('country'),
