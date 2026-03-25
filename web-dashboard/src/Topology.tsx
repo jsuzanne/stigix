@@ -462,16 +462,28 @@ function TopologyContent({ token }: TopologyProps) {
     }, [visibleSiteIds]);
     
     // Helper to identify Hub-like sites (HUB role, Branch Gateway, or specific naming)
+    // Map site names to their hub status for quick lookup in PathFilter
+    const siteHubStatus = useMemo(() => {
+        const map = new Map<string, boolean>();
+        if (!topology?.sites) return map;
+        topology.sites.forEach((s: any) => {
+            const role = (s.element_cluster_role || s.site_role || '').toUpperCase();
+            const isBG = s.branch_gateway === true || s.branch_gateway === 'true';
+            map.set(s.site_name, role === 'HUB' || isBG);
+        });
+        return map;
+    }, [topology]);
+
     const isHubLike = useCallback((s: any) => {
         if (!s) return false;
+        // Optimization: if we have the map and the name, use it. Otherwise compute.
+        if (s.site_name && siteHubStatus.has(s.site_name)) {
+            return siteHubStatus.get(s.site_name);
+        }
         const role = (s.element_cluster_role || s.site_role || '').toUpperCase();
-        const name = (s.site_name || '').toLowerCase();
         const isBG = s.branch_gateway === true || s.branch_gateway === 'true';
-        return role === 'HUB' || isBG || 
-               name.includes('dc') || name.includes('datacenter') || name.includes('data center') ||
-               name.includes('brgw') || name.includes('branch gateway') ||
-               name.includes('hub') || name.includes('azure') || name.includes('aws');
-    }, []);
+        return role === 'HUB' || isBG;
+    }, [siteHubStatus]);
 
     const processTopology = useCallback((data: any) => {
         if (!data.sites) return;
@@ -1285,10 +1297,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                                             if (pathFilter === 'BACKUP') return (p.isRoutingUsable || p.isLinkUp) && !p.isRoutingActive;
                                                                             if (pathFilter === 'DOWN') return !p.isRoutingActive && !p.isRoutingUsable && !p.isLinkUp;
                                                                             if (pathFilter === 'HUB') {
-                                                                                const ps = p.peerSite.toLowerCase();
-                                                                                const pd = p.peerDevice.toLowerCase();
-                                                                                return ps.startsWith('dc') || ps.startsWith('brgw') || ps.includes('datacenter') || ps.includes('data center') || ps.includes('hub') ||
-                                                                                       pd.startsWith('dc') || pd.startsWith('brgw') || pd.includes('hub');
+                                                                                return siteHubStatus.get(p.peerSite) === true;
                                                                             }
                                                                             return true;
                                                                         });
