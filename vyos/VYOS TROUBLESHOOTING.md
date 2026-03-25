@@ -1,10 +1,42 @@
 # VyOS Integration Verification from the Stigix Docker Container
 
-This guide explains how to verify that the **VyOS control script** (`vyos_sdwan_ctl.py`) is working correctly from within the **Stigix** Docker environment.
+---
+
+## 1. VyOS Side Configuration: Enabling the HTTP API
+
+Before Stigix can control your VyOS router, you must enable its HTTP API and configure an authentication key.
+
+### Step 1.1: Define an API Key
+On your VyOS router, enter configuration mode and define a key (e.g., `SUPERSECRET`):
+
+```bash
+set service https api keys id "stigix-admin" key "SUPERSECRET"
+```
+
+### Step 1.2: Configure the HTTPS Service
+Ensure the service is listening on the desired address and port (default is 443):
+
+```bash
+set service https virtual-host default listen-address 0.0.0.0
+set service https virtual-host default listen-port 443
+```
+
+### Step 1.3: Apply and Save
+```bash
+commit
+save
+```
+
+### Step 1.4: (Optional) Enforce Strict Authentication
+To ensure *every* request requires a valid key:
+```bash
+set service https api strict
+commit
+```
 
 ---
 
-## 1. Access the Stigix Container
+## 2. Access the Stigix Container
 
 Open a shell inside the running `stigix` container:
 
@@ -21,7 +53,7 @@ root@UbuntuBR8:/app#
 
 ---
 
-## 2. Explore the Application Structure
+## 3. Explore the Application Structure
 
 List the contents of the `/app` directory to see the available components:
 
@@ -37,7 +69,7 @@ You should notice important directories such as:
 
 ---
 
-## 3. Navigate to VyOS Control Scripts
+## 4. Navigate to VyOS Control Scripts
 
 Enter the VyOS directory:
 
@@ -52,7 +84,7 @@ You will find Python scripts such as:
 
 ---
 
-## 4. Display Script Help and Usage
+## 5. Display Script Help and Usage
 
 Run the help command to inspect supported options:
 
@@ -70,7 +102,7 @@ The VyOS API supports operations for reading information and applying configurat
 
 ---
 
-## 5. Example: Retrieve Router Information
+## 6. Example: Retrieve Router Information
 
 Run the following command to verify connectivity to VyOS:
 
@@ -101,7 +133,7 @@ If this output appears, the API key and connection to the VyOS router are correc
 
 ---
 
-## 6. Next Steps
+## 7. Next Steps
 
 Once verified, you can use other commands such as:
 
@@ -117,7 +149,7 @@ Refer to `VYOS_FIREWALL_INTEGRATION.md` for legacy firewall integration details,
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 ### 7.1. The API returns `Not Found`
 
@@ -145,7 +177,7 @@ If the client cannot connect at all, confirm that the VyOS HTTP API service is e
 
 ---
 
-## 8. Quick Validation Checklist
+## 9. Quick Validation Checklist
 
 - Container access works with `docker exec -it stigix bash`.
 - `vyos_sdwan_ctl.py -h` shows the expected commands.
