@@ -1228,7 +1228,7 @@ if (fs.existsSync(INTERFACES_FILE)) {
 }
 
 const iotManager = new IoTManager(getInterface());
-const vyosManager = new VyosManager(APP_CONFIG.configDir);
+const vyosManager = new VyosManager(APP_CONFIG.configDir, PYTHON_PATH);
 const vyosScheduler = new VyosScheduler(vyosManager, APP_CONFIG.configDir, APP_CONFIG.logDir);
 const siteManager = new SiteManager(APP_CONFIG.configDir);
 const discoveryManager = new DiscoveryManager(APP_CONFIG.configDir);
@@ -1409,14 +1409,14 @@ const initializeCommands = async () => {
     if (DEBUG) log('SYSTEM', `Detected platform: ${PLATFORM}`, 'debug');
 
     // Check DNS command availability
-    availableCommands.getent = await checkCommand('getent --version 2>/dev/null');
-    availableCommands.dscacheutil = await checkCommand('dscacheutil -h 2>/dev/null');
-    availableCommands.dig = await checkCommand('dig -v 2>/dev/null');
-    availableCommands.nslookup = await checkCommand('nslookup -version 2>/dev/null || nslookup localhost 2>/dev/null');
-    availableCommands.curl = await checkCommand('curl --version 2>/dev/null');
-    availableCommands.ping = await checkCommand('ping -V 2>/dev/null || ping -h 2>/dev/null');
-    availableCommands.nc = await checkCommand('nc -h 2>/dev/null || nc -v localhost 1 2>/dev/null');
-    availableCommands.iperf3 = await checkCommand('iperf3 -v 2>/dev/null');
+    availableCommands.getent = await checkCommand('command -v getent 2>/dev/null');
+    availableCommands.dscacheutil = await checkCommand('command -v dscacheutil 2>/dev/null');
+    availableCommands.dig = await checkCommand('command -v dig 2>/dev/null');
+    availableCommands.nslookup = await checkCommand('command -v nslookup 2>/dev/null');
+    availableCommands.curl = await checkCommand('command -v curl 2>/dev/null');
+    availableCommands.ping = await checkCommand('command -v ping 2>/dev/null');
+    availableCommands.nc = await checkCommand('command -v nc 2>/dev/null');
+    availableCommands.iperf3 = await checkCommand('command -v iperf3 2>/dev/null');
 
     if (DEBUG) console.log('[PLATFORM] Available commands:', availableCommands);
 
@@ -4617,11 +4617,10 @@ class SLSClient {
         // authUrl is now hardcoded in authenticate(), and getDiagnostic() uses a specific endpoint.
         if (config.region === 'stg') {
             this.baseUrl = 'https://api.stg.sase.paloaltonetworks.com';
-        } else if (config.region?.toLowerCase().includes('eu')) {
-            this.baseUrl = 'https://api.eu.sase.paloaltonetworks.com';
         } else {
-            // Default to us (prd) which is more reliable than global endpoint for diagnostics
-            this.baseUrl = 'https://api.us.sase.paloaltonetworks.com';
+            // Standard Global endpoint for Prisma SASE (resolvable)
+            // Regionalization is handled by the X-PANW-Region header.
+            this.baseUrl = 'https://api.sase.paloaltonetworks.com';
         }
     }
 
@@ -4629,6 +4628,7 @@ class SLSClient {
         if (this.token && Date.now() < this.tokenExpiry) return this.token;
 
         try {
+            log('SLS', `Authenticating with Prisma SASE (TSG: ${this.config.tsg_id})...`);
             // align with Prisma SASE SDK (prisma_sase) 
             const authUrl = 'https://auth.apps.paloaltonetworks.com/auth/v1/oauth2/access_token';
             const auth = Buffer.from(`${this.config.client_id}:${this.config.client_secret}`).toString('base64');
@@ -4652,16 +4652,18 @@ class SLSClient {
 
             if (!res.ok) {
                 const err = await res.text();
-                throw new Error(`Auth failed (${res.status}): ${err}`);
+                log('SLS', `Authentication failed! Status: ${res.status} | Error: ${err} | URL: ${authUrl}`, 'error');
+                return null;
             }
 
             const data = await res.json() as any;
             this.token = data.access_token;
             this.tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000;
+            log('SLS', 'Authentication successful, token acquired');
             return this.token;
         } catch (error) {
-            log('SLS', `Authentication error: ${error}`, 'error');
-            throw error;
+            log('SLS', `Critial authentication exception: ${error}`, 'error');
+            return null;
         }
     }
 
@@ -4672,6 +4674,8 @@ class SLSClient {
             'us-west-2': 'americas',
             'eu': 'europe',
             'de': 'europe',
+            'germany': 'europe',
+            'europe': 'europe',
             'europe-west3': 'europe',
             'jp': 'jp',
             'sg': 'sg',
@@ -4717,14 +4721,17 @@ class SLSClient {
         try {
             const token = await this.authenticate();
             if (!token) {
-                log('SLS', 'Authentication failed for getDiagnostic', 'error');
+                // authenticate() already logs the error
                 return null;
             }
             const panwRegion = this.getPanwRegion(this.config.region);
 
             // Using the new PANW Logging Service API structure
             // API requires X-PAN-TSG-ID and X-PANW-Region for correct routing in SASE
-            const diagUrl = `${this.baseUrl}/logging/v1/diagnostics`;
+            // Endpoint for Prisma Access Insights Diagnostics (Real-time troubleshooting)
+            const diagUrl = `${this.baseUrl}/insights/v1/diagnostics`;
+            log('SLS', `Querying diagnostics for srcIp=${params.srcIp}, dstIp=${params.dstIp}, dstPort=${params.dstPort} (URL: ${diagUrl})`);
+            
             const res = await fetch(diagUrl, {
                 method: 'POST',
                 headers: {
@@ -4734,27 +4741,25 @@ class SLSClient {
                     'X-PANW-Region': panwRegion
                 },
                 body: JSON.stringify({
-                    filters: [
-                        { field: 'source_ip', operator: 'eq', value: params.srcIp },
-                        { field: 'dest_ip', operator: 'eq', value: params.dstIp },
-                        { field: 'dest_port', operator: 'eq', value: params.dstPort },
-                        { field: 'protocol', operator: 'eq', value: params.protocol.toLowerCase() }
-                    ],
                     start_time: new Date(params.start).toISOString(),
                     end_time: new Date(params.end).toISOString(),
-                    limit: 1
+                    source_ip: params.srcIp,
+                    destination_ip: params.dstIp,
+                    destination_port: params.dstPort,
+                    protocol: params.protocol.toUpperCase()
                 })
             });
 
             if (!res.ok) {
                 const err = await res.text();
-                log('SLS', `Diagnostic query failed: ${res.status} ${err} (URL: ${diagUrl})`, 'error');
+                log('SLS', `Diagnostic query failed! Status: ${res.status} | Body: ${err} | TSG: ${this.config.tsg_id} | Region: ${panwRegion}`, 'error');
                 return null;
             }
 
             const data = await res.json() as any;
             if (data.items && data.items.length > 0) {
                 const logEntry = data.items[0];
+                log('SLS', `Match found for ${params.dstIp}: Action=${logEntry.action}, Rule=${logEntry.rule}`);
                 return {
                     action: logEntry.action,
                     rule: logEntry.rule,
@@ -4766,12 +4771,18 @@ class SLSClient {
                     flags: logEntry.flags,
                     session_end_reason: logEntry.session_end_reason,
                     security_profile: logEntry.security_profile || logEntry.profile,
+                    device_name: logEntry.device_name || logEntry.device_id,
+                    vsys_name: logEntry.vsys_name || logEntry.vsys,
+                    parent_device_group: logEntry.parent_device_group || logEntry.dg_hier_level_1,
+                    log_type: logEntry.type,
+                    log_subtype: logEntry.subtype,
                     source: 'Strata Logging Service (Diagnostic)'
                 };
             }
+            log('SLS', `No diagnostic logs found for query: src=${params.srcIp}, dst=${params.dstIp}, window=${new Date(params.start).toLocaleTimeString()}-${new Date(params.end).toLocaleTimeString()}`);
             return null; // No logs found
         } catch (error) {
-            log('SLS', `Diagnostic query error: ${error}`, 'error');
+            log('SLS', `Critical diagnostic query exception: ${error}`, 'error');
             return null;
         }
     }
@@ -4838,8 +4849,8 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
         dstIp,
         dstPort,
         protocol,
-        start: testResult.timestamp,
-        end: testResult.timestamp + 10000 // Look within 10s of execution
+        start: testResult.timestamp - 5000,   // Look 5s BEFORE
+        end: testResult.timestamp + 60000    // Look up to 60s AFTER (expanded window for cloud indexing)
     });
 
     if (diagnostic) {

@@ -103,7 +103,7 @@ COPY traffic-generator.sh ./
 COPY stigix-all-in-one ./stigix-all-in-one
 
 # Install Python dependencies
-RUN pip3 install --no-cache-dir scapy flask prisma-sase -r iot/requirements.txt -r mcp-server/requirements.txt --break-system-packages || true
+RUN pip3 install --no-cache-dir requests scapy flask prisma-sase -r iot/requirements.txt -r mcp-server/requirements.txt --break-system-packages || true
 
 # Final preparations
 RUN chmod +x /app/traffic-generator.sh \

@@ -1921,7 +1921,7 @@ export default function Security({ token }: SecurityProps) {
 
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Mathed Rule</span>
+                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Matched Rule</span>
                                                         <span className="text-xs font-bold text-text-primary">{selectedTest.details.slsDiagnostic.rule || 'Unknown Rule'}</span>
                                                     </div>
                                                     <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
@@ -1935,6 +1935,30 @@ export default function Security({ token }: SecurityProps) {
                                                     <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
                                                         <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">URL Category</span>
                                                         <span className="text-xs font-bold text-text-primary uppercase">{selectedTest.details.slsDiagnostic.category || 'N/A'}</span>
+                                                    </div>
+                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Device / Site</span>
+                                                        <span className="text-xs font-bold text-text-primary truncate">{selectedTest.details.slsDiagnostic.device_name || 'Unknown Device'}</span>
+                                                    </div>
+                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">System (VSYS)</span>
+                                                        <span className="text-xs font-bold text-text-primary uppercase">{selectedTest.details.slsDiagnostic.vsys_name || 'N/A'}</span>
+                                                    </div>
+                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50 col-span-2">
+                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Service Provider / Origin</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={twMerge(
+                                                                "text-[10px] font-black px-2 py-0.5 rounded border",
+                                                                selectedTest.details.slsDiagnostic.parent_device_group?.toLowerCase().includes('access') 
+                                                                    ? "bg-purple-600/10 text-purple-600 border-purple-500/20" 
+                                                                    : "bg-blue-600/10 text-blue-600 border-blue-500/20"
+                                                            )}>
+                                                                {selectedTest.details.slsDiagnostic.parent_device_group?.toLowerCase().includes('access') ? 'PRISMA ACCESS' : 'PRISMA SD-WAN'}
+                                                            </span>
+                                                            <span className="text-xs font-bold text-text-primary opacity-70">
+                                                                ({selectedTest.details.slsDiagnostic.parent_device_group || 'Default DG'})
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                     <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
                                                         <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Zone Insight</span>

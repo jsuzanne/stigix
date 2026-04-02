@@ -38,12 +38,14 @@ export interface VyosAction {
 }
 
 export class VyosManager extends EventEmitter {
+    private pythonPath: string;
     private pythonScriptPath: string;
     private routersFile: string;
     private routers: Map<string, VyosRouter> = new Map();
 
-    constructor(configDir: string) {
+    constructor(configDir: string, pythonPath: string = 'python3') {
         super();
+        this.pythonPath = pythonPath;
         this.routersFile = path.join(configDir, 'vyos-config.json');
 
         // Target path: Option B (process.cwd()) as recommended in Plan v2
@@ -115,8 +117,8 @@ export class VyosManager extends EventEmitter {
 
             // Scrub API key for logging
             const scrubbedArgs = [this.pythonScriptPath, '--host', host, '--key', apiKey.substring(0, 4) + '***', 'get-info'];
-            log('VYOS', `Discover CLI: python3 ${scrubbedArgs.join(' ')}`, 'debug');
-            const proc = spawn('python3', [this.pythonScriptPath, '--host', host, '--key', apiKey, 'get-info']);
+            log('VYOS', `Discover CLI: ${this.pythonPath} ${scrubbedArgs.join(' ')}`, 'debug');
+            const proc = spawn(this.pythonPath, [this.pythonScriptPath, '--host', host, '--key', apiKey, 'get-info']);
 
             let output = '';
             let errorMsg = '';
@@ -345,14 +347,14 @@ export class VyosManager extends EventEmitter {
 
         // Scrub secrets for logging
         const scrubbedArgs = args.map(arg => (arg === router.apiKey ? '***' : arg));
-        log('VYOS', `Executing CLI: python3 ${scrubbedArgs.join(' ')}`, 'debug');
+        log('VYOS', `Executing CLI: ${this.pythonPath} ${scrubbedArgs.join(' ')}`, 'debug');
 
         // NEW: Log full command for debugging (with real values for troubleshooting)
-        const fullCommand = `vyos_sdwan_ctl.py --host ${router.host} --key ${router.apiKey.substring(0, 8)}... ${args.slice(7).join(' ')}`;
+        const fullCommand = `vyos_sdwan_ctl.py --host ${router.host} --key ${router.apiKey.substring(0, 8)}... ${args.slice(6).join(' ')}`;
         log('VYOS', `Full command: ${fullCommand}`, 'info');
 
         return new Promise((resolve, reject) => {
-            const proc = spawn('python3', args);
+            const proc = spawn(this.pythonPath, args);
             let output = '';
             let errorMsg = '';
 
@@ -413,10 +415,10 @@ export class VyosManager extends EventEmitter {
         ];
 
         const scrubbedArgs = args.map(arg => (arg === router.apiKey ? '***' : arg));
-        log('VYOS', `Get blocks CLI: python3 ${scrubbedArgs.join(' ')}`, 'debug');
+        log('VYOS', `Get blocks CLI: ${this.pythonPath} ${scrubbedArgs.join(' ')}`, 'debug');
 
         return new Promise((resolve, reject) => {
-            const proc = spawn('python3', args);
+            const proc = spawn(this.pythonPath, args);
             let output = '';
             let errorMsg = '';
 

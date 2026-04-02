@@ -611,6 +611,11 @@ export default function Settings({ token }: { token: string }) {
 
     const addProbe = async () => {
         if (!newProbe.name || !newProbe.target) return;
+
+        if (newProbe.type === 'CLOUD' && !cloudConfig?.hasKey) {
+            toast.error('Stigix Cloud Target requires a Master Key. Please check system configuration.');
+            return;
+        }
         let formattedTarget = newProbe.target.trim();
         if ((newProbe.type === 'HTTP' || newProbe.type === 'HTTPS') && !formattedTarget.startsWith('http://') && !formattedTarget.startsWith('https://')) {
             formattedTarget = `${newProbe.type.toLowerCase()}://${formattedTarget}`;
@@ -1229,6 +1234,14 @@ export default function Settings({ token }: { token: string }) {
                                             <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">
                                                 {newProbe.type === 'CLOUD' ? 'Cloud scenario' : 'Target URL / IP Address'}
                                             </label>
+                                            {newProbe.type === 'CLOUD' && !cloudConfig?.hasKey && (
+                                                <div className="p-3 bg-red-600/10 border border-dashed border-red-500/30 rounded-xl flex gap-3 items-start animate-in zoom-in-95 duration-300">
+                                                    <ShieldAlert size={14} className="text-red-500 mt-0.5 shrink-0" />
+                                                    <p className="text-[10px] font-bold text-red-100 leading-relaxed opacity-90">
+                                                        Stigix Cloud Probes require a <strong>Master Key</strong> to be configured in the global environment variables. Please contact your system administrator.
+                                                    </p>
+                                                </div>
+                                            )}
                                             {newProbe.type === 'CLOUD' ? (
                                                 <div className="space-y-3">
                                                     <div className="relative">
@@ -2721,11 +2734,13 @@ export default function Settings({ token }: { token: string }) {
                                             <div className="flex-1 space-y-2">
                                                 <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Region</label>
                                                 <select
-                                                    value={slsConfig.region}
+                                                    value={slsConfig.region || 'americas'}
                                                     onChange={e => setSlsConfig({ ...slsConfig, region: e.target.value })}
                                                     className="w-full bg-card border border-border rounded-xl px-4 py-3 text-xs font-black tracking-widest outline-none focus:ring-1 focus:ring-blue-500 transition-all appearance-none"
                                                 >
-                                                    <option value="prd">Production (PRD)</option>
+                                                    <option value="americas">Americas (PRD)</option>
+                                                    <option value="europe">Europe (PRD)</option>
+                                                    <option value="asia">Asia (PRD)</option>
                                                     <option value="stg">Staging (STG)</option>
                                                 </select>
                                             </div>
