@@ -252,6 +252,7 @@ class ConvergenceMetrics:
         rx_loss_ms = round((rx_lost_packets / rate_copy) * 1000) if rate_copy > 0 else 0
 
         avg_rtt = round(sum(rtts_copy) / len(rtts_copy), 2) if rtts_copy else 0.0
+        current_rtt_ms = round(rtts_copy[-1], 2) if rtts_copy else 0.0
         jitter_ms = round(jitter_copy * 1000.0, 2)
 
         return {
@@ -271,6 +272,7 @@ class ConvergenceMetrics:
             "max_blackout_ms": max_blackout,
             "current_blackout_ms": round(outage) if is_blackout else 0,
             "avg_rtt_ms": avg_rtt,
+            "current_rtt_ms": current_rtt_ms,
             "jitter_ms": jitter_ms,
             "rate_pps": rate_copy,
             "duration_s": duration,

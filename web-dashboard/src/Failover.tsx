@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { AreaChart, Area, ResponsiveContainer, YAxis } from 'recharts';
 import { Activity, Clock, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft } from 'lucide-react';
 import { isValidIpOrFqdn } from './utils/validation';
 
@@ -25,6 +26,7 @@ export default function Failover(props: FailoverProps) {
     const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
     const [isStarting, setIsStarting] = useState(false);
     const [isStopping, setIsStopping] = useState(false);
+    const [liveMetricsSeries, setLiveMetricsSeries] = useState<Record<string, any[]>>({});
 
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
@@ -44,7 +46,7 @@ export default function Failover(props: FailoverProps) {
         try {
             const res = await fetch('/api/convergence/status', { headers: authHeaders() });
             const data = await res.json();
-            setActiveTests(data);
+            setActiveTests(data.filter((t: any) => t.running !== false));
         } catch (e) { }
     };
 
@@ -60,9 +62,24 @@ export default function Failover(props: FailoverProps) {
 
     useEffect(() => {
         if (externalStatus) {
-            setActiveTests(externalStatus);
+            setActiveTests(externalStatus.filter((t: any) => t.running !== false));
         }
     }, [externalStatus]);
+
+    useEffect(() => {
+        setLiveMetricsSeries(prev => {
+            const next = { ...prev };
+            activeTests.forEach(t => {
+                const arr = next[t.testId] || [];
+                const rtt = typeof t.current_rtt_ms === 'number' ? t.current_rtt_ms : (t.avg_rtt_ms || 0);
+                const jitter = typeof t.jitter_ms === 'number' ? t.jitter_ms : 0;
+                const newArr = [...arr, { time: new Date().toLocaleTimeString(), rtt, jitter }];
+                if (newArr.length > 50) newArr.shift(); // Keep last 50 data points
+                next[t.testId] = newArr;
+            });
+            return next;
+        });
+    }, [activeTests]);
 
     useEffect(() => {
         fetchEndpoints();
@@ -421,6 +438,60 @@ export default function Failover(props: FailoverProps) {
                                             <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Received</span>
                                             <span className="text-sm font-bold text-blue-600 dark:text-blue-400 font-mono">{test.received}</span>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                                {/* Latency Chart */}
+                                <div>
+                                    <div className="flex justify-between items-end mb-2">
+                                        <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
+                                            <Activity size={12} className="text-emerald-500 animate-pulse" /> Live Latency (RTT)
+                                        </div>
+                                        <div className="text-lg font-bold text-emerald-400 font-mono tracking-tight shadow-sm">
+                                            {typeof test.current_rtt_ms === 'number' ? test.current_rtt_ms : test.avg_rtt_ms} <span className="text-[10px] text-text-muted ml-0.5">ms</span>
+                                        </div>
+                                    </div>
+                                    <div className="h-[60px] w-full bg-card-secondary/10 rounded overflow-hidden">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart data={liveMetricsSeries[test.testId] || []} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                                                <defs>
+                                                    <linearGradient id="colorRtt" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                                    </linearGradient>
+                                                </defs>
+                                                <YAxis domain={['auto', 'auto']} hide />
+                                                <Area type="monotone" dataKey="rtt" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorRtt)" isAnimationActive={false} />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+
+                                {/* Jitter Chart */}
+                                <div>
+                                    <div className="flex justify-between items-end mb-2">
+                                        <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
+                                            <Activity size={12} className="text-amber-500 animate-pulse" /> Live Jitter
+                                        </div>
+                                        <div className="text-lg font-bold text-amber-400 font-mono tracking-tight shadow-sm">
+                                            {test.jitter_ms || 0} <span className="text-[10px] text-text-muted ml-0.5">ms</span>
+                                        </div>
+                                    </div>
+                                    <div className="h-[60px] w-full bg-card-secondary/10 rounded overflow-hidden">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart data={liveMetricsSeries[test.testId] || []} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                                                <defs>
+                                                    <linearGradient id="colorJitter" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
+                                                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                                                    </linearGradient>
+                                                </defs>
+                                                <YAxis domain={['auto', 'auto']} hide />
+                                                <Area type="monotone" dataKey="jitter" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#colorJitter)" isAnimationActive={false} />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
                                     </div>
                                 </div>
                             </div>
