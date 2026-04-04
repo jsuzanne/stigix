@@ -631,10 +631,15 @@ class XfrJobManager {
     }
 
     private handleParsedXfrData(job: XfrJob, parsed: any) {
-        // Summary object has bytes_total, whereas intervals don't.
         if (parsed.bytes_total !== undefined || parsed.type === 'summary') {
             this.logToXfrFile(job, `[DEBUG-XFR-SUMMARY] Raw JSON: ${JSON.stringify(parsed)}`);
             job.summary = this.mapSummary(parsed);
+            
+            // Workaround for xfr summary bug: tcp_info.retransmits often resets to 0 at the end.
+            if (job.summary.retransmits === 0 && job.intervals.length > 0) {
+                job.summary.retransmits = job.intervals[job.intervals.length - 1].retransmits || 0;
+            }
+            
             this.logToXfrFile(job, `[DEBUG-XFR-MAPPED] Mapped Summary: ${JSON.stringify(job.summary)}`);
         } else if (parsed.type === 'interval' || parsed.throughput_mbps !== undefined) {
             const val = parsed.throughput_mbps || 0;
@@ -651,7 +656,10 @@ class XfrJobManager {
                 retransmits: parsed.retransmits || 0,
                 lost: parsed.lost || 0,
                 jitter_ms: parsed.jitter_ms || 0,
-                cwnd: parsed.cwnd || parsed.tcp_info?.cwnd || 0
+                cwnd: (() => {
+                    const c = parsed.cwnd || parsed.tcp_info?.cwnd || 0;
+                    return process.platform === 'darwin' ? c : c * 1448;
+                })()
             };
 
             // Handling bidirectional
@@ -857,7 +865,10 @@ class XfrJobManager {
             jitter_ms_avg: p.jitter_ms_avg || p.udp_stats?.jitter_ms || 0,
             retransmits: p.tcp_info?.retransmits || p.retransmits || 0,
             lost: p.udp_stats?.lost || p.lost || 0,
-            cwnd: p.tcp_info?.cwnd || p.cwnd || 0
+            cwnd: (() => {
+                const c = p.tcp_info?.cwnd || p.cwnd || 0;
+                return process.platform === 'darwin' ? c : c * 1448;
+            })()
         };
     }
 
