@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.2] - 2026-04-04
+### Added
+- **Speedtest**: Integrated robust UDP packet loss calculation (`lost` and `loss_percent`) into the real-time UI during Live Tests. 📉🛡️
+- **Speedtest**: Introduced real-time tracking and visual tooltips for TCP Congestion Window (`cwnd`) size (in KB). Added dedicated TCP Windows Size block in Job Analysis. 🚀
+### Fixed
+- **Speedtest**: Resolved macOS-specific latency tracking bug where Apple's `tcpi_rtt` kernel metrics were misreported as microseconds instead of milliseconds, leading to artificially low `0.2 ms` readings.
+- **Speedtest**: Automatically fallback `Packet Loss` live tracking to `N/A` for UDP interval streams, avoiding inaccurate `0.00%` UI states during mid-flight generation.
+
 ## [v1.2.1-patch.250] - 2026-03-19
 ### Fixed
 - **Maintenance**: Fixed "System Maintenance" menu functionality. 🛠️🔄

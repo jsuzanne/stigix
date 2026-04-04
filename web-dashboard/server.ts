@@ -482,6 +482,9 @@ interface XfrTestResultSummary {
     rtt_ms_min: number;
     rtt_ms_max: number;
     jitter_ms_avg: number;
+    retransmits?: number;
+    lost?: number;
+    cwnd?: number;
 }
 
 interface XfrTestResultInterval {
@@ -490,6 +493,10 @@ interface XfrTestResultInterval {
     received_mbps: number;
     loss_percent: number;
     rtt_ms: number;
+    retransmits?: number;
+    lost?: number;
+    jitter_ms?: number;
+    cwnd?: number;
 }
 
 interface XfrJob {
@@ -626,7 +633,9 @@ class XfrJobManager {
     private handleParsedXfrData(job: XfrJob, parsed: any) {
         // Summary object has bytes_total, whereas intervals don't.
         if (parsed.bytes_total !== undefined || parsed.type === 'summary') {
+            this.logToXfrFile(job, `[DEBUG-XFR-SUMMARY] Raw JSON: ${JSON.stringify(parsed)}`);
             job.summary = this.mapSummary(parsed);
+            this.logToXfrFile(job, `[DEBUG-XFR-MAPPED] Mapped Summary: ${JSON.stringify(job.summary)}`);
         } else if (parsed.type === 'interval' || parsed.throughput_mbps !== undefined) {
             const val = parsed.throughput_mbps || 0;
             const timestamp = parsed.timestamp && !isNaN(Date.parse(parsed.timestamp))
@@ -638,7 +647,11 @@ class XfrJobManager {
                 sent_mbps: job.params.direction === 'server-to-client' ? 0 : val,
                 received_mbps: job.params.direction === 'server-to-client' ? val : 0,
                 loss_percent: parsed.loss_percent || 0,
-                rtt_ms: (parsed.rtt_us || parsed.tcp_info?.rtt_us || 0) / 1000
+                rtt_ms: process.platform === 'darwin' ? (parsed.rtt_us || parsed.tcp_info?.rtt_us || 0) : (parsed.rtt_us || parsed.tcp_info?.rtt_us || 0) / 1000,
+                retransmits: parsed.retransmits || 0,
+                lost: parsed.lost || 0,
+                jitter_ms: parsed.jitter_ms || 0,
+                cwnd: parsed.cwnd || parsed.tcp_info?.cwnd || 0
             };
 
             // Handling bidirectional
@@ -718,8 +731,10 @@ class XfrJobManager {
         this.logToXfrFile(job, `Target validation complete. Launching test...`);
 
         const args = this.buildArgs(job);
-        log('XFR', `[${job.sequence_id}] Launching: ${XFR_BINARY} ${args.join(' ')}`);
+        const cliCommand = `${XFR_BINARY} ${args.join(' ')}`;
+        log('XFR', `[${job.sequence_id}] Launching: ${cliCommand}`);
         this.logToXfrFile(job, `Test started: ${job.params.protocol.toUpperCase()} ${job.params.direction} to ${job.params.host}:${job.params.port} (${job.params.duration_sec}s, ${job.params.bitrate || 'Max BW'})`);
+        this.logToXfrFile(job, `Executing CLI: ${cliCommand}`);
 
         try {
             const child = spawn(XFR_BINARY, args);
@@ -727,7 +742,9 @@ class XfrJobManager {
 
             let buffer = '';
             child.stdout.on('data', (data) => {
-                buffer += data.toString();
+                const chunk = data.toString();
+                this.logToXfrFile(job, `[RAW-STDOUT] ${chunk.trim()}`);
+                buffer += chunk;
 
                 // Robust JSON stream parsing for potentially multi-line objects
                 let startIdx = buffer.indexOf('{');
@@ -750,8 +767,8 @@ class XfrJobManager {
                         try {
                             const parsed = JSON.parse(jsonStr);
                             this.handleParsedXfrData(job, parsed);
-                        } catch (e) {
-                            // Invalid or partial JSON, just log it as raw for debug if needed
+                        } catch (e: any) {
+                            this.logToXfrFile(job, `[DEBUG-JSON-ERROR] Parse failed: ${e.message} | Payload: ${jsonStr.substring(0, 200)}...`);
                         }
                         buffer = buffer.substring(endIdx + 1);
                         startIdx = buffer.indexOf('{');
@@ -833,11 +850,14 @@ class XfrJobManager {
             duration_sec: p.duration_sec || (p.duration_ms ? p.duration_ms / 1000 : 0),
             sent_mbps: p.throughput_mbps || p.sent_mbps || 0,
             received_mbps: p.throughput_mbps || p.received_mbps || 0,
-            loss_percent: p.loss_percent || 0,
-            rtt_ms_avg: p.rtt_ms_avg || (p.tcp_info?.rtt_us ? p.tcp_info.rtt_us / 1000 : 0),
+            loss_percent: p.loss_percent || p.udp_stats?.lost_percent || 0,
+            rtt_ms_avg: p.rtt_ms_avg || (p.tcp_info?.rtt_us ? (process.platform === 'darwin' ? p.tcp_info.rtt_us : p.tcp_info.rtt_us / 1000) : 0),
             rtt_ms_min: p.rtt_ms_min || 0,
             rtt_ms_max: p.rtt_ms_max || 0,
-            jitter_ms_avg: p.jitter_ms_avg || 0
+            jitter_ms_avg: p.jitter_ms_avg || p.udp_stats?.jitter_ms || 0,
+            retransmits: p.tcp_info?.retransmits || p.retransmits || 0,
+            lost: p.udp_stats?.lost || p.lost || 0,
+            cwnd: p.tcp_info?.cwnd || p.cwnd || 0
         };
     }
 

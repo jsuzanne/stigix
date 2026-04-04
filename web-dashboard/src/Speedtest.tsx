@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Area, AreaChart } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Area, AreaChart, ComposedChart, Bar } from 'recharts';
 import {
     Activity, Gauge, Play, Pause, AlertCircle, Clock, Zap, Target, Network,
     Shield, Cpu, ChevronRight, BarChart3, Info, CheckCircle2, XCircle,
@@ -29,6 +29,10 @@ interface XfrInterval {
     received_mbps: number;
     loss_percent: number;
     rtt_ms: number;
+    retransmits?: number;
+    lost?: number;
+    jitter_ms?: number;
+    cwnd?: number;
 }
 
 interface XfrSummary {
@@ -41,6 +45,9 @@ interface XfrSummary {
     rtt_ms_min: number;
     rtt_ms_max: number;
     jitter_ms_avg: number;
+    retransmits?: number;
+    lost?: number;
+    cwnd?: number;
 }
 
 interface XfrJob {
@@ -468,7 +475,7 @@ export default function Speedtest({ token }: Props) {
                         </div>
 
                         {/* Summary Cards */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 relative z-10">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 relative z-10">
                             <div className="bg-card-secondary/50 border border-border/50 rounded-2xl p-5 group hover:border-blue-500/30 transition-all">
                                 <label className="text-[10px] font-black text-text-muted tracking-widest opacity-60 flex items-center gap-2 mb-2">
                                     <ArrowUpRight size={14} className="text-blue-500" /> Throughput
@@ -501,10 +508,25 @@ export default function Speedtest({ token }: Props) {
                                 </label>
                                 <div className="flex items-baseline gap-2">
                                     <span className="text-3xl font-black text-text-primary tracking-tighter text-red-500">
-                                        {activeJob?.summary ? activeJob.summary.loss_percent.toFixed(2) :
-                                            (chartData.length > 0 ? chartData[chartData.length - 1].loss_percent?.toFixed(2) : '0.00')}
+                                        {activeJob?.summary ? activeJob.summary.loss_percent.toFixed(1) :
+                                            (activeJob?.params.protocol === 'udp' ? 'N/A' : (chartData.length > 0 ? chartData[chartData.length - 1].loss_percent?.toFixed(1) : '0.0'))}
                                     </span>
                                     <span className="text-[10px] font-black text-text-muted italic opacity-40">%</span>
+                                </div>
+                            </div>
+
+                            <div className="bg-card-secondary/50 border border-border/50 rounded-2xl p-5 group hover:border-orange-500/30 transition-all">
+                                <label className="text-[10px] font-black text-text-muted tracking-widest opacity-60 flex items-center gap-2 mb-2">
+                                    <Target size={14} className="text-orange-500" /> {activeJob?.params.protocol === 'udp' ? 'Packets Lost' : 'Retransmits'}
+                                </label>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-3xl font-black text-text-primary tracking-tighter text-orange-500">
+                                        {activeJob?.summary ?
+                                            (activeJob.params.protocol === 'udp' ? activeJob.summary.lost || 0 : activeJob.summary.retransmits || 0) :
+                                            (chartData.length > 0 ?
+                                                (activeJob?.params.protocol === 'udp' ? chartData[chartData.length - 1].lost || 0 : chartData[chartData.length - 1].retransmits || 0) : '0')}
+                                    </span>
+                                    <span className="text-[10px] font-black text-text-muted italic opacity-40">Pkts</span>
                                 </div>
                             </div>
                         </div>
@@ -512,7 +534,7 @@ export default function Speedtest({ token }: Props) {
                         {/* Chart Area */}
                         <div className="h-64 mt-4 relative z-10">
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={chartData}>
+                                <ComposedChart data={chartData}>
                                     <defs>
                                         <linearGradient id="colorMain" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
@@ -529,6 +551,16 @@ export default function Speedtest({ token }: Props) {
                                         className="text-text-muted opacity-60"
                                     />
                                     <YAxis
+                                        yAxisId="left"
+                                        axisLine={false}
+                                        tickLine={false}
+                                        fontSize={10}
+                                        tick={{ fill: 'currentColor' }}
+                                        className="text-text-muted opacity-60"
+                                    />
+                                    <YAxis
+                                        yAxisId="right"
+                                        orientation="right"
                                         axisLine={false}
                                         tickLine={false}
                                         fontSize={10}
@@ -536,13 +568,35 @@ export default function Speedtest({ token }: Props) {
                                         className="text-text-muted opacity-60"
                                     />
                                     <Tooltip
-                                        contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', fontSize: '10px' }}
-                                        itemStyle={{ fontWeight: 'black' }}
-                                        labelStyle={{ color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}
+                                        content={({ active, payload, label }) => {
+                                            if (active && payload && payload.length) {
+                                                return (
+                                                    <div className="bg-card border border-border p-3 rounded-xl shadow-lg text-[10px]">
+                                                        <p className="text-text-muted font-bold tracking-widest opacity-60 mb-2">{label}s</p>
+                                                        {payload.map((entry: any, index: number) => (
+                                                            <div key={index} className="flex items-center justify-between gap-6 mb-1">
+                                                                <span style={{ color: entry.color }} className="font-bold">{entry.name}</span>
+                                                                <span className="font-black text-text-primary">
+                                                                    {entry.name.includes('Mbps') ? Number(entry.value).toFixed(2) : entry.value}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                        {activeJob?.params.protocol === 'tcp' && payload[0].payload.cwnd !== undefined && (
+                                                            <div className="flex items-center justify-between gap-6 mt-2 pt-2 border-t border-border/50">
+                                                                <span className="font-bold text-[#8b5cf6]">TCP Window</span>
+                                                                <span className="font-black text-text-primary">{(payload[0].payload.cwnd / 1024).toFixed(0)} KB</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        }}
                                     />
-                                    <Area type="monotone" dataKey="received_mbps" name="Received" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorMain)" />
-                                    <Area type="monotone" dataKey="sent_mbps" name="Sent" stroke="#10b981" strokeWidth={3} fill="transparent" />
-                                </AreaChart>
+                                    <Area yAxisId="left" type="monotone" dataKey="received_mbps" name="Received Mbps" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorMain)" />
+                                    <Area yAxisId="left" type="monotone" dataKey="sent_mbps" name="Sent Mbps" stroke="#10b981" strokeWidth={3} fill="transparent" />
+                                    <Bar yAxisId="right" dataKey={activeJob?.params.protocol === 'udp' ? 'lost' : 'retransmits'} name={activeJob?.params.protocol === 'udp' ? 'Packets Lost' : 'Retransmits'} fill="#f97316" radius={[4, 4, 0, 0]} maxBarSize={20} />
+                                </ComposedChart>
                             </ResponsiveContainer>
                         </div>
                     </div>
@@ -620,7 +674,7 @@ export default function Speedtest({ token }: Props) {
                                                         {job.summary ? (
                                                             <div className="flex flex-col items-end">
                                                                 <div className="text-xs font-black text-text-primary">{Math.round(job.summary.received_mbps)} Mbps</div>
-                                                                <div className="text-[9px] text-red-500 font-bold tracking-tighter">{job.summary.loss_percent.toFixed(2)}% Loss</div>
+                                                                <div className="text-[9px] text-red-500 font-bold tracking-tighter">{job.summary.loss_percent.toFixed(1)}% Loss</div>
                                                             </div>
                                                         ) : (
                                                             <span className="text-xs font-bold text-text-muted italic">No results</span>
@@ -705,14 +759,33 @@ export default function Speedtest({ token }: Props) {
                             <div className="p-8 space-y-8">
                                 <div>
                                     <h4 className="flex items-center gap-2 text-[10px] font-black text-text-muted tracking-widest mb-4">
-                                        <ShieldOff size={14} className="text-red-500" /> Loss Analysis
+                                        <ShieldOff size={14} className={selectedJob.params.protocol === 'udp' ? "text-red-500" : "text-orange-500"} /> 
+                                        {selectedJob.params.protocol === 'udp' ? 'Loss Analysis' : 'Retransmit Analysis'}
                                     </h4>
-                                    <div className="bg-card-secondary p-5 rounded-2xl border border-border flex items-center justify-between">
-                                        <div>
-                                            <div className="text-3xl font-black text-red-500">{selectedJob.summary?.loss_percent.toFixed(4)}%</div>
-                                            <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">Average Packet Loss across all streams</div>
+                                    <div className="bg-card-secondary p-5 rounded-2xl border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                        <div className="flex items-center gap-8">
+                                            <div>
+                                                <div className={cn("text-3xl font-black", selectedJob.params.protocol === 'udp' ? "text-red-500" : "text-orange-500")}>
+                                                    {selectedJob.params.protocol === 'udp' ? `${selectedJob.summary?.loss_percent.toFixed(1)}%` : selectedJob.summary?.retransmits || 0}
+                                                </div>
+                                                <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">
+                                                    {selectedJob.params.protocol === 'udp' ? 'Average Packet Loss' : 'Total Retransmitted Packets'}
+                                                </div>
+                                            </div>
+                                            {selectedJob.params.protocol === 'udp' && (
+                                                <div>
+                                                    <div className="text-3xl font-black text-text-primary">{selectedJob.summary?.lost ?? 0}</div>
+                                                    <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">Total Packets Dropped</div>
+                                                </div>
+                                            )}
+                                            {selectedJob.params.protocol === 'tcp' && selectedJob.summary?.cwnd !== undefined && (
+                                                <div>
+                                                    <div className="text-3xl font-black text-text-primary">{(selectedJob.summary.cwnd / 1024).toFixed(0)} <span className="text-sm">KB</span></div>
+                                                    <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">TCP Window Size</div>
+                                                </div>
+                                            )}
                                         </div>
-                                        <div className="text-right">
+                                        <div className="text-left sm:text-right">
                                             <div className="text-xl font-black text-text-primary">{selectedJob.params.protocol.toUpperCase()}</div>
                                             <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">{selectedJob.params.parallel_streams} Parallel Streams</div>
                                         </div>

@@ -633,7 +633,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                 <td className="px-6 py-4">
                                     <div className="flex flex-col">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-sm font-bold text-text-primary group-hover:text-blue-500 transition-colors uppercase tracking-tight">{e.name}</span>
+                                            <span className="text-sm font-bold text-text-primary group-hover:text-blue-500 transition-colors tracking-tight">{e.name}</span>
                                             <span className={cn(
                                                 "px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-widest flex items-center gap-1",
                                                 e.type === 'CLOUD'
