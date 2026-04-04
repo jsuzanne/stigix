@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.6] - 2026-04-04
+### Fixed
+- **Speedtest**: Removed the `RTT (ms)` trace overlay from live charts during UDP tests, as UDP avoids latency instrumentation at the transport level.
+- **Speedtest**: Injected explicit units (`Bandwidth (Mbps)` and `RTT (ms) / Rxmt`) as vertically aligned left and right Y-Axis chart labels to improve graphical readability without expanding the legend footprint.
+
 ## [v1.2.2-patch.5] - 2026-04-04
 ### Added
 - **Speedtest**: Integrated a dynamically scaled `RTT (ms)` trace into the live Bandwidth visualization chart to track the correlation between latency and throughput under congestion. 📈

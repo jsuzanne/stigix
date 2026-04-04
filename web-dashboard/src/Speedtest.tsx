@@ -558,6 +558,7 @@ export default function Speedtest({ token }: Props) {
                                         fontSize={10}
                                         tick={{ fill: 'currentColor' }}
                                         className="text-text-muted opacity-60"
+                                        label={{ value: 'Bandwidth (Mbps)', angle: -90, position: 'insideLeft', fill: 'currentColor', style: { textAnchor: 'middle', opacity: 0.5, fontSize: 9, fontWeight: 'bold', letterSpacing: '0.1em' } }}
                                     />
                                     <YAxis
                                         yAxisId="right"
@@ -567,6 +568,7 @@ export default function Speedtest({ token }: Props) {
                                         fontSize={10}
                                         tick={{ fill: 'currentColor' }}
                                         className="text-text-muted opacity-60"
+                                        label={{ value: activeJob?.params.protocol === 'udp' ? 'Loss (Pkts)' : 'RTT (ms) / Rxmt', angle: 90, position: 'insideRight', fill: 'currentColor', style: { textAnchor: 'middle', opacity: 0.5, fontSize: 9, fontWeight: 'bold', letterSpacing: '0.1em' } }}
                                     />
                                     <Tooltip
                                         content={({ active, payload, label }) => {
@@ -596,7 +598,9 @@ export default function Speedtest({ token }: Props) {
                                     />
                                     <Area yAxisId="left" type="monotone" dataKey="received_mbps" name="Received Mbps" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorMain)" />
                                     <Area yAxisId="left" type="monotone" dataKey="sent_mbps" name="Sent Mbps" stroke="#10b981" strokeWidth={3} fill="transparent" />
-                                    <Line yAxisId="right" type="monotone" dataKey="rtt_ms" name="RTT" stroke="#8b5cf6" strokeWidth={2} dot={false} strokeDasharray="3 3" />
+                                    {activeJob?.params.protocol === 'tcp' && (
+                                        <Line yAxisId="right" type="monotone" dataKey="rtt_ms" name="RTT" stroke="#8b5cf6" strokeWidth={2} dot={false} strokeDasharray="3 3" />
+                                    )}
                                     <Bar yAxisId="right" dataKey={activeJob?.params.protocol === 'udp' ? 'lost' : 'retransmits'} name={activeJob?.params.protocol === 'udp' ? 'Packets Lost' : 'Retransmits'} fill="#f97316" radius={[4, 4, 0, 0]} maxBarSize={20} />
                                 </ComposedChart>
                             </ResponsiveContainer>
