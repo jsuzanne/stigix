@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.4] - 2026-04-04
+### Added
+- **UI**: Implemented modern, dark-themed custom CSS tooltips for navigational elements. ✨
+- **UI**: Overhauled navigation sidebar labels with concise titles (e.g., `System & Settings` -> `Settings`) and rich explanatory hover tooltips. 
+
 ## [v1.2.2-patch.3] - 2026-04-04
 ### Fixed
 - **Speedtest**: Fixed an issue where `tcp_info.cwnd` and `tcp_info.retransmits` metrics were dropped during backend JSON mapping, preventing them from propagating to the UI.

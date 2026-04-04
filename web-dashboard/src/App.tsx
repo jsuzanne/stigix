@@ -833,109 +833,120 @@ export default function App() {
         <button
           onClick={() => setView('dashboard')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
+            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'dashboard' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
-          <LayoutDashboard size={18} /> Dashboard
+          <LayoutDashboard size={18} /> Traffic Control
+          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Control SaaS traffic generation</span>
         </button>
         <button
           onClick={() => setView('performance')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
+            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'performance' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
           <Gauge size={18} /> Digital Experience
+          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Monitor probes and user experience</span>
         </button>
 
         {features.xfr_enabled && (
           <button
             onClick={() => setView('speedtest')}
             className={cn(
-              "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
+              "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
               view === 'speedtest' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
             )}
           >
             <Activity size={18} /> Bandwidth Test
+            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Measure real-time throughput</span>
           </button>
         )}
         <button
           onClick={() => setView('security')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
+            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'security' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
           <Shield size={18} /> Security
+          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Validate security policy enforcement</span>
         </button>
         <button
           onClick={() => setView('iot')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
+            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'iot' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
           <Cpu size={18} /> IoT Simulation
+          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Emulate IoT device traffic</span>
         </button>
         <button
           onClick={() => setView('voice')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
+            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'voice' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
-          <Phone size={18} /> VoIP
+          <Phone size={18} /> Voice
+          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Measure voice quality and MOS</span>
         </button>
         <button
           onClick={() => setView('convergence')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
+            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'convergence' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
-          <Zap size={18} /> Convergence
+          <Zap size={18} /> Failover Monitoring
+          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Track blackout and packet loss during failover</span>
         </button>
         <button
           onClick={() => setView('topology')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
+            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'topology' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
           <Network size={18} /> Topology <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">Beta</span>
+          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Visualize tunnels, hubs and path status</span>
         </button>
         <button
           onClick={() => setView('vyos')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
+            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'vyos' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
-          <Monitor size={18} /> Vyos Control
+          <Monitor size={18} /> VyOS Control
+          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Trigger impairments and router actions</span>
         </button>
         <button
           onClick={() => setView('events')}
           className={cn(
-            "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
+            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
             view === 'events' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
           <Terminal size={18} /> Live Events
+          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">View live activity and test events</span>
         </button>
         {/* SRT Tab hidden in v1.1.2-patch.28 */}
         {username === 'admin' && (
           <button
             onClick={() => setView('settings')}
             className={cn(
-              "px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all relative",
+              "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-xs border-b-2 transition-all",
               view === 'settings' ? "border-blue-600 text-blue-600 dark:text-blue-400" : "border-transparent text-text-muted hover:text-text-primary"
             )}
           >
-            <Settings size={18} /> System & Settings
+            <Settings size={18} /> Settings
             {maintenance?.updateAvailable && (
               <span className="absolute top-2 right-1 w-2 h-2 bg-blue-600 rounded-full animate-pulse border border-background" />
             )}
+            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Manage system options and platform info</span>
           </button>
         )}
       </div>
