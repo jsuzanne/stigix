@@ -48,6 +48,7 @@ interface XfrSummary {
     retransmits?: number;
     lost?: number;
     cwnd?: number;
+    bytes_total?: number;
 }
 
 interface XfrJob {
@@ -577,7 +578,7 @@ export default function Speedtest({ token }: Props) {
                                                             <div key={index} className="flex items-center justify-between gap-6 mb-1">
                                                                 <span style={{ color: entry.color }} className="font-bold">{entry.name}</span>
                                                                 <span className="font-black text-text-primary">
-                                                                    {entry.name.includes('Mbps') ? Number(entry.value).toFixed(2) : entry.value}
+                                                                    {entry.name.includes('Mbps') ? Number(entry.value).toFixed(2) : (entry.name.includes('RTT') ? Number(entry.value).toFixed(1) + ' ms' : entry.value)}
                                                                 </span>
                                                             </div>
                                                         ))}
@@ -595,6 +596,7 @@ export default function Speedtest({ token }: Props) {
                                     />
                                     <Area yAxisId="left" type="monotone" dataKey="received_mbps" name="Received Mbps" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorMain)" />
                                     <Area yAxisId="left" type="monotone" dataKey="sent_mbps" name="Sent Mbps" stroke="#10b981" strokeWidth={3} fill="transparent" />
+                                    <Line yAxisId="right" type="monotone" dataKey="rtt_ms" name="RTT" stroke="#8b5cf6" strokeWidth={2} dot={false} strokeDasharray="3 3" />
                                     <Bar yAxisId="right" dataKey={activeJob?.params.protocol === 'udp' ? 'lost' : 'retransmits'} name={activeJob?.params.protocol === 'udp' ? 'Packets Lost' : 'Retransmits'} fill="#f97316" radius={[4, 4, 0, 0]} maxBarSize={20} />
                                 </ComposedChart>
                             </ResponsiveContainer>
@@ -726,7 +728,7 @@ export default function Speedtest({ token }: Props) {
                                         <BarChart3 className="text-white" size={24} />
                                     </div>
                                     <div>
-                                        <h3 className="text-2xl font-black text-text-primary tracking-tight">Job Analysis</h3>
+                                        <h3 className="text-2xl font-black text-text-primary tracking-tight">Test Details</h3>
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs font-black text-text-muted bg-card px-2 py-0.5 rounded border border-border">{selectedJob.sequence_id}</span>
                                             <span className="text-[10px] font-black text-text-muted tracking-widest opacity-60">
@@ -754,6 +756,56 @@ export default function Speedtest({ token }: Props) {
                                         <div className="text-xl font-black text-text-secondary">{selectedJob.summary?.rtt_ms_max.toFixed(1) || '0.0'} ms</div>
                                     </div>
                                 </div>
+
+                                {(() => {
+                                    const isUpload = selectedJob.params.direction === 'client-to-server';
+                                    const isDownload = selectedJob.params.direction === 'server-to-client';
+                                    const isBidir = selectedJob.params.direction === 'bidirectional';
+
+                                    let txBytes = 0;
+                                    let rxBytes = 0;
+
+                                    if (selectedJob.summary?.bytes_total) {
+                                        if (isUpload) txBytes = selectedJob.summary.bytes_total;
+                                        if (isDownload) rxBytes = selectedJob.summary.bytes_total;
+                                        if (isBidir) {
+                                            const totalMbps = (selectedJob.summary.sent_mbps || 0) + (selectedJob.summary.received_mbps || 0);
+                                            if (totalMbps > 0) {
+                                                txBytes = ((selectedJob.summary.sent_mbps || 0) / totalMbps) * selectedJob.summary.bytes_total;
+                                                rxBytes = ((selectedJob.summary.received_mbps || 0) / totalMbps) * selectedJob.summary.bytes_total;
+                                            }
+                                        }
+                                    } else if (selectedJob.intervals) {
+                                        txBytes = selectedJob.intervals.reduce((acc: number, i: any) => acc + (i.sent_mbps * 1024 * 1024 / 8), 0);
+                                        rxBytes = selectedJob.intervals.reduce((acc: number, i: any) => acc + (i.received_mbps * 1024 * 1024 / 8), 0);
+                                    }
+
+                                    const formatBytes = (bytes: number) => {
+                                        if (!bytes || bytes === 0) return '0 B';
+                                        const k = 1024;
+                                        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+                                        const i = Math.floor(Math.log(bytes) / Math.log(k));
+                                        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+                                    };
+
+                                    return (
+                                        <div className="bg-card-secondary p-5 rounded-2xl border border-border mt-8 flex flex-col sm:flex-row justify-between gap-4">
+                                            <div>
+                                                <div className="text-[10px] font-black text-text-muted tracking-widest uppercase mb-1">Total Download</div>
+                                                <div className="text-3xl font-black text-[#3b82f6]">{formatBytes(rxBytes)}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-[10px] font-black text-text-muted tracking-widest uppercase mb-1">Total Upload</div>
+                                                <div className="text-3xl font-black text-[#10b981]">{formatBytes(txBytes)}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-[10px] font-black text-text-muted tracking-widest uppercase mb-1">Total Transferred</div>
+                                                <div className="text-3xl font-black text-text-primary">{formatBytes(rxBytes + txBytes)}</div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
                             </div>
 
                             <div className="p-8 space-y-8">

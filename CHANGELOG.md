@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.5] - 2026-04-04
+### Added
+- **Speedtest**: Integrated a dynamically scaled `RTT (ms)` trace into the live Bandwidth visualization chart to track the correlation between latency and throughput under congestion. 📈
+- **Speedtest**: Added live `RTT (ms)` monitoring to the interactive chart tooltip.
+- **Speedtest**: Renamed final metrics modal to `Test Details` and implemented a payload reconstruction engine to calculate and display Total Data Transferred, Total Data Uploaded, and Total Data Downloaded (including Bidirectional test payload ratios). 💽
+
 ## [v1.2.2-patch.4] - 2026-04-04
 ### Added
 - **UI**: Implemented modern, dark-themed custom CSS tooltips for navigational elements. ✨
