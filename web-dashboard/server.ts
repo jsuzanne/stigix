@@ -487,6 +487,8 @@ interface XfrTestResultSummary {
     jitter_ms_avg: number;
     retransmits?: number;
     lost?: number;
+    packets_sent?: number;
+    packets_received?: number;
     cwnd?: number;
     bytes_total?: number;
 }
@@ -882,6 +884,8 @@ class XfrJobManager {
             jitter_ms_avg: p.jitter_ms_avg || p.udp_stats?.jitter_ms || 0,
             retransmits: p.tcp_info?.retransmits || p.retransmits || 0,
             lost: p.udp_stats?.lost || p.lost || 0,
+            packets_sent: p.udp_stats?.packets_sent,
+            packets_received: p.udp_stats?.packets_received,
             cwnd: (() => {
                 const c = p.tcp_info?.cwnd || p.cwnd || 0;
                 return process.platform === 'darwin' ? c : c * 1448;

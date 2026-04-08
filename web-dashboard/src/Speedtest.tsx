@@ -48,6 +48,8 @@ interface XfrSummary {
     retransmits?: number;
     lost?: number;
     cwnd?: number;
+    packets_sent?: number;
+    packets_received?: number;
     bytes_total?: number;
 }
 
@@ -830,26 +832,19 @@ export default function Speedtest({ token }: Props) {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <div className="bg-card border border-border rounded-2xl p-4">
-                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Avg Rtt</label>
-                                        <div className="text-xl font-black text-cyan-500">{selectedJob.summary?.rtt_ms_avg.toFixed(1) || '0.0'} ms</div>
-                                    </div>
-                                    <div className="bg-card border border-border rounded-2xl p-4">
-                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Jitter</label>
-                                        <div className="text-xl font-black text-purple-500">{selectedJob.summary?.jitter_ms_avg.toFixed(2) || '0.00'} ms</div>
-                                    </div>
-                                    <div className="bg-card border border-border rounded-2xl p-4">
-                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Min Latency</label>
-                                        <div className="text-xl font-black text-text-primary">{selectedJob.summary?.rtt_ms_min.toFixed(1) || '0.0'} ms</div>
-                                    </div>
-                                    <div className="bg-card border border-border rounded-2xl p-4">
-                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Max Latency</label>
-                                        <div className="text-xl font-black text-text-secondary">{selectedJob.summary?.rtt_ms_max.toFixed(1) || '0.0'} ms</div>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                                <div className={cn("grid gap-4", selectedJob.params.protocol === 'tcp' ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-2 lg:grid-cols-3")}>
+                                    {selectedJob.params.protocol === 'tcp' && (
+                                        <div className="bg-card border border-border rounded-2xl p-4">
+                                            <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Avg Rtt</label>
+                                            <div className="text-xl font-black text-cyan-500">{selectedJob.summary?.rtt_ms_avg.toFixed(1) || '0.0'} ms</div>
+                                        </div>
+                                    )}
+                                    {selectedJob.params.protocol === 'udp' && (
+                                        <div className="bg-card border border-border rounded-2xl p-4">
+                                            <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Jitter</label>
+                                            <div className="text-xl font-black text-purple-500">{selectedJob.summary?.jitter_ms_avg.toFixed(2) || '0.00'} ms</div>
+                                        </div>
+                                    )}
                                     <div className="bg-card border border-border rounded-2xl p-4">
                                         <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">DSCP</label>
                                         <div className="text-lg font-bold text-text-primary flex items-center gap-2">{selectedJob.params.dscp || 'Default'}</div>
@@ -934,10 +929,20 @@ export default function Speedtest({ token }: Props) {
                                                 </div>
                                             </div>
                                             {selectedJob.params.protocol === 'udp' && (
-                                                <div>
-                                                    <div className="text-3xl font-black text-text-primary">{selectedJob.summary?.lost ?? 0}</div>
-                                                    <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">Total Packets Dropped</div>
-                                                </div>
+                                                <>
+                                                    <div>
+                                                        <div className="text-3xl font-black text-text-primary">{selectedJob.summary?.packets_sent?.toLocaleString() ?? 0}</div>
+                                                        <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">Total Packets Sent</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-3xl font-black text-text-primary">{selectedJob.summary?.packets_received?.toLocaleString() ?? 0}</div>
+                                                        <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">Total Packets Received</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-3xl font-black text-text-primary">{selectedJob.summary?.lost?.toLocaleString() ?? 0}</div>
+                                                        <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">Total Packets Dropped</div>
+                                                    </div>
+                                                </>
                                             )}
                                             {selectedJob.params.protocol === 'tcp' && selectedJob.summary?.cwnd !== undefined && (
                                                 <div>
