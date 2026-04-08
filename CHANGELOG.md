@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Speedtest**: Introduced advanced `DSCP / TOS` markings inside the Custom mode (supporting classes like `EF`, `AF11`, or raw bytes).
 - **Speedtest**: Implemented a dynamic Flow Source Port (`--cport`) tracker interface utilizing `30000 + N` mapping logic to enhance granular router metric inspection. Supported on both TCP and UDP methodologies.
 - **Speedtest**: Added a selective dropdown to enforce explicitly constrained TCP Congestion mechanisms (`Cubic` or `Reno`).
+### Changed
+- **UI**: Rebranded the label 'Speedtest Config' to 'Bandwidth Test' for better clarity.
 
 ## [v1.2.2-patch.6] - 2026-04-04
 ### Fixed
