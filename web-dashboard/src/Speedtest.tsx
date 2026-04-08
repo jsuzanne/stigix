@@ -5,7 +5,7 @@ import {
     Shield, Cpu, ChevronRight, BarChart3, Info, CheckCircle2, XCircle,
     Search, Filter, Download, Trash2, ChevronDown, ChevronUp, Share2,
     ShieldAlert, ExternalLink, ArrowUpRight, ShieldOff, Copy, RefreshCw,
-    History as HistoryIcon, X
+    History as HistoryIcon, X, Layers
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { clsx, type ClassValue } from 'clsx';
@@ -575,19 +575,34 @@ export default function Speedtest({ token }: Props) {
                                     <span className="text-[10px] font-black text-text-muted italic opacity-40">ms</span>
                                 </div>
                             </div>
-
-                            <div className="bg-card-secondary/50 border border-border/50 rounded-2xl p-5 group hover:border-red-500/30 transition-all">
-                                <label className="text-[10px] font-black text-text-muted tracking-widest opacity-60 flex items-center gap-2 mb-2">
-                                    <ShieldOff size={14} className="text-red-500" /> Packet Loss
-                                </label>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-3xl font-black text-text-primary tracking-tighter text-red-500">
-                                        {activeJob?.summary ? activeJob.summary.loss_percent.toFixed(1) :
-                                            (activeJob?.params.protocol === 'udp' ? 'N/A' : (chartData.length > 0 ? chartData[chartData.length - 1].loss_percent?.toFixed(1) : '0.0'))}
-                                    </span>
-                                    <span className="text-[10px] font-black text-text-muted italic opacity-40">%</span>
+                            {activeJob?.params.protocol === 'tcp' ? (
+                                <div className="bg-card-secondary/50 border border-border/50 rounded-2xl p-5 group hover:border-indigo-500/30 transition-all">
+                                    <label className="text-[10px] font-black text-text-muted tracking-widest opacity-60 flex items-center gap-2 mb-2">
+                                        <Layers size={14} className="text-indigo-500" /> TCP Window
+                                    </label>
+                                    <div className="flex items-baseline gap-2">
+                                        <span className="text-3xl font-black text-text-primary tracking-tighter text-indigo-500">
+                                            {activeJob?.summary ?
+                                                (activeJob.summary.cwnd || (chartData.length > 0 ? chartData[chartData.length - 1].cwnd : 0)) :
+                                                (chartData.length > 0 ? chartData[chartData.length - 1].cwnd || 0 : '0')}
+                                        </span>
+                                        <span className="text-[10px] font-black text-text-muted italic opacity-40">KB</span>
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="bg-card-secondary/50 border border-border/50 rounded-2xl p-5 group hover:border-red-500/30 transition-all">
+                                    <label className="text-[10px] font-black text-text-muted tracking-widest opacity-60 flex items-center gap-2 mb-2">
+                                        <ShieldOff size={14} className="text-red-500" /> Packet Loss
+                                    </label>
+                                    <div className="flex items-baseline gap-2">
+                                        <span className="text-3xl font-black text-text-primary tracking-tighter text-red-500">
+                                            {activeJob?.summary ? activeJob.summary.loss_percent.toFixed(1) :
+                                                (activeJob?.params.protocol === 'udp' ? 'N/A' : (chartData.length > 0 ? chartData[chartData.length - 1].loss_percent?.toFixed(1) : '0.0'))}
+                                        </span>
+                                        <span className="text-[10px] font-black text-text-muted italic opacity-40">%</span>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="bg-card-secondary/50 border border-border/50 rounded-2xl p-5 group hover:border-orange-500/30 transition-all">
                                 <label className="text-[10px] font-black text-text-muted tracking-widest opacity-60 flex items-center gap-2 mb-2">
