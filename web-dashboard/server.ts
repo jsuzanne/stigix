@@ -2139,7 +2139,7 @@ app.get('/api/features', (req, res) => {
 
 app.post('/api/tests/xfr', authenticateToken, (req, res) => {
     log('API', `[XFR] Incoming POST request: ${JSON.stringify(req.body)}`);
-    const { mode, target, protocol, direction, duration_sec, bitrate, parallel_streams, psk } = req.body;
+    const { mode, target, protocol, direction, duration_sec, bitrate, parallel_streams, psk, dscp, congestion, cport } = req.body;
 
     if (!mode || !target || !target.host || !target.port) {
         return res.status(400).json({ error: 'mode and target (host/port) are required' });
@@ -2162,6 +2162,9 @@ app.post('/api/tests/xfr', authenticateToken, (req, res) => {
         host: target.host,
         port: target.port,
         psk,
+        dscp,
+        congestion,
+        cport,
         protocol: protocol || (mode === 'default' ? 'tcp' : undefined),
         direction: direction || (mode === 'default' ? 'client-to-server' : undefined),
         duration_sec: duration_sec || (mode === 'default' ? 10 : undefined),
