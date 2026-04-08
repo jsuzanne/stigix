@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.9] - 2026-04-08
+### Added
+- **Speedtest**: Introduced dynamic strict format `<datalist>` validation for DSCP / TOS input fields to automatically prevent execution of malformed network QoS class identifiers.
+- **Speedtest**: Enhanced the Test Details modal view by injecting granular telemetry for executed TCP Congestion configurations, source protocol ports, and injected QoS markings.
+### Changed
+- **UI**: Rebranded the label 'Diagnostic History' to 'Bandwidth Test History' to enforce consistency. Modals formerly classified as diagnostics are now correctly rendered as 'Test Details'.
+
 ## [v1.2.2-patch.7] - 2026-04-08
 ### Added
 - **Speedtest**: Introduced advanced `DSCP / TOS` markings inside the Custom mode (supporting classes like `EF`, `AF11`, or raw bytes).

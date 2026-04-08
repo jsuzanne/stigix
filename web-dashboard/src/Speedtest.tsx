@@ -142,6 +142,15 @@ export default function Speedtest({ token }: Props) {
         } catch (e) { }
     };
 
+    const isValidDscp = (val: string) => {
+        if (!val) return true;
+        const upper = val.toUpperCase();
+        const validNames = ['EF', 'AF11', 'AF12', 'AF13', 'AF21', 'AF22', 'AF23', 'AF31', 'AF32', 'AF33', 'AF41', 'AF42', 'AF43', 'CS0', 'CS1', 'CS2', 'CS3', 'CS4', 'CS5', 'CS6', 'CS7'];
+        if (validNames.includes(upper)) return true;
+        const num = parseInt(val, 10);
+        return !isNaN(num) && num >= 0 && num <= 255 && num.toString() === val;
+    };
+
     const runTest = async () => {
         if (!targetHost) {
             toast.error('Host is required');
@@ -412,11 +421,23 @@ export default function Speedtest({ token }: Props) {
                                             <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">DSCP / TOS (ex: EF, 00)</label>
                                             <input
                                                 type="text"
+                                                list="dscp-options"
                                                 value={dscp}
                                                 onChange={e => setDscp(e.target.value)}
                                                 placeholder="Default (Blank)"
-                                                className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
+                                                className={`w-full bg-card-secondary border rounded-xl px-4 py-3 text-sm outline-none transition-colors ${dscp && !isValidDscp(dscp) ? 'border-red-500/50 focus:border-red-500' : 'border-border focus:border-blue-500'}`}
                                             />
+                                            <datalist id="dscp-options">
+                                                <option value="EF" />
+                                                <option value="AF11" />
+                                                <option value="AF21" />
+                                                <option value="CS1" />
+                                                <option value="CS6" />
+                                                <option value="46" />
+                                            </datalist>
+                                            {dscp && !isValidDscp(dscp) && (
+                                                <span className="text-[9px] text-red-500 font-bold block mt-1">Invalid DSCP Marking</span>
+                                            )}
                                         </div>
                                         <div>
                                             <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Client Flow Port (Auto)</label>
@@ -457,10 +478,10 @@ export default function Speedtest({ token }: Props) {
 
                             <button
                                 onClick={runTest}
-                                disabled={isRunning || !targetHost || !isValidIpOrFqdn(targetHost)}
+                                disabled={isRunning || !targetHost || !isValidIpOrFqdn(targetHost) || !isValidDscp(dscp)}
                                 className={cn(
                                     "w-full py-4 rounded-xl font-black tracking-widest text-xs flex items-center justify-center gap-2 transition-all shadow-xl",
-                                    isRunning || !targetHost ? "bg-card-secondary text-text-muted cursor-not-allowed" :
+                                    isRunning || !targetHost || !isValidDscp(dscp) ? "bg-card-secondary text-text-muted cursor-not-allowed" :
                                         !isValidIpOrFqdn(targetHost) ? "bg-red-500/10 text-red-500 border border-red-500/20 cursor-not-allowed" :
                                             "bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:opacity-90 active:scale-[0.98]"
                                 )}
@@ -667,7 +688,7 @@ export default function Speedtest({ token }: Props) {
                                     <HistoryIcon size={18} />
                                 </div>
                                 <div>
-                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Diagnostic History</h3>
+                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Bandwidth Test History</h3>
                                     <p className="text-[10px] text-text-muted font-bold tracking-widest opacity-60">Past Telemetry Log</p>
                                 </div>
                             </div>
@@ -700,7 +721,7 @@ export default function Speedtest({ token }: Props) {
                                                 <th className="px-4 py-4 text-[9px] font-black text-text-muted tracking-[0.2em]">Target / Params</th>
                                                 <th className="px-4 py-4 text-[9px] font-black text-text-muted tracking-[0.2em] text-center">Disposition</th>
                                                 <th className="px-4 py-4 text-[9px] font-black text-text-muted tracking-[0.2em] text-right">Throughput</th>
-                                                <th className="px-4 py-4 text-[9px] font-black text-text-muted tracking-[0.2em] text-right">Diagnostic</th>
+                                                <th className="px-4 py-4 text-[9px] font-black text-text-muted tracking-[0.2em] text-right">Test Details</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border/50">
@@ -810,6 +831,23 @@ export default function Speedtest({ token }: Props) {
                                     <div className="bg-card border border-border rounded-2xl p-4">
                                         <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Max Latency</label>
                                         <div className="text-xl font-black text-text-secondary">{selectedJob.summary?.rtt_ms_max.toFixed(1) || '0.0'} ms</div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                                    <div className="bg-card border border-border rounded-2xl p-4">
+                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 uppercase">DSCP</label>
+                                        <div className="text-xl font-black text-text-primary flex items-center gap-2">{selectedJob.params.dscp || 'Default'}</div>
+                                    </div>
+                                    {selectedJob.params.protocol === 'tcp' && (
+                                        <div className="bg-card border border-border rounded-2xl p-4">
+                                            <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 uppercase">Congestion</label>
+                                            <div className="text-xl font-black text-text-primary uppercase">{selectedJob.params.congestion || 'Cubic'}</div>
+                                        </div>
+                                    )}
+                                    <div className="bg-card border border-border rounded-2xl p-4">
+                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 uppercase">Source Port</label>
+                                        <div className="text-xl font-black text-text-primary">{selectedJob.params.cport || 'Auto'}</div>
                                     </div>
                                 </div>
 
