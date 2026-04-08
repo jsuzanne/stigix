@@ -836,18 +836,18 @@ export default function Speedtest({ token }: Props) {
 
                                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
                                     <div className="bg-card border border-border rounded-2xl p-4">
-                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 uppercase">DSCP</label>
-                                        <div className="text-xl font-black text-text-primary flex items-center gap-2">{selectedJob.params.dscp || 'Default'}</div>
+                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">DSCP</label>
+                                        <div className="text-lg font-bold text-text-primary flex items-center gap-2">{selectedJob.params.dscp || 'Default'}</div>
                                     </div>
                                     {selectedJob.params.protocol === 'tcp' && (
                                         <div className="bg-card border border-border rounded-2xl p-4">
-                                            <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 uppercase">Congestion</label>
-                                            <div className="text-xl font-black text-text-primary uppercase">{selectedJob.params.congestion || 'Cubic'}</div>
+                                            <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Congestion</label>
+                                            <div className="text-lg font-bold text-text-primary capitalize">{selectedJob.params.congestion || 'Cubic'}</div>
                                         </div>
                                     )}
                                     <div className="bg-card border border-border rounded-2xl p-4">
-                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 uppercase">Source Port</label>
-                                        <div className="text-xl font-black text-text-primary">{selectedJob.params.cport || 'Auto'}</div>
+                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Source Port</label>
+                                        <div className="text-lg font-bold text-text-primary">{selectedJob.params.cport || 'Auto'}</div>
                                     </div>
                                 </div>
 
