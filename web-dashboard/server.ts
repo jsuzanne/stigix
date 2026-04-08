@@ -2207,10 +2207,8 @@ app.get('/api/tests/xfr/:id', authenticateToken, (req, res) => {
         started_at: job.started_at,
         finished_at: job.finished_at,
         params: job.params,
-        results: job.status === 'completed' || job.status === 'failed' ? {
-            summary: job.summary,
-            intervals: job.intervals
-        } : null,
+        summary: job.summary,
+        intervals: job.intervals,
         error: job.error
     });
 });
