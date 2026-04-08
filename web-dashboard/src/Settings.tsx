@@ -207,6 +207,7 @@ export default function Settings({ token }: { token: string }) {
     const [convergenceThresholds, setConvergenceThresholds] = useState({ good: 1, degraded: 5, critical: 10 });
     const [mcpStatus, setMcpStatus] = useState<{ online: boolean; status?: string; transport?: string; url?: string; error?: string } | null>(null);
     const [slsConfig, setSlsConfig] = useState<any>(null);
+    const [probeFilterType, setProbeFilterType] = useState('ALL');
 
     const showSuccess = (msg: string) => {
         setSuccessMsg(msg);
@@ -1057,6 +1058,23 @@ export default function Settings({ token }: { token: string }) {
                             </div>
                         </div>
 
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-4">
+                            <div className="flex p-1 bg-card-secondary rounded-lg border border-border">
+                                {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD', 'PRISMA'].map(t => (
+                                    <button
+                                        key={t}
+                                        onClick={() => setProbeFilterType(t)}
+                                        className={cn(
+                                            "px-3 py-1 value-btn rounded-md text-[11px] font-bold transition-all uppercase tracking-tighter",
+                                            probeFilterType === t ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" : "text-text-muted hover:text-text-primary"
+                                        )}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                         <div className="space-y-4">
                             <div className="flex flex-col gap-4">
                                 {/* Probe Icons Legend */}
@@ -1091,12 +1109,22 @@ export default function Settings({ token }: { token: string }) {
                                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500">Configure New Probe</span>
                                     </div>
 
-                                    {customProbes.map((probe, idx) => {
+                                    {customProbes
+                                        .filter(probe => {
+                                            if (probeFilterType === 'ALL') return true;
+                                            if (probeFilterType === 'PRISMA') return (probe as any).source === 'discovery';
+                                            return probe.type === probeFilterType;
+                                        })
+                                        .map((probe, idx) => {
                                         const isDiscovery = (probe as any).source === 'discovery';
                                         const isCloud = probe.type === 'CLOUD';
                                         
+                                        // When filtering, the idx parameter of map corresponds to the filtered array, not the original.
+                                        // We need the original index to perform edits/deletes correctly.
+                                        const originalIdx = customProbes.indexOf(probe);
+                                        
                                         return (
-                                            <div key={idx} className={cn(
+                                            <div key={originalIdx} className={cn(
                                                 "group bg-card border border-border hover:border-blue-500/30 rounded-2xl p-5 pr-4 flex items-center justify-between transition-all shadow-sm",
                                                 probe.enabled === false && "opacity-60 bg-card-secondary/30"
                                             )}>
@@ -1135,7 +1163,7 @@ export default function Settings({ token }: { token: string }) {
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <button
-                                                        onClick={() => toggleProbeEnabled(idx)}
+                                                        onClick={() => toggleProbeEnabled(originalIdx)}
                                                         className={cn(
                                                             "p-2.5 rounded-xl transition-all flex items-center gap-2",
                                                             probe.enabled !== false 
@@ -1149,14 +1177,14 @@ export default function Settings({ token }: { token: string }) {
                                                     
                                                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity border-l border-border/50 pl-2 ml-1">
                                                         <button
-                                                            onClick={(e) => { e.stopPropagation(); startEditProbe(idx); }}
+                                                            onClick={(e) => { e.stopPropagation(); startEditProbe(originalIdx); }}
                                                             className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
                                                             title="Edit Probe"
                                                         >
                                                             <Edit2 size={14} />
                                                         </button>
                                                         <button
-                                                            onClick={(e) => { e.stopPropagation(); deleteProbe(idx); }}
+                                                            onClick={(e) => { e.stopPropagation(); deleteProbe(originalIdx); }}
                                                             className="p-2 hover:bg-red-600/10 rounded-xl text-text-muted hover:text-red-500 transition-all"
                                                             title="Remove Probe"
                                                         >

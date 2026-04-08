@@ -119,6 +119,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncResult, setSyncResult] = useState<any>(null);
+    const [lastSyncTime, setLastSyncTime] = useState<number | null>(null);
 
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
@@ -148,10 +149,17 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
             }
             const configMap = new Map();
             if (Array.isArray(configsData)) {
+                let latestSync: number | null = null;
                 configsData.forEach((config: any) => {
                     const id = config.name.toLowerCase().replace(/\s+/g, '-');
                     configMap.set(id, config);
+                    if (config.source === 'discovery' && config.created) {
+                        if (!latestSync || config.created > latestSync) {
+                            latestSync = config.created;
+                        }
+                    }
                 });
+                if (latestSync) setLastSyncTime(latestSync);
             }
             setEndpointConfigs(configMap);
         } catch (e) {
@@ -220,6 +228,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
             const res = await fetch('/api/probes/discovery/sync', { method: 'POST', headers: authHeaders() });
             const data = await res.json();
             setSyncResult(data);
+            setLastSyncTime(Date.now());
             fetchData();
             setTimeout(() => setSyncResult(null), 5000);
         } catch (e) {
@@ -549,19 +558,26 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                         </select>
                     </div>
 
-                    <button
-                        onClick={syncDiscovery}
-                        disabled={isSyncing}
-                        className={cn(
-                            "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all border",
-                            isSyncing
-                                ? "bg-card-secondary text-text-muted border-border cursor-not-allowed"
-                                : "bg-card/40 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/10 shadow-sm"
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={syncDiscovery}
+                            disabled={isSyncing}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all border",
+                                isSyncing
+                                    ? "bg-card-secondary text-text-muted border-border cursor-not-allowed"
+                                    : "bg-card/40 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/10 shadow-sm"
+                            )}
+                        >
+                            <RefreshCw size={14} className={cn(isSyncing && "animate-spin")} />
+                            {isSyncing ? "Syncing..." : "Sync Prisma SD-WAN"}
+                        </button>
+                        {lastSyncTime && (
+                           <div className="flex items-center gap-1.5 px-3 py-2 bg-card/40 border border-border rounded-lg shadow-sm">
+                               <span className="text-[10px] text-text-muted font-bold tracking-tight">Active Since: {new Date(lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                           </div>
                         )}
-                    >
-                        <RefreshCw size={14} className={cn(isSyncing && "animate-spin")} />
-                        {isSyncing ? "Syncing..." : "Sync Prisma SD-WAN"}
-                    </button>
+                    </div>
 
                     {onManage && (
                         <button

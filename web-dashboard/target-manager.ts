@@ -181,14 +181,20 @@ export class TargetManager {
         try {
             const response = await fetch(signedScenario.signedUrl);
             const latency = Date.now() - startTime;
+            
+            // Temporary debug logs for Stigix Cloud Probes
+            log('TARGET', `[CLOUD PROBE] Scenario ID: ${scenarioId}`, 'debug');
+            log('TARGET', `[CLOUD PROBE] URL Called: ${signedScenario.signedUrl}`, 'debug');
 
             if (!response.ok) {
-                return { success: false, score: 0, latency_ms: latency, message: `HTTP ${response.status}` };
+                const failResp = { success: false, score: 0, latency_ms: latency, message: `HTTP ${response.status}` };
+                log('TARGET', `[CLOUD PROBE] Response Error: ${JSON.stringify(failResp, null, 2)}`, 'debug');
+                return failResp;
             }
 
             if (scenario.category === 'info') {
                 const data = await response.json();
-                return {
+                const jsonResp = {
                     success: true,
                     score: 100, // Info doesn't really have a performance score, but it's "success"
                     latency_ms: latency,
@@ -200,12 +206,17 @@ export class TargetManager {
                         pop: data.colo
                     }
                 };
+                log('TARGET', `[CLOUD PROBE] Result JSON Content: ${JSON.stringify(data, null, 2)}`, 'debug');
+                log('TARGET', `[CLOUD PROBE] Computed Return JSON: ${JSON.stringify(jsonResp, null, 2)}`, 'debug');
+                return jsonResp;
             }
 
             if (scenario.category === 'saas' || scenario.id === 'saas-slow') {
                 // Score based on latency. 5s is the threshold for 0.
                 const score = Math.max(0, Math.min(100, Math.round(100 * (1 - (latency - 200) / 4800))));
-                return { success: true, score, latency_ms: latency, message: `Response received in ${latency}ms` };
+                const resp = { success: true, score, latency_ms: latency, message: `Response received in ${latency}ms` };
+                log('TARGET', `[CLOUD PROBE] Metric Result: ${JSON.stringify(resp, null, 2)}`, 'debug');
+                return resp;
             }
 
             if (scenario.category === 'download') {
@@ -213,20 +224,28 @@ export class TargetManager {
                 const totalTime = Date.now() - startTime;
                 // Score for 10MB download. 2s is excellent (100), 10s is poor (20).
                 const score = Math.max(0, Math.min(100, Math.round(100 * (1 - (totalTime - 1000) / 9000))));
-                return { success: true, score, latency_ms: totalTime, message: `Download complete` };
+                const resp =  { success: true, score, latency_ms: totalTime, message: `Download complete` };
+                log('TARGET', `[CLOUD PROBE] Metric Result: ${JSON.stringify(resp, null, 2)}`, 'debug');
+                return resp;
             }
 
             if (scenario.category === 'security') {
                 // Special case for EICAR: Success means BLOCKED (non-200 or timeout)
                 // But here we are the backend calling the worker.
-                return { success: true, score: 100, latency_ms: latency, message: 'Endpoint reachable' };
+                const resp = { success: true, score: 100, latency_ms: latency, message: 'Endpoint reachable' };
+                log('TARGET', `[CLOUD PROBE] Metric Result: ${JSON.stringify(resp, null, 2)}`, 'debug');
+                return resp;
             }
 
-            return { success: true, score: 100, latency_ms: latency, message: 'OK' };
+            const okResp = { success: true, score: 100, latency_ms: latency, message: 'OK' };
+            log('TARGET', `[CLOUD PROBE] Default OK Result: ${JSON.stringify(okResp, null, 2)}`, 'debug');
+            return okResp;
 
         } catch (error: any) {
             const latency = Date.now() - startTime;
-            return { success: false, score: 0, latency_ms: latency, message: error.message };
+            const errResp = { success: false, score: 0, latency_ms: latency, message: error.message };
+            log('TARGET', `[CLOUD PROBE] Exception: ${JSON.stringify(errResp, null, 2)}`, 'debug');
+            return errResp;
         }
     }
 

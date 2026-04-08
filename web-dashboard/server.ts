@@ -7430,4 +7430,15 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
 
     // Start Registry Service only after server is listening
     registryManager.start().catch(e => log('REGISTRY', `Failed to start: ${e.message}`, 'error'));
+
+    // Delayed Prisma SD-WAN auto-discovery sync
+    setTimeout(async () => {
+        try {
+            console.log('[SYSTEM] Triggering startup Prisma SD-WAN auto-discovery sync...');
+            await discoveryManager.syncProbes();
+            console.log('[SYSTEM] Prisma SD-WAN auto-discovery sync complete.');
+        } catch (e: any) {
+            console.log(`[SYSTEM] Prisma SD-WAN auto-discovery sync skipped/failed: ${e.message}`);
+        }
+    }, 45000);
 });
