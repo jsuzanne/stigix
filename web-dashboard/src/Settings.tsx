@@ -1115,7 +1115,7 @@ export default function Settings({ token }: { token: string }) {
                                             if (probeFilterType === 'PRISMA') return (probe as any).source === 'discovery';
                                             return probe.type === probeFilterType;
                                         })
-                                        .map((probe, idx) => {
+                                        .map((probe) => {
                                         const isDiscovery = (probe as any).source === 'discovery';
                                         const isCloud = probe.type === 'CLOUD';
                                         
