@@ -470,6 +470,9 @@ interface XfrTestParams {
     direction: 'client-to-server' | 'server-to-client' | 'bidirectional';
     psk?: string;
     mode: 'default' | 'custom';
+    dscp?: string;
+    congestion?: string;
+    cport?: number;
 }
 
 interface XfrTestResultSummary {
@@ -825,12 +828,16 @@ class XfrJobManager {
         const args = [p.host, '-p', p.port.toString(), '--no-tui', '--json-stream'];
 
         // Deterministic source port: 40000 + (sequence sequence_id numeric)
-        // ONLY for UDP/QUIC as TCP doesn't support --cport in xfr engine
-        const seqMatch = job.sequence_id.match(/\d+/);
-        if (seqMatch && (p.protocol === 'udp' || p.protocol === 'quic')) {
-            const seqNum = parseInt(seqMatch[0], 10);
-            const sourcePort = 40000 + (seqNum % 10000); // 40000-49999 range
-            args.push('--cport', sourcePort.toString());
+        // Deterministic source port OVERRIDE if provided vs automatic generated
+        if (p.cport) {
+            args.push('--cport', p.cport.toString());
+        } else {
+            const seqMatch = job.sequence_id.match(/\d+/);
+            if (seqMatch && (p.protocol === 'udp' || p.protocol === 'quic')) {
+                const seqNum = parseInt(seqMatch[0], 10);
+                const sourcePort = 40000 + (seqNum % 10000); // 40000-49999 range
+                args.push('--cport', sourcePort.toString());
+            }
         }
 
         if (p.protocol === 'udp') args.push('-u');
@@ -849,6 +856,14 @@ class XfrJobManager {
 
         if (p.direction === 'server-to-client') args.push('-R');
         else if (p.direction === 'bidirectional') args.push('--bidir');
+
+        if (p.dscp && p.dscp.trim() !== "") {
+            args.push('--dscp', p.dscp.trim());
+        }
+        
+        if (p.protocol === 'tcp' && p.congestion && p.congestion.trim() !== "") {
+            args.push('--congestion', p.congestion.trim().toLowerCase());
+        }
 
         return args;
     }

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.7] - 2026-04-08
+### Added
+- **Speedtest**: Introduced advanced `DSCP / TOS` markings inside the Custom mode (supporting classes like `EF`, `AF11`, or raw bytes).
+- **Speedtest**: Implemented a dynamic Flow Source Port (`--cport`) tracker interface utilizing `30000 + N` mapping logic to enhance granular router metric inspection. Supported on both TCP and UDP methodologies.
+- **Speedtest**: Added a selective dropdown to enforce explicitly constrained TCP Congestion mechanisms (`Cubic` or `Reno`).
+
 ## [v1.2.2-patch.6] - 2026-04-04
 ### Fixed
 - **Speedtest**: Removed the `RTT (ms)` trace overlay from live charts during UDP tests, as UDP avoids latency instrumentation at the transport level.

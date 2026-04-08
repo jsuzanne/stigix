@@ -83,6 +83,11 @@ export default function Speedtest({ token }: Props) {
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [selectedJob, setSelectedJob] = useState<XfrJob | null>(null);
     const [isHistoryExpanded, setIsHistoryExpanded] = useState(true);
+    
+    // Custom Config Advanced Inputs
+    const [dscp, setDscp] = useState('');
+    const [congestion, setCongestion] = useState('cubic');
+    const [cport, setCport] = useState<number>(30000);
     const sseRef = useRef<EventSource | null>(null);
 
     const authHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -125,7 +130,15 @@ export default function Speedtest({ token }: Props) {
         try {
             const res = await fetch('/api/tests/xfr', { headers: authHeaders });
             const data = await res.json();
-            if (res.ok) setHistory(data);
+            if (res.ok) {
+                setHistory(data);
+                if (data.length > 0) {
+                    const match = data[0].sequence_id.match(/\d+/);
+                    if (match) setCport(30000 + parseInt(match[0], 10) + 1);
+                } else {
+                    setCport(30001);
+                }
+            }
         } catch (e) { }
     };
 
@@ -145,7 +158,10 @@ export default function Speedtest({ token }: Props) {
             direction,
             duration_sec: duration,
             bitrate,
-            parallel_streams: streams
+            parallel_streams: streams,
+            dscp,
+            congestion,
+            cport
         };
 
         try {
@@ -242,7 +258,7 @@ export default function Speedtest({ token }: Props) {
 
                         <h2 className="text-xl font-black text-text-primary flex items-center gap-2 mb-6 tracking-tight">
                             <Zap className="text-blue-500" size={24} />
-                            Speedtest Config
+                            Bandwidth Test
                         </h2>
 
                         <div className="flex p-1 bg-card-secondary rounded-xl mb-6 border border-border/50">
@@ -390,6 +406,42 @@ export default function Speedtest({ token }: Props) {
                                             />
                                         </div>
                                     </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">DSCP / TOS (ex: EF, 00)</label>
+                                            <input
+                                                type="text"
+                                                value={dscp}
+                                                onChange={e => setDscp(e.target.value)}
+                                                placeholder="Default (Blank)"
+                                                className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Client Flow Port (Auto)</label>
+                                            <input
+                                                type="number"
+                                                value={cport}
+                                                onChange={e => setCport(parseInt(e.target.value))}
+                                                className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {protocol === 'tcp' && (
+                                        <div>
+                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">TCP Congestion Avoidance</label>
+                                            <select
+                                                value={congestion}
+                                                onChange={e => setCongestion(e.target.value)}
+                                                className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
+                                            >
+                                                <option value="cubic">Cubic (Default)</option>
+                                                <option value="reno">Reno</option>
+                                            </select>
+                                        </div>
+                                    )}
 
                                     <div>
                                         <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Psk (Optional)</label>
