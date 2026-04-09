@@ -114,6 +114,35 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
     const [endpointConfigs, setEndpointConfigs] = useState<Map<string, any>>(new Map());
     const [cloudScenarios, setCloudScenarios] = useState<any[]>([]);
 
+    const formatDisplayUrl = (endpoint: any) => {
+        const target = endpoint.lastResult?.url || '';
+        if (endpoint.type !== 'CLOUD') return target;
+
+        if (target.startsWith('advanced-custom#')) {
+            try {
+                const config = JSON.parse(target.split('#')[1]);
+                const params = new URLSearchParams({ mode: config.mode, delay: config.delay.toString() });
+                if (config.mode === 'large') params.set('size', config.size);
+                if (config.mode === 'error') params.set('code', config.code.toString());
+                const host = cloudScenarios[0]?.signedUrl ? new URL(cloudScenarios[0].signedUrl).host : 'stigix-target.stigix.com';
+                return `${host}/advanced?${params.toString()}`;
+            } catch {
+                return target;
+            }
+        }
+
+        const scenario = cloudScenarios.find(s => s.id === target || s.id === (endpoint.name || '').toLowerCase().replace(/\s+/g, '-'));
+        if (scenario?.signedUrl) {
+            try {
+                const u = new URL(scenario.signedUrl);
+                u.searchParams.delete('key');
+                u.searchParams.delete('tsg');
+                return u.toString().replace(/^https?:\/\//, '');
+            } catch {}
+        }
+        return target || '---';
+    };
+
     // Sorting state
     const [sortField, setSortField] = useState<string>('name');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -662,15 +691,8 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                                 {e.stale && "STALE"}
                                             </span>
                                         </div>
-                                        <span className="text-[10px] text-text-muted font-mono truncate max-w-[220px]">
-                                            {e.type === 'CLOUD'
-                                                ? (() => {
-                                                    const scenario = cloudScenarios.find(s => s.id === e.lastResult.url || s.id === e.name.toLowerCase().replace(/\s+/g, '-'));
-                                                    if (scenario?.signedUrl) return scenario.signedUrl.replace(/^https?:\/\//, '').split('?')[0];
-                                                    return e.lastResult.url || '---';
-                                                })()
-                                                : e.lastResult.url
-                                            }
+                                        <span className="text-[10px] text-text-muted font-mono break-all opacity-80 leading-tight mt-0.5">
+                                            {formatDisplayUrl(e)}
                                         </span>
                                     </div>
                                 </td>
@@ -769,7 +791,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                 </div>
                                 <div>
                                     <h3 className="text-xl font-black text-text-primary tracking-tight">{selectedEndpoint.name}</h3>
-                                    <p className="text-[10px] text-text-muted font-mono font-bold uppercase tracking-widest">{selectedEndpoint.lastResult.url}</p>
+                                    <p className="text-[10px] text-text-muted font-mono font-bold break-all max-w-[700px] mt-1">{formatDisplayUrl(selectedEndpoint)}</p>
                                 </div>
                             </div>
                             <button onClick={() => setShowDetailModal(false)} className="p-2 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors">
