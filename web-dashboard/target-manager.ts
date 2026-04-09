@@ -183,12 +183,12 @@ export class TargetManager {
             const latency = Date.now() - startTime;
             
             // Temporary debug logs for Stigix Cloud Probes
-            log('TARGET', `[CLOUD PROBE] Scenario ID: ${scenarioId}`, 'info');
-            log('TARGET', `[CLOUD PROBE] URL Called: ${signedScenario.signedUrl}`, 'info');
+            log('TARGET', `[CLOUD PROBE] Scenario ID: ${scenarioId}`, 'debug');
+            log('TARGET', `[CLOUD PROBE] URL Called: ${signedScenario.signedUrl}`, 'debug');
 
             if (!response.ok) {
                 const failResp = { success: false, score: 0, latency_ms: latency, message: `HTTP ${response.status}` };
-                log('TARGET', `[CLOUD PROBE] Response Error: ${JSON.stringify(failResp, null, 2)}`, 'info');
+                log('TARGET', `[CLOUD PROBE] Response Error: ${JSON.stringify(failResp, null, 2)}`, 'debug');
                 return failResp;
             }
 
@@ -206,8 +206,8 @@ export class TargetManager {
                         pop: data.colo
                     }
                 };
-                log('TARGET', `[CLOUD PROBE] Result JSON Content: ${JSON.stringify(data, null, 2)}`, 'info');
-                log('TARGET', `[CLOUD PROBE] Computed Return JSON: ${JSON.stringify(jsonResp, null, 2)}`, 'info');
+                log('TARGET', `[CLOUD PROBE] Result JSON Content: ${JSON.stringify(data, null, 2)}`, 'debug');
+                log('TARGET', `[CLOUD PROBE] Computed Return JSON: ${JSON.stringify(jsonResp, null, 2)}`, 'debug');
                 return jsonResp;
             }
 
@@ -215,7 +215,7 @@ export class TargetManager {
                 // Score based on latency. 5s is the threshold for 0.
                 const score = Math.max(0, Math.min(100, Math.round(100 * (1 - (latency - 200) / 4800))));
                 const resp = { success: true, score, latency_ms: latency, message: `Response received in ${latency}ms` };
-                log('TARGET', `[CLOUD PROBE] Metric Result: ${JSON.stringify(resp, null, 2)}`, 'info');
+                log('TARGET', `[CLOUD PROBE] Metric Result: ${JSON.stringify(resp, null, 2)}`, 'debug');
                 return resp;
             }
 
@@ -225,7 +225,7 @@ export class TargetManager {
                 // Score for 10MB download. 2s is excellent (100), 10s is poor (20).
                 const score = Math.max(0, Math.min(100, Math.round(100 * (1 - (totalTime - 1000) / 9000))));
                 const resp =  { success: true, score, latency_ms: totalTime, message: `Download complete` };
-                log('TARGET', `[CLOUD PROBE] Metric Result: ${JSON.stringify(resp, null, 2)}`, 'info');
+                log('TARGET', `[CLOUD PROBE] Metric Result: ${JSON.stringify(resp, null, 2)}`, 'debug');
                 return resp;
             }
 
@@ -233,18 +233,18 @@ export class TargetManager {
                 // Special case for EICAR: Success means BLOCKED (non-200 or timeout)
                 // But here we are the backend calling the worker.
                 const resp = { success: true, score: 100, latency_ms: latency, message: 'Endpoint reachable' };
-                log('TARGET', `[CLOUD PROBE] Metric Result: ${JSON.stringify(resp, null, 2)}`, 'info');
+                log('TARGET', `[CLOUD PROBE] Metric Result: ${JSON.stringify(resp, null, 2)}`, 'debug');
                 return resp;
             }
 
             const okResp = { success: true, score: 100, latency_ms: latency, message: 'OK' };
-            log('TARGET', `[CLOUD PROBE] Default OK Result: ${JSON.stringify(okResp, null, 2)}`, 'info');
+            log('TARGET', `[CLOUD PROBE] Default OK Result: ${JSON.stringify(okResp, null, 2)}`, 'debug');
             return okResp;
 
         } catch (error: any) {
             const latency = Date.now() - startTime;
             const errResp = { success: false, score: 0, latency_ms: latency, message: error.message };
-            log('TARGET', `[CLOUD PROBE] Exception: ${JSON.stringify(errResp, null, 2)}`, 'info');
+            log('TARGET', `[CLOUD PROBE] Exception: ${JSON.stringify(errResp, null, 2)}`, 'debug');
             return errResp;
         }
     }
