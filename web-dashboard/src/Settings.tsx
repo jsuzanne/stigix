@@ -1339,7 +1339,7 @@ export default function Settings({ token }: { token: string }) {
                                                                                     const code = parseInt(e.target.value);
                                                                                     if (!isNaN(code)) updateAdv({ code: Math.min(599, Math.max(400, code)) });
                                                                                     else updateAdv({ code: '' });
-                                                                                }} onBlur={e => {
+                                                                                }} onBlur={() => {
                                                                                     if (!advConfig.code || advConfig.code < 400) updateAdv({ code: 500 });
                                                                                 }}/>
                                                                             </div>
