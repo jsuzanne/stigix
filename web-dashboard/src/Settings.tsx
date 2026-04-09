@@ -1260,7 +1260,7 @@ export default function Settings({ token }: { token: string }) {
 
                                         <div className="space-y-2">
                                             <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">
-                                                {newProbe.type === 'CLOUD' ? 'Cloud scenario' : 'Target URL / IP Address'}
+                                                {newProbe.type === 'CLOUD' ? 'Stigix Probe' : 'Target URL / IP Address'}
                                             </label>
                                             {newProbe.type === 'CLOUD' && !cloudConfig?.hasKey && (
                                                 <div className="p-3 bg-red-600/10 border border-dashed border-red-500/30 rounded-xl flex gap-3 items-start animate-in zoom-in-95 duration-300">
@@ -1275,25 +1275,80 @@ export default function Settings({ token }: { token: string }) {
                                                     <div className="relative">
                                                         <select
                                                             className="w-full bg-card-secondary border border-border text-text-primary rounded-xl pl-10 pr-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner appearance-none transition-all"
-                                                            value={newProbe.target}
+                                                            value={newProbe.target.startsWith('advanced-custom#') ? 'advanced-custom#' : newProbe.target}
                                                             onChange={e => {
-                                                                const scenario = cloudScenarios.find(s => s.id === e.target.value);
-                                                                setNewProbe({
-                                                                    ...newProbe,
-                                                                    target: e.target.value,
-                                                                    name: newProbe.name || scenario?.label || ''
-                                                                });
+                                                                const val = e.target.value;
+                                                                if (val === 'advanced-custom#') {
+                                                                    setNewProbe({ ...newProbe, target: 'advanced-custom#{"mode":"info","delay":0}', name: newProbe.name || 'Custom Probe' });
+                                                                } else {
+                                                                    const scenario = cloudScenarios.find(s => s.id === val);
+                                                                    setNewProbe({
+                                                                        ...newProbe,
+                                                                        target: val,
+                                                                        name: newProbe.name || scenario?.label || ''
+                                                                    });
+                                                                }
                                                             }}
                                                         >
-                                                            <option value="">Select Scenario...</option>
+                                                            <option value="">Select Stigix Probe...</option>
                                                             {cloudScenarios.map(s => (
                                                                 <option key={s.id} value={s.id}>{s.label}</option>
                                                             ))}
+                                                            <option value="advanced-custom#">Advanced Stigix Probe...</option>
                                                         </select>
                                                         <Globe size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-blue-500/50" />
                                                         <ChevronDown size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
                                                     </div>
-                                                    {newProbe.target && (
+
+                                                    {newProbe.target.startsWith('advanced-custom#') ? (
+                                                        <div className="p-4 bg-card border border-border rounded-xl space-y-4 shadow-inner animate-in slide-in-from-top-2 duration-300">
+                                                            {(() => {
+                                                                let advConfig = { mode: 'info', delay: 0, size: '5m', code: 500 };
+                                                                try { advConfig = { ...advConfig, ...JSON.parse(newProbe.target.split('#')[1]) }; } catch {}
+                                                                const updateAdv = (updates: any) => setNewProbe({ ...newProbe, target: `advanced-custom#${JSON.stringify({ ...advConfig, ...updates })}` });
+                                                                return (
+                                                                    <>
+                                                                        <div className="grid grid-cols-2 gap-4">
+                                                                            <div className="space-y-1">
+                                                                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Target Mode</label>
+                                                                                <select className="w-full bg-card-secondary border border-border text-text-primary rounded-lg px-3 py-2 text-[11px] font-bold outline-none focus:ring-1 focus:ring-blue-500" value={advConfig.mode} onChange={e => updateAdv({ mode: e.target.value })}>
+                                                                                    <option value="info">Data & Egress (info)</option>
+                                                                                    <option value="large">Large Payload (download)</option>
+                                                                                    <option value="error">HTTP Error (error)</option>
+                                                                                    <option value="eicar">Threat File (security)</option>
+                                                                                </select>
+                                                                            </div>
+                                                                            <div className="space-y-1">
+                                                                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Extra Delay (ms)</label>
+                                                                                <input type="number" min="0" max="30000" className="w-full bg-card-secondary border border-border text-text-primary rounded-lg px-3 py-2 text-[11px] font-bold outline-none focus:ring-1 focus:ring-blue-500" value={advConfig.delay} onChange={e => {
+                                                                                    const val = parseInt(e.target.value) || 0;
+                                                                                    updateAdv({ delay: Math.min(30000, Math.max(0, val)) });
+                                                                                }}/>
+                                                                            </div>
+                                                                        </div>
+                                                                        {advConfig.mode === 'large' && (
+                                                                            <div className="space-y-1">
+                                                                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Payload Size (e.g. 10m)</label>
+                                                                                <input type="text" placeholder="10m" className="w-full bg-card-secondary border border-border text-text-primary rounded-lg px-3 py-2 text-[11px] font-bold outline-none focus:ring-1 focus:ring-blue-500" value={advConfig.size} onChange={e => updateAdv({ size: e.target.value.toLowerCase().replace(/[^0-9m]/g, '') })}/>
+                                                                            </div>
+                                                                        )}
+                                                                        {advConfig.mode === 'error' && (
+                                                                            <div className="space-y-1">
+                                                                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">HTTP Status Code</label>
+                                                                                <input type="number" min="400" max="599" className="w-full bg-card-secondary border border-border text-text-primary rounded-lg px-3 py-2 text-[11px] font-bold outline-none focus:ring-1 focus:ring-blue-500" value={advConfig.code} onChange={e => {
+                                                                                    const code = parseInt(e.target.value);
+                                                                                    if (!isNaN(code)) updateAdv({ code: Math.min(599, Math.max(400, code)) });
+                                                                                    else updateAdv({ code: '' });
+                                                                                }} onBlur={e => {
+                                                                                    if (!advConfig.code || advConfig.code < 400) updateAdv({ code: 500 });
+                                                                                }}/>
+                                                                            </div>
+                                                                        )}
+                                                                    </>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    ) : newProbe.target && (
                                                         <div className="p-3 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl flex gap-3 items-start animate-in zoom-in-95 duration-300">
                                                             <Info size={14} className="text-blue-500 mt-0.5 shrink-0" />
                                                             <p className="text-[10px] font-bold text-text-secondary leading-relaxed opacity-80">

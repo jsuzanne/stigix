@@ -166,25 +166,55 @@ export class TargetManager {
      * Executes a scenario as a probe and returns a standardized result.
      */
     async runProbe(scenarioId: string): Promise<TargetProbeResult> {
-        const scenario = this.scenarios.find(s => s.id === scenarioId);
-        if (!scenario || !this.baseUrl) {
-            return { success: false, score: 0, latency_ms: 0, message: 'Scenario or Base URL missing' };
-        }
+        let scenario: TargetScenario | undefined;
+        let signedUrl = '';
 
-        const signedScenarios = this.getScenarios();
-        const signedScenario = signedScenarios.find(s => s.id === scenarioId);
-        if (!signedScenario?.signedUrl) {
-            return { success: false, score: 0, latency_ms: 0, message: 'Failed to sign URL' };
+        if (scenarioId.startsWith('advanced-custom#')) {
+            let advConfig = { mode: 'info', delay: 0, size: '5m', code: 500 };
+            try { advConfig = { ...advConfig, ...JSON.parse(scenarioId.split('#')[1]) }; } catch {}
+
+            scenario = {
+                id: scenarioId,
+                label: 'Advanced Stigix Probe',
+                description: 'Dynamic custom target',
+                path: '/advanced',
+                params: { mode: advConfig.mode, delay: advConfig.delay },
+                category: advConfig.mode === 'large' ? 'download' : advConfig.mode === 'error' ? 'error' : advConfig.mode === 'eicar' ? 'security' : 'info'
+            };
+            if (advConfig.mode === 'large') scenario.params!.size = advConfig.size;
+            if (advConfig.mode === 'error') scenario.params!.code = advConfig.code;
+
+            if (!this.baseUrl) return { success: false, score: 0, latency_ms: 0, message: 'Base URL missing' };
+            const url = new URL(this.baseUrl);
+            url.pathname = scenario.path;
+            if (this.sharedKey) {
+                url.searchParams.set('key', this.sharedKey);
+                const tsgId = process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID;
+                if (tsgId) url.searchParams.set('tsg', tsgId);
+            }
+            if (scenario.params) Object.entries(scenario.params).forEach(([k, v]) => url.searchParams.set(k, v.toString()));
+            signedUrl = url.toString();
+        } else {
+            scenario = this.scenarios.find(s => s.id === scenarioId);
+            if (!scenario || !this.baseUrl) {
+                return { success: false, score: 0, latency_ms: 0, message: 'Scenario or Base URL missing' };
+            }
+            const signedScenarios = this.getScenarios();
+            const signedScenario = signedScenarios.find(s => s.id === scenarioId);
+            if (!signedScenario?.signedUrl) {
+                return { success: false, score: 0, latency_ms: 0, message: 'Failed to sign URL' };
+            }
+            signedUrl = signedScenario.signedUrl;
         }
 
         const startTime = Date.now();
         try {
-            const response = await fetch(signedScenario.signedUrl);
+            const response = await fetch(signedUrl);
             const latency = Date.now() - startTime;
             
             // Temporary debug logs for Stigix Cloud Probes
             log('TARGET', `[CLOUD PROBE] Scenario ID: ${scenarioId}`, 'debug');
-            log('TARGET', `[CLOUD PROBE] URL Called: ${signedScenario.signedUrl}`, 'debug');
+            log('TARGET', `[CLOUD PROBE] URL Called: ${signedUrl}`, 'debug');
 
             if (!response.ok) {
                 const failResp = { success: false, score: 0, latency_ms: latency, message: `HTTP ${response.status}` };
