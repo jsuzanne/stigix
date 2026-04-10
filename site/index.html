@@ -179,10 +179,11 @@
       <div class="caps__col" role="columnheader">Key specs</div>
     </div>
 
+    <!-- 1. Traffic Control -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
         <div class="caps__col-name">Traffic Generation</div>
-        <div class="caps__col-category">traffic</div>
+        <div class="caps__col-category">traffic control</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-desc">67 pre-configured SaaS applications including Google Workspace, Microsoft 365, Salesforce, and Zoom. Authentic HTTP/S requests with proper User-Agent headers and Referers. Weighted distribution per application group with live rate control from the dashboard.</div>
@@ -197,6 +198,45 @@
       </div>
     </div>
 
+    <!-- 2. Digital Experience / Performance -->
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Digital Experience</div>
+        <div class="caps__col-category">performance monitoring</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">Synthetic connectivity probes (HTTP, ICMP, TCP) with per-site latency tracking and endpoint health monitoring. Real-time log streaming via WebSocket. Live statistics dashboard with success/failure rates, latency metrics, and bandwidth tracking. Historical traffic volume charts. Export results in JSON, CSV, or JSONL. 7-day persistent JSONL storage with auto-rotation.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">HTTP/ICMP/TCP</span>
+          <span class="tag">WebSocket</span>
+          <span class="tag">JSON/CSV</span>
+          <span class="tag">7-day log</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Bandwidth Test / XFR -->
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Bandwidth Test (XFR)</div>
+        <div class="caps__col-category">performance</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">High-performance throughput and latency validation between Stigix instances. Real-time telemetry with searchable history. Complements iPerf3-based bandwidth testing. Suitable for sustained bandwidth measurement across SD-WAN paths in POC environments. Every instance is an XFR responder by default.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">Throughput</span>
+          <span class="tag">Latency</span>
+          <span class="tag">iPerf3</span>
+          <span class="tag">XFR</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Security -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
         <div class="caps__col-name">Security Validation</div>
@@ -215,60 +255,7 @@
       </div>
     </div>
 
-    <div class="caps__row" role="row">
-      <div class="caps__col" role="cell">
-        <div class="caps__col-name">Monitoring &amp; Logs</div>
-        <div class="caps__col-category">observability</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Real-time log streaming via WebSocket. Live statistics dashboard with success/failure rates, latency metrics, and bandwidth tracking. Historical traffic volume charts. Export results in JSON, CSV, or JSONL. 7-day persistent JSONL storage with auto-rotation.</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-tags">
-          <span class="tag">WebSocket</span>
-          <span class="tag">JSON/CSV</span>
-          <span class="tag">7-day log</span>
-          <span class="tag">Real-time</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="caps__row" role="row">
-      <div class="caps__col" role="cell">
-        <div class="caps__col-name">Failover &amp; Convergence</div>
-        <div class="caps__col-category">network testing</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-desc">High-precision UDP probe monitoring at up to 100 packets per second. Measures exact SD-WAN tunnel transition times with packet-level accuracy. Tracks RX/TX loss during convergence events. Designed for rigorous failover lab scenarios where timing precision matters.</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-tags">
-          <span class="tag">UDP probes</span>
-          <span class="tag">100 PPS max</span>
-          <span class="tag">RX/TX loss</span>
-          <span class="tag">Timing</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="caps__row" role="row">
-      <div class="caps__col" role="cell">
-        <div class="caps__col-name">Voice Simulation</div>
-        <div class="caps__col-category">protocol simulation</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Scapy-based RTP packet forging to simulate real-time voice calls using G.711 and G.729 codecs. QoS analytics and MOS score estimation. Tests QoS policy prioritization and jitter behavior across SD-WAN paths. Voice echo target for latency testing.</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-tags">
-          <span class="tag">RTP</span>
-          <span class="tag">G.711/G.729</span>
-          <span class="tag">MOS score</span>
-          <span class="tag">Scapy</span>
-        </div>
-      </div>
-    </div>
-
+    <!-- 5. IoT Simulation -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
         <div class="caps__col-name">IoT Simulation</div>
@@ -287,6 +274,64 @@
       </div>
     </div>
 
+    <!-- 6. Voice -->
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Voice Simulation</div>
+        <div class="caps__col-category">protocol simulation</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">Scapy-based RTP packet forging to simulate real-time voice calls using G.711 and G.729 codecs. QoS analytics and MOS score estimation. Tests QoS policy prioritization and jitter behavior across SD-WAN paths. Built-in voice echo target active on all instances.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">RTP</span>
+          <span class="tag">G.711/G.729</span>
+          <span class="tag">MOS score</span>
+          <span class="tag">Scapy</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. Failover Monitoring -->
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Failover Monitoring</div>
+        <div class="caps__col-category">network testing</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">High-precision UDP probe monitoring at up to 1000 packets per second. Measures exact SD-WAN tunnel transition times with packet-level accuracy. Tracks RX/TX loss during convergence events. Designed for rigorous failover lab scenarios where timing precision matters.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">UDP probes</span>
+          <span class="tag">1000 PPS max</span>
+          <span class="tag">RX/TX loss</span>
+          <span class="tag">Timing</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. Topology -->
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">VPN Topology</div>
+        <div class="caps__col-category">integration</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">Live VPN topology overlay showing SD-WAN tunnel status (Active/Backup/Down), hub mapping, and peer device discovery directly from the Prisma SASE API. Automatic discovery of Prisma SD-WAN sites and LAN interfaces for zero-config connectivity probes and path validation.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">Prisma API</span>
+          <span class="tag">Autodiscovery</span>
+          <span class="tag">Topology</span>
+          <span class="tag">Hub/Branch</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 9. VyOS Control -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
         <div class="caps__col-name">VyOS Control</div>
@@ -305,31 +350,14 @@
       </div>
     </div>
 
-    <div class="caps__row" role="row">
-      <div class="caps__col" role="cell">
-        <div class="caps__col-name">Prisma SD-WAN</div>
-        <div class="caps__col-category">integration</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Automatic discovery of Prisma SD-WAN sites and LAN interfaces via API for zero-config connectivity probes and path validation. Live VPN topology overlay showing tunnel status (Active/Backup/Down), hub mapping, and peer device discovery directly from the Prisma SASE API.</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-tags">
-          <span class="tag">Prisma API</span>
-          <span class="tag">Autodiscovery</span>
-          <span class="tag">Topology</span>
-          <span class="tag">Hub/Branch</span>
-        </div>
-      </div>
-    </div>
-
+    <!-- 10. Peer Autodiscovery -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
         <div class="caps__col-name">Peer Autodiscovery</div>
         <div class="caps__col-category">multi-node</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Automatic peer-to-peer discovery via a Cloudflare Workers-based registry. Zero-config multi-node setup with stateless JWT authentication. Every Stigix instance acts as both a source (generating traffic) and a target (responding to echo, XFR bandwidth, and SLA probes) simultaneously.</div>
+        <div class="caps__col-desc">Automatic peer-to-peer discovery via a Cloudflare Workers-based registry. Zero-config multi-node setup with stateless JWT authentication. Every Stigix instance is simultaneously a source and a target — discovered peers appear instantly in the dashboard.</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
@@ -337,24 +365,6 @@
           <span class="tag">Multi-node</span>
           <span class="tag">Source+Target</span>
           <span class="tag">JWT</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="caps__row" role="row">
-      <div class="caps__col" role="cell">
-        <div class="caps__col-name">Speedtest (XFR)</div>
-        <div class="caps__col-category">performance</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-desc">High-performance throughput and latency validation between Stigix instances. Real-time telemetry with searchable history. Complements iPerf3-based bandwidth testing. Suitable for sustained bandwidth measurement across SD-WAN paths in POC environments.</div>
-      </div>
-      <div class="caps__col" role="cell">
-        <div class="caps__col-tags">
-          <span class="tag">Throughput</span>
-          <span class="tag">Latency</span>
-          <span class="tag">iPerf3</span>
-          <span class="tag">XFR</span>
         </div>
       </div>
     </div>
@@ -398,7 +408,7 @@
       <article class="usecase" role="listitem">
         <div class="usecase__num">04</div>
         <h3 class="usecase__title">Failover &amp; Convergence Analysis</h3>
-        <p class="usecase__desc">Measure exact tunnel transition times during link failure or SD-WAN path change events. Use VyOS network impairment orchestration to induce failures on demand and capture convergence timing with high-precision UDP probes at up to 100 PPS.</p>
+        <p class="usecase__desc">Measure exact tunnel transition times during link failure or SD-WAN path change events. Use VyOS network impairment orchestration to induce failures on demand and capture convergence timing with high-precision UDP probes at up to 1000 PPS.</p>
       </article>
 
       <article class="usecase" role="listitem">
@@ -564,40 +574,35 @@
           <span class="terminal__out ok">✅ Docker is running.</span>
         </div>
         <div class="terminal__line">
-          <span class="terminal__out">📌 Choose Deployment Mode: [1] Both  [2] Target Only  [3] Source Only</span>
-        </div>
-        <div class="terminal__line">
           <span class="terminal__out ok">✅ Pulling jsuzanne/stigix:stable ...</span>
         </div>
         <div class="terminal__line">
-          <span class="terminal__out ok">✅ Services started. Dashboard at http://localhost:8080</span>
+          <span class="terminal__out ok">✅ Services started. Dashboard → http://localhost:8080</span>
         </div>
         <div class="terminal__line" style="margin-top: 12px;">
-          <span class="terminal__comment"># Or skip interactivity with a flag</span>
+          <span class="terminal__comment"># Manual install — download compose file directly</span>
         </div>
         <div class="terminal__line">
           <span class="terminal__prompt">$</span>
-          <span class="terminal__cmd">curl -sSL .../install.sh | bash -s -- --mode target</span>
+          <span class="terminal__cmd">mkdir -p stigix &amp;&amp; cd stigix</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__prompt">$</span>
+          <span class="terminal__cmd">curl -sSL -o docker-compose.yml https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.yml</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__prompt">$</span>
+          <span class="terminal__cmd">docker compose up -d</span>
         </div>
       </div>
     </div>
 
-    <!-- Deployment modes -->
-    <div class="quickstart__modes">
-      <div class="mode">
-        <span class="mode__badge">--mode both</span>
-        <div class="mode__title">Source + Target (default)</div>
-        <div class="mode__desc">Dashboard, traffic generator, and all echo/XFR/voice targets. Recommended for a single lab node.</div>
-      </div>
-      <div class="mode">
-        <span class="mode__badge">--mode source</span>
-        <div class="mode__title">Source Only</div>
-        <div class="mode__desc">Dashboard and traffic generation only. Directed at external targets — other Stigix instances or real destinations.</div>
-      </div>
-      <div class="mode">
-        <span class="mode__badge">--mode target</span>
-        <div class="mode__title">Target Only</div>
-        <div class="mode__desc">Lightweight branch/hub target: HTTP echo, XFR bandwidth, voice echo, and SLA probe responder. No dashboard.</div>
+    <!-- Source + Target architecture note -->
+    <div class="qs-note">
+      <div class="qs-note__icon">⚡</div>
+      <div class="qs-note__body">
+        <strong>Every Stigix instance is both a sender and a responder.</strong>
+        Once deployed, the instance immediately starts generating traffic <em>and</em> listening as an HTTP echo, XFR bandwidth, voice echo, and SLA probe target — with no additional configuration. Deploy on a branch node, a hub, or a cloud VM: all instances are auto-discovered and appear in the peer list of every other instance on the same registry.
       </div>
     </div>
 
@@ -605,7 +610,7 @@
     <div class="quickstart__platforms">
       <div class="platform">
         <span class="platform__os">Linux</span>
-        <div><strong>Docker Engine</strong> · Ubuntu, Debian, CentOS, Rocky Linux. Host network mode for full Layer-2/3.</div>
+        <div><strong>Docker Engine</strong> · Ubuntu, Debian, CentOS, Rocky Linux. Host network mode for full Layer-2/3. See <a href="https://github.com/jsuzanne/stigix/blob/main/docs/stigix-hw-requirements.md" target="_blank" rel="noopener noreferrer">HW requirements</a>.</div>
       </div>
       <div class="platform">
         <span class="platform__os">macOS</span>
