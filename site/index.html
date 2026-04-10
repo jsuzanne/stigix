@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stigix – SASE / SD-WAN Validation Platform</title>
+  <meta name="description" content="Stigix is an open-source SASE and SD-WAN validation platform for network engineers. Generate realistic traffic, validate security policies, test failover, and observe performance — in labs, demos, and field POCs.">
+  <meta property="og:title" content="Stigix – SASE / SD-WAN Validation Platform">
+  <meta property="og:description" content="Open-source field tool for realistic traffic generation, security policy validation, and failover testing. Built by a network engineer for network engineers.">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/png" href="assets/logo/stigix-favicon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     NAV
+══════════════════════════════════════════════════════════ -->
+<nav class="nav">
+  <div class="wrap nav__inner">
+    <a href="#" class="nav__logo" aria-label="Stigix">
+      <img src="assets/logo/stigix-dark.png" alt="Stigix">
+    </a>
+    <ul class="nav__links">
+      <li><a href="#why">Origin</a></li>
+      <li><a href="#capabilities">Capabilities</a></li>
+      <li><a href="#use-cases">Use Cases</a></li>
+      <li><a href="#gallery">Screenshots</a></li>
+      <li><a href="#quickstart">Quick Start</a></li>
+      <li><a href="#docs">Docs</a></li>
+    </ul>
+    <a href="https://github.com/jsuzanne/stigix" target="_blank" rel="noopener noreferrer" class="nav__gh" id="nav-github-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+      GitHub
+    </a>
+    <button class="nav__burger" id="nav-burger" aria-label="Open menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<div class="mnav" id="mobile-nav">
+  <button class="mnav__close" id="mobile-close">✕</button>
+  <a href="#why">Origin</a>
+  <a href="#capabilities">Capabilities</a>
+  <a href="#use-cases">Use Cases</a>
+  <a href="#gallery">Screenshots</a>
+  <a href="#quickstart">Quick Start</a>
+  <a href="#docs">Docs</a>
+  <a href="https://github.com/jsuzanne/stigix" target="_blank" rel="noopener noreferrer">View on GitHub →</a>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     HERO
+══════════════════════════════════════════════════════════ -->
+<section class="hero" id="hero">
+  <div class="wrap hero__main">
+
+    <div class="hero__topbar">
+      <div class="hero__badge">
+        <span class="hero__badge-dot" aria-hidden="true"></span>
+        Open-source · MIT · Docker-ready
+      </div>
+      <span class="hero__version">current: jsuzanne/stigix:stable</span>
+    </div>
+
+    <h1 class="hero__headline">
+      A lab platform for<br>
+      <em>real SASE / SD-WAN validation</em>
+    </h1>
+
+    <div class="hero__body">
+      <div class="hero__left">
+        <p class="hero__desc">
+          Stigix generates realistic SaaS and application traffic, runs security policy tests, measures failover convergence, simulates voice and IoT devices, and orchestrates VyOS network impairments — in labs, demos, and POC environments.
+        </p>
+        <div class="hero__actions">
+          <a href="https://github.com/jsuzanne/stigix" target="_blank" rel="noopener noreferrer"
+             id="hero-github-btn" class="btn btn--primary btn--lg">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+            View on GitHub
+          </a>
+          <a href="#quickstart" id="hero-quickstart-btn" class="btn btn--outline btn--lg">
+            Quick Start →
+          </a>
+        </div>
+        <div class="hero__facts">
+          <span class="hero__fact"><span class="hero__fact-dot"></span>Runs on Docker — AMD64 &amp; ARM64</span>
+          <span class="hero__fact"><span class="hero__fact-dot"></span>Ready in under 60 seconds</span>
+          <span class="hero__fact"><span class="hero__fact-dot"></span>Linux · macOS · Windows (WSL 2)</span>
+        </div>
+      </div>
+
+      <div class="hero__screen" role="img" aria-label="Stigix dashboard screenshot">
+        <div class="hero__screen-bar">
+          <span class="hero__screen-dot"></span>
+          <span class="hero__screen-dot"></span>
+          <span class="hero__screen-dot"></span>
+          <span class="hero__screen-url">localhost:8080 — Stigix Dashboard</span>
+        </div>
+        <img src="assets/screenshots/dashboard.png" alt="Stigix real-time dashboard" loading="eager">
+      </div>
+    </div><!-- /.hero__body -->
+
+    <!-- Disclaimer -->
+    <div class="disclaimer" role="note" style="margin-bottom: 0; position: relative; z-index: 1;">
+      <strong>Note:</strong> This is a personal, community-driven open-source project.
+      It is <strong>not</strong> an official Palo Alto Networks product and is not supported or endorsed by Palo Alto Networks.
+      All opinions and configurations are the author's own. Use at your own risk.
+    </div>
+
+  </div><!-- /.wrap -->
+</section>
+
+
+
+<!-- ══════════════════════════════════════════════════════════
+     WHY — editorial pull-quote layout
+══════════════════════════════════════════════════════════ -->
+<section class="why" id="why">
+  <div class="wrap">
+    <div class="why__inner">
+
+      <div class="why__left">
+        <span class="label">Origin</span>
+        <blockquote class="why__pull">
+          "I built this after years of writing <strong>one-off scripts</strong> for SD-WAN POCs and never finding a single lab platform that matched what I see in the field."
+        </blockquote>
+        <p class="why__body">
+          The pattern was always the same: a new POC, a new set of one-off scripts to simulate SaaS traffic, test URL filtering, or measure failover convergence. Nothing reusable. Nothing that handled both the traffic side and the security validation side in the same tool.
+        </p>
+        <p class="why__body">
+          Stigix was built to change that — a single platform for generating realistic application traffic, running security policy tests, simulating voice and IoT devices, measuring SD-WAN convergence time, and giving you a real-time view of what's happening across the network.
+        </p>
+      </div>
+
+      <div class="why__problems">
+        <p class="why__problems-title">Problems it solves</p>
+        <ul class="why__list">
+          <li>No realistic SaaS traffic for SD-WAN application steering demos</li>
+          <li>No single tool combining URL filtering, DNS security, and threat prevention validation</li>
+          <li>No precise failover convergence measurement in a lab</li>
+          <li>IoT and voice simulation requiring custom scripting every time</li>
+          <li>No link between network impairment orchestration and traffic observation</li>
+          <li>No zero-config multi-node setup for branch/hub lab scenarios</li>
+          <li>No Docker-based deployment running on both x86 and ARM</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+
+<!-- ══════════════════════════════════════════════════════════
+     CAPABILITIES — datasheet / spec table
+══════════════════════════════════════════════════════════ -->
+<section class="caps" id="capabilities">
+  <div class="wrap">
+    <div class="caps__header">
+      <div class="caps__header-left">
+        <span class="label">Platform</span>
+        <h2 class="caps__title">Core capabilities</h2>
+      </div>
+      <div class="caps__header-note">
+        Each area is independently usable and fully integrated into the same dashboard and config system.
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap caps__table" role="table" aria-label="Platform capabilities">
+
+    <div class="caps__row caps__row--head" role="row">
+      <div class="caps__col" role="columnheader">Capability</div>
+      <div class="caps__col" role="columnheader">Description</div>
+      <div class="caps__col" role="columnheader">Key specs</div>
+    </div>
+
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Traffic Generation</div>
+        <div class="caps__col-category">traffic</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">67 pre-configured SaaS applications including Google Workspace, Microsoft 365, Salesforce, and Zoom. Authentic HTTP/S requests with proper User-Agent headers and Referers. Weighted distribution per application group with live rate control from the dashboard.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">67 apps</span>
+          <span class="tag">HTTP/S</span>
+          <span class="tag">Weighted</span>
+          <span class="tag">Rate slider</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Security Validation</div>
+        <div class="caps__col-category">security</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">URL filtering validation across 66 categories (malware, phishing, gambling, adult content). DNS security tests against 24 domains including DGA and C2 patterns. EICAR-based IPS/threat prevention validation. Scheduled testing with persistent result history and export.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">66 URL cats</span>
+          <span class="tag">DNS security</span>
+          <span class="tag">EICAR/IPS</span>
+          <span class="tag">EDL support</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Monitoring &amp; Logs</div>
+        <div class="caps__col-category">observability</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">Real-time log streaming via WebSocket. Live statistics dashboard with success/failure rates, latency metrics, and bandwidth tracking. Historical traffic volume charts. Export results in JSON, CSV, or JSONL. 7-day persistent JSONL storage with auto-rotation.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">WebSocket</span>
+          <span class="tag">JSON/CSV</span>
+          <span class="tag">7-day log</span>
+          <span class="tag">Real-time</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Failover &amp; Convergence</div>
+        <div class="caps__col-category">network testing</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">High-precision UDP probe monitoring at up to 100 packets per second. Measures exact SD-WAN tunnel transition times with packet-level accuracy. Tracks RX/TX loss during convergence events. Designed for rigorous failover lab scenarios where timing precision matters.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">UDP probes</span>
+          <span class="tag">100 PPS max</span>
+          <span class="tag">RX/TX loss</span>
+          <span class="tag">Timing</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Voice Simulation</div>
+        <div class="caps__col-category">protocol simulation</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">Scapy-based RTP packet forging to simulate real-time voice calls using G.711 and G.729 codecs. QoS analytics and MOS score estimation. Tests QoS policy prioritization and jitter behavior across SD-WAN paths. Voice echo target for latency testing.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">RTP</span>
+          <span class="tag">G.711/G.729</span>
+          <span class="tag">MOS score</span>
+          <span class="tag">Scapy</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">IoT Simulation</div>
+        <div class="caps__col-category">protocol simulation</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">Layer-2/3 device simulation with Scapy-based DHCP and ARP, placing virtual devices directly on the wire. Simulates cameras, sensors, and other IoT profiles. Attack mode for validating malicious behavior detection: DNS flood, C2 beacon, port scan, data exfiltration.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">DHCP/ARP</span>
+          <span class="tag">Layer-2/3</span>
+          <span class="tag">Attack mode</span>
+          <span class="tag">Cameras</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">VyOS Control</div>
+        <div class="caps__col-category">orchestration</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">Orchestrate network impairments on VyOS routers via the VyOS API without touching the CLI for each test. Inject latency, packet loss, rate-limiting, and IP blocking on demand. Enables repeatable, automated lab scenarios with controllable network conditions.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">VyOS API</span>
+          <span class="tag">Latency</span>
+          <span class="tag">Loss</span>
+          <span class="tag">Rate-limit</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Prisma SD-WAN</div>
+        <div class="caps__col-category">integration</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">Automatic discovery of Prisma SD-WAN sites and LAN interfaces via API for zero-config connectivity probes and path validation. Live VPN topology overlay showing tunnel status (Active/Backup/Down), hub mapping, and peer device discovery directly from the Prisma SASE API.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">Prisma API</span>
+          <span class="tag">Autodiscovery</span>
+          <span class="tag">Topology</span>
+          <span class="tag">Hub/Branch</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Peer Autodiscovery</div>
+        <div class="caps__col-category">multi-node</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">Automatic peer-to-peer discovery via a Cloudflare Workers-based registry. Zero-config multi-node setup with stateless JWT authentication. Every Stigix instance acts as both a source (generating traffic) and a target (responding to echo, XFR bandwidth, and SLA probes) simultaneously.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">CF Workers</span>
+          <span class="tag">Multi-node</span>
+          <span class="tag">Source+Target</span>
+          <span class="tag">JWT</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Speedtest (XFR)</div>
+        <div class="caps__col-category">performance</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">High-performance throughput and latency validation between Stigix instances. Real-time telemetry with searchable history. Complements iPerf3-based bandwidth testing. Suitable for sustained bandwidth measurement across SD-WAN paths in POC environments.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">Throughput</span>
+          <span class="tag">Latency</span>
+          <span class="tag">iPerf3</span>
+          <span class="tag">XFR</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.caps__table -->
+</section>
+
+<hr class="rule">
+
+
+<!-- ══════════════════════════════════════════════════════════
+     USE CASES
+══════════════════════════════════════════════════════════ -->
+<section class="usecases" id="use-cases">
+  <div class="wrap">
+    <div class="usecases__header">
+      <span class="label">Applications</span>
+      <h2 class="usecases__title">What engineers use it for</h2>
+    </div>
+
+    <div class="usecases__list" role="list">
+
+      <article class="usecase" role="listitem">
+        <div class="usecase__num">01</div>
+        <h3 class="usecase__title">SD-WAN Policy Validation</h3>
+        <p class="usecase__desc">Generate weighted SaaS traffic across specific interfaces and verify that application steering rules behave as intended. Confirm that video, voice, and critical SaaS flows follow the expected path based on policy — before and after configuration changes.</p>
+      </article>
+
+      <article class="usecase" role="listitem">
+        <div class="usecase__num">02</div>
+        <h3 class="usecase__title">Security Policy Testing</h3>
+        <p class="usecase__desc">Validate URL filtering categories, DNS security, and IPS policies against real test destinations. Run scheduled security test cycles and capture results persistently. Confirm that blocking and alerting rules fire correctly before go-live or after a policy change.</p>
+      </article>
+
+      <article class="usecase" role="listitem">
+        <div class="usecase__num">03</div>
+        <h3 class="usecase__title">Demo &amp; Presales Labs</h3>
+        <p class="usecase__desc">Build repeatable, visually compelling demo environments for customer presentations and partner enablement sessions. Live traffic generation, real-time security results, and VPN topology overlays provide an authentic view without requiring access to a production environment.</p>
+      </article>
+
+      <article class="usecase" role="listitem">
+        <div class="usecase__num">04</div>
+        <h3 class="usecase__title">Failover &amp; Convergence Analysis</h3>
+        <p class="usecase__desc">Measure exact tunnel transition times during link failure or SD-WAN path change events. Use VyOS network impairment orchestration to induce failures on demand and capture convergence timing with high-precision UDP probes at up to 100 PPS.</p>
+      </article>
+
+      <article class="usecase" role="listitem">
+        <div class="usecase__num">05</div>
+        <h3 class="usecase__title">Troubleshooting</h3>
+        <p class="usecase__desc">Quickly generate the specific type of traffic needed to reproduce a QoS issue, a policy misclassification, or a failover anomaly. Use real-time logs, statistics, and live topology data to correlate what the platform generates with what the network is actually doing.</p>
+      </article>
+
+      <article class="usecase" role="listitem">
+        <div class="usecase__num">06</div>
+        <h3 class="usecase__title">IoT &amp; Voice Validation</h3>
+        <p class="usecase__desc">Simulate realistic IoT device presence at Layer 2/3 and validate that DHCP profiling, micro-segmentation, and traffic classification work correctly. Test QoS policy prioritization for voice traffic using Scapy-based RTP packet simulation with MOS score estimation.</p>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     GALLERY
+══════════════════════════════════════════════════════════ -->
+<section class="gallery" id="gallery">
+  <div class="wrap">
+    <div class="gallery__header">
+      <span class="label">Interface</span>
+      <h2 class="gallery__title">Screenshots</h2>
+    </div>
+
+    <div class="gallery__tabs" role="tablist">
+      <button class="gallery__tab active" data-tab="dashboard" role="tab" aria-selected="true" id="tab-btn-dashboard">Dashboard</button>
+      <button class="gallery__tab" data-tab="security" role="tab" aria-selected="false" id="tab-btn-security">Security</button>
+      <button class="gallery__tab" data-tab="performance" role="tab" aria-selected="false" id="tab-btn-performance">Performance</button>
+      <button class="gallery__tab" data-tab="iot" role="tab" aria-selected="false" id="tab-btn-iot">IoT</button>
+      <button class="gallery__tab" data-tab="voice" role="tab" aria-selected="false" id="tab-btn-voice">Voice</button>
+      <button class="gallery__tab" data-tab="failover" role="tab" aria-selected="false" id="tab-btn-failover">Failover</button>
+      <button class="gallery__tab" data-tab="vyos" role="tab" aria-selected="false" id="tab-btn-vyos">VyOS</button>
+      <button class="gallery__tab" data-tab="topology" role="tab" aria-selected="false" id="tab-btn-topology">Topology</button>
+      <button class="gallery__tab" data-tab="statistics" role="tab" aria-selected="false" id="tab-btn-statistics">Statistics</button>
+      <button class="gallery__tab" data-tab="config" role="tab" aria-selected="false" id="tab-btn-config">Config</button>
+    </div>
+
+    <div class="gallery__panel active" id="tab-dashboard">
+      <div class="gallery__frame">
+        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Dashboard — real-time traffic monitoring</span></div>
+        <img src="assets/screenshots/dashboard.png" alt="Stigix main dashboard" loading="lazy">
+        <div class="gallery__caption">Live traffic generation monitoring, application status, network metrics, and system health — all in one view.</div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-security">
+      <div class="gallery__frame">
+        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Security — URL filtering, DNS security, threat prevention</span></div>
+        <img src="assets/screenshots/security.png" alt="Stigix security testing tab" loading="lazy">
+        <div class="gallery__caption">URL filtering validation across 66 categories, DNS security tests, and EICAR-based IPS validation — with persistent result history and export.</div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-performance">
+      <div class="gallery__frame">
+        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Performance — synthetic probes and endpoint health</span></div>
+        <img src="assets/screenshots/performance.png" alt="Stigix performance tab" loading="lazy">
+        <div class="gallery__caption">Synthetic connectivity probes (HTTP, ICMP, TCP) with per-site latency tracking and endpoint health monitoring.</div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-iot">
+      <div class="gallery__frame">
+        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">IoT — Layer-2/3 device simulation</span></div>
+        <img src="assets/screenshots/iot.png" alt="Stigix IoT simulation tab" loading="lazy">
+        <div class="gallery__caption">Real-on-the-wire IoT simulation with DHCP/ARP presence. Includes attack mode: DNS flood, C2 beacon, port scan, data exfiltration.</div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-voice">
+      <div class="gallery__frame">
+        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Voice — RTP simulation and QoS analytics</span></div>
+        <img src="assets/screenshots/voice.png" alt="Stigix voice simulation tab" loading="lazy">
+        <div class="gallery__caption">Scapy-based RTP forging for G.711/G.729 voice simulation. MOS score estimation, jitter and latency metrics for QoS validation.</div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-failover">
+      <div class="gallery__frame">
+        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Failover Lab — high-precision convergence measurement</span></div>
+        <img src="assets/screenshots/failover.png" alt="Stigix failover lab tab" loading="lazy">
+        <div class="gallery__caption">UDP probe monitoring at up to 100 PPS. Measures SD-WAN tunnel transition times with packet-level accuracy.</div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-vyos">
+      <div class="gallery__frame">
+        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">VyOS Control — network impairment orchestration</span></div>
+        <img src="assets/screenshots/vyos.png" alt="Stigix VyOS control tab" loading="lazy">
+        <div class="gallery__caption">Inject latency, packet loss, rate-limiting, and IP blocking on VyOS routers via API — no manual CLI needed per test scenario.</div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-topology">
+      <div class="gallery__frame">
+        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">VPN Topology — live overlay visualization</span></div>
+        <img src="assets/screenshots/topology.png" alt="Stigix VPN topology overlay" loading="lazy">
+        <div class="gallery__caption">Live SD-WAN overlay from the Prisma SASE API — Active/Backup/Down tunnel status, hub mapping, peer device discovery.</div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-statistics">
+      <div class="gallery__frame">
+        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Statistics — traffic volume and success metrics</span></div>
+        <img src="assets/screenshots/statistics.png" alt="Stigix statistics tab" loading="lazy">
+        <div class="gallery__caption">Historical traffic volume charts, per-application success and failure rates, and latency distributions.</div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-config">
+      <div class="gallery__frame">
+        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Configuration — applications, probes, interfaces</span></div>
+        <img src="assets/screenshots/configuration.png" alt="Stigix configuration tab" loading="lazy">
+        <div class="gallery__caption">Manage application groups, traffic weights, network interfaces, synthetic probes, and Prisma API credentials.</div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<hr class="rule">
+
+
+<!-- ══════════════════════════════════════════════════════════
+     QUICK START — terminal-first
+══════════════════════════════════════════════════════════ -->
+<section class="quickstart" id="quickstart">
+  <div class="wrap">
+    <div class="quickstart__header">
+      <span class="label">Installation</span>
+      <h2 class="quickstart__title">Up and running in under a minute</h2>
+      <p class="quickstart__sub">Docker must be installed and running. No other dependencies required.</p>
+    </div>
+
+    <!-- Full-width terminal -->
+    <div class="terminal" role="region" aria-label="Installation instructions">
+      <div class="terminal__bar" style="position: relative;">
+        <div class="terminal__dots">
+          <span class="terminal__dot"></span>
+          <span class="terminal__dot"></span>
+          <span class="terminal__dot"></span>
+        </div>
+        <span class="terminal__title">bash — stigix install</span>
+        <button class="terminal__copy" aria-label="Copy install command" id="copy-install">Copy</button>
+      </div>
+      <div class="terminal__body">
+        <div class="terminal__line">
+          <span class="terminal__comment"># One-liner install (Linux / macOS)</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__prompt">$</span>
+          <span class="terminal__cmd">curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash</span>
+        </div>
+        <div class="terminal__line" style="margin-top: 12px;">
+          <span class="terminal__out info">🚀 Stigix (All-in-One) — Installation</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__out ok">✅ Docker is running.</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__out">📌 Choose Deployment Mode: [1] Both  [2] Target Only  [3] Source Only</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__out ok">✅ Pulling jsuzanne/stigix:stable ...</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__out ok">✅ Services started. Dashboard at http://localhost:8080</span>
+        </div>
+        <div class="terminal__line" style="margin-top: 12px;">
+          <span class="terminal__comment"># Or skip interactivity with a flag</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__prompt">$</span>
+          <span class="terminal__cmd">curl -sSL .../install.sh | bash -s -- --mode target</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Deployment modes -->
+    <div class="quickstart__modes">
+      <div class="mode">
+        <span class="mode__badge">--mode both</span>
+        <div class="mode__title">Source + Target (default)</div>
+        <div class="mode__desc">Dashboard, traffic generator, and all echo/XFR/voice targets. Recommended for a single lab node.</div>
+      </div>
+      <div class="mode">
+        <span class="mode__badge">--mode source</span>
+        <div class="mode__title">Source Only</div>
+        <div class="mode__desc">Dashboard and traffic generation only. Directed at external targets — other Stigix instances or real destinations.</div>
+      </div>
+      <div class="mode">
+        <span class="mode__badge">--mode target</span>
+        <div class="mode__title">Target Only</div>
+        <div class="mode__desc">Lightweight branch/hub target: HTTP echo, XFR bandwidth, voice echo, and SLA probe responder. No dashboard.</div>
+      </div>
+    </div>
+
+    <!-- Platform support -->
+    <div class="quickstart__platforms">
+      <div class="platform">
+        <span class="platform__os">Linux</span>
+        <div><strong>Docker Engine</strong> · Ubuntu, Debian, CentOS, Rocky Linux. Host network mode for full Layer-2/3.</div>
+      </div>
+      <div class="platform">
+        <span class="platform__os">macOS</span>
+        <div><strong>Docker Desktop / OrbStack</strong> · macOS 11+. Bridge mode. Some Layer-2 constraints apply.</div>
+      </div>
+      <div class="platform">
+        <span class="platform__os">Windows</span>
+        <div><strong>Docker Desktop + WSL 2</strong> · <a href="https://github.com/jsuzanne/stigix/blob/main/docs/WINDOWS_INSTALL.md" target="_blank" rel="noopener noreferrer">Windows Install Guide</a> — one-liner not supported on PowerShell.</div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<hr class="rule">
+
+
+<!-- ══════════════════════════════════════════════════════════
+     DOCS
+══════════════════════════════════════════════════════════ -->
+<section class="docs" id="docs">
+  <div class="wrap">
+    <div class="docs__header">
+      <span class="label">Resources</span>
+      <h2 class="docs__title">Documentation &amp; GitHub</h2>
+    </div>
+
+    <div class="docs__grid">
+
+      <a href="https://github.com/jsuzanne/stigix" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-github-link">
+        <span class="doc-link__ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg></span>
+        <div class="doc-link__text"><strong>GitHub Repository</strong><span>Source code, issues, releases</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
+      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/QUICK_START.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-qs-link">
+        <span class="doc-link__ico">🚀</span>
+        <div class="doc-link__text"><strong>Quick Start Guide</strong><span>Running in 5 minutes</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
+      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/CONFIGURATION.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-config-link">
+        <span class="doc-link__ico">⚙️</span>
+        <div class="doc-link__text"><strong>Configuration Guide</strong><span>Env vars and advanced options</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
+      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/SECURITY_TESTING.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-security-link">
+        <span class="doc-link__ico">🛡️</span>
+        <div class="doc-link__text"><strong>Security Testing</strong><span>URL, DNS, threat prevention</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
+      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/CONVERGENCE_LAB.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-conv-link">
+        <span class="doc-link__ico">🔄</span>
+        <div class="doc-link__text"><strong>Convergence Lab</strong><span>Failover timing and loss</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
+      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/VYOS_CONTROL.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-vyos-link">
+        <span class="doc-link__ico">🔧</span>
+        <div class="doc-link__text"><strong>VyOS Control</strong><span>Network impairment orchestration</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
+      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/IOT_SIMULATION.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-iot-link">
+        <span class="doc-link__ico">🔌</span>
+        <div class="doc-link__text"><strong>IoT Simulation</strong><span>Layer-2/3 device simulation</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
+      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/VOICE_SIMULATION.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-voice-link">
+        <span class="doc-link__ico">🎙️</span>
+        <div class="doc-link__text"><strong>Voice Simulation</strong><span>RTP forging and MOS scoring</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
+      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/PRISMA-SDWAN_INTEGRATION.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-prisma-link">
+        <span class="doc-link__ico">☁️</span>
+        <div class="doc-link__text"><strong>Prisma SD-WAN Integration</strong><span>API setup and site discovery</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
+      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/WINDOWS_INSTALL.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-win-link">
+        <span class="doc-link__ico">🪟</span>
+        <div class="doc-link__text"><strong>Windows Install Guide</strong><span>Docker Desktop + WSL 2</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
+      <a href="https://github.com/jsuzanne/stigix/issues" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-issues-link">
+        <span class="doc-link__ico">🐛</span>
+        <div class="doc-link__text"><strong>Issues</strong><span>Bug reports and feature requests</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
+      <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-changelog-link">
+        <span class="doc-link__ico">📋</span>
+        <div class="doc-link__text"><strong>Changelog</strong><span>Full release history</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     FOOTER
+══════════════════════════════════════════════════════════ -->
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer__row">
+      <div class="footer__brand">
+        <img src="assets/logo/stigix-dark.png" alt="Stigix">
+      </div>
+      <ul class="footer__links">
+        <li><a href="https://github.com/jsuzanne/stigix" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+        <li><a href="https://github.com/jsuzanne/stigix/blob/main/docs/QUICK_START.md" target="_blank" rel="noopener noreferrer">Quick Start</a></li>
+        <li><a href="https://github.com/jsuzanne/stigix/issues" target="_blank" rel="noopener noreferrer">Issues</a></li>
+        <li><a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></li>
+        <li><a href="https://github.com/jsuzanne/stigix/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a></li>
+      </ul>
+    </div>
+    <p class="footer__note" id="footer-disclaimer">
+      <strong>Disclaimer:</strong> This is a personal, community-driven open-source project maintained by the author independently.
+      It is <strong>not</strong> an official Palo Alto Networks product, feature, or tool, and it is not supported or endorsed by Palo Alto Networks in any way.
+      All opinions, configurations, and examples are the author's own and do not represent the views of any employer.
+      Use this software at your own risk. Provided "as is", without warranty of any kind.
+    </p>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
