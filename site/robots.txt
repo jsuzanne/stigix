@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://stigix.dev/sitemap.xml
+Sitemap: https://stigix.io/sitemap.xml
