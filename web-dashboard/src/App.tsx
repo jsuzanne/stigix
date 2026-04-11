@@ -1450,7 +1450,7 @@ export default function App() {
         ) : view === 'failover' || view === 'convergence' ? (
           <Failover token={token!} externalStatus={globalConvStatus} />
         ) : view === 'settings' ? (
-          <SettingsComponent token={token!} onVersionUpdate={fetchVersion} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} />
+          <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} />
         ) : view === 'speedtest' && features.xfr_enabled ? (
           <Speedtest token={token!} />
         ) : view === 'events' ? (
