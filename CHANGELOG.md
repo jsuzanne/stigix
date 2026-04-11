@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.21] - 2026-04-10
+### Added
+- **Website**: Launched the official product website at `stigix.io` with a full SEO pass, including meta tags, Open Graph cards, and JSON-LD structured data. 🌐✨
+- **Website**: Integrated automated sitemap and robots.txt for search engine discovery.
+- **Probes**: Implemented advanced payload parsing for custom test configurations and forced full URL display for all probe types. 🔗
+### Fixed
+- **Website**: Resolved Cloudflare Pages infinite loop caused by incorrect `_redirects` rules and updated all canonical URLs to the `.io` domain. 🛠️
+
+## [v1.2.2-patch.19] - 2026-04-09
+### Added
+- **Probes**: Introduced the **Advanced Stigix Probes UI Builder**, enabling granular configuration of custom test hooks and advanced network parameters. 🛠️
+### Fixed
+- **Settings**: Resolved a critical TypeScript build error in `Settings.tsx` caused by redundant unused variables.
+
+## [v1.2.2-patch.15] - 2026-04-08
+### Added
+- **Probes**: Implemented advanced filtering for Synthetic Probes and integrated **SD-WAN Auto-Sync** for discovered endpoints. 📡🔄
+### Changed
+- **UI**: Enhanced protocol-specific advanced layout for the Detail Modal and implemented **Dynamic TCP/UDP Context Widget Mapping** for protocol-specific telemetry. 📊
+- **UI**: Reduced typography weight of Advanced Test Parameter modals for improved visual balance.
+
+## [v1.2.2-patch.10] - 2026-04-08
+### Fixed
+- **API**: Restored missing telemetry binding for `ActiveJob` and ensured Custom Advanced UI Flags are correctly forwarded to the XFR Job Engine. 🛠️
+- **Logging**: Elevated cloud probe debug logs to info level and reverted target manager noise to debug for cleaner terminal output.
+
 ## [v1.2.2-patch.9] - 2026-04-08
 ### Added
 - **Speedtest**: Introduced dynamic strict format `<datalist>` validation for DSCP / TOS input fields to automatically prevent execution of malformed network QoS class identifiers.
