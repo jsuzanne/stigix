@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    RefreshCw, Download, AlertCircle, CheckCircle, Shield, Globe, Lock, Terminal,
+    RefreshCw, Download, AlertCircle, CheckCircle, Clock, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
     Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers,
     Clipboard, ExternalLink
@@ -115,7 +115,7 @@ const BetaBadge = ({ className }: { className?: string }) => (
     </span>
 );
 
-export default function Settings({ token }: { token: string }) {
+export default function Settings({ token, onVersionUpdate, uiConfig, onUpdateUIConfig }: { token: string, onVersionUpdate?: () => void, uiConfig?: { maxCaptures: number }, onUpdateUIConfig?: () => void }) {
     const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata'>('distribution');
 
     // Shared State
@@ -208,6 +208,11 @@ export default function Settings({ token }: { token: string }) {
     const [mcpStatus, setMcpStatus] = useState<{ online: boolean; status?: string; transport?: string; url?: string; error?: string } | null>(null);
     const [slsConfig, setSlsConfig] = useState<any>(null);
     const [probeFilterType, setProbeFilterType] = useState('ALL');
+    const [maxCaptures, setMaxCaptures] = useState(uiConfig?.maxCaptures || 10);
+
+    useEffect(() => {
+        if (uiConfig?.maxCaptures) setMaxCaptures(uiConfig.maxCaptures);
+    }, [uiConfig?.maxCaptures]);
 
     const showSuccess = (msg: string) => {
         setSuccessMsg(msg);
@@ -791,6 +796,26 @@ export default function Settings({ token }: { token: string }) {
             setSaving(false);
         }
     };
+    const saveUIConfig = async () => {
+        setSaving(true);
+        try {
+            const res = await fetch('/api/config/ui', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ maxCaptures })
+            });
+            if (res.ok) {
+                showSuccess('UI Configuration saved');
+                if (onUpdateUIConfig) onUpdateUIConfig();
+            } else {
+                setErrorMsg('Failed to save UI config');
+            }
+        } catch (e) {
+            setErrorMsg('Network error');
+        } finally {
+            setSaving(false);
+        }
+    };
 
     if (loading) return <div className="p-8 text-center text-text-muted animate-pulse font-bold tracking-widest text-xs">Loading Settings...</div>;
 
@@ -1195,6 +1220,80 @@ export default function Settings({ token }: { token: string }) {
                                             </div>
                                         );
                                     })}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* History Display Settings */}
+                        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm overflow-hidden relative group">
+                            <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-amber-500/10 rounded-lg text-amber-500">
+                                        <Clock size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-black text-text-primary tracking-tight">History Display Settings</h3>
+                                        <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70 uppercase">Global Dashboard Limits</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={saveUIConfig}
+                                    disabled={saving || maxCaptures === uiConfig?.maxCaptures}
+                                    className={cn(
+                                        "px-6 py-2.5 rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2 shadow-lg",
+                                        saving || maxCaptures === uiConfig?.maxCaptures
+                                            ? "bg-card-secondary text-text-muted cursor-not-allowed border border-border"
+                                            : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
+                                    )}
+                                >
+                                    {saving ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                                    SAVE SETTINGS
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[11px] font-black text-text-primary tracking-wider uppercase flex items-center gap-2">
+                                            Number of Recent Captures
+                                            <div className="group/tip relative">
+                                                <Info size={12} className="text-blue-500" />
+                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 text-white text-[9px] font-bold rounded-lg shadow-2xl opacity-0 group-hover/tip:opacity-100 transition-opacity pointer-events-none w-48 border border-white/10 z-[100] leading-relaxed">
+                                                    Defines how many data points are displayed in the "Recent Captures" table under Performance Details.
+                                                </div>
+                                            </div>
+                                        </label>
+                                        <span className="text-[11px] font-mono font-black text-blue-500 bg-blue-500/5 px-2 py-0.5 rounded border border-blue-500/10">{maxCaptures} points</span>
+                                    </div>
+                                    <div className="bg-card-secondary/30 p-4 rounded-xl border border-border/50">
+                                        <input
+                                            type="range"
+                                            min="5"
+                                            max="100"
+                                            step="5"
+                                            value={maxCaptures}
+                                            onChange={(e) => setMaxCaptures(parseInt(e.target.value))}
+                                            className="w-full accent-blue-600 h-1.5 bg-card border border-border rounded-lg appearance-none cursor-pointer"
+                                        />
+                                        <div className="flex justify-between mt-2 text-[9px] font-black text-text-muted opacity-50 font-mono tracking-tighter">
+                                            <span>5 POINTS</span>
+                                            <span>25</span>
+                                            <span>50</span>
+                                            <span>75</span>
+                                            <span>100 POINTS</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div className="p-4 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl flex gap-3 items-start animate-in zoom-in-95 duration-300">
+                                    <Info size={16} className="text-blue-500 mt-0.5 shrink-0" />
+                                    <div className="space-y-1">
+                                        <p className="text-[10px] font-black text-blue-600/80 uppercase tracking-widest">Refresh Awareness</p>
+                                        <p className="text-[11px] font-bold text-text-secondary leading-relaxed opacity-80">
+                                            Probes now run at a harmonized frequency of <strong className="text-blue-500">1 minute</strong>.
+                                            Increasing the display limit shows more historical context but may slightly increase page load time for deep diagnostics.
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         </div>

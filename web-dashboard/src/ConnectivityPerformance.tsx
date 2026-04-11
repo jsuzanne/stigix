@@ -5,6 +5,7 @@ import { twMerge } from 'tailwind-merge';
 
 interface ConnectivityPerformanceProps {
     token: string;
+    uiConfig?: { maxCaptures: number };
     onManage?: () => void;
 }
 
@@ -97,7 +98,8 @@ function EndpointTypeGraph({ type, results, color }: { type: string; results: an
 }
 
 
-export default function ConnectivityPerformance({ token, onManage }: ConnectivityPerformanceProps) {
+export default function ConnectivityPerformance({ token, uiConfig, onManage }: ConnectivityPerformanceProps) {
+    const maxCaptures = uiConfig?.maxCaptures || 10;
     const [results, setResults] = useState<any[]>([]);
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);      // Phase 1: probes config (fast)
@@ -513,7 +515,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                         <span className="text-blue-600 dark:text-blue-400 font-bold ml-1">TTFB (HTTP)</span>.
                         Errors/Timeouts result in a score of <span className="text-red-500 font-black">0</span>.
                         <span className="block mt-1 text-text-muted/60 font-bold flex items-center gap-1 uppercase tracking-tighter text-[9px]">
-                            <Clock size={10} /> Probes run automatically every 5 minutes.
+                            <Clock size={10} /> Probes run automatically every 1 minute.
                         </span>
                     </p>
                 </div>
@@ -775,7 +777,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                     <div className="p-12 text-center text-text-muted flex flex-col items-center gap-3 bg-card/40">
                         <Activity size={48} className="text-text-muted opacity-30" />
                         <div className="text-sm font-bold tracking-widest">No performance data captured yet</div>
-                        <div className="text-[10px] max-w-xs leading-relaxed italic opacity-70">Synthetic checks run every 5 minutes and store metrics for the historical reporting.</div>
+                        <div className="text-[10px] max-w-xs leading-relaxed italic opacity-70">Synthetic checks run every 1 minute and store metrics for the historical reporting.</div>
                     </div>
                 )}
             </div>
@@ -883,7 +885,7 @@ export default function ConnectivityPerformance({ token, onManage }: Connectivit
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border">
-                                            {selectedEndpointResults.slice(0, 10).map((r, i) => (
+                                            {selectedEndpointResults.slice(0, maxCaptures).map((r, i) => (
                                                 <tr key={i} className="hover:bg-card-secondary transition-colors">
                                                     <td className="px-4 py-3 text-text-primary font-bold uppercase tracking-tighter">{formatTimestamp(r.timestamp)}</td>
                                                     <td className="px-4 py-3 text-center">

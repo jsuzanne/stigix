@@ -122,6 +122,7 @@ export default function App() {
   const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h'>('1h');
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [registryStatus, setRegistryStatus] = useState<any>(null);
+  const [uiConfig, setUiConfig] = useState<{ refreshInterval: number, maxCaptures: number }>({ refreshInterval: 1000, maxCaptures: 10 });
 
 
   // Rate Calculation State - Use Refs to avoid stale closures in setInterval
@@ -444,6 +445,7 @@ export default function App() {
       const res = await fetch('/api/config/ui');
       const data = await res.json();
       if (data.refreshInterval) setRefreshInterval(data.refreshInterval);
+      setUiConfig(data);
     } catch (e) {
       console.error("Failed to fetch UI config");
     }
@@ -1434,7 +1436,7 @@ export default function App() {
             </div>
           </>
         ) : view === 'performance' ? (
-          <ConnectivityPerformance token={token!} onManage={() => setView('settings')} />
+          <ConnectivityPerformance token={token!} uiConfig={uiConfig} onManage={() => setView('settings')} />
         ) : view === 'topology' ? (
           <Topology token={token!} />
         ) : view === 'security' ? (
@@ -1448,7 +1450,7 @@ export default function App() {
         ) : view === 'failover' || view === 'convergence' ? (
           <Failover token={token!} externalStatus={globalConvStatus} />
         ) : view === 'settings' ? (
-          <SettingsComponent token={token!} />
+          <SettingsComponent token={token!} onVersionUpdate={fetchVersion} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} />
         ) : view === 'speedtest' && features.xfr_enabled ? (
           <Speedtest token={token!} />
         ) : view === 'events' ? (

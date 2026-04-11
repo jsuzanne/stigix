@@ -51,3 +51,5 @@ logs/
 # Docker Compose
 docker-compose.yml
 __pycache__/
+.venv/
+venv/

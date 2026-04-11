@@ -75,6 +75,9 @@ function getPythonPath() {
 const PYTHON_PATH = getPythonPath();
 log('SYSTEM', `Python Path: ${PYTHON_PATH}`);
 
+const isMac = os.platform() === 'darwin';
+const getTimeoutCmd = (seconds: number) => isMac ? "" : `timeout ${seconds} `;
+
 // Configuration Paths - Environment aware
 const APP_CONFIG = {
     // Check for config in PROJECT_ROOT/config
@@ -82,8 +85,12 @@ const APP_CONFIG = {
     // Fallback to local logs if /var/log is not accessible (dev mode)
     logDir: path.resolve(process.env.LOG_DIR || (fs.existsSync('/var/log/sdwan-traffic-gen') ? '/var/log/sdwan-traffic-gen' : path.join(PROJECT_ROOT, 'logs')))
 };
+// Ensure directories exist
+if (!fs.existsSync(APP_CONFIG.configDir)) fs.mkdirSync(APP_CONFIG.configDir, { recursive: true });
+if (!fs.existsSync(APP_CONFIG.logDir)) fs.mkdirSync(APP_CONFIG.logDir, { recursive: true });
 
 const PRISMA_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'prisma-config.json');
+const UI_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'ui-config.json');
 
 /**
  * Loads global Prisma SASE API configuration from disk and updates process.env.
@@ -974,12 +981,15 @@ const getInterface = (): string => {
     // 2. Auto-detect fallback (Host Mode) - Prefer ip route
     try {
 
-        const output = execSync("ip route | grep '^default' | awk '{print $5}' | head -n 1", {
+        const cmd = isMac 
+            ? "route get default | grep interface | awk '{print $2}'"
+            : "ip route | grep '^default' | awk '{print $5}' | head -n 1";
+        const output = execSync(cmd, {
             encoding: 'utf8',
             timeout: 2000
         }).trim();
         if (output) {
-            if (DEBUG) log('SYSTEM', `Auto-detected interface: ${output} (Source: ip route)`, 'debug');
+            if (DEBUG) log('SYSTEM', `Auto-detected interface: ${output} (Source: ${isMac ? 'route get' : 'ip route'})`, 'debug');
             return output;
         }
     } catch (e) {
@@ -2243,11 +2253,35 @@ app.get('/api/tests/xfr/:id/stream', authenticateToken, (req, res) => {
     });
 });
 
-// API: Get UI Configuration (Public endpoint)
+// API: Get UI Configuration (Public endpoint for baseline interval)
 app.get('/api/config/ui', (req, res) => {
+    let maxCaptures = 10;
+    try {
+        if (fs.existsSync(UI_CONFIG_FILE)) {
+            const config = JSON.parse(fs.readFileSync(UI_CONFIG_FILE, 'utf8'));
+            if (config.maxCaptures) maxCaptures = config.maxCaptures;
+        }
+    } catch (e) { }
+
     res.json({
-        refreshInterval: parseInt(process.env.DASHBOARD_REFRESH_MS || '1000')
+        refreshInterval: parseInt(process.env.DASHBOARD_REFRESH_MS || '1000'),
+        maxCaptures
     });
+});
+
+// API: Update UI Configuration (Authenticated)
+app.post('/api/config/ui', authenticateToken, (req, res) => {
+    try {
+        const { maxCaptures } = req.body;
+        const config = {
+            maxCaptures: Math.max(1, Math.min(100, parseInt(maxCaptures) || 10)),
+            updated_at: new Date().toISOString()
+        };
+        fs.writeFileSync(UI_CONFIG_FILE, JSON.stringify(config, null, 2));
+        res.json({ success: true, config });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to save UI config' });
+    }
 });
 
 // API: Get Site Information (Prisma SD-WAN)
@@ -3067,7 +3101,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
         if (endpoint.type.toLowerCase() === 'http' || endpoint.type.toLowerCase() === 'https') {
             const iface = getInterface();
             const ifaceFlag = (iface && iface !== 'eth0') ? `--interface ${iface}` : '';
-            const curlCmd = `timeout 15 curl -o /dev/null -s -L -w "time_namelookup=%{time_namelookup}\\ntime_connect=%{time_connect}\\ntime_appconnect=%{time_appconnect}\\ntime_starttransfer=%{time_starttransfer}\\ntime_total=%{time_total}\\nhttp_code=%{http_code}\\nremote_ip=%{remote_ip}\\nremote_port=%{remote_port}\\nsize_download=%{size_download}\\nspeed_download=%{speed_download}\\nssl_verify_result=%{ssl_verify_result}\\n" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' --max-time ${Math.floor(endpoint.timeout / 1000)} ${ifaceFlag} "${endpoint.target}"`;
+            const curlCmd = `${getTimeoutCmd(15)}curl -o /dev/null -s -L -w "time_namelookup=%{time_namelookup}\\ntime_connect=%{time_connect}\\ntime_appconnect=%{time_appconnect}\\ntime_starttransfer=%{time_starttransfer}\\ntime_total=%{time_total}\\nhttp_code=%{http_code}\\nremote_ip=%{remote_ip}\\nremote_port=%{remote_port}\\nsize_download=%{size_download}\\nspeed_download=%{speed_download}\\nssl_verify_result=%{ssl_verify_result}\\n" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' --max-time ${Math.floor(endpoint.timeout / 1000)} ${ifaceFlag} "${endpoint.target}"`;
 
             try {
                 const { stdout } = await execPromise(curlCmd);
@@ -3098,8 +3132,9 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
             } catch (e) { }
         } else if (endpoint.type.toLowerCase() === 'ping') {
             const iface = getInterface();
-            const ifaceFlag = (iface && iface !== 'eth0') ? `-I ${iface}` : '';
-            const pingCommand = `timeout 5 ping -c 1 -W ${Math.floor(endpoint.timeout / 1000)} ${ifaceFlag} ${endpoint.target}`;
+            const ifaceFlag = (iface && iface !== 'eth0') ? (isMac ? `-b ${iface}` : `-I ${iface}`) : ''; // -b on mac for bind, -I on linux
+            const pingFlag = isMac ? `-W ${endpoint.timeout}` : `-W ${Math.floor(endpoint.timeout / 1000)}`; // Mac is ms, Linux is seconds
+            const pingCommand = `${getTimeoutCmd(5)}ping -c 1 ${pingFlag} ${ifaceFlag} ${endpoint.target}`;
             const pStart = Date.now();
             try {
                 const { stdout } = await execPromise(pingCommand);
@@ -3112,7 +3147,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
             } catch (e) { }
         } else if (endpoint.type.toLowerCase() === 'tcp') {
             const [ip, port] = endpoint.target.split(':');
-            const ncCommand = `timeout 5 nc -zv -w ${Math.floor(endpoint.timeout / 1000)} ${ip} ${port} 2>&1`;
+            const ncCommand = `${getTimeoutCmd(5)}nc -zv -w ${Math.floor(endpoint.timeout / 1000)} ${ip} ${port} 2>&1`;
             const tStart = Date.now();
             try {
                 await execPromise(ncCommand);
@@ -3121,7 +3156,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                 result.score = calculateDEMScore(result.endpointType, result.reachable, undefined, result.metrics);
             } catch (e) { }
         } else if (endpoint.type.toLowerCase() === 'dns') {
-            const dnsCommand = `timeout 5 dig +short +time=${Math.floor(endpoint.timeout / 1000)} google.com @${endpoint.target}`;
+            const dnsCommand = `${getTimeoutCmd(5)}dig +short +time=${Math.floor(endpoint.timeout / 1000)} google.com @${endpoint.target}`;
             const dStart = Date.now();
             try {
                 const { stdout } = await execPromise(dnsCommand);
@@ -3135,7 +3170,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
             const parts = endpoint.target.split(':');
             const host = parts[0];
             const port = parts[1] || '5201';
-            const iperfCmd = `timeout 10 iperf3 -u -c ${host} -p ${port} -b 50k -t 1 -J`;
+            const iperfCmd = `${getTimeoutCmd(10)}iperf3 -u -c ${host} -p ${port} -b 50k -t 1 -J`;
             const uStart = Date.now();
             try {
                 const { stdout } = await execPromise(iperfCmd);
@@ -3299,7 +3334,7 @@ app.get('/api/connectivity/test', authenticateToken, async (req, res) => {
             metrics: checkResult.metrics
         };
         results.push(legacyFormat);
-        await connectivityLogger.logResult(checkResult);
+        // await connectivityLogger.logResult(checkResult); // Disabled duplicate logging from UI
 
         const key = `${legacyFormat.type}:${legacyFormat.name}`;
         const lastStatus = lastConnectivityStatusMap.get(key);
@@ -3481,7 +3516,7 @@ app.get('/api/connectivity/stats', authenticateToken, async (req, res) => {
 });
 
 // Background connectivity monitoring
-const startConnectivityMonitor = (intervalMinutes: number = 5) => {
+const startConnectivityMonitor = (intervalMinutes: number = 1) => {
     console.log(`[DEM] Starting background connectivity monitoring (every ${intervalMinutes}m)`);
 
     const runMonitor = async () => {
@@ -3505,8 +3540,8 @@ const startConnectivityMonitor = (intervalMinutes: number = 5) => {
     setInterval(runMonitor, intervalMinutes * 60 * 1000);
 };
 
-// Start monitor
-startConnectivityMonitor(5);
+// Start monitor (Now harmonized to 1 minute)
+startConnectivityMonitor(1);
 
 // --- Phase 7: Convergence & Failover Testing ---
 
