@@ -4694,6 +4694,10 @@ const saveSecurityConfig = (config: any) => {
 
 // --- Strata Logging Service (SLS) API Client ---
 
+// TEMPORARILY DISABLED: SLS enrichment (Prisma API "who is dropping" check) is off.
+// The API integration is not working at the moment. Set to true to re-enable.
+const SLS_ENRICHMENT_ENABLED = false;
+
 class SLSClient {
     private baseUrl: string = 'https://api.paloaltonetworks.com';
     private authUrl: string = 'https://auth.paloaltonetworks.com/oauth2/access_token';
@@ -4989,7 +4993,8 @@ const addTestResult = async (testType: string, testName: string, result: any, te
     };
 
     // 4. Enrich with SLS if enabled
-    if (config.sls_config?.enabled && config.sls_config?.auto_enrich) {
+    // NOTE: SLS_ENRICHMENT_ENABLED is set to false - Prisma API check temporarily deactivated
+    if (SLS_ENRICHMENT_ENABLED && config.sls_config?.enabled && config.sls_config?.auto_enrich) {
         try {
             // We need srcIp for enrichment.
             let srcIp = process.env.STIGIX_IP || 'auto';
