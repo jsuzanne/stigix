@@ -163,7 +163,7 @@ docker compose up -d
 ```text
 [+] Running 3/3
  ✔ Network sdwan-traffic-gen_default          Created
- ✔ Container sdwan-web-ui                     Healthy
+ ✔ Container stigix                     Healthy
  ✔ Container sdwan-traffic-gen                Started
 ```
 
@@ -176,7 +176,7 @@ docker compose ps
 **Expected output:**
 ```text
 NAME               STATUS                    PORTS
-sdwan-web-ui       Up (healthy)              0.0.0.0:8080->8080/tcp
+stigix       Up (healthy)              0.0.0.0:8080->8080/tcp
 sdwan-traffic-gen  Up
 ```
 
@@ -247,7 +247,7 @@ docker compose logs
 docker compose logs -f
 
 # Specific service
-docker compose logs sdwan-web-ui
+docker compose logs stigix
 docker compose logs sdwan-traffic-gen
 ```
 
@@ -258,7 +258,7 @@ docker compose logs sdwan-traffic-gen
 docker compose restart
 
 # Restart specific service
-docker compose restart sdwan-web-ui
+docker compose restart stigix
 ```
 
 ### Stop Services
@@ -285,14 +285,14 @@ docker compose up -d
 ### Check Resource Usage
 
 ```powershell
-docker stats sdwan-web-ui sdwan-traffic-gen
+docker stats stigix sdwan-traffic-gen
 ```
 
 ### Access Container Shell
 
 ```powershell
 # Web UI container
-docker compose exec sdwan-web-ui sh
+docker compose exec stigix sh
 
 # Traffic generator container
 docker compose exec sdwan-traffic-gen sh
@@ -352,7 +352,7 @@ Option 1 - Change port:
 notepad docker-compose.yml
 ```
 
-Find the `ports:` section for `sdwan-web-ui`:
+Find the `ports:` section for `stigix`:
 ```yaml
 ports:
   - "8081:8080"  # Changed from 8080:8080
@@ -485,7 +485,7 @@ cd C:\sdwan-traffic-gen
 docker compose down
 
 # Remove images (optional)
-docker rmi jsuzanne/sdwan-web-ui:stable
+docker rmi jsuzanne/stigix:stable
 docker rmi jsuzanne/sdwan-traffic-gen:stable
 
 # Remove directory

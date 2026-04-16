@@ -677,14 +677,14 @@ Each list type displays a mini results table showing the last 5 results of the l
 ### Troubleshooting
 
 **Tests not running:**
-- Check backend logs: `docker-compose logs sdwan-web-ui`
+- Check backend logs: `docker-compose logs stigix`
 - Verify `curl` and `nslookup` are installed in container
 - Check network connectivity to test URLs/domains
 
 **Scheduler not working:**
 - Check `scheduled_execution.enabled` is `true`
 - Verify interval is between 5-1440 minutes
-- Restart container: `docker-compose restart sdwan-web-ui`
+- Restart container: `docker-compose restart stigix`
 
 **Statistics not updating:**
 - Check `addTestResult()` is being called
@@ -700,7 +700,7 @@ Each list type displays a mini results table showing the last 5 results of the l
 
 **Backend execution logs:**
 ```bash
-docker-compose logs -f sdwan-web-ui
+docker-compose logs -f stigix
 ```
 
 **Frontend execution log:**
@@ -732,7 +732,7 @@ cp config/security-tests.json config/security-tests.json.backup
 **Restore configuration:**
 ```bash
 cp config/security-tests.json.backup config/security-tests.json
-docker-compose restart sdwan-web-ui
+docker-compose restart stigix
 ```
 
 ---
@@ -776,7 +776,7 @@ docker-compose restart sdwan-web-ui
 ## Support
 
 For issues or questions:
-- Check logs: `docker-compose logs -f sdwan-web-ui`
+- Check logs: `docker-compose logs -f stigix`
 - Review this documentation
 - Verify Prisma Access connectivity
 - Check firewall security policies

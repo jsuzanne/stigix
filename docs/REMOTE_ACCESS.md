@@ -28,7 +28,7 @@ Traditional reverse proxy with SSL termination.
 - **Setup**:
   1. Deploy Nginx or Traefik as a container.
   2. Use Let's Encrypt for automatic HTTPS.
-  3. Proxy traffic from port 443 to the `sdwan-web-ui:8080`.
+  3. Proxy traffic from port 443 to the `stigix:8080`.
 
 ---
 

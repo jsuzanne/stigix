@@ -24,7 +24,7 @@
 - **NEVER** use `latest` for public demos or critical production sites.
 
 ### Required Images
-1. `jsuzanne/sdwan-web-ui` - Web dashboard + backend API
+1. `jsuzanne/stigix` - Web dashboard + backend API
 2. `jsuzanne/sdwan-traffic-gen` - Traffic generation script
 
 ---
@@ -180,7 +180,7 @@ docker buildx create --use --name multiplatform-builder
 
 # Build and push web-ui
 docker buildx build --platform linux/amd64,linux/arm64 \
-  -t jsuzanne/sdwan-web-ui:1.1.0-beta \
+  -t jsuzanne/stigix:1.1.0-beta \
   -f web-dashboard/Dockerfile \
   --push .
 

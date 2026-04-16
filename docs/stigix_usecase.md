@@ -8,7 +8,7 @@ Generate and monitor realistic background traffic to popular SaaS applications w
 flowchart LR
     subgraph Branch["Branch Site"]
         TG["STIGIX Traffic Generator<br/>(sdwan-traffic-gen)"]
-        UI["Web UI<br/>(sdwan-web-ui)"]
+        UI["Web UI<br/>(stigix)"]
     end
 
     subgraph WAN["SD-WAN / SASE Fabric"]

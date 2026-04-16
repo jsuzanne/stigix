@@ -10,14 +10,14 @@ Two sets of containers exist in a typical deployment:
 
 | Location | Containers | Role |
 |----------|-----------|------|
-| **Branch / Generator Site** | `sdwan-traffic-gen`, `sdwan-web-ui` | Traffic source & control plane |
+| **Branch / Generator Site** | `sdwan-traffic-gen`, `stigix` | Traffic source & control plane |
 | **Target / DC Site** | `sdwan-voice-echo`, `xfr-target` | Traffic destination & echo servers |
 
 ```mermaid
 graph LR
     subgraph "🏢 Branch Site (Generator)"
         TG["sdwan-traffic-gen<br/>(Bash)"]
-        WEB["sdwan-web-ui<br/>(Node.js + React)"]
+        WEB["stigix<br/>(Node.js + React)"]
     end
 
     subgraph "🎯 Target Site (DC / Remote Branch)"
@@ -49,11 +49,11 @@ graph LR
 
 ---
 
-## 📦 Container 1: `sdwan-web-ui` — Frontend + Backend + All Active Tests
+## 📦 Container 1: `stigix` — Frontend + Backend + All Active Tests
 
 | Attribute | Value |
 |-----------|-------|
-| **Image** | `jsuzanne/sdwan-web-ui:stable` |
+| **Image** | `jsuzanne/stigix:stable` |
 | **Language** | Node.js / TypeScript backend (`server.ts`) + React 19 frontend (compiled static files) |
 | **Exposed Port** | **8080** (HTTP — dashboard UI + all API endpoints) |
 | **Network Mode** | Host |
@@ -71,7 +71,7 @@ graph LR
 ```
 🖥️  Browser (React frontend)
       ↓  HTTP API call (e.g., POST /api/convergence/start)
-⚙️  Node.js backend — server.ts (inside same sdwan-web-ui container)
+⚙️  Node.js backend — server.ts (inside same stigix container)
       ↓  child_process.spawn()
 🐍  Python engine (e.g., convergence_orchestrator.py)
       ↓  UDP/TCP traffic
@@ -412,8 +412,8 @@ A high-performance purpose-built throughput test server. Unlike iperf3, it suppo
 | Port | Protocol | Container | Direction | UI Menu |
 |------|----------|-----------|-----------|---------|
 | **443** | HTTPS | `sdwan-traffic-gen` | → Internet | Traffic Distribution / Statistics |
-| **8080** | HTTP | `sdwan-web-ui` | ← Browser | All menus (dashboard) |
-| **22** | SSH | `sdwan-web-ui` | → VyOS Router | VyOS Control |
+| **8080** | HTTP | `stigix` | ← Browser | All menus (dashboard) |
+| **22** | SSH | `stigix` | → VyOS Router | VyOS Control |
 | **6100** | UDP | `sdwan-voice-echo` | ← Generator | Voice / VoIP |
 | **6101** | UDP | `sdwan-voice-echo` | → Generator | Voice / VoIP |
 | **6200** | UDP | `sdwan-voice-echo` | ← Generator | Convergence Lab |
@@ -429,22 +429,22 @@ A high-performance purpose-built throughput test server. Unlike iperf3, it suppo
 
 | Dashboard Menu | Container(s) Involved | Key Script / Engine |
 |---------------|----------------------|---------------------|
-| **Traffic Distribution** | `sdwan-traffic-gen` + `sdwan-web-ui` | `traffic-generator.sh` |
-| **Statistics** | `sdwan-traffic-gen` + `sdwan-web-ui` | `stats.json` / Socket.IO |
-| **Convergence Lab** | `sdwan-web-ui` + `sdwan-voice-echo` | `convergence_orchestrator.py` |
-| **Voice / VoIP** | `sdwan-web-ui` + `sdwan-voice-echo` | `voice_orchestrator.py` |
-| **XFR Speedtest** | `sdwan-web-ui` + `xfr-target` | XFR client (built-in) |
-| **Security Testing** | `sdwan-web-ui` + `sdwan-voice-echo` | curl / nslookup (built-in) |
-| **Connectivity Performance** | `sdwan-web-ui` | ping / curl / iperf3 (built-in) |
-| **IoT Simulation** | `sdwan-web-ui` | Scapy Python engine |
-| **VyOS Control** | `sdwan-web-ui` → VyOS routers | `vyos-manager.ts` (SSH) |
-| **Settings** | `sdwan-web-ui` | Config file management |
-| **Topology** | `sdwan-web-ui` | `getflow.py` (Prisma API) |
+| **Traffic Distribution** | `sdwan-traffic-gen` + `stigix` | `traffic-generator.sh` |
+| **Statistics** | `sdwan-traffic-gen` + `stigix` | `stats.json` / Socket.IO |
+| **Convergence Lab** | `stigix` + `sdwan-voice-echo` | `convergence_orchestrator.py` |
+| **Voice / VoIP** | `stigix` + `sdwan-voice-echo` | `voice_orchestrator.py` |
+| **XFR Speedtest** | `stigix` + `xfr-target` | XFR client (built-in) |
+| **Security Testing** | `stigix` + `sdwan-voice-echo` | curl / nslookup (built-in) |
+| **Connectivity Performance** | `stigix` | ping / curl / iperf3 (built-in) |
+| **IoT Simulation** | `stigix` | Scapy Python engine |
+| **VyOS Control** | `stigix` → VyOS routers | `vyos-manager.ts` (SSH) |
+| **Settings** | `stigix` | Config file management |
+| **Topology** | `stigix` | `getflow.py` (Prisma API) |
 
 ---
 
 ## 🔑 Key Design Principle
 
-> The `sdwan-web-ui` container is a **single control plane** — it does not just serve the dashboard, it actively spawns Python processes, issues SSH commands, and acts as the test execution engine. All measurement traffic (Voice, Convergence, XFR, Security) is **initiated by the web-ui container**, not the traffic generator.
+> The `stigix` container is a **single control plane** — it does not just serve the dashboard, it actively spawns Python processes, issues SSH commands, and acts as the test execution engine. All measurement traffic (Voice, Convergence, XFR, Security) is **initiated by the web-ui container**, not the traffic generator.
 
 The `sdwan-traffic-gen` container is **only** responsible for background SaaS traffic simulation. It is completely independent and controlled via shared configuration files on disk.

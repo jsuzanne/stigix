@@ -1008,7 +1008,7 @@ export default function Security({ token }: SecurityProps) {
                                             {lastResult && getStatusBadge(lastResult.result)}
                                             <div className="flex gap-1.5 ml-2 p-1 bg-card-secondary/50 rounded-lg border border-border/50">
                                                 <button
-                                                    onClick={() => copyToClipboard(`docker exec sdwan-web-ui sh -c "curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' '${category.url}'"`)}
+                                                    onClick={() => copyToClipboard(`curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' '${category.url}'`)}
                                                     className="p-1.5 hover:bg-card border border-transparent hover:border-border rounded-lg text-text-muted hover:text-blue-600 transition-all"
                                                     title="Copy CLI command"
                                                 >
@@ -1133,7 +1133,7 @@ export default function Security({ token }: SecurityProps) {
                                                 {lastResult && getStatusBadge(lastResult.result)}
                                                 <div className="flex gap-1.5 ml-2 p-1 bg-card-secondary/50 rounded-lg border border-border/50">
                                                     <button
-                                                        onClick={() => copyToClipboard(`docker exec sdwan-web-ui sh -c "getent ahosts ${test.domain}"`)}
+                                                        onClick={() => copyToClipboard(`nslookup -timeout=2 ${test.domain}`)}
                                                         className="p-1.5 hover:bg-card border border-transparent hover:border-border rounded-lg text-text-muted hover:text-blue-600 transition-all"
                                                         title="Copy CLI command"
                                                     >
@@ -1194,7 +1194,7 @@ export default function Security({ token }: SecurityProps) {
                                                 {lastResult && getStatusBadge(lastResult.result)}
                                                 <div className="flex gap-1.5 ml-2 p-1 bg-card-secondary/50 rounded-lg border border-border/50">
                                                     <button
-                                                        onClick={() => copyToClipboard(`docker exec sdwan-web-ui sh -c "getent ahosts ${test.domain}"`)}
+                                                        onClick={() => copyToClipboard(`nslookup -timeout=2 ${test.domain}`)}
                                                         className="p-1.5 hover:bg-card border border-transparent hover:border-border rounded-lg text-text-muted hover:text-blue-600 transition-all"
                                                         title="Copy CLI command"
                                                     >
@@ -1288,7 +1288,7 @@ export default function Security({ token }: SecurityProps) {
 
                                 <div className="flex gap-2">
                                     <button
-                                        onClick={() => copyToClipboard(`docker exec sdwan-web-ui sh -c "curl -fsS --max-time 20 ${eicarEndpoint} -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt"`)}
+                                        onClick={() => copyToClipboard(`curl -fsS --max-time 20 ${eicarEndpoint} -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`)}
                                         className="px-4 py-3 bg-card-hover hover:bg-card border border-border text-text-primary rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
                                         title="Copy CLI command"
                                     >

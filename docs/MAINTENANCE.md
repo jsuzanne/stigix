@@ -102,7 +102,7 @@ To restore a backup or clone it to another site (e.g., from DC1 to Branch A):
 **Issue: "Update failed" in UI**
 - Check if your internet connection is active.
 - Ensure the container has permission to access the Docker socket.
-- Run `docker compose logs -f sdwan-web-ui` to see the error details.
+- Run `docker compose logs -f stigix` to see the error details.
 
 **Issue: Port 8080 already in use**
 - If you are running multiple instances, change the port mapping in `docker-compose.yml`:

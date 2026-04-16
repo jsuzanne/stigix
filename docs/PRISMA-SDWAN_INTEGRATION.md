@@ -342,7 +342,7 @@ pip3 install prisma-sase
 ```yaml
 # docker-compose.yml (production)
 services:
-  sdwan-web-ui:
+  stigix:
     environment:
       - PRISMA_SDWAN_CLIENT_ID=${PRISMA_SDWAN_CLIENT_ID}
       - PRISMA_SDWAN_CLIENT_SECRET=${PRISMA_SDWAN_CLIENT_SECRET}

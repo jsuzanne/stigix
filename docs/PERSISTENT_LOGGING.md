@@ -85,7 +85,7 @@ rm logs/test-results.jsonl
 rm logs/test-results.jsonl.*
 
 # Restart to create fresh log
-docker compose restart sdwan-web-ui
+docker compose restart stigix
 ```
 
 ---
@@ -382,7 +382,7 @@ rsync -avz logs/ user@backup-server:/backups/sdwan-logs/
 tar -xzf logs-backup-20260119.tar.gz
 
 # Restart services
-docker compose restart sdwan-web-ui
+docker compose restart stigix
 ```
 
 ### Scheduled Backups
@@ -414,7 +414,7 @@ Add to crontab:
 
 3. Check container logs:
    ```bash
-   docker compose logs sdwan-web-ui
+   docker compose logs stigix
    ```
 
 ### Search Not Working
@@ -431,7 +431,7 @@ Add to crontab:
 
 3. Rebuild search index:
    ```bash
-   docker compose restart sdwan-web-ui
+   docker compose restart stigix
    ```
 
 ### Disk Space Issues

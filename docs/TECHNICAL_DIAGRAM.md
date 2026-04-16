@@ -5,7 +5,7 @@ This diagram illustrates the flows between the various containers and external t
 ```mermaid
 graph TD
     subgraph "Branch Site (Source)"
-        UI["sdwan-web-ui<br/>(Dashboard & API :8080)"]
+        UI["stigix<br/>(Dashboard & API :8080)"]
         HTTP_GEN["sdwan-traffic-gen<br/>(HTTP Generator)"]
         VOICE_GEN["sdwan-voice-gen<br/>(RTP Generator)"]
         IOT_GEN["IOT_SIM<br/>(Scapy-based Engine)"]
@@ -49,12 +49,12 @@ graph TD
 
 | Flow Type | Protocol | Port(s) | Source | Target |
 |-----------|----------|---------|--------|--------|
-| **Dashboard UI** | TCP | 8080 | User Browser | `sdwan-web-ui` |
+| **Dashboard UI** | TCP | 8080 | User Browser | `stigix` |
 | **Background HTTP**| TCP | 80, 443 | `sdwan-traffic-gen` | Internet / Cloud |
 | **Convergence/Voice**| UDP | 6200 | `sdwan-voice-gen` | `sdwan-voice-echo` |
-| **IoT L2 (DHCP)** | UDP | 67, 68 | `sdwan-web-ui/IOT` | Gateway |
-| **IoT Discovery** | UDP | 1900, 5353 | `sdwan-web-ui/IOT` | Local Subnet |
-| **Iperf3 Test** | TCP/UDP | 5201 | `sdwan-web-ui` | `iperf3 server` |
-| **Speedtest** | TCP | 80, 443 | `sdwan-web-ui` | Public Ookla Servers |
+| **IoT L2 (DHCP)** | UDP | 67, 68 | `stigix/IOT` | Gateway |
+| **IoT Discovery** | UDP | 1900, 5353 | `stigix/IOT` | Local Subnet |
+| **Iperf3 Test** | TCP/UDP | 5201 | `stigix` | `iperf3 server` |
+| **Speedtest** | TCP | 80, 443 | `stigix` | Public Ookla Servers |
 | **API Control** | TCP | 8080 | Dashboard | Orchestrator Engine |
 

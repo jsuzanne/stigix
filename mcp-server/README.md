@@ -52,7 +52,7 @@ Create `config/agents.json`:
     {
       "id": "paris",
       "name": "Paris Branch",
-      "url": "http://sdwan-web-ui:8080",
+      "url": "http://stigix:8080",
       "jwt_secret": "your-jwt-secret-from-docker-compose"
     }
   ]
@@ -202,7 +202,7 @@ Use this if Claude Desktop is on your Mac/PC and the server is on a remote Linux
     "id": "paris",
     "name": "Paris Branch",
     "status": "running",
-    "url": "http://sdwan-web-ui:8080"
+    "url": "http://stigix:8080"
   }
 ]
 ```

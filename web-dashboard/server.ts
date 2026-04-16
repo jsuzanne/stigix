@@ -1359,7 +1359,7 @@ interface ContainerStats {
 }
 
 const containerStatsMap = new Map<string, ContainerStats>();
-const monitoredContainers = ['sdwan-web-ui', 'sdwan-traffic-gen', 'sdwan-voice-gen'];
+const monitoredContainers = ['stigix'];
 
 // Initialize map
 monitoredContainers.forEach(name => {
@@ -3998,7 +3998,7 @@ app.get('/api/connectivity/docker-stats', authenticateToken, async (req, res) =>
                 });
             } catch (e: any) {
                 // If container not found or stats fail, return minimal info or fallback for current node
-                if (cName === 'sdwan-web-ui') {
+                if (cName === 'stigix' || cName === 'sdwan-web-ui') {
                     // Fallback to legacy single container check for the dashboard itself if socket fails
                     try {
                         const { stdout: netOut } = await execPromise('cat /sys/class/net/eth0/statistics/rx_bytes /sys/class/net/eth0/statistics/tx_bytes');
@@ -4051,7 +4051,7 @@ app.get('/api/connectivity/docker-stats', authenticateToken, async (req, res) =>
                 disk: hostDisk
             },
             // For backward compatibility
-            stats: results.find(r => r.name === 'sdwan-web-ui') || results[0],
+            stats: results.find(r => r.name === 'stigix' || r.name === 'sdwan-web-ui') || results[0],
             timestamp: clockNow
         });
     } catch (error: any) {

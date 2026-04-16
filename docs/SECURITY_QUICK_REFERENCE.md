@@ -62,7 +62,7 @@
 nano config/security-tests.json
 
 # Restart to apply changes
-docker-compose restart sdwan-web-ui
+docker-compose restart stigix
 ```
 
 ### Test Categories
@@ -142,7 +142,7 @@ Edit `config/security-tests.json`:
 1. Check **Scheduled Execution** toggle is ON
 2. Verify interval is 5-1440 minutes
 3. Ensure at least one test type is checked
-4. Restart: `docker-compose restart sdwan-web-ui`
+4. Restart: `docker-compose restart stigix`
 
 ### EICAR Test Fails
 
@@ -260,7 +260,7 @@ Every 60 minutes:
 
 - **Full Documentation:** `docs/SECURITY_TESTING.md`
 - **Deployment Guide:** `docs/deployment-guide.md`
-- **Logs:** `docker-compose logs -f sdwan-web-ui`
+- **Logs:** `docker-compose logs -f stigix`
 - **Config:** `config/security-tests.json`
 
 ---

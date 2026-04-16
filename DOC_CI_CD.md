@@ -3,7 +3,7 @@
 This document explains how to manually trigger the build processes for Stigix using the GitHub CLI (`gh`).
 
 ## Process A: Individual Containers
-Builds and pushes the 5 separate images (`sdwan-web-ui`, `sdwan-traffic-gen`, `sdwan-voice-gen`, `sdwan-voice-echo`, `sdwan-mcp-server`).
+Builds and pushes the 5 separate images (`stigix`, `sdwan-traffic-gen`, `sdwan-voice-gen`, `sdwan-voice-echo`, `sdwan-mcp-server`).
 
 ### Standard build (latest)
 Triggers a build for the current branch (usually `main`).

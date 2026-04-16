@@ -32,9 +32,9 @@ Or create it manually:
 version: '3.8'
 
 services:
-  sdwan-web-ui:
-    image: jsuzanne/sdwan-web-ui:stable
-    container_name: sdwan-web-ui
+  stigix:
+    image: jsuzanne/stigix:stable
+    container_name: stigix
     ports:
       - "8080:8080"
     environment:
@@ -60,7 +60,7 @@ services:
     networks:
       - sdwan-network
     depends_on:
-      - sdwan-web-ui
+      - stigix
 
 networks:
   sdwan-network:
@@ -195,7 +195,7 @@ Go to **Security** tab:
 docker compose logs -f
 
 # Web UI only
-docker compose logs -f sdwan-web-ui
+docker compose logs -f stigix
 
 # Traffic generator only
 docker compose logs -f sdwan-traffic-gen
@@ -256,7 +256,7 @@ sudo lsof -i :8080
 
 ```bash
 # Check logs
-docker compose logs sdwan-web-ui
+docker compose logs stigix
 docker compose logs sdwan-traffic-gen
 
 # Rebuild

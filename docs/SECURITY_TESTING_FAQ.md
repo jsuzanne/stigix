@@ -218,7 +218,7 @@ Simply toggle "Enable" to OFF in the Scheduled Execution section. The scheduler 
 1. Check "Enable" toggle is ON
 2. Verify interval is 5-1440 minutes
 3. Ensure at least one test type is checked
-4. Check backend logs: `docker-compose logs -f sdwan-web-ui`
+4. Check backend logs: `docker-compose logs -f stigix`
 
 ### Statistics Not Updating
 **Cause:** Backend errors or tests failing to execute  
