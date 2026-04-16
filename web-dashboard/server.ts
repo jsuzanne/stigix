@@ -3103,6 +3103,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
             const ifaceFlag = (iface && iface !== 'eth0') ? `--interface ${iface}` : '';
             const curlCmd = `${getTimeoutCmd(15)}curl -o /dev/null -s -L -w "time_namelookup=%{time_namelookup}\\ntime_connect=%{time_connect}\\ntime_appconnect=%{time_appconnect}\\ntime_starttransfer=%{time_starttransfer}\\ntime_total=%{time_total}\\nhttp_code=%{http_code}\\nremote_ip=%{remote_ip}\\nremote_port=%{remote_port}\\nsize_download=%{size_download}\\nspeed_download=%{speed_download}\\nssl_verify_result=%{ssl_verify_result}\\n" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' --max-time ${Math.floor(endpoint.timeout / 1000)} ${ifaceFlag} "${endpoint.target}"`;
 
+            if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing HTTP Probe: ${curlCmd}`, 'debug');
             try {
                 const { stdout } = await execPromise(curlCmd);
                 const curlData: any = {};
@@ -3129,13 +3130,16 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                     };
                     result.score = calculateDEMScore(result.endpointType, result.reachable, result.httpCode, result.metrics);
                 }
-            } catch (e) { }
+            } catch (e) { 
+                if (DEBUG) log('CONNECTIVITY', `[DEBUG] HTTP Probe failed for ${endpoint.name}: ${e instanceof Error ? e.message : 'Unknown error'}`, 'debug');
+            }
         } else if (endpoint.type.toLowerCase() === 'ping') {
             const iface = getInterface();
             const ifaceFlag = (iface && iface !== 'eth0') ? (isMac ? `-b ${iface}` : `-I ${iface}`) : ''; // -b on mac for bind, -I on linux
             const pingFlag = isMac ? `-W ${endpoint.timeout}` : `-W ${Math.floor(endpoint.timeout / 1000)}`; // Mac is ms, Linux is seconds
             const pingCommand = `${getTimeoutCmd(5)}ping -c 1 ${pingFlag} ${ifaceFlag} ${endpoint.target}`;
             const pStart = Date.now();
+            if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing PING: ${pingCommand}`, 'debug');
             try {
                 const { stdout } = await execPromise(pingCommand);
                 const duration = Date.now() - pStart;
@@ -3144,20 +3148,26 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                 result.reachable = true;
                 result.metrics.total_ms = Math.round(pingTime);
                 result.score = calculateDEMScore(result.endpointType, result.reachable, undefined, result.metrics);
-            } catch (e) { }
+            } catch (e) {
+                if (DEBUG) log('CONNECTIVITY', `[DEBUG] PING failed for ${endpoint.name}: ${e instanceof Error ? e.message : 'Unknown error'}`, 'debug');
+            }
         } else if (endpoint.type.toLowerCase() === 'tcp') {
             const [ip, port] = endpoint.target.split(':');
             const ncCommand = `${getTimeoutCmd(5)}nc -zv -w ${Math.floor(endpoint.timeout / 1000)} ${ip} ${port} 2>&1`;
             const tStart = Date.now();
+            if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing TCP Probe: ${ncCommand}`, 'debug');
             try {
                 await execPromise(ncCommand);
                 result.reachable = true;
                 result.metrics.total_ms = Date.now() - tStart;
                 result.score = calculateDEMScore(result.endpointType, result.reachable, undefined, result.metrics);
-            } catch (e) { }
+            } catch (e) {
+                if (DEBUG) log('CONNECTIVITY', `[DEBUG] TCP Probe failed for ${endpoint.name}: ${e instanceof Error ? e.message : 'Unknown error'}`, 'debug');
+            }
         } else if (endpoint.type.toLowerCase() === 'dns') {
             const dnsCommand = `${getTimeoutCmd(5)}dig +short +time=${Math.floor(endpoint.timeout / 1000)} google.com @${endpoint.target}`;
             const dStart = Date.now();
+            if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing DNS Probe: ${dnsCommand}`, 'debug');
             try {
                 const { stdout } = await execPromise(dnsCommand);
                 if (stdout.trim().length > 0) {
@@ -3165,13 +3175,16 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                     result.metrics.total_ms = Date.now() - dStart;
                     result.score = calculateDEMScore(result.endpointType, result.reachable, undefined, result.metrics);
                 }
-            } catch (e) { }
+            } catch (e) {
+                if (DEBUG) log('CONNECTIVITY', `[DEBUG] DNS Probe failed for ${endpoint.name}: ${e instanceof Error ? e.message : 'Unknown error'}`, 'debug');
+            }
         } else if (endpoint.type.toLowerCase() === 'udp') {
             const parts = endpoint.target.split(':');
             const host = parts[0];
             const port = parts[1] || '5201';
             const iperfCmd = `${getTimeoutCmd(10)}iperf3 -u -c ${host} -p ${port} -b 50k -t 1 -J`;
             const uStart = Date.now();
+            if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing UDP Probe (iperf3): ${iperfCmd}`, 'debug');
             try {
                 const { stdout } = await execPromise(iperfCmd);
                 const uDuration = Date.now() - uStart;
@@ -3187,8 +3200,11 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                     };
                     result.score = calculateDEMScore(result.endpointType, result.reachable, undefined, result.metrics);
                 }
-            } catch (e) { }
+            } catch (e) {
+                if (DEBUG) log('CONNECTIVITY', `[DEBUG] UDP Probe failed for ${endpoint.name}: ${e instanceof Error ? e.message : 'Unknown error'}`, 'debug');
+            }
         } else if (endpoint.type.toLowerCase() === 'cloud') {
+            if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing CLOUD Probe for scenario: ${endpoint.target}`, 'debug');
             try {
                 // For cloud probes, 'target' is the scenario ID
                 const probeResult = await targetManager.runProbe(endpoint.target);
@@ -3198,9 +3214,20 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                 if (probeResult.data) {
                     result.data = probeResult.data;
                 }
-            } catch (e) { }
+            } catch (e) {
+                if (DEBUG) log('CONNECTIVITY', `[DEBUG] CLOUD Probe failed for ${endpoint.name}: ${e instanceof Error ? e.message : 'Unknown error'}`, 'debug');
+            }
         }
-    } catch (e) { }
+    } catch (e) { 
+        if (DEBUG) log('CONNECTIVITY', `[DEBUG] Critical error in performConnectivityCheck for ${endpoint.name}: ${e instanceof Error ? e.message : 'Unknown error'}`, 'debug');
+    }
+
+    // Final result log in the requested format
+    if (DEBUG) {
+        const status = result.reachable ? 'connected' : 'failed';
+        log('CONNECTIVITY', `${endpoint.name} status: ${status} (${result.score}/100)`, 'debug');
+    }
+
     return result;
 };
 
