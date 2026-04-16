@@ -168,21 +168,27 @@ export class TargetManager {
     async runProbe(scenarioId: string): Promise<TargetProbeResult> {
         let scenario: TargetScenario | undefined;
         let signedUrl = '';
+        let baseId = scenarioId;
+        let overrides: { delay?: number; size?: string; code?: number; mode?: string } = {};
 
-        if (scenarioId.startsWith('advanced-custom#')) {
-            let advConfig = { mode: 'info', delay: 0, size: '5m', code: 500 };
-            try { advConfig = { ...advConfig, ...JSON.parse(scenarioId.split('#')[1]) }; } catch {}
+        // Parse optional overrides (e.g. scenario#{"delay":2000})
+        if (scenarioId.includes('#')) {
+            const parts = scenarioId.split('#');
+            baseId = parts[0];
+            try { overrides = JSON.parse(parts[1]); } catch { }
+        }
 
+        if (baseId === 'advanced-custom') {
             scenario = {
                 id: scenarioId,
                 label: 'Advanced Stigix Probe',
                 description: 'Dynamic custom target',
                 path: '/advanced',
-                params: { mode: advConfig.mode, delay: advConfig.delay },
-                category: advConfig.mode === 'large' ? 'download' : advConfig.mode === 'error' ? 'error' : advConfig.mode === 'eicar' ? 'security' : 'info'
+                params: { mode: overrides.mode || 'info', delay: overrides.delay || 0 },
+                category: overrides.mode === 'large' ? 'download' : overrides.mode === 'error' ? 'error' : overrides.mode === 'eicar' ? 'security' : 'info'
             };
-            if (advConfig.mode === 'large') scenario.params!.size = advConfig.size;
-            if (advConfig.mode === 'error') scenario.params!.code = advConfig.code;
+            if (overrides.mode === 'large') scenario.params!.size = overrides.size || '5m';
+            if (overrides.mode === 'error') scenario.params!.code = overrides.code || 500;
 
             if (!this.baseUrl) return { success: false, score: 0, latency_ms: 0, message: 'Base URL missing' };
             const url = new URL(this.baseUrl);
@@ -195,16 +201,22 @@ export class TargetManager {
             if (scenario.params) Object.entries(scenario.params).forEach(([k, v]) => url.searchParams.set(k, v.toString()));
             signedUrl = url.toString();
         } else {
-            scenario = this.scenarios.find(s => s.id === scenarioId);
+            scenario = this.scenarios.find(s => s.id === baseId);
             if (!scenario || !this.baseUrl) {
                 return { success: false, score: 0, latency_ms: 0, message: 'Scenario or Base URL missing' };
             }
             const signedScenarios = this.getScenarios();
-            const signedScenario = signedScenarios.find(s => s.id === scenarioId);
+            const signedScenario = signedScenarios.find(s => s.id === baseId);
             if (!signedScenario?.signedUrl) {
                 return { success: false, score: 0, latency_ms: 0, message: 'Failed to sign URL' };
             }
-            signedUrl = signedScenario.signedUrl;
+            
+            // Apply overrides to existing signed URL
+            const url = new URL(signedScenario.signedUrl);
+            if (overrides.delay !== undefined) {
+                url.searchParams.set('delay', overrides.delay.toString());
+            }
+            signedUrl = url.toString();
         }
 
         const startTime = Date.now();

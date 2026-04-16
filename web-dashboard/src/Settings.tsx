@@ -1484,48 +1484,94 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                                             })()}
                                                         </div>
                                                     ) : newProbe.target && (() => {
-                                                        const scenario = cloudScenarios.find(s => s.id === newProbe.target);
-                                                        const fullUrl = scenario?.signedUrl || '';
-                                                        const displayUrl = fullUrl.split('?')[0]; // strip ?key=... secret
-                                                        const curlUrl = fullUrl; // includes key for actual curl test
-                                                        return (
-                                                            <div className="space-y-2 animate-in zoom-in-95 duration-300">
-                                                                {/* Description */}
-                                                                <div className="p-3 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl flex gap-3 items-start">
-                                                                    <Info size={14} className="text-blue-500 mt-0.5 shrink-0" />
-                                                                    <p className="text-[10px] font-bold text-text-secondary leading-relaxed opacity-80">
-                                                                        {scenario?.description || 'No description available for this scenario.'}
-                                                                    </p>
-                                                                </div>
-                                                                {/* Effective URL (read-only, copy-able) */}
-                                                                {displayUrl && (
-                                                                    <div className="space-y-1">
-                                                                        <div className="flex items-center justify-between">
-                                                                            <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase flex items-center gap-1.5">
-                                                                                <ExternalLink size={9} />
-                                                                                Effective URL <span className="opacity-50 normal-case font-bold tracking-normal">(read-only — macro probe)</span>
-                                                                            </label>
-                                                                            <button
-                                                                                onClick={() => navigator.clipboard.writeText(curlUrl).then(() => showSuccess('Full URL copied! Key included for curl testing.'))}
-                                                                                className="text-[9px] font-black text-blue-500 hover:text-blue-400 flex items-center gap-1 px-2 py-0.5 rounded hover:bg-blue-500/10 transition-all"
-                                                                                title="Copy full signed URL (with key) for curl"
-                                                                            >
-                                                                                <Clipboard size={10} /> Copy for curl
-                                                                            </button>
-                                                                        </div>
-                                                                        <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl px-4 py-2.5 flex items-center gap-2 group cursor-default">
-                                                                            <Globe size={12} className="text-purple-400 flex-shrink-0" />
-                                                                            <span className="text-[10px] font-mono text-slate-300 break-all leading-relaxed select-all">
-                                                                                {curlUrl}
-                                                                            </span>
-                                                                        </div>
-                                                                        <p className="text-[9px] text-text-muted opacity-50 px-1">
-                                                                            This is the full signed URL including the authentication key required for external testing.
-                                                                        </p>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        );
+                                                         const targetParts = newProbe.target.split('#');
+                                                         const baseId = targetParts[0];
+                                                         let overrides: any = {};
+                                                         try { if (targetParts[1]) overrides = JSON.parse(targetParts[1]); } catch { }
+
+                                                         const scenario = cloudScenarios.find(s => s.id === baseId);
+                                                         
+                                                         // Calculate effective URL with overrides
+                                                         let curlUrl = scenario?.signedUrl || '';
+                                                         if (curlUrl && overrides.delay !== undefined) {
+                                                             const u = new URL(curlUrl);
+                                                             u.searchParams.set('delay', overrides.delay.toString());
+                                                             curlUrl = u.toString();
+                                                         }
+                                                         
+                                                         const displayUrl = curlUrl.split('?')[0]; // strip secrets for display
+
+                                                         const updateOverride = (newOver: any) => {
+                                                             const merged = { ...overrides, ...newOver };
+                                                             // Clean up empty overrides
+                                                             if (merged.delay === 0 || isNaN(merged.delay)) delete merged.delay;
+                                                             
+                                                             const suffix = Object.keys(merged).length > 0 ? `#${JSON.stringify(merged)}` : '';
+                                                             setNewProbe({ ...newProbe, target: `${baseId}${suffix}` });
+                                                         };
+
+                                                         return (
+                                                             <div className="space-y-3 animate-in zoom-in-95 duration-300">
+                                                                 {/* Description & Delay Control */}
+                                                                 <div className="bg-card border border-border rounded-xl overflow-hidden shadow-inner">
+                                                                     <div className="p-3 bg-blue-600/5 border-b border-border/50 flex gap-3 items-start">
+                                                                         <Info size={14} className="text-blue-500 mt-0.5 shrink-0" />
+                                                                         <p className="text-[10px] font-bold text-text-secondary leading-relaxed opacity-80">
+                                                                             {scenario?.description || 'No description available for this scenario.'}
+                                                                         </p>
+                                                                     </div>
+                                                                     <div className="p-3 flex items-center justify-between gap-4">
+                                                                         <div className="flex items-center gap-2">
+                                                                             <Clock size={14} className="text-text-muted" />
+                                                                             <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Extra Delay</span>
+                                                                         </div>
+                                                                         <div className="flex items-center gap-2">
+                                                                             <input 
+                                                                                 type="number" 
+                                                                                 min="0" 
+                                                                                 max="30000"
+                                                                                 placeholder="0"
+                                                                                 className="w-20 bg-card-secondary border border-border text-text-primary rounded-lg px-2 py-1 text-[11px] font-bold outline-none focus:ring-1 focus:ring-blue-500 text-right" 
+                                                                                 value={overrides.delay || ''} 
+                                                                                 onChange={e => {
+                                                                                     const val = parseInt(e.target.value);
+                                                                                     updateOverride({ delay: isNaN(val) ? 0 : Math.min(30000, Math.max(0, val)) });
+                                                                                 }}
+                                                                             />
+                                                                             <span className="text-[10px] font-bold text-text-muted">ms</span>
+                                                                         </div>
+                                                                     </div>
+                                                                 </div>
+
+                                                                 {/* Effective URL (read-only, copy-able) */}
+                                                                 {displayUrl && (
+                                                                     <div className="space-y-1">
+                                                                         <div className="flex items-center justify-between">
+                                                                             <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase flex items-center gap-1.5">
+                                                                                 <ExternalLink size={9} />
+                                                                                 Effective URL <span className="opacity-50 normal-case font-bold tracking-normal">(read-only — includes overrides)</span>
+                                                                             </label>
+                                                                             <button
+                                                                                 onClick={() => navigator.clipboard.writeText(curlUrl).then(() => showSuccess('Full URL copied! Key and overrides included.'))}
+                                                                                 className="text-[9px] font-black text-blue-500 hover:text-blue-400 flex items-center gap-1 px-2 py-0.5 rounded hover:bg-blue-500/10 transition-all font-mono"
+                                                                                 title="Copy full signed URL (with key) for curl"
+                                                                             >
+                                                                                 <Clipboard size={10} /> Copy for curl
+                                                                             </button>
+                                                                         </div>
+                                                                         <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl px-4 py-2.5 flex items-center gap-2 group cursor-default">
+                                                                             <Globe size={12} className="text-purple-400 flex-shrink-0" />
+                                                                             <span className="text-[10px] font-mono text-slate-300 break-all leading-relaxed select-all">
+                                                                                 {curlUrl}
+                                                                             </span>
+                                                                         </div>
+                                                                         <p className="text-[9px] text-text-muted opacity-50 px-1">
+                                                                             This URL is pre-signed and includes your custom parameters.
+                                                                         </p>
+                                                                     </div>
+                                                                 )}
+                                                             </div>
+                                                         );
                                                     })()}
                                                 </div>
                                             ) : (
