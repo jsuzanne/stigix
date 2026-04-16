@@ -214,6 +214,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
     const [probeFilterType, setProbeFilterType] = useState('ALL');
     const [maxCaptures, setMaxCaptures] = useState(uiConfig?.maxCaptures || 10);
 
+    // Debug Console State
+    const [showDebugConsole, setShowDebugConsole] = useState(false);
+    const [debugTrace, setDebugTrace] = useState<string[]>([]);
+    const [debugPollingActive, setDebugPollingActive] = useState(true);
+    const debugScrollRef = useRef<HTMLDivElement>(null);
+
     useEffect(() => {
         if (uiConfig?.maxCaptures) setMaxCaptures(uiConfig.maxCaptures);
     }, [uiConfig?.maxCaptures]);
@@ -1118,6 +1124,16 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                 >
                                     <Upload size={14} />
                                     Import
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowDebugConsole(true);
+                                        setDebugPollingActive(true);
+                                    }}
+                                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/10"
+                                >
+                                    <Terminal size={14} />
+                                    TECHNICAL CONSOLE
                                 </button>
                             </div>
                         </div>
@@ -3265,6 +3281,102 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                 </div>
             )}
             </div>
+
+            {/* Debug Console Modal */}
+            {showDebugConsole && (
+                <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-300">
+                    <div className="bg-slate-950 border border-slate-800 w-full max-w-5xl h-full max-h-[80vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+                        {/* Header */}
+                        <div className="bg-slate-900/50 px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500">
+                                    <Terminal size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-slate-100 uppercase tracking-widest">Connectivity Technical Trace</h3>
+                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Real-time CLI command logging</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 rounded-lg border border-slate-700">
+                                    <div className={cn("w-2 h-2 rounded-full animate-pulse", debugPollingActive ? "bg-emerald-500" : "bg-slate-500")} />
+                                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{debugPollingActive ? 'LIVE' : 'PAUSED'}</span>
+                                </div>
+                                <button 
+                                    onClick={() => setDebugPollingActive(!debugPollingActive)}
+                                    className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"
+                                    title={debugPollingActive ? "Pause" : "Resume"}
+                                >
+                                    {debugPollingActive ? <Pause size={18} /> : <span>▶️</span>}
+                                </button>
+                                <button 
+                                    onClick={() => {
+                                        setShowDebugConsole(false);
+                                        setDebugPollingActive(false);
+                                    }}
+                                    className="p-2 hover:bg-red-500/10 hover:text-red-500 rounded-lg text-slate-400 transition-colors"
+                                >
+                                    <XCircle size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Log Area */}
+                        <div 
+                            ref={debugScrollRef}
+                            className="flex-1 overflow-y-auto p-6 font-mono text-[11px] leading-relaxed scroll-smooth bg-black/40"
+                        >
+                            {debugTrace.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-4">
+                                    <RefreshCw size={32} className="animate-spin opacity-20" />
+                                    <p className="font-bold uppercase tracking-widest text-[10px]">Waiting for probe execution...</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-1.5">
+                                    {debugTrace.map((line, i) => {
+                                        const isCmd = line.includes(' > ');
+                                        const isOk = line.includes(' OK ');
+                                        const isFailed = line.includes(' FAILED ');
+                                        
+                                        return (
+                                            <div key={i} className="group flex gap-3 hover:bg-slate-900/30 px-2 py-0.5 rounded transition-colors border-l-2 border-transparent hover:border-slate-800">
+                                                <span className="text-slate-600 shrink-0 select-none opacity-40">{(i + 1).toString().padStart(3, '0')}</span>
+                                                <span className={cn(
+                                                    "break-all whitespace-pre-wrap",
+                                                    isCmd ? "text-slate-400 italic" : 
+                                                    isOk ? "text-emerald-400 font-bold" :
+                                                    isFailed ? "text-red-400 font-bold" : "text-slate-300"
+                                                )}>
+                                                    {line.split(' ').map((word, j) => {
+                                                        if (word.startsWith('latency=')) return <span key={j} className="text-emerald-500/80">{word} </span>;
+                                                        if (word.startsWith('ip=')) return <span key={j} className="text-blue-400/80">{word} </span>;
+                                                        if (word.startsWith('http_code=')) return <span key={j} className="text-amber-400/80">{word} </span>;
+                                                        return word + ' ';
+                                                    })}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                    <div className="h-4" /> {/* Spacer */}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="bg-slate-900/30 px-6 py-3 border-t border-slate-800 flex items-center justify-between">
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                Showing last {debugTrace.length} technical events from <span className="text-slate-400 font-mono">connectivity-debug.log</span>
+                            </p>
+                            <button 
+                                onClick={() => setDebugTrace([])}
+                                className="text-[10px] font-black text-slate-400 hover:text-slate-100 uppercase tracking-widest underline underline-offset-4 decoration-slate-700"
+                            >
+                                Clear View
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         );
     }
 

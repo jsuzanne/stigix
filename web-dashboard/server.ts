@@ -216,6 +216,26 @@ const CONVERGENCE_STATS_FILE = '/tmp/convergence_stats.json';
 const CONVERGENCE_COUNTER_FILE = path.join(APP_CONFIG.configDir, 'test-counter-convergence.json');
 const CONVERGENCE_ENDPOINTS_FILE = path.join(APP_CONFIG.configDir, 'convergence-endpoints.json');
 const SYSTEM_APP_LOG = path.join(APP_CONFIG.logDir, 'app.log');
+const DEBUG_PROBE_LOG = path.join(APP_CONFIG.logDir, 'connectivity-debug.log');
+
+/**
+ * Appends a technical trace message to the debug log file.
+ */
+async function appendDebugTrace(message: string) {
+    try {
+        const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
+        const entry = `[${time}] ${message}\n`;
+        fs.appendFileSync(DEBUG_PROBE_LOG, entry);
+        
+        // Basic rotation: keep it under 5MB
+        const stats = fs.statSync(DEBUG_PROBE_LOG);
+        if (stats.size > 5 * 1024 * 1024) {
+            fs.renameSync(DEBUG_PROBE_LOG, DEBUG_PROBE_LOG + '.old');
+        }
+    } catch (e) {
+        console.error('Failed to write to debug probe log:', e);
+    }
+}
 
 // ─── Egress Path Enrichment Helpers ────────────────────────────────────────
 
@@ -3156,6 +3176,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
             const ifaceFlag = (iface && iface !== 'eth0') ? `--interface ${iface}` : '';
             const curlCmd = `${getTimeoutCmd(15)}curl -o /dev/null -s -L -w "time_namelookup=%{time_namelookup}\\ntime_connect=%{time_connect}\\ntime_appconnect=%{time_appconnect}\\ntime_starttransfer=%{time_starttransfer}\\ntime_total=%{time_total}\\nhttp_code=%{http_code}\\nremote_ip=%{remote_ip}\\nremote_port=%{remote_port}\\nsize_download=%{size_download}\\nspeed_download=%{speed_download}\\nssl_verify_result=%{ssl_verify_result}\\n" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' --max-time ${Math.floor(endpoint.timeout / 1000)} ${ifaceFlag} "${endpoint.target}"`;
 
+            appendDebugTrace(`[HTTP] ${endpoint.name} > ${curlCmd}`);
             if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing HTTP Probe: ${curlCmd}`, 'debug');
             try {
                 const { stdout } = await execPromise(curlCmd);
@@ -3182,8 +3203,10 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                         ssl_verify: parseInt(curlData.ssl_verify_result)
                     };
                     result.score = calculateDEMScore(result.endpointType, result.reachable, result.httpCode, result.metrics);
+                    appendDebugTrace(`[HTTP] ${endpoint.name} < OK (${result.httpCode}) latency=${result.metrics.total_ms.toFixed(1)}ms ip=${result.remoteIp}`);
                 }
-            } catch (e) { 
+            } catch (e: any) { 
+                appendDebugTrace(`[HTTP] ${endpoint.name} < FAILED: ${e.message}`);
                 if (DEBUG) log('CONNECTIVITY', `[DEBUG] HTTP Probe failed for ${endpoint.name}: ${e instanceof Error ? e.message : 'Unknown error'}`, 'debug');
             }
         } else if (endpoint.type.toLowerCase() === 'ping') {
@@ -3192,6 +3215,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
             const pingFlag = isMac ? `-W ${endpoint.timeout}` : `-W ${Math.floor(endpoint.timeout / 1000)}`; // Mac is ms, Linux is seconds
             const pingCommand = `${getTimeoutCmd(5)}ping -c 1 ${pingFlag} ${ifaceFlag} ${endpoint.target}`;
             const pStart = Date.now();
+            appendDebugTrace(`[PING] ${endpoint.name} > ${pingCommand}`);
             if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing PING: ${pingCommand}`, 'debug');
             try {
                 const { stdout } = await execPromise(pingCommand);
@@ -3201,7 +3225,9 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                 result.reachable = true;
                 result.metrics.total_ms = Math.round(pingTime);
                 result.score = calculateDEMScore(result.endpointType, result.reachable, undefined, result.metrics);
-            } catch (e) {
+                appendDebugTrace(`[PING] ${endpoint.name} < OK latency=${result.metrics.total_ms}ms`);
+            } catch (e: any) {
+                appendDebugTrace(`[PING] ${endpoint.name} < FAILED: ${e.message}`);
                 if (DEBUG) log('CONNECTIVITY', `[DEBUG] PING failed for ${endpoint.name}: ${e instanceof Error ? e.message : 'Unknown error'}`, 'debug');
             }
         } else if (endpoint.type.toLowerCase() === 'tcp') {
@@ -3694,6 +3720,24 @@ app.get('/api/targets', authenticateToken, (req, res) => {
         res.json(targetsManager.getMergedTargets());
     } catch (e: any) {
         res.status(500).json({ error: 'Failed to load targets', detail: e.message });
+    }
+});
+
+// API: Get Connectivity Debug Trace
+app.get('/api/connectivity/debug-trace', authenticateToken, (req, res) => {
+    try {
+        if (!fs.existsSync(DEBUG_PROBE_LOG)) {
+            return res.json([]);
+        }
+        const linesToRead = parseInt(req.query.lines as string) || 100;
+        const content = fs.readFileSync(DEBUG_PROBE_LOG, 'utf8');
+        const lines = content.trim().split('\n');
+        
+        // Return last N lines
+        const lastLines = lines.slice(-linesToRead);
+        res.json(lastLines);
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to read debug trace', detail: e.message });
     }
 });
 
