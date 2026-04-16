@@ -1212,7 +1212,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                                                             e.stopPropagation();
                                                                             navigator.clipboard.writeText(fullUrl).then(() => showSuccess('URL copied!'));
                                                                         }}
-                                                                        className="opacity-0 group-hover/url:opacity-100 transition-opacity p-0.5 hover:bg-blue-500/10 rounded text-blue-500/60 hover:text-blue-500 flex-shrink-0"
+                                                                        className="opacity-40 hover:opacity-100 transition-opacity p-0.5 hover:bg-blue-500/10 rounded text-blue-500/60 hover:text-blue-500 flex-shrink-0"
                                                                         title="Copy full URL to clipboard"
                                                                     >
                                                                         <Clipboard size={10} />
@@ -1236,7 +1236,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                                         <Power size={14} className={probe.enabled !== false ? "drop-shadow-[0_0_8px_rgba(22,163,74,0.4)]" : ""} />
                                                     </button>
                                                     
-                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity border-l border-border/50 pl-2 ml-1">
+                                                    <div className="flex items-center gap-1 border-l border-border/50 pl-2 ml-1">
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); startEditProbe(originalIdx); }}
                                                             className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
