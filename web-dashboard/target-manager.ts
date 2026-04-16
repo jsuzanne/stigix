@@ -60,37 +60,49 @@ const DEFAULT_SCENARIOS: TargetScenario[] = [
  */
 export class TargetManager {
     private scenarios: TargetScenario[] = [];
+    private configDir: string;
     private configPath: string;
-    private baseUrl: string;
-    private sharedKey: string;
+    private jsonConfigPath: string;
+    private baseUrl: string = '';
+    private sharedKey: string = '';
 
     constructor(configDir: string, baseUrl?: string) {
+        this.configDir = configDir;
         this.configPath = path.join(configDir, 'target-scenarios.json');
-        // Logic: 1. Constructor arg, 2. Env var, 3. Default production fallback
-        let rawBase = baseUrl || process.env.STIGIX_TARGET_BASE_URL || 'https://stigix-target.jlsuzanne.workers.dev';
+        this.jsonConfigPath = path.join(configDir, 'cloud-config.json');
         
-        // Robustness: ensure protocol exists
+        this.reload(baseUrl);
+        this.loadScenarios();
+    }
+
+    /**
+     * Reloads configuration from disk and environment variables.
+     */
+    public reload(baseUrlOverride?: string) {
+        // 1. Load from JSON if exists
+        let jsonConfig: { masterKey?: string, baseUrl?: string } = {};
+        if (fs.existsSync(this.jsonConfigPath)) {
+            try { jsonConfig = JSON.parse(fs.readFileSync(this.jsonConfigPath, 'utf8')); } catch { }
+        }
+
+        // 2. Determine Base URL: JSON > Constructor Arg > Env > Default
+        let rawBase = jsonConfig.baseUrl || baseUrlOverride || process.env.STIGIX_TARGET_BASE_URL || 'https://stigix-target.jlsuzanne.workers.dev';
         if (rawBase && !rawBase.startsWith('http')) {
             rawBase = `https://${rawBase}`;
         }
-        
         this.baseUrl = rawBase;
-        
-        // Master Signature Architecture (Multi-tenant):
-        // 1. Explicit env var override (legacy/debug)
-        // 2. Master Key + TSG ID (production/multi-tenant)
-        let key = process.env.STIGIX_TARGET_SHARED_KEY || '';
-        
-        // If no explicit key, we use the Master Signature approach
-        const masterKey = process.env.STIGIX_TARGET_MASTER_KEY;
+
+        // 3. Derive Shared Key
+        // Priority: JSON Master Key > Env Master Key > Env Legacy Shared Key
+        const masterKey = jsonConfig.masterKey || process.env.STIGIX_TARGET_MASTER_KEY;
         const tsgId = process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID || '';
+        let key = process.env.STIGIX_TARGET_SHARED_KEY || '';
 
         if (masterKey && tsgId) {
             // key = SHA256(tsgId + ":" + masterKey)
             key = crypto.createHash('sha256').update(`${tsgId}:${masterKey}`).digest('hex');
-            log('TARGET', `Master Signature generated for TSG ${tsgId}`);
+            log('TARGET', `Master Signature ${jsonConfig.masterKey ? '(UI)' : '(ENV)'} generated for TSG ${tsgId}`);
         } else if (!key && tsgId) {
-            // Legacy/PoC Fallback
             const clientId = process.env.PRISMA_SDWAN_CLIENT_ID;
             if (clientId) {
                 key = crypto.createHash('sha256').update(`${tsgId}:${clientId}:stigix-v1`).digest('hex');
@@ -99,7 +111,6 @@ export class TargetManager {
         }
 
         this.sharedKey = key;
-        this.loadScenarios();
     }
 
     /**
