@@ -2284,6 +2284,59 @@ app.post('/api/config/ui', authenticateToken, (req, res) => {
     }
 });
 
+/**
+ * ─── CLOUD TARGET CONFIG ──────────────────────────────────────────────────
+ */
+
+const CLOUD_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'cloud-config.json');
+
+// API: Cloud Config Status
+app.get('/api/config/cloud', (req, res) => {
+    let config: { masterKey?: string, baseUrl?: string } = {};
+    try {
+        if (fs.existsSync(CLOUD_CONFIG_FILE)) {
+            config = JSON.parse(fs.readFileSync(CLOUD_CONFIG_FILE, 'utf8'));
+        }
+    } catch (e) { }
+
+    // Determine derived/effective status
+    const effectiveBaseUrl = config.baseUrl || process.env.STIGIX_TARGET_BASE_URL || 'https://stigix-target.jlsuzanne.workers.dev';
+    const hasKey = !!(config.masterKey || process.env.STIGIX_TARGET_MASTER_KEY);
+
+    res.json({
+        baseUrl: effectiveBaseUrl,
+        hasKey: hasKey,
+        isUiDefined: !!config.masterKey
+    });
+});
+
+// API: Save Cloud Config
+app.post('/api/config/cloud', authenticateToken, (req, res) => {
+    const { masterKey, baseUrl } = req.body;
+    
+    let currentConfig: any = {};
+    try {
+        if (fs.existsSync(CLOUD_CONFIG_FILE)) {
+            currentConfig = JSON.parse(fs.readFileSync(CLOUD_CONFIG_FILE, 'utf8'));
+        }
+    } catch (e) { }
+
+    const newConfig = {
+        ...currentConfig,
+        ...(masterKey !== undefined && { masterKey }),
+        ...(baseUrl !== undefined && { baseUrl })
+    };
+
+    try {
+        fs.writeFileSync(CLOUD_CONFIG_FILE, JSON.stringify(newConfig, null, 2));
+        targetManager.reload(); // Refresh the manager signature logic
+        log('SYSTEM', `Cloud Target configuration updated via UI: baseUrl=${newConfig.baseUrl}${masterKey ? ' (Master Key updated)' : ''}`);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to save cloud config', message: e.message });
+    }
+});
+
 // API: Get Site Information (Prisma SD-WAN)
 app.get('/api/siteinfo', authenticateToken, (req, res) => {
     const info = siteManager.getSiteInfo();

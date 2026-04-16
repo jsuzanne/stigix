@@ -202,7 +202,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
     };
 
     const [cloudScenarios, setCloudScenarios] = useState<any[]>([]);
-    const [cloudConfig, setCloudConfig] = useState<{ baseUrl: string; hasKey: boolean; scenarioCount: number } | null>(null);
+    const [cloudConfig, setCloudConfig] = useState<{ baseUrl: string; hasKey: boolean; isUiDefined?: boolean } | null>(null);
+    const [cloudMasterKey, setCloudMasterKey] = useState('');
+    const [showCloudKey, setShowCloudKey] = useState(false);
+    const [isSavingCloud, setIsSavingCloud] = useState(false);
+
     // Convergence State
     const [convergenceThresholds, setConvergenceThresholds] = useState({ good: 1, degraded: 5, critical: 10 });
     const [mcpStatus, setMcpStatus] = useState<{ online: boolean; status?: string; transport?: string; url?: string; error?: string } | null>(null);
@@ -243,7 +247,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                 .catch(() => { });
 
             // Fetch Cloud Config
-            fetch('/api/target/config', { headers: authHeaders })
+            fetch('/api/config/cloud', { headers: authHeaders })
                 .then(r => r.json())
                 .then(setCloudConfig)
                 .catch(() => { });
@@ -351,6 +355,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                 .catch(e => console.error("Failed to fetch registry status", e));
         };
         fetchRegistryStatus();
+
+        // Fetch Cloud Config
+        const fetchCloudConfig = () => {
+            fetch('/api/config/cloud', { headers: authHeaders })
+                .then(r => r.json())
+                .then(setCloudConfig)
+                .catch(e => console.error("Failed to fetch cloud config", e));
+        };
+        fetchCloudConfig();
 
         // Fetch SLS Config
         fetch('/api/security/config', { headers: authHeaders })
@@ -851,6 +864,32 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
             setShowTargetPorts(false);
             fetchTargets();
         } catch (e: any) { setTargetError(e.message); }
+    };
+
+    const saveCloudConfig = async () => {
+        setIsSavingCloud(true);
+        try {
+            const res = await fetch('/api/config/cloud', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ 
+                    masterKey: cloudMasterKey.trim() || undefined, 
+                    baseUrl: cloudConfig?.baseUrl 
+                })
+            });
+            if (res.ok) {
+                showSuccess('Cloud configuration saved');
+                setCloudMasterKey(''); // Clear sensitive field
+                const data = await fetch('/api/config/cloud', { headers: authHeaders }).then(r => r.json());
+                setCloudConfig(data);
+            } else {
+                setErrorMsg('Failed to save cloud configuration');
+            }
+        } catch (e) {
+            setErrorMsg('Network error');
+        } finally {
+            setIsSavingCloud(false);
+        }
     };
 
     const startEditTarget = (t: TargetDefinition) => {
@@ -2323,20 +2362,104 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                             </div>
                         </div>
 
-                        {registryStatus?.mode === 'leader' && (
-                            <div className="mt-4 p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500">
-                                        <Globe size={18} />
+                    {/* Cloud Target Security (Signatures) */}
+                    <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600">
+                                    <Lock size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-black text-text-primary tracking-tight">Cloud Target Security</h2>
+                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70 uppercase">Probe Signing & Master Credentials</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={saveCloudConfig}
+                                disabled={isSavingCloud || (!cloudMasterKey && cloudConfig?.baseUrl === (registryStatus?.remote_url || 'https://stigix-target.jlsuzanne.workers.dev')) }
+                                className={cn(
+                                    "px-6 py-2.5 rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2 shadow-lg",
+                                    isSavingCloud
+                                        ? "bg-card-secondary text-text-muted cursor-not-allowed border border-border"
+                                        : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
+                                )}
+                            >
+                                {isSavingCloud ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                                UPDATE SECURITY
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                            <div className="space-y-6">
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between pl-1">
+                                        <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Stigix Master Key</label>
+                                        {cloudConfig?.hasKey && (
+                                            <span className="flex items-center gap-1.5 text-[8px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                                <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                                                Master Key Active
+                                            </span>
+                                        )}
                                     </div>
-                                    <div>
-                                        <div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Local Controller Access</div>
-                                        <p className="text-[11px] font-bold text-text-secondary">Peers can manually reach this node at: <span className="font-mono text-emerald-400">http://{registryStatus?.detected_ip}:8080</span></p>
+                                    <div className="relative group">
+                                        <input
+                                            type={showCloudKey ? "text" : "password"}
+                                            placeholder={cloudConfig?.hasKey ? "••••••••••••••••" : "paste your master key here..."}
+                                            value={cloudMasterKey}
+                                            onChange={e => setCloudMasterKey(e.target.value)}
+                                            className="w-full bg-card-secondary/50 border border-border text-[11px] font-black tracking-widest text-text-primary rounded-xl px-5 py-3 outline-none focus:ring-1 focus:ring-blue-500 transition-all shadow-inner font-mono"
+                                        />
+                                        <button 
+                                            onClick={() => setShowCloudKey(!showCloudKey)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-card rounded-lg text-text-muted transition-colors"
+                                        >
+                                            <Globe size={14} className={showCloudKey ? "text-blue-500" : "opacity-40"} />
+                                        </button>
                                     </div>
                                 </div>
-                                <Activity size={24} className="text-emerald-500 opacity-20" />
+
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1">Worker Base URL</label>
+                                    <div className="relative group">
+                                        <input
+                                            type="text"
+                                            placeholder="https://stigix-target.your-account.workers.dev"
+                                            value={cloudConfig?.baseUrl || ''}
+                                            onChange={e => setCloudConfig(prev => prev ? { ...prev, baseUrl: e.target.value } : null)}
+                                            className="w-full bg-card-secondary/50 border border-border text-[11px] font-mono text-text-primary rounded-xl px-5 py-3 outline-none focus:ring-1 focus:ring-blue-500 transition-all shadow-inner"
+                                        />
+                                    </div>
+                                </div>
                             </div>
-                        )}
+
+                            <div className="space-y-5">
+                                <div className="p-5 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-2xl flex gap-4 items-start">
+                                    <Info size={18} className="text-blue-500 mt-1 shrink-0" />
+                                    <div className="space-y-2">
+                                        <p className="text-[10px] font-black text-blue-600/80 uppercase tracking-widest">Why specify a Master Key?</p>
+                                        <p className="text-[11px] font-bold text-text-secondary leading-relaxed opacity-90">
+                                            The Master Key is used to securely sign Synthetic Cloud Probes (Slow SaaS, download/large, etc.) before they hit your Cloudflare Worker. This prevents unauthorized access to your probe infrastructure.
+                                        </p>
+                                        <p className="text-[11px] font-bold text-text-secondary leading-relaxed opacity-90">
+                                            If you are using the official Stigix laboratory, please contact your account manager or the Stigix core team for the official credentials.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="p-4 bg-purple-600/5 border border-purple-500/10 rounded-xl flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600">
+                                            <Zap size={14} />
+                                        </div>
+                                        <div>
+                                            <div className="text-[9px] font-black text-purple-600 uppercase tracking-widest">Active Protection</div>
+                                            <p className="text-[10px] font-bold text-text-muted">Master signatures are derived from your TSG ID.</p>
+                                        </div>
+                                    </div>
+                                    <Activity size={24} className="text-purple-500 opacity-20" />
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     {/* Details and Local Instances */}
