@@ -1174,16 +1174,52 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                                                 {isDiscovery ? 'Prisma' : isCloud ? 'Cloud' : probe.type}
                                                             </span>
                                                         </div>
-                                                        <p className="text-[9px] font-bold text-text-muted truncate max-w-[180px] mt-1 opacity-60">
-                                                            {probe.type === 'CLOUD'
-                                                                ? (() => {
+                                                        {/* URL chip — full effective URL with copy-to-clipboard */}
+                                                        {(() => {
+                                                            let displayUrl = '';
+                                                            let fullUrl = '';
+                                                            if (probe.type === 'CLOUD') {
+                                                                if (probe.target.startsWith('advanced-custom#')) {
+                                                                    // Reconstruct readable path from JSON config
+                                                                    try {
+                                                                        const adv = JSON.parse(probe.target.split('#')[1]);
+                                                                        const base = cloudConfig?.baseUrl || 'stigix-target.workers.dev';
+                                                                        displayUrl = `${base}/advanced?mode=${adv.mode||'info'}${adv.delay ? `&delay=${adv.delay}` : ''}`;
+                                                                        fullUrl = displayUrl;
+                                                                    } catch { displayUrl = 'advanced-custom'; fullUrl = 'advanced-custom'; }
+                                                                } else {
                                                                     const scenario = cloudScenarios.find(s => s.id === probe.target);
-                                                                    if (scenario?.signedUrl) return scenario.signedUrl.replace(/^https?:\/\//, '').split('?')[0];
-                                                                    return probe.target || 'Stigix Scenario';
-                                                                })()
-                                                                : (probe.target || 'localhost')
+                                                                    // Strip ?key=... secret from display, keep full for curl copy
+                                                                    fullUrl = scenario?.signedUrl || probe.target;
+                                                                    displayUrl = fullUrl.split('?')[0]; // base URL without params
+                                                                }
+                                                            } else {
+                                                                fullUrl = probe.target || '';
+                                                                displayUrl = fullUrl;
                                                             }
-                                                        </p>
+                                                            if (!displayUrl) return null;
+                                                            const shortDisplay = displayUrl.replace(/^https?:\/\//, '');
+                                                            return (
+                                                                <div className="flex items-center gap-1 mt-1.5 group/url">
+                                                                    <span
+                                                                        className="text-[9px] font-mono font-bold text-text-muted opacity-60 truncate max-w-[160px] group-hover/url:max-w-none group-hover/url:opacity-80 transition-all"
+                                                                        title={fullUrl}
+                                                                    >
+                                                                        {shortDisplay}
+                                                                    </span>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            navigator.clipboard.writeText(fullUrl).then(() => showSuccess('URL copied!'));
+                                                                        }}
+                                                                        className="opacity-0 group-hover/url:opacity-100 transition-opacity p-0.5 hover:bg-blue-500/10 rounded text-blue-500/60 hover:text-blue-500 flex-shrink-0"
+                                                                        title="Copy full URL to clipboard"
+                                                                    >
+                                                                        <Clipboard size={10} />
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
@@ -1447,14 +1483,50 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                                                 );
                                                             })()}
                                                         </div>
-                                                    ) : newProbe.target && (
-                                                        <div className="p-3 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl flex gap-3 items-start animate-in zoom-in-95 duration-300">
-                                                            <Info size={14} className="text-blue-500 mt-0.5 shrink-0" />
-                                                            <p className="text-[10px] font-bold text-text-secondary leading-relaxed opacity-80">
-                                                                {cloudScenarios.find(s => s.id === newProbe.target)?.description || 'No description available for this scenario.'}
-                                                            </p>
-                                                        </div>
-                                                    )}
+                                                    ) : newProbe.target && (() => {
+                                                        const scenario = cloudScenarios.find(s => s.id === newProbe.target);
+                                                        const fullUrl = scenario?.signedUrl || '';
+                                                        const displayUrl = fullUrl.split('?')[0]; // strip ?key=... secret
+                                                        const curlUrl = fullUrl; // includes key for actual curl test
+                                                        return (
+                                                            <div className="space-y-2 animate-in zoom-in-95 duration-300">
+                                                                {/* Description */}
+                                                                <div className="p-3 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl flex gap-3 items-start">
+                                                                    <Info size={14} className="text-blue-500 mt-0.5 shrink-0" />
+                                                                    <p className="text-[10px] font-bold text-text-secondary leading-relaxed opacity-80">
+                                                                        {scenario?.description || 'No description available for this scenario.'}
+                                                                    </p>
+                                                                </div>
+                                                                {/* Effective URL (read-only, copy-able) */}
+                                                                {displayUrl && (
+                                                                    <div className="space-y-1">
+                                                                        <div className="flex items-center justify-between">
+                                                                            <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase flex items-center gap-1.5">
+                                                                                <ExternalLink size={9} />
+                                                                                Effective URL <span className="opacity-50 normal-case font-bold tracking-normal">(read-only — macro probe)</span>
+                                                                            </label>
+                                                                            <button
+                                                                                onClick={() => navigator.clipboard.writeText(curlUrl).then(() => showSuccess('Full URL copied! Key included for curl testing.'))}
+                                                                                className="text-[9px] font-black text-blue-500 hover:text-blue-400 flex items-center gap-1 px-2 py-0.5 rounded hover:bg-blue-500/10 transition-all"
+                                                                                title="Copy full signed URL (with key) for curl"
+                                                                            >
+                                                                                <Clipboard size={10} /> Copy for curl
+                                                                            </button>
+                                                                        </div>
+                                                                        <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl px-4 py-2.5 flex items-center gap-2 group cursor-default">
+                                                                            <Globe size={12} className="text-purple-400 flex-shrink-0" />
+                                                                            <span className="text-[10px] font-mono text-slate-300 break-all leading-relaxed select-all">
+                                                                                {curlUrl}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className="text-[9px] text-text-muted opacity-50 px-1">
+                                                                            This is the full signed URL including the authentication key required for external testing.
+                                                                        </p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                             ) : (
                                                 <input
