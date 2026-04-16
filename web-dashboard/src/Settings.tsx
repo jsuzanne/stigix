@@ -2234,7 +2234,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                         </div>
                     </div>
                 )}
-            </div>
 
             {/* ─── Registry Tab ────────────────────────────────────────────── */}
             {activeTab === 'registry' && (
@@ -2373,10 +2372,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                         title="Reset to Auto-Discovery"
                                     >
                                         <Trash2 size={16} />
-                                    </button>
-                                )}
                             </div>
                         </div>
+                    </div>
 
                     {/* Cloud Target Security (Signatures) */}
                     <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -2662,9 +2660,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                 </div>
                             </div>
                         </div>
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
 
             {activeTab === 'targets' && (
                 <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
@@ -3276,11 +3274,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                     <ShieldAlert size={24} className="opacity-10" />
                                 </div>
                             </div>
-                        </div>
-                    )}
-                </div>
-            )}
+                    </div>
+                )}
             </div>
+        </div>
 
             {/* Debug Console Modal */}
             {showDebugConsole && (
@@ -3379,4 +3376,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
             )}
         );
     }
+}
+}
+</div>
 
