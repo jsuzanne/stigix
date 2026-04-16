@@ -216,6 +216,29 @@ const CONVERGENCE_STATS_FILE = '/tmp/convergence_stats.json';
 const CONVERGENCE_COUNTER_FILE = path.join(APP_CONFIG.configDir, 'test-counter-convergence.json');
 const CONVERGENCE_ENDPOINTS_FILE = path.join(APP_CONFIG.configDir, 'convergence-endpoints.json');
 const SYSTEM_APP_LOG = path.join(APP_CONFIG.logDir, 'app.log');
+const CONNECTIVITY_DEBUG_LOG = path.join(APP_CONFIG.logDir, 'connectivity-debug.log');
+
+/**
+ * Appends a line to the technical debug log with rotation (5MB limit).
+ */
+function appendDebugTrace(message: string) {
+    try {
+        const timestamp = new Date().toISOString();
+        const logLine = `[${timestamp}] ${message}\n`;
+        
+        // Simple rotation check
+        if (fs.existsSync(CONNECTIVITY_DEBUG_LOG)) {
+            const stats = fs.statSync(CONNECTIVITY_DEBUG_LOG);
+            if (stats.size > 5 * 1024 * 1024) { // 5MB
+                fs.renameSync(CONNECTIVITY_DEBUG_LOG, `${CONNECTIVITY_DEBUG_LOG}.old`);
+            }
+        }
+        
+        fs.appendFileSync(CONNECTIVITY_DEBUG_LOG, logLine);
+    } catch (e) {
+        log('SYSTEM', `Failed to write to debug trace: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
+    }
+}
 
 // ─── Egress Path Enrichment Helpers ────────────────────────────────────────
 
@@ -3084,6 +3107,8 @@ const calculateDEMScore = (type: string, reachable: boolean, httpCode: number | 
 };
 
 const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResult> => {
+    const trace = (msg: string) => appendDebugTrace(`[${endpoint.type}:${endpoint.name}] ${msg}`);
+    trace(`Starting probe to ${endpoint.target}`);
     const startTime = Date.now();
     let result: ConnectivityResult = {
         timestamp: startTime,
@@ -3103,9 +3128,11 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
             const ifaceFlag = (iface && iface !== 'eth0') ? `--interface ${iface}` : '';
             const curlCmd = `${getTimeoutCmd(15)}curl -o /dev/null -s -L -w "time_namelookup=%{time_namelookup}\\ntime_connect=%{time_connect}\\ntime_appconnect=%{time_appconnect}\\ntime_starttransfer=%{time_starttransfer}\\ntime_total=%{time_total}\\nhttp_code=%{http_code}\\nremote_ip=%{remote_ip}\\nremote_port=%{remote_port}\\nsize_download=%{size_download}\\nspeed_download=%{speed_download}\\nssl_verify_result=%{ssl_verify_result}\\n" -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' --max-time ${Math.floor(endpoint.timeout / 1000)} ${ifaceFlag} "${endpoint.target}"`;
 
+            trace(`CMD: ${curlCmd}`);
             if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing HTTP Probe: ${curlCmd}`, 'debug');
             try {
-                const { stdout } = await execPromise(curlCmd);
+                const { stdout, stderr } = await execPromise(curlCmd);
+                trace(`OUTPUT:\n${stdout}${stderr || ''}`);
                 const curlData: any = {};
                 stdout.split('\n').filter(l => l.includes('=')).forEach(line => {
                     const [key, value] = line.split('=');
@@ -3139,9 +3166,11 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
             const pingFlag = isMac ? `-W ${endpoint.timeout}` : `-W ${Math.floor(endpoint.timeout / 1000)}`; // Mac is ms, Linux is seconds
             const pingCommand = `${getTimeoutCmd(5)}ping -c 1 ${pingFlag} ${ifaceFlag} ${endpoint.target}`;
             const pStart = Date.now();
+            trace(`CMD: ${pingCommand}`);
             if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing PING: ${pingCommand}`, 'debug');
             try {
-                const { stdout } = await execPromise(pingCommand);
+                const { stdout, stderr } = await execPromise(pingCommand);
+                trace(`OUTPUT:\n${stdout}${stderr || ''}`);
                 const duration = Date.now() - pStart;
                 const timeMatch = stdout.match(/time[=<](\d+\.?\d*)/);
                 const pingTime = timeMatch ? parseFloat(timeMatch[1]) : duration;
@@ -3155,9 +3184,11 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
             const [ip, port] = endpoint.target.split(':');
             const ncCommand = `${getTimeoutCmd(5)}nc -zv -w ${Math.floor(endpoint.timeout / 1000)} ${ip} ${port} 2>&1`;
             const tStart = Date.now();
+            trace(`CMD: ${ncCommand}`);
             if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing TCP Probe: ${ncCommand}`, 'debug');
             try {
-                await execPromise(ncCommand);
+                const { stdout, stderr } = await execPromise(ncCommand);
+                trace(`OUTPUT:\n${stdout}${stderr || ''}`);
                 result.reachable = true;
                 result.metrics.total_ms = Date.now() - tStart;
                 result.score = calculateDEMScore(result.endpointType, result.reachable, undefined, result.metrics);
@@ -3167,9 +3198,11 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
         } else if (endpoint.type.toLowerCase() === 'dns') {
             const dnsCommand = `${getTimeoutCmd(5)}dig +short +time=${Math.floor(endpoint.timeout / 1000)} google.com @${endpoint.target}`;
             const dStart = Date.now();
+            trace(`CMD: ${dnsCommand}`);
             if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing DNS Probe: ${dnsCommand}`, 'debug');
             try {
-                const { stdout } = await execPromise(dnsCommand);
+                const { stdout, stderr } = await execPromise(dnsCommand);
+                trace(`OUTPUT:\n${stdout}${stderr || ''}`);
                 if (stdout.trim().length > 0) {
                     result.reachable = true;
                     result.metrics.total_ms = Date.now() - dStart;
@@ -3207,7 +3240,9 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
             if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing CLOUD Probe for scenario: ${endpoint.target}`, 'debug');
             try {
                 // For cloud probes, 'target' is the scenario ID
+                trace(`Invoking scenario: ${endpoint.target}`);
                 const probeResult = await targetManager.runProbe(endpoint.target);
+                trace(`SCENARIO RESPONSE: ${JSON.stringify(probeResult, null, 2)}`);
                 result.reachable = probeResult.success;
                 result.score = probeResult.score;
                 result.metrics.total_ms = probeResult.latency_ms;
@@ -3263,6 +3298,19 @@ const getEnvConnectivityEndpoints = () => {
 
     return endpoints;
 };
+
+app.get('/api/connectivity/debug-trace', authenticateToken, (req, res) => {
+    try {
+        if (!fs.existsSync(CONNECTIVITY_DEBUG_LOG)) {
+            return res.json({ logs: ['[SYSTEM] Debug trace log is empty. No probes executed yet since last clear.'] });
+        }
+        const content = fs.readFileSync(CONNECTIVITY_DEBUG_LOG, 'utf8');
+        const lines = content.split('\n').filter(l => l.trim()).slice(-500); // Last 500 lines
+        res.json({ logs: lines });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to read debug trace' });
+    }
+});
 
 // Helper: Get custom endpoints from file (used for custom added probes, plus state overrides for env/discovery probes)
 const getCustomConnectivityEndpoints = () => {

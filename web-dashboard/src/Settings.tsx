@@ -195,6 +195,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
     const [staticLeaderUrl, setStaticLeaderUrl] = useState<string>('');
     const [isTestingConnectivity, setIsTestingConnectivity] = useState(false);
     const [connectivityResult, setConnectivityResult] = useState<{ success?: boolean; error?: string } | null>(null);
+    const [masterKey, setMasterKey] = useState<string>('');
+    const [showDebugConsole, setShowDebugConsole] = useState(false);
+    const [debugLogs, setDebugLogs] = useState<string[]>([]);
+    const [debugPollingActive, setDebugPollingActive] = useState(false);
 
     const authHeaders = {
         'Authorization': `Bearer ${token}`,
@@ -213,6 +217,25 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
     useEffect(() => {
         if (uiConfig?.maxCaptures) setMaxCaptures(uiConfig.maxCaptures);
     }, [uiConfig?.maxCaptures]);
+
+    // Tech Trace Polling
+    useEffect(() => {
+        let interval: any;
+        if (showDebugConsole && debugPollingActive) {
+            const fetchLogs = async () => {
+                try {
+                    const res = await fetch('/api/connectivity/debug-trace', { headers: authHeaders });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setDebugLogs(data.logs || []);
+                    }
+                } catch (e) { }
+            };
+            fetchLogs();
+            interval = setInterval(fetchLogs, 3000);
+        }
+        return () => clearInterval(interval);
+    }, [showDebugConsole, debugPollingActive]);
 
     const showSuccess = (msg: string) => {
         setSuccessMsg(msg);
@@ -1079,6 +1102,16 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                 >
                                     <Upload size={14} />
                                     Import
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setDebugPollingActive(true);
+                                        setShowDebugConsole(true);
+                                    }}
+                                    className="px-4 py-2 bg-amber-600/10 hover:bg-amber-600/20 text-amber-500 border border-amber-500/20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 group"
+                                >
+                                    <Terminal size={14} className="group-hover:animate-pulse" />
+                                    Technical Console
                                 </button>
                             </div>
                         </div>
@@ -2339,6 +2372,56 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                         )}
                     </div>
 
+                    {/* Cloud Target Security Configuration */}
+                    <div className="bg-card-secondary/20 border border-border rounded-2xl p-6 space-y-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-amber-500/10 rounded-lg text-amber-500">
+                                <Lock size={20} />
+                            </div>
+                            <div>
+                                <h3 className="text-xs font-black text-text-primary uppercase tracking-wider">Cloud Target Security</h3>
+                                <p className="text-[10px] text-text-muted font-bold tracking-widest mt-0.5 opacity-60 uppercase">Authentication keys for encrypted probe orchestration</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                            <div className="md:col-span-12 space-y-2">
+                                <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Target Master Key</label>
+                                <div className="relative group">
+                                    <input
+                                        type="password"
+                                        placeholder="STIGIX_TARGET_MASTER_KEY (Required for Cloud Probes)"
+                                        value={masterKey}
+                                        onChange={(e) => setMasterKey(e.target.value)}
+                                        className="w-full bg-card hover:bg-card-hover border border-border focus:border-amber-500/50 rounded-xl px-4 py-2.5 text-xs font-mono transition-all pr-24"
+                                    />
+                                    <button
+                                        onClick={async () => {
+                                            setSaving(true);
+                                            try {
+                                                const res = await fetch('/api/registry/config', {
+                                                    method: 'POST',
+                                                    headers: authHeaders,
+                                                    body: JSON.stringify({ target_master_key: masterKey })
+                                                });
+                                                if (res.ok) showSuccess('Master key stored securely');
+                                            } catch (e) { }
+                                            setSaving(false);
+                                        }}
+                                        disabled={saving || !masterKey}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg px-3 py-1 text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50"
+                                    >
+                                        Update
+                                    </button>
+                                </div>
+                                <p className="text-[9px] text-text-muted italic opacity-60 pl-1">
+                                    This key is used to authenticate this node with the Stigix Cloud Orchestrator. 
+                                    It is required if this node is configured to use Cloud Probes.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Details and Local Instances */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         {/* Registry Details */}
@@ -3141,6 +3224,97 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                     )}
                 </div>
             )}
+
+                {/* Technical Debug Console Modal */}
+                {showDebugConsole && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 md:p-10 animate-in fade-in duration-300">
+                        <div className="absolute inset-0 bg-background/80 backdrop-blur-xl" onClick={() => setShowDebugConsole(false)} />
+                        <div className="relative w-full max-w-5xl h-full max-h-[800px] bg-card-secondary border border-border shadow-2xl rounded-3xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+                            {/* Terminal Header */}
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card-secondary/50 backdrop-blur-md">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-amber-500/10 rounded-xl text-amber-500">
+                                        <Terminal size={18} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-black text-text-primary uppercase tracking-wider">Technical Trace Console</h3>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <div className="flex items-center gap-1.5">
+                                                <div className={cn("w-1.5 h-1.5 rounded-full", debugPollingActive ? "bg-emerald-500 animate-pulse" : "bg-text-muted")} />
+                                                <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{debugPollingActive ? 'Live Polling' : 'Paused'}</span>
+                                            </div>
+                                            <span className="text-text-muted/30 text-[10px]">•</span>
+                                            <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{debugLogs.length} Events</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => setDebugPollingActive(!debugPollingActive)}
+                                        className={cn(
+                                            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                                            debugPollingActive ? "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20" : "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20"
+                                        )}
+                                    >
+                                        {debugPollingActive ? <><Power size={12} /> Pause</> : <><Activity size={12} /> Resume</>}
+                                    </button>
+                                    <button
+                                        onClick={() => setDebugLogs([])}
+                                        className="p-2 hover:bg-card-hover rounded-lg text-text-muted hover:text-red-500 transition-all"
+                                        title="Clear Console"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                    <button
+                                        onClick={() => setShowDebugConsole(false)}
+                                        className="p-2 hover:bg-card-hover rounded-lg text-text-muted hover:text-text-primary transition-all"
+                                    >
+                                        <XCircle size={18} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Terminal Body */}
+                            <div className="flex-1 overflow-y-auto p-6 font-mono text-[11px] leading-relaxed space-y-1 bg-black/20" style={{ scrollBehavior: 'smooth' }}>
+                                {debugLogs.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center opacity-30 text-center space-y-3">
+                                        <Terminal size={40} />
+                                        <p className="font-bold tracking-widest uppercase">Initializing terminal...<br/>Run a probe to see technical traces.</p>
+                                    </div>
+                                ) : (
+                                    debugLogs.map((log, idx) => {
+                                        let lineClass = "text-text-tertiary";
+                                        if (log.includes('Starting probe')) lineClass = "text-blue-400 font-bold border-l-2 border-blue-500/50 pl-2 mt-4 first:mt-0";
+                                        if (log.includes('CMD:')) lineClass = "text-amber-500/80 italic bg-amber-500/5 px-2 py-0.5 rounded";
+                                        if (log.includes('OUTPUT:')) lineClass = "text-emerald-500/80 font-bold mt-2";
+                                        if (log.includes('SCENARIO RESPONSE:')) lineClass = "text-purple-400 font-bold mt-2";
+                                        if (log.includes('ERROR') || log.includes('failed')) lineClass = "text-red-400 font-bold";
+                                        
+                                        return (
+                                            <div key={idx} className={cn("hover:bg-white/5 px-2 py-0.5 rounded transition-colors break-words", lineClass)}>
+                                                {log.startsWith('[') ? (
+                                                    <span className="opacity-40 mr-2">[{log.split(']')[0].substring(1).split('T')[1].split('.')[0]}]</span>
+                                                ) : null}
+                                                {log.includes(']') ? log.substring(log.indexOf(']') + 2) : log}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                                <div id="console-bottom" />
+                            </div>
+
+                            {/* Terminal Footer */}
+                            <div className="px-6 py-3 border-t border-border bg-card-secondary/30 flex items-center justify-between text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">
+                                <div className="flex items-center gap-4">
+                                    <span className="flex items-center gap-1.5"><Terminal size={10} /> Stigix Technical Console v1.0</span>
+                                    <span className="flex items-center gap-1.5"><Activity size={10} /> Real-time Diagnostics</span>
+                                </div>
+                                <span className="opacity-40">Press ESC to close</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
             </div>
         );
     }
