@@ -9,27 +9,35 @@ The **Connectivity Probes** (formerly Synthetic Endpoints) provide real-time vis
 The platform supports three primary probe types, each measuring different aspects of the digital experience:
 
 ### 1. HTTP (Digital Experience)
-- **Mechanism**: Performs a standard HTTP/HTTPS `GET` request to the target.
+- **Mechanism**: Orchestrates a native OS `curl` subprocess to perform HTTP/HTTPS `GET` queries.
+- **Primary Benefit**: `curl` provides military-grade precision for extracting intricate low-level execution timings out-of-the-box, allowing us to perfectly isolate DNS lookup delays, TCP Handshake times, and TLS Handshake overhead from the raw Time-To-First-Byte (TTFB).
 - **Metrics**: 
-  - **Latency (ms)**: Time to first byte.
+  - **Latency (ms)**: Total Time to first byte breakdown.
   - **Status**: Success (2xx/3xx) or Failure (4xx/5xx/Timeout).
 - **Scoring**: Weighted calculation: `100 - (30% Latency + 35% TTFB + 25% TLS)`. Penalized heavily if Latency > 2s, TTFB > 1s, or TLS Handshake > 800ms.
 
 ### 2. PING (Network Reachability)
-- **Mechanism**: Sends standard ICMP Echo Requests.
+- **Mechanism**: Executes the native OS `ping` binary to dispatch ICMP Echo Requests.
+- **Primary Benefit**: Using the host's native `ping` utility intelligently avoids the strict capability/root privileges required to open raw ICMP sockets programmatically, ensuring secure, unprivileged execution environments (like Docker containers) map reachability flawlessly.
 - **Metrics**: 
   - **RTT (ms)**: Round-trip time.
 - **Scoring**: Good if < 100ms (Score 100). Reaches 0 at 500ms.
 
 ### 3. DNS (Resolution Speed)
-- **Mechanism**: Queries the target domain.
+- **Mechanism**: Queries the target domain leveraging the `dig` system utility.
+- **Primary Benefit**: `dig` bypasses systemic OS-level caching interfaces, providing the exact unadulterated response time of the raw nameserver for highly faithful resolution mapping.
 - **Metrics**:
   - **Resolution Time (ms)**: Real-world mapping speed.
 - **Scoring**: Good if < 80ms (Score 100). Reaches 0 at 400ms.
 
 ### 4. UDP (Voice/Real-time Quality)
-- **Mechanism**: UDP reachability probe.
+- **Mechanism**: Triggers an `iperf3` client process (`-u` mode) aimed at the target port.
+- **Primary Benefit**: `iperf3` is the undisputed industry standard for UDP throughput mapping. It intrinsically calculates complex networking permutations including packet loss percentages and millisecond Jitter natively without requiring manual script math.
 - **Scoring**: `100 - (Loss % * 10) - Jitter penalty`. Jitter over 30ms reduces the score (max -50). 10% packet loss results in a score of **0**.
+
+### 5. TCP (Port Reachability)
+- **Mechanism**: Executes `nc` (Netcat) to simulate a standard TCP socket connection.
+- **Primary Benefit**: Netcat securely tests port exposure and firewall routing viability without risking incomplete handshakes that some specialized application daemons reject.
 
 ## 🏆 Scoring Methodology
 
