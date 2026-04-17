@@ -6602,7 +6602,8 @@ app.get('/api/admin/system/info', authenticateToken, async (req, res) => {
             disk,
             network,
             mode,
-            interfaceIps
+            interfaceIps,
+            beta: process.env.BETA === 'true' || process.env.BETA === 'True' || process.env.BETA === '1'
         });
     } catch (e: any) {
         console.error('[API] /api/admin/system/info error:', e.message);

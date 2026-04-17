@@ -933,7 +933,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
         { id: 'probes', label: 'Synthetic Probes' },
         { id: 'convergence', label: 'Convergence' },
         { id: 'system', label: 'System Info' },
-        { id: 'maintenance', label: 'System Maintenance', beta: true },
+        ...(systemInfo?.beta ? [{ id: 'maintenance', label: 'System Maintenance', beta: true }] : []),
         { id: 'targets', label: 'Targets' },
         { id: 'registry', label: 'Target Controller', beta: true },
         { id: 'mcp', label: 'MCP Server', beta: true },
