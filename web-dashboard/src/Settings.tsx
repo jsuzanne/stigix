@@ -32,6 +32,7 @@ interface CustomProbe {
     type: 'HTTP' | 'HTTPS' | 'TCP' | 'PING' | 'DNS' | 'UDP' | 'CLOUD';
     target: string;
     timeout: number;
+    frequency?: number;
     enabled?: boolean;
     source?: 'discovery' | 'manual' | 'cloud';
 }
@@ -129,7 +130,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
     const [interfaces, setInterfaces] = useState<string[]>([]);
     const [availableInterfaces, setAvailableInterfaces] = useState<string[]>([]);
     const [customProbes, setCustomProbes] = useState<CustomProbe[]>([]);
-    const [newProbe, setNewProbe] = useState<CustomProbe>({ name: '', type: 'HTTP', target: '', timeout: 5000 });
+    const [newProbe, setNewProbe] = useState<CustomProbe>({ name: '', type: 'HTTP', target: '', timeout: 5000, frequency: 60 });
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [isProbeModalOpen, setIsProbeModalOpen] = useState(false);
 
@@ -650,7 +651,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
         }
         await saveProbes(updatedProbes);
         setCustomProbes(updatedProbes);
-        setNewProbe({ name: '', type: 'HTTP', target: '', timeout: 5000 });
+        setNewProbe({ name: '', type: 'HTTP', target: '', timeout: 5000, frequency: 60 });
     };
 
     const saveProbes = async (probes: CustomProbe[]) => {
@@ -1161,7 +1162,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                     {/* Action Card: Add New */}
                                     <div 
                                         onClick={() => {
-                                            setNewProbe({ name: '', type: 'HTTP', target: '', timeout: 5000 });
+                                            setNewProbe({ name: '', type: 'HTTP', target: '', timeout: 5000, frequency: 60 });
                                             setEditingIndex(null);
                                             setIsProbeModalOpen(true);
                                         }}
@@ -1403,7 +1404,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                     </div>
 
                                     <div className="p-8 space-y-6">
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                                             <div className="space-y-2">
                                                 <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">Probe Name</label>
                                                 <input
@@ -1445,6 +1446,24 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                                     onChange={e => {
                                                         const val = parseInt(e.target.value);
                                                         setNewProbe({ ...newProbe, timeout: isNaN(val) ? 5000 : Math.min(60000, Math.max(1000, val)) });
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between ml-1 leading-none">
+                                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Freq (s)</label>
+                                                    <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 30 — MAX 3600</span>
+                                                </div>
+                                                <input
+                                                    type="number"
+                                                    min="30"
+                                                    max="3600"
+                                                    step="10"
+                                                    className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                                    value={newProbe.frequency || 60}
+                                                    onChange={e => {
+                                                        const val = parseInt(e.target.value);
+                                                        setNewProbe({ ...newProbe, frequency: isNaN(val) ? 60 : Math.min(3600, Math.max(30, val)) });
                                                     }}
                                                 />
                                             </div>

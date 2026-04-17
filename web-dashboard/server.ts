@@ -3603,11 +3603,14 @@ app.get('/api/connectivity/stats', authenticateToken, async (req, res) => {
     res.json(stats || { globalHealth: 0 });
 });
 
-// Background connectivity monitoring
-const startConnectivityMonitor = (intervalMinutes: number = 1) => {
-    console.log(`[DEM] Starting background connectivity monitoring (every ${intervalMinutes}m)`);
+const isRunning = new Set<string>();
+const lastRunMap = new Map<string, number>();
 
-    const runMonitor = async () => {
+// Background connectivity monitoring
+const startConnectivityMonitor = () => {
+    console.log(`[DEM] Starting background connectivity monitoring (Tick every 10s)`);
+
+    const runMonitorTick = async () => {
         const testEndpoints: any[] = [
             ...getEnvConnectivityEndpoints(),
             ...getCustomConnectivityEndpoints(),
@@ -3616,20 +3619,36 @@ const startConnectivityMonitor = (intervalMinutes: number = 1) => {
 
         if (testEndpoints.length === 0) return;
 
+        const now = Date.now();
+
         for (const endpoint of testEndpoints) {
-            const checkResult = await performConnectivityCheck(endpoint);
-            await connectivityLogger.logResult(checkResult);
+            const key = `${endpoint.type}:${endpoint.name}`;
+            if (isRunning.has(key)) continue;
+
+            const freqMs = (endpoint.frequency || 60) * 1000;
+            const lastRun = lastRunMap.get(key) || 0; // Default to 0 forces immediate execution
+
+            if (now - lastRun >= freqMs) {
+                lastRunMap.set(key, now);
+                isRunning.add(key);
+
+                // Fire and forget non-blocking execution
+                performConnectivityCheck(endpoint)
+                    .then(checkResult => connectivityLogger.logResult(checkResult))
+                    .catch(e => console.error(`[DEM] Error executing probe ${key}:`, e))
+                    .finally(() => isRunning.delete(key));
+            }
         }
     };
 
-    // Run once at start after 30s to let system settle
-    setTimeout(runMonitor, 30000);
-    // Then periodically
-    setInterval(runMonitor, intervalMinutes * 60 * 1000);
+    // Run tick every 10 seconds
+    setInterval(runMonitorTick, 10000);
+    // Initial immediate tick after 5s to let system settle
+    setTimeout(runMonitorTick, 5000);
 };
 
-// Start monitor (Now harmonized to 1 minute)
-startConnectivityMonitor(1);
+// Start monitor
+startConnectivityMonitor();
 
 // --- Phase 7: Convergence & Failover Testing ---
 
