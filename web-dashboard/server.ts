@@ -3606,6 +3606,31 @@ app.get('/api/connectivity/stats', authenticateToken, async (req, res) => {
 const isRunning = new Set<string>();
 const lastRunMap = new Map<string, number>();
 
+// Queue to safely sequence heavy UDP/DNS subprocesses and avoid local socket starvation/collisions
+let probeQueue: any[] = [];
+let isQueueProcessing = false;
+
+const processProbeQueue = async () => {
+    if (isQueueProcessing) return;
+    isQueueProcessing = true;
+    
+    while (probeQueue.length > 0) {
+        const endpoint = probeQueue.shift();
+        const key = `${endpoint.type}:${endpoint.name}`;
+        
+        try {
+            const checkResult = await performConnectivityCheck(endpoint);
+            await connectivityLogger.logResult(checkResult);
+        } catch (e) {
+            console.error(`[DEM] Error executing probe ${key}:`, e);
+        } finally {
+            isRunning.delete(key);
+        }
+    }
+    
+    isQueueProcessing = false;
+};
+
 // Background connectivity monitoring
 const startConnectivityMonitor = () => {
     console.log(`[DEM] Starting background connectivity monitoring (Tick every 10s)`);
@@ -3631,14 +3656,12 @@ const startConnectivityMonitor = () => {
             if (now - lastRun >= freqMs) {
                 lastRunMap.set(key, now);
                 isRunning.add(key);
-
-                // Fire and forget non-blocking execution
-                performConnectivityCheck(endpoint)
-                    .then(checkResult => connectivityLogger.logResult(checkResult))
-                    .catch(e => console.error(`[DEM] Error executing probe ${key}:`, e))
-                    .finally(() => isRunning.delete(key));
+                probeQueue.push(endpoint);
             }
         }
+        
+        // Asynchronously process queue safely one by one to prevent execution collisions
+        processProbeQueue();
     };
 
     // Run tick every 10 seconds
