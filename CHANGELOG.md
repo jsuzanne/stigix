@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.37] - 2026-04-17
+### Added
+- **Convergence Dashboard**: Added Live Packet Loss tracking chart to the convergence timeline display. 📉
+### Changed
+- **Convergence Dashboard**: Compressed the left outage stats panel to dynamically increase the horizontal charting space for better timeline analysis. ✨
+
+## [v1.2.2-patch.36] - 2026-04-17
+### Fixed
+- **Speedtest**: Fixed an issue where the speedtest graph X-axis would stall after 60 seconds by modifying the sliding window array logic and dynamically expanding it up to 300 seconds (5 minutes). 📈
+
+## [v1.2.2-patch.35] - 2026-04-16
+### Added
+- **Probes**: Enriched custom connectivity export (`connectivity-custom.json`) with an `effectiveUrl` field for CLOUD probes, providing administrators with the exact signed URLs and credentials used by the engine. 🔍
+
+## [v1.2.2-patch.31] - 2026-04-16
+### Added
+- **Cloud Targets**: Implemented dynamic subdomain routing for custom SaaS applications (e.g., `slow-saas`). 🌩️
+
+## [v1.2.2-patch.30] - 2026-04-16
+### Added
+- **Cloud Targets**: Introduced Cloud Target Security UI directly into the Target Controller tab. 🛡️
+
+## [v1.2.2-patch.29] - 2026-04-16
+### Added
+- **Cloud Targets**: Exposed a global, configurable delay override parameter allowing custom synthetic simulation of long-polling and sluggish applications across all cloud scenarios. ⏱️
+
+## [v1.2.2-patch.28] - 2026-04-15
+### Added
+- **Probes**: Injected highly detailed diagnostics and connectivity probe logging for advanced troubleshooting. 📝
+
+## [v1.2.2-patch.27] - 2026-04-15
+### Fixed
+- **UI**: Modified probe management lists so that action buttons are permanently visible, eliminating browser compatibility issues with CSS hover states. 🖱️
+
+## [v1.2.2-patch.26] - 2026-04-15
+### Fixed
+- **DevOps**: Restored accurate `stigix` container renaming schemes and fixed security CLI command executions. 🐳
+
+## [v1.2.2-patch.25] - 2026-04-15
+### Added
+- **Probes**: Enhanced frontend visibility of Synthetic probe execution URLs. 🌐
+
+## [v1.2.2-patch.24] - 2026-04-14
+### Fixed
+- **SLS Integration**: Temporarily isolated and disabled the SLS/Prisma API enrichment check due to connectivity stabilization. 🛡️
+
+## [v1.2.2-patch.23] - 2026-04-14
+### Fixed
+- **Build**: Resolved `TS6133` TypeScript build failures by eliminating unused `onVersionUpdate` property bindings. 🛠️
+
+## [v1.2.2-patch.22] - 2026-04-12
+### Changed
+- **Performance Dashboard**: Harmonized background probe execution frequencies and introduced a user-configurable history timeline display for cleaner analysis. ⏱️
+
 ## [v1.2.2-patch.21] - 2026-04-10
 ### Added
 - **Website**: Launched the official product website at `stigix.io` with a full SEO pass, including meta tags, Open Graph cards, and JSON-LD structured data. 🌐✨
