@@ -73,7 +73,8 @@ export default function Failover(props: FailoverProps) {
                 const arr = next[t.testId] || [];
                 const rtt = typeof t.current_rtt_ms === 'number' ? t.current_rtt_ms : (t.avg_rtt_ms || 0);
                 const jitter = typeof t.jitter_ms === 'number' ? t.jitter_ms : 0;
-                const newArr = [...arr, { time: new Date().toLocaleTimeString(), rtt, jitter }];
+                const loss = typeof t.loss_pct === 'number' ? t.loss_pct : 0;
+                const newArr = [...arr, { time: new Date().toLocaleTimeString(), rtt, jitter, loss }];
                 if (newArr.length > 50) newArr.shift(); // Keep last 50 data points
                 next[t.testId] = newArr;
             });
@@ -373,33 +374,34 @@ export default function Failover(props: FailoverProps) {
                 {activeTests.map((test) => (
                     <div key={test.testId} className="bg-card border border-border rounded-2xl overflow-hidden shadow-xl flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-border">
                         {/* Outage Stats */}
-                        <div className="bg-card-secondary/30 p-6 md:w-1/3 flex flex-col justify-center items-center text-center space-y-4">
+                        <div className="bg-card-secondary/30 p-4 md:w-56 shrink-0 flex flex-col justify-center items-center text-center space-y-4">
                             <div className="space-y-1">
-                                <div className="flex items-center gap-2 justify-center mb-1">
-                                    <Activity size={14} className="text-blue-500" />
-                                    <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Current Outage</span>
+                                <div className="flex items-center gap-1.5 justify-center mb-1">
+                                    <Activity size={12} className="text-blue-500" />
+                                    <span className="text-[9px] font-bold text-text-muted uppercase tracking-widest">Current Outage</span>
                                 </div>
-                                <div className={`text-4xl font-black font-mono tracking-tighter transition-all duration-300 ${test.current_blackout_ms > 0 ? 'text-red-500 animate-pulse' : 'text-text-primary'}`} style={test.current_blackout_ms > 0 ? { textShadow: '0 0 20px rgba(2ef, 68, 68, 0.4)' } : {}}>
+                                <div className={`text-3xl font-black font-mono tracking-tighter transition-all duration-300 ${test.current_blackout_ms > 0 ? 'text-red-500 animate-pulse' : 'text-text-primary'}`} style={test.current_blackout_ms > 0 ? { textShadow: '0 0 20px rgba(239, 68, 68, 0.4)' } : {}}>
                                     {formatMs(test.current_blackout_ms || 0)}
                                 </div>
                             </div>
-                            <div className="flex justify-center gap-6 w-full">
-                                <div className="space-y-1">
-                                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Max Blackout</div>
-                                    <div className="text-xl font-bold text-orange-500 font-mono">
+                            <div className="w-full h-px bg-border/50"></div>
+                            <div className="flex justify-between w-full px-2 gap-2">
+                                <div className="space-y-1 flex-1 text-center">
+                                    <div className="text-[9px] font-bold text-text-muted uppercase tracking-widest">Max Blackout</div>
+                                    <div className="text-lg font-bold text-orange-500 font-mono tracking-tighter">
                                         {formatMs(test.max_blackout_ms || 0)}
                                     </div>
                                 </div>
                                 <div className="w-px bg-border/50"></div>
-                                <div className="space-y-1 flex flex-col items-center">
-                                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-widest">QoE Score</div>
+                                <div className="space-y-1 flex flex-col items-center flex-1">
+                                    <div className="text-[9px] font-bold text-text-muted uppercase tracking-widest">QoE Score</div>
                                     {(() => {
                                         // Simple synthetic QoE Score: Starts at 100, drops for loss, jitter, and high RTT.
                                         let qoe = 100 - (test.loss_pct * 2) - ((test.jitter_ms || 0) * 0.5) - ((test.avg_rtt_ms > 50 ? test.avg_rtt_ms - 50 : 0) * 0.1);
                                         qoe = Math.max(0, Math.min(100, Math.round(qoe)));
                                         let color = qoe >= 90 ? 'text-green-400 font-bold' : qoe >= 70 ? 'text-amber-500 font-bold' : 'text-red-500 font-bold animate-pulse';
-                                        let glow = qoe >= 90 ? '0 0 10px rgba(74, 222, 128, 0.3)' : qoe >= 70 ? '0 0 10px rgba(245, 158, 11, 0.3)' : '0 0 15px rgba(2ef, 68, 68, 0.4)';
-                                        return <div className={`text-xl font-mono ${color}`} style={{ textShadow: glow }}>{qoe}/100</div>;
+                                        let glow = qoe >= 90 ? '0 0 10px rgba(74, 222, 128, 0.3)' : qoe >= 70 ? '0 0 10px rgba(245, 158, 11, 0.3)' : '0 0 15px rgba(239, 68, 68, 0.4)';
+                                        return <div className={`text-lg font-mono tracking-tighter ${color}`} style={{ textShadow: glow }}>{qoe}/100</div>;
                                     })()}
                                 </div>
                             </div>
@@ -442,7 +444,7 @@ export default function Failover(props: FailoverProps) {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
                                 {/* Latency Chart */}
                                 <div>
                                     <div className="flex justify-between items-end mb-2">
@@ -490,6 +492,32 @@ export default function Failover(props: FailoverProps) {
                                                 </defs>
                                                 <YAxis domain={['auto', 'auto']} hide />
                                                 <Area type="monotone" dataKey="jitter" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#colorJitter)" isAnimationActive={false} />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                                
+                                {/* Loss Chart */}
+                                <div>
+                                    <div className="flex justify-between items-end mb-2">
+                                        <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
+                                            <Activity size={12} className="text-red-500 animate-pulse" /> Live Loss
+                                        </div>
+                                        <div className="text-lg font-bold text-red-500 font-mono tracking-tight shadow-sm">
+                                            {test.loss_pct || 0} <span className="text-[10px] text-text-muted ml-0.5">%</span>
+                                        </div>
+                                    </div>
+                                    <div className="h-[60px] w-full bg-card-secondary/10 rounded overflow-hidden">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart data={liveMetricsSeries[test.testId] || []} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                                                <defs>
+                                                    <linearGradient id="colorLoss" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
+                                                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                                                    </linearGradient>
+                                                </defs>
+                                                <YAxis domain={['auto', 'auto']} hide />
+                                                <Area type="monotone" dataKey="loss" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorLoss)" isAnimationActive={false} />
                                             </AreaChart>
                                         </ResponsiveContainer>
                                     </div>
