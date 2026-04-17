@@ -223,12 +223,15 @@ export default function Speedtest({ token }: Props) {
 
         const sse = new EventSource(`/api/tests/xfr/${id}/stream?token=${token}`);
         sseRef.current = sse;
-
+        
+        let counter = 0;
         sse.addEventListener('interval', (e: any) => {
             const data = JSON.parse(e.data);
+            counter++;
             setChartData(prev => {
-                const next = [...prev, { ...data, time: prev.length }];
-                return next.slice(-60);
+                const next = [...prev, { ...data, time: counter }];
+                // Allow up to 300 seconds (5 mins) or the requested test duration on the graph
+                return next.slice(-Math.max(60, duration + 10, 300));
             });
         });
 
