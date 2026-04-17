@@ -47,9 +47,10 @@ All probes return a score from **0 to 100**.
 ## ⚙️ How it Works
 
 ### 1. Background Execution
-Probes are managed by the **Background Monitor** in the Node.js backend (`server.ts`).
-- **Interval**: Probes run every **60 seconds** (default) or at the specified interval.
-- **Lifecycle**: The monitor iterates through all configured endpoints, executes the specialized probe, and updates the shared global state.
+Probes are managed by the **Background Monitor** inside the Node.js backend (`server.ts`).
+- **Orchestration Engine**: Since `v1.2.2-patch.41`, the backend operates an asynchronous concurrent ticker loop checking state every 10 seconds. This ensures probes don't block one another if they timeout.
+- **Interval (Frequency)**: Can be strictly tuned per-probe natively in the UI dashboard (Min: `30s`, Max: `3600s`). Defaults to **60 seconds**.
+- **Lifecycle**: The monitor independently checks each endpoint timestamp against its configured frequency threshold and fires off the specialized connectivity probe autonomously.
 
 ### 2. Flaky Detection
 The platform tracks "Flakiness" to distinguish between a temporary blip and a hard outage:
@@ -63,10 +64,12 @@ The UI (`Dashboard.tsx`) receives these updates in real-time via the `/api/statu
 
 ## 🛠️ Configuration
 
-You can add custom probes via the **Configuration** tab:
-- **Name**: A descriptive label (e.g., "Webex", "Office 365").
-- **Type**: Select from HTTP, PING, or DNS.
-- **Target**: The FQDN (google.com) or IP address. For HTTP, the `http://` prefix is added automatically if missing.
+You can add custom probes via the **Connectivity Settings** UI (Advanced Diagnostics > Add Custom Probe):
+- **Probe Name**: A short, uppercase tracking label (e.g., "HQ-GATEWAY", "OFFICE365-UDP").
+- **Protocol**: Select from HTTP, HTTPS, ICMP (Ping), TCP, DNS, UDP Stream, or Stigix Cloud.
+- **Timeout (ms)**: Max execution ceiling before the probe is marked failed. Tunable between `1000ms` (1s) and `60000ms` (60s). Default is typically `5000` (or `2000` for ping).
+- **Freq (s)**: The polling cycle loop time for the background engine. Tunable between `30s` and `3600s`.
+- **Target**: The FQDN (google.com), socket (1.1.1.1:53), or IP address.
 
 > [!TIP]
 > Use the **HTTP (Scoring)** type for public SaaS applications to get a realistic measure of application-level latency.
