@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.42] - 2026-04-17
+### Changed
+- **Settings UI**: Restructured the Custom Probe Configuration form layout. Upgraded from a cramped 4-column layout into a spacious 2-column grid layout spanning two rows to completely eliminate tight text wrapping. 📐
+
+## [v1.2.2-patch.41] - 2026-04-17
+### Added
+- **Probes**: Implemented dynamically configurable probe frequencies natively within the Settings UI (tunable from `30s` to `3600s`). ⏱️
+- **Backend Engine**: Demolished the legacy 60-second blocking scheduler and deployed a non-blocking asynchronous multiplexer. Probes now execute simultaneously relying on their precise individual intervals without overlapping or blocking! 🚀
+
 ## [v1.2.2-patch.40] - 2026-04-17
 ### Added
 - **Speedtest**: Enforced a dynamic 10s minimum and 300s maximum duration constraint on the UI, coupled with clear visual indicator text `MIN 10 — MAX 300` right above the input field to perfectly align user expectations. ⏱️
