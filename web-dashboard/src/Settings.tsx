@@ -1404,7 +1404,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                     </div>
 
                                     <div className="p-8 space-y-6">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div className="space-y-2">
                                                 <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">Probe Name</label>
                                                 <input
