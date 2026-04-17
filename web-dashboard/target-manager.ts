@@ -11,6 +11,7 @@ export interface TargetScenario {
     label: string;
     description: string;
     path: string;
+    subdomain?: string;
     params?: Record<string, string | number>;
     category: 'info' | 'saas' | 'download' | 'security' | 'error';
     signedUrl?: string; // Generated at runtime
@@ -149,6 +150,9 @@ export class TargetManager {
 
         return this.scenarios.map(scenario => {
             const url = new URL(this.baseUrl);
+            if (scenario.subdomain) {
+                url.hostname = `${scenario.subdomain}.${url.hostname}`;
+            }
             url.pathname = scenario.path;
 
             // Injects shared key
