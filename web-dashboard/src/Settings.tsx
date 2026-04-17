@@ -1431,7 +1431,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                                 </select>
                                             </div>
                                             <div className="space-y-2">
-                                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">Timeout (ms)</label>
+                                                <div className="flex items-center justify-between ml-1 leading-none">
+                                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Timeout (ms)</label>
+                                                    <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 1000 — MAX 60000</span>
+                                                </div>
                                                 <input
                                                     type="number"
                                                     min="1000"
