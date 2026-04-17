@@ -1403,7 +1403,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                     </div>
 
                                     <div className="p-8 space-y-6">
-                                        <div className="grid grid-cols-2 gap-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                             <div className="space-y-2">
                                                 <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">Probe Name</label>
                                                 <input
@@ -1429,6 +1429,21 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                                     <option value="UDP">UDP Stream</option>
                                                     <option value="CLOUD">Stigix Cloud Target</option>
                                                 </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">Timeout (ms)</label>
+                                                <input
+                                                    type="number"
+                                                    min="1000"
+                                                    max="60000"
+                                                    step="1000"
+                                                    className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                                    value={newProbe.timeout || 5000}
+                                                    onChange={e => {
+                                                        const val = parseInt(e.target.value);
+                                                        setNewProbe({ ...newProbe, timeout: isNaN(val) ? 5000 : Math.min(60000, Math.max(1000, val)) });
+                                                    }}
+                                                />
                                             </div>
                                         </div>
 
