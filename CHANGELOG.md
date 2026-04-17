@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.40] - 2026-04-17
+### Added
+- **Speedtest**: Enforced a dynamic 10s minimum and 300s maximum duration constraint on the UI, coupled with clear visual indicator text `MIN 10 — MAX 300` right above the input field to perfectly align user expectations. ⏱️
+
+## [v1.2.2-patch.39] - 2026-04-17
+### Added
+- **Settings UI**: Re-styled the Probe form, injecting an explicit `MIN 1000 — MAX 60000` helper text directly opposite the Timeout label for superior transparency. ✨
+
+## [v1.2.2-patch.38] - 2026-04-17
+### Added
+- **Probes**: Introduced an editable `Timeout (ms)` property natively into the Synthetic Probes UI builder, giving users maximum tuning control over execution limits. ⚙️
+- **Probes**: Injected a bulletproof `1000ms` safe-minimum limit to protect the backend bash-level tools from zero-timeout infinite execution traps. 🛡️
+
 ## [v1.2.2-patch.37] - 2026-04-17
 ### Added
 - **Convergence Dashboard**: Added Live Packet Loss tracking chart to the convergence timeline display. 📉
