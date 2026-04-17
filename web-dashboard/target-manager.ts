@@ -178,15 +178,14 @@ export class TargetManager {
     }
 
     /**
-     * Executes a scenario as a probe and returns a standardized result.
+     * Extracts URL parsing and signature logic for external use or logging.
      */
-    async runProbe(scenarioId: string): Promise<TargetProbeResult> {
+    getEffectiveUrl(scenarioId: string): { url: string, scenario?: TargetScenario } {
         let scenario: TargetScenario | undefined;
         let signedUrl = '';
         let baseId = scenarioId;
         let overrides: { delay?: number; size?: string; code?: number; mode?: string } = {};
 
-        // Parse optional overrides (e.g. scenario#{"delay":2000})
         if (scenarioId.includes('#')) {
             const parts = scenarioId.split('#');
             baseId = parts[0];
@@ -205,7 +204,7 @@ export class TargetManager {
             if (overrides.mode === 'large') scenario.params!.size = overrides.size || '5m';
             if (overrides.mode === 'error') scenario.params!.code = overrides.code || 500;
 
-            if (!this.baseUrl) return { success: false, score: 0, latency_ms: 0, message: 'Base URL missing' };
+            if (!this.baseUrl) return { url: '', scenario };
             const url = new URL(this.baseUrl);
             url.pathname = scenario.path;
             if (this.sharedKey) {
@@ -218,20 +217,32 @@ export class TargetManager {
         } else {
             scenario = this.scenarios.find(s => s.id === baseId);
             if (!scenario || !this.baseUrl) {
-                return { success: false, score: 0, latency_ms: 0, message: 'Scenario or Base URL missing' };
+                return { url: '', scenario };
             }
             const signedScenarios = this.getScenarios();
             const signedScenario = signedScenarios.find(s => s.id === baseId);
             if (!signedScenario?.signedUrl) {
-                return { success: false, score: 0, latency_ms: 0, message: 'Failed to sign URL' };
+                return { url: '', scenario };
             }
             
-            // Apply overrides to existing signed URL
             const url = new URL(signedScenario.signedUrl);
             if (overrides.delay !== undefined) {
                 url.searchParams.set('delay', overrides.delay.toString());
             }
             signedUrl = url.toString();
+        }
+
+        return { url: signedUrl, scenario };
+    }
+
+    /**
+     * Executes a scenario as a probe and returns a standardized result.
+     */
+    async runProbe(scenarioId: string): Promise<TargetProbeResult> {
+        const { url: signedUrl, scenario } = this.getEffectiveUrl(scenarioId);
+
+        if (!signedUrl || !scenario) {
+            return { success: false, score: 0, latency_ms: 0, message: 'Scenario or Base URL missing' };
         }
 
         const startTime = Date.now();

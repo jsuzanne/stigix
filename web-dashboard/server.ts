@@ -3331,7 +3331,15 @@ const getCustomConnectivityEndpoints = () => {
 // Helper: Save custom endpoints
 const saveCustomConnectivityEndpoints = (endpoints: any[]) => {
     try {
-        fs.writeFileSync(CUSTOM_CONNECTIVITY_FILE, JSON.stringify(endpoints, null, 2));
+        // Enforce a friendly format for CLOUD probes so the URL is visible in JSON
+        const enriched = endpoints.map(ep => {
+            if (ep.type === 'CLOUD') {
+                const { url } = targetManager.getEffectiveUrl(ep.target);
+                return { ...ep, effectiveUrl: url };
+            }
+            return ep;
+        });
+        fs.writeFileSync(CUSTOM_CONNECTIVITY_FILE, JSON.stringify(enriched, null, 2));
         return true;
     } catch (e) {
         console.error('Failed to save custom connectivity endpoints:', e);
