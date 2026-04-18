@@ -77,8 +77,9 @@ export default function Voice(props: VoiceProps) {
     const [rawServers, setRawServers] = useState('');
     const [calls, setCalls] = useState<VoiceCall[]>([]);
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
+    const autoSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const [isStartingV, setIsStartingV] = useState(false);
     const [isStoppingV, setIsStoppingV] = useState(false);
 
@@ -259,23 +260,50 @@ export default function Voice(props: VoiceProps) {
     const buildRawServers = (rows: TargetRow[]) =>
         rows.filter(r => r.enabled).map(r => `${r.host}:${r.port}|${r.codec}|${r.weight}|${r.duration}`).join('\n');
 
-    const handleSave = async () => {
-        setSaving(true);
-        const servers = buildRawServers(targetRows);
+    // Shared save function (called by auto-save timer)
+    const performSave = async (rows: TargetRow[], ctrl: VoiceControl | null) => {
+        setSaveStatus('saving');
+        const servers = buildRawServers(rows);
         try {
             const r = await fetch('/api/voice/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ servers, control: config }),
+                body: JSON.stringify({ servers, control: ctrl }),
             });
             if (r.ok) {
                 setRawServers(servers);
                 setIsDirty(false);
-                toast.success('✓ Voice configuration saved');
+                setSaveStatus('saved');
+                setTimeout(() => setSaveStatus('idle'), 2500);
+            } else {
+                setSaveStatus('error');
+                setTimeout(() => setSaveStatus('idle'), 3000);
             }
-        } catch { }
-        setSaving(false);
+        } catch {
+            setSaveStatus('error');
+            setTimeout(() => setSaveStatus('idle'), 3000);
+        }
     };
+
+    // ════════════════════════════════════════════════
+    // Auto-save with 1.5s debounce on any dirty change
+    // ════════════════════════════════════════════════
+    useEffect(() => {
+        if (!isDirty) return;
+        setSaveStatus('pending');
+        if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+        autoSaveTimer.current = setTimeout(() => {
+            // Capture current values via functional access to avoid stale closure issues
+            setTargetRows(rows => {
+                setConfig(ctrl => {
+                    performSave(rows, ctrl);
+                    return ctrl;
+                });
+                return rows;
+            });
+        }, 1500);
+        return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
+    }, [isDirty, targetRows, config]);
 
     // ════════════════════════════════════════════════
     // Row manipulation
@@ -474,7 +502,7 @@ export default function Voice(props: VoiceProps) {
                         )}
                     </div>
 
-                    {/* Right: Import/Export + Save + Start/Stop */}
+                    {/* Right: Import/Export + auto-save status + Start/Stop */}
                     <div className="flex flex-col items-end gap-4 shrink-0">
                         <div className="flex items-center gap-2">
                             <label className="cursor-pointer text-blue-600 dark:text-blue-400 hover:bg-blue-600/10 px-3 py-2 rounded-xl border border-blue-500/20 transition-all flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
@@ -484,15 +512,29 @@ export default function Voice(props: VoiceProps) {
                             <button onClick={handleExport} className="text-blue-600 dark:text-blue-400 hover:bg-blue-600/10 px-3 py-2 rounded-xl border border-blue-500/20 transition-all flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
                                 <Download size={12} /> Export
                             </button>
-                            {isDirty && (
-                                <button
-                                    onClick={handleSave}
-                                    disabled={saving}
-                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-lg shadow-blue-900/20 disabled:opacity-50"
-                                >
-                                    <Save size={12} /> {saving ? 'Saving…' : 'Save Config'}
-                                </button>
-                            )}
+                            {/* Auto-save status indicator */}
+                            <div className="min-w-[80px] flex justify-end">
+                                {saveStatus === 'pending' && (
+                                    <span className="flex items-center gap-1.5 text-[9px] font-black text-text-muted opacity-50">
+                                        <Clock size={10} /> Unsaved…
+                                    </span>
+                                )}
+                                {saveStatus === 'saving' && (
+                                    <span className="flex items-center gap-1.5 text-[9px] font-black text-blue-500">
+                                        <Activity size={10} className="animate-spin" /> Saving…
+                                    </span>
+                                )}
+                                {saveStatus === 'saved' && (
+                                    <span className="flex items-center gap-1.5 text-[9px] font-black text-green-500">
+                                        <Save size={10} /> Saved
+                                    </span>
+                                )}
+                                {saveStatus === 'error' && (
+                                    <span className="flex items-center gap-1.5 text-[9px] font-black text-red-500">
+                                        <AlertCircle size={10} /> Save failed
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
                         <button
