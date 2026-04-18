@@ -41,7 +41,7 @@ services:
 
       # --- XFR Bandwidth Target ---
       - XFR_PORT=${XFR_PORT:-9000}
-      - XFR_MAX_DURATION=${XFR_MAX_DURATION:-60}
+      - XFR_MAX_DURATION=${XFR_MAX_DURATION:-3600}
       - XFR_RATE_LIMIT=${XFR_RATE_LIMIT:-2}
       - XFR_ALLOW_CIDR=${XFR_ALLOW_CIDR:-0.0.0.0/0}
 

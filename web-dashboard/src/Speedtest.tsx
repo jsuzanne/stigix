@@ -867,7 +867,11 @@ export default function Speedtest({ token }: Props) {
                                     </div>
                                 </div>
 
-                                <div className={cn("grid gap-4", selectedJob.params.protocol === 'tcp' ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-2 lg:grid-cols-3")}>
+                                <div className={cn("grid gap-4", selectedJob.params.protocol === 'tcp' ? "grid-cols-2 lg:grid-cols-5" : "grid-cols-2 lg:grid-cols-4")}>
+                                    <div className="bg-card border border-border rounded-2xl p-4">
+                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Duration</label>
+                                        <div className="text-lg font-bold text-text-primary">{selectedJob.params.duration_sec}s</div>
+                                    </div>
                                     {selectedJob.params.protocol === 'tcp' && (
                                         <div className="bg-card border border-border rounded-2xl p-4">
                                             <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Avg Rtt</label>
