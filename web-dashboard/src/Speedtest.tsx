@@ -404,17 +404,17 @@ export default function Speedtest({ token }: Props) {
                                         <div>
                                             <div className="flex items-center justify-between mb-1.5">
                                                 <label className="text-[10px] font-black text-text-muted tracking-widest">Duration (s)</label>
-                                                <span className="text-[8px] font-bold text-text-muted/50 tracking-wider uppercase">Min 10 — Max 300</span>
+                                                <span className="text-[8px] font-bold text-text-muted/50 tracking-wider uppercase">Min 10 — Max 3600</span>
                                             </div>
                                             <input
                                                 type="number"
                                                 min="10"
-                                                max="300"
+                                                max="3600"
                                                 value={duration}
                                                 onChange={e => setDuration(parseInt(e.target.value))}
                                                 onBlur={e => {
                                                     const val = parseInt(e.target.value);
-                                                    setDuration(isNaN(val) ? 10 : Math.min(300, Math.max(10, val)));
+                                                    setDuration(isNaN(val) ? 10 : Math.min(3600, Math.max(10, val)));
                                                 }}
                                                 className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500"
                                             />

@@ -2235,6 +2235,8 @@ app.get('/api/tests/xfr/:id/stream', authenticateToken, (req, res) => {
     }
 
     // Set headers for SSE
+    req.setTimeout(0); // Prevent Node from closing long SSE streams
+    res.setTimeout(0);
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
