@@ -88,11 +88,6 @@ When testing TCP, the dashboard automatically reveals active `TCP Window` fluctu
 
 ![XFR Live TCP](screenshots/09-XFR/XFR-live-tcp.png)
 
-This visually correlates drops in speed sequentially with spikes in retransmissions! Opening the **Test Details** dialog will also provide an aggregate byte loss breakdown on test conclusion:
-
-![XFR Details](screenshots/09-XFR/XFR-details.png)
-
-
 
 ## 🔬 Protocol Tracking (Prisma SD-WAN)
 
