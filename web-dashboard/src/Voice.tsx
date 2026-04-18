@@ -362,6 +362,15 @@ export default function Voice(props: VoiceProps) {
         }).sort((a, b) => b.totalCalls - a.totalCalls);
     }, [calls, targetRows]);
 
+    // Map host:port -> friendly site name for history table
+    const targetNameMap = React.useMemo(() => {
+        const map = new Map<string, string>();
+        targetRows.forEach(r => {
+            if (!r.isManual && r.name) map.set(`${r.host}:${r.port}`, r.name);
+        });
+        return map;
+    }, [targetRows]);
+
     const handleSort = (key: string) => {
         setSortConfig(prev => ({ key, direction: prev?.key === key && prev.direction === 'asc' ? 'desc' : 'asc' }));
     };
@@ -533,8 +542,64 @@ export default function Voice(props: VoiceProps) {
                 )}
             </div>
 
-            {/* ─── STIGIX VOICE TARGETS TABLE ─── */}
-            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+            {/* ─── 2-COL: LIVE STREAMS + STIGIX VOICE TARGETS CONFIG ─── */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                {/* LEFT — Live Streams */}
+                <div className="lg:col-span-1 bg-card border border-border rounded-2xl p-6 shadow-sm overflow-hidden relative flex flex-col">
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-[10px] font-black text-text-primary tracking-[0.2em] flex items-center gap-2 border-l-2 border-blue-500 pl-2">
+                            <Activity size={14} className="text-blue-500" /> Live Streams
+                        </h3>
+                        <span className={cn(
+                            'text-[10px] font-black px-2 py-0.5 rounded-full',
+                            activeCalls.length > 0 ? 'text-green-500 bg-green-500/10' : 'text-text-muted bg-card-secondary/50'
+                        )}>
+                            {activeCalls.length} UP
+                        </span>
+                    </div>
+                    <div className="space-y-3 flex-1 overflow-y-auto max-h-96">
+                        {activeCalls.length === 0 ? (
+                            <div className="text-text-muted text-[10px] font-bold uppercase tracking-widest py-16 text-center bg-card-secondary/30 rounded-2xl border border-dashed border-border/50">
+                                No active voice streams
+                            </div>
+                        ) : (
+                            activeCalls.map((call, idx) => {
+                                const siteName = targetNameMap.get(call.target);
+                                return (
+                                    <div key={idx} className="bg-card-secondary/50 p-4 rounded-2xl border border-border flex items-center justify-between shadow-sm hover:border-blue-500/30 transition-all">
+                                        <div className="space-y-1 min-w-0 flex-1 mr-3">
+                                            <div className="flex items-center gap-2">
+                                                <span
+                                                    title={`Source Port: ${deriveSourcePort(call.call_id)}`}
+                                                    className="text-[9px] font-black text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded bg-blue-600/10 border border-blue-500/10 font-mono italic cursor-help shrink-0"
+                                                >
+                                                    #{call.call_id}
+                                                </span>
+                                                <div className="text-xs font-black text-text-primary tracking-tight truncate">
+                                                    {siteName || call.target}
+                                                </div>
+                                            </div>
+                                            {siteName && (
+                                                <div className="text-[9px] font-mono text-text-muted opacity-50 truncate">{call.target}</div>
+                                            )}
+                                            <div className="text-[9px] text-text-muted font-bold uppercase tracking-widest opacity-60">
+                                                {call.codec} • {call.duration}s
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 bg-green-600/10 px-2.5 py-1.5 rounded-xl border border-green-500/20 shrink-0">
+                                            <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                                            <span className="text-[9px] text-green-500 font-black tracking-tight">Live</span>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+
+                {/* RIGHT — Stigix Voice Targets config */}
+                <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-1">
                     <div>
                         <h3 className="text-[10px] font-black text-text-primary tracking-[0.2em] border-l-2 border-blue-500 pl-2 flex items-center gap-2">
@@ -544,7 +609,7 @@ export default function Voice(props: VoiceProps) {
                             {enabledRows.length} target{enabledRows.length !== 1 ? 's' : ''} selected for simulation
                             {excludedCount > 0 && (
                                 <span className="ml-2 opacity-60">
-                                    — {excludedCount} Stigix target{excludedCount !== 1 ? 's' : ''} excluded (no Voice capability)
+                                    — {excludedCount} excluded (no Voice capability)
                                 </span>
                             )}
                         </p>
@@ -725,7 +790,8 @@ export default function Voice(props: VoiceProps) {
                         </tbody>
                     </table>
                 </div>
-            </div>
+                </div>{/* end RIGHT col */}
+            </div>{/* end 2-col grid */}
 
             {/* ─── PER-TARGET QoS STATS ─── */}
             {perTargetStats.length > 0 && (
@@ -843,7 +909,8 @@ export default function Voice(props: VoiceProps) {
                                 {[
                                     { key: 'timestamp', label: 'Timeline' },
                                     { key: 'event', label: 'Disposition' },
-                                    { key: 'target', label: 'Endpoint' },
+                                    { key: 'target', label: 'Site' },
+                                    { key: 'target_ip', label: 'Endpoint' },
                                     { key: 'loss_pct', label: 'Loss / MOS' },
                                     { key: 'avg_rtt_ms', label: 'RTT / Jitter', right: true },
                                 ].map(col => (
@@ -876,7 +943,17 @@ export default function Voice(props: VoiceProps) {
                                             {call.event === 'skipped' && <AlertCircle className="text-orange-500" size={14} />}
                                         </div>
                                     </td>
-                                    <td className="py-4 px-3 text-xs font-black text-text-primary tracking-tight">{call.target}</td>
+                                    {/* Site name column */}
+                                    <td className="py-4 px-3">
+                                        {(() => {
+                                            const name = targetNameMap.get(call.target);
+                                            return name
+                                                ? <span className="text-xs font-black text-text-primary">{name}</span>
+                                                : <span className="text-[9px] text-orange-500 font-black uppercase tracking-wider opacity-70">Manual</span>;
+                                        })()}
+                                    </td>
+                                    {/* Endpoint (IP:port) column */}
+                                    <td className="py-4 px-3 text-[10px] font-mono font-bold text-text-muted">{call.target}</td>
                                     <td className="py-4 px-3">
                                         {call.event === 'end' && call.loss_pct !== undefined ? (
                                             <div className="flex items-center gap-4">
