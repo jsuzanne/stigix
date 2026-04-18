@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Area, AreaChart, ComposedChart, Bar } from 'recharts';
 import {
     Activity, Gauge, Play, Pause, AlertCircle, Clock, Zap, Target, Network,
-    Shield, Cpu, ChevronRight, BarChart3, Info, CheckCircle2, XCircle,
+    Shield, Cpu, ChevronRight, ChevronLeft, BarChart3, Info, CheckCircle2, XCircle,
     Search, Filter, Download, Trash2, ChevronDown, ChevronUp, Share2,
     ShieldAlert, ExternalLink, ArrowUpRight, ShieldOff, Copy, RefreshCw,
     History as HistoryIcon, X, Layers
@@ -85,6 +85,7 @@ export default function Speedtest({ token }: Props) {
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [selectedJob, setSelectedJob] = useState<XfrJob | null>(null);
     const [isHistoryExpanded, setIsHistoryExpanded] = useState(true);
+    const [isConfigExpanded, setIsConfigExpanded] = useState(true);
     
     // Custom Config Advanced Inputs
     const [dscp, setDscp] = useState('');
@@ -264,16 +265,26 @@ export default function Speedtest({ token }: Props) {
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex flex-col md:flex-row gap-6">
                 {/* Configuration Side */}
-                <div className="w-full md:w-96 space-y-6">
-                    <div className="bg-card border border-border rounded-2xl p-6 shadow-sm overflow-hidden relative">
-                        <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-                            <Gauge size={120} />
-                        </div>
+                {isConfigExpanded ? (
+                    <div className="w-full md:w-96 space-y-6 shrink-0 animate-in slide-in-from-left-4 fade-in duration-300">
+                        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm overflow-hidden relative">
+                            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                                <Gauge size={120} />
+                            </div>
 
-                        <h2 className="text-xl font-black text-text-primary flex items-center gap-2 mb-6 tracking-tight">
-                            <Zap className="text-blue-500" size={24} />
-                            Bandwidth Test
-                        </h2>
+                            <div className="flex items-center justify-between mb-6 relative z-10">
+                                <h2 className="text-xl font-black text-text-primary flex items-center gap-2 tracking-tight">
+                                    <Zap className="text-blue-500" size={24} />
+                                    Bandwidth Test
+                                </h2>
+                                <button
+                                    onClick={() => setIsConfigExpanded(false)}
+                                    title="Collapse Configuration"
+                                    className="p-1.5 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors"
+                                >
+                                    <ChevronLeft size={18} />
+                                </button>
+                            </div>
 
                         <div className="flex p-1 bg-card-secondary rounded-xl mb-6 border border-border/50">
                             <button
@@ -536,7 +547,19 @@ export default function Speedtest({ token }: Props) {
                             </p>
                         </div>
                     </div>
-                </div>
+                    </div>
+                ) : (
+                    <div className="hidden md:flex w-16 shrink-0 flex-col gap-4 animate-in slide-in-from-left-4 fade-in duration-300">
+                        <button
+                            onClick={() => setIsConfigExpanded(true)}
+                            title="Expand Configuration"
+                            className="bg-card border border-border rounded-2xl py-6 flex flex-col items-center gap-4 shadow-sm hover:border-blue-500/50 hover:bg-card-secondary transition-all w-full text-text-muted hover:text-blue-500 group"
+                        >
+                            <Zap size={20} className="text-blue-500 group-hover:scale-110 transition-transform" />
+                            <ChevronRight size={18} />
+                        </button>
+                    </div>
+                )}
 
                 {/* Main Results & Chart */}
                 <div className="flex-1 space-y-6">
