@@ -4,18 +4,18 @@
 
 The **XFR** tool is a high-performance throughput and latency testing engine integrated into the SD-WAN Traffic Generator. Designed for validating path quality, detecting maximum bandwidth, and performing bidirectional diagnostic tests — without the overhead of iperf3.
 
-> [!NOTE]
-> XFR was chosen over iperf3 for Speedtest because it supports fixed source ports (`--cport`) for deterministic flow identification in SD-WAN flow logs, and it provides richer, real-time telemetry.
+> [!NOTE]  
+> XFR was chosen over iperf3 for Speedtest because it supports **fixed source ports** for deterministic flow identification in Prisma SD-WAN flow logs, and it provides richer interval telemetry such as real-time retransmits and dropped packets tracking.
 
 ---
 
 ## 📋 Table of Contents
 1. [Features](#features)
-2. [Deployment (Target Server)](#deployment-target-server)
+2. [Deployment (Configuration Variables)](#deployment-configuration-variables)
 3. [UI Walkthrough](#ui-walkthrough)
-4. [Quick Targets](#quick-targets-reusability)
-5. [Protocol Specifics](#protocol-specifics)
-6. [External Resources](#external-resources)
+4. [Advanced Metrics](#advanced-metrics)
+5. [Quick Targets](#quick-targets)
+6. [Protocol Tracking (Prisma SD-WAN)](#protocol-tracking-prisma-sd-wan)
 
 ---
 
@@ -23,101 +23,87 @@ The **XFR** tool is a high-performance throughput and latency testing engine int
 
 | Feature | Detail |
 |---|---|
-| **Deterministic Port Mapping** | Source ports mapped as `40000 + sequence_id` for easy identification in firewall/flow logs (UDP only) |
-| **Micro-Interval Telemetry** | Real-time throughput (Mbps), RTT (ms), and Packet Loss (%) |
-| **Directional Modes** | Upload (Client → Server), Download (Reverse), and Bidirectional testing |
-| **Protocol Support** | TCP, UDP, and QUIC |
-| **Max Bandwidth Detection** | Set bitrate to `0` or leave blank to detect peak throughput |
-| **Quick Targets** | Pre-configured pill shortcuts for frequently used hosts |
+| **Deterministic Port Mapping** | Explicit Source port configuration (Client Flow Port) for easy identification in firewall/flow logs across TCP and UDP. |
+| **Micro-Interval Telemetry** | View real-time throughput (Mbps), RTT (ms), TCP Retransmits, and UDP Packet Loss (%) natively as graphs. |
+| **Congestion Control** | Easily hot-swap between TCP Congestion avoidance algorithms (Cubic, BBR, Reno) natively from the Dashboard. |
+| **Quality of Service** | Embed specific DSCP / TOS markings (e.g. EF, CS1, 46) directly onto the testing flow to validate SD-WAN path prioritization limits. |
+| **Directional Modes** | Upload (Client → Server), Download (Reverse), and Bidirectional testing capabilities natively. |
+| **Max Bandwidth Detection** | Set bitrate to `0` or leave empty to detect peak throughput effortlessly. |
 
 ---
 
-## 🚀 Deployment (Target Server)
+## 🚀 Deployment (Configuration Variables)
 
-The XFR target is a **separate dedicated container** deployed on the target machine (DC or branch). It is independent of the `sdwan-voice-echo` container.
+The XFR target uses a robust backend server spawned silently inside the `stigix` container (since version 1.2.2). The testing ceiling parameters are rigidly controlled directly within the `docker-compose.yml` environment block to prevent external abuse.
 
-### docker-compose.yml (Target Machine)
+### docker-compose.yml Parameters
 
 ```yaml
 services:
-  # Voice Echo Server (Voice / Convergence / HTTP)
-  voice-echo:
-    image: jsuzanne/sdwan-voice-echo:latest
-    container_name: sdwan-voice-echo
+  stigix:
+    image: jsuzanne/stigix:stable
     network_mode: host
-    restart: unless-stopped
     environment:
-      - DEBUG=True
-    ports:
-      - "6100-6101:6100-6101/udp"
-      - "6200:6200/udp"      # Convergence tests
-      - "5201:5201/tcp"      # iperf3
-      - "5201:5201/udp"      # iperf3
-      - "8082:8082/tcp"      # HTTP Target
-
-  # XFR Speedtest Target (replaces iperf3 for throughput testing)
-  xfr-target:
-    image: jsuzanne/xfr-target:latest
-    container_name: xfr-target
-    network_mode: "host"
-    restart: unless-stopped
-    environment:
-      - XFR_PORT=9000            # Listening port
-      - XFR_MAX_DURATION=60      # Max test duration in seconds
-      - XFR_RATE_LIMIT=2         # Max concurrent sessions
-      - XFR_ALLOW_CIDR=0.0.0.0/0 # Allow any source (adjust for security)
+      # --- XFR Bandwidth Target ---
+      - XFR_PORT=9000
+      - XFR_MAX_DURATION=3600
+      - XFR_RATE_LIMIT=2
+      - XFR_ALLOW_CIDR=0.0.0.0/0
 ```
 
-> [!TIP]
-> Use `network_mode: host` for accurate latency measurements — container NAT adds unwanted overhead.
+> [!IMPORTANT]  
+> **Hard Limit Protection**: The `XFR_MAX_DURATION` acts as an absolute ceiling managed by the host. If a remote client queries a test duration exceeding this value (e.g. setting 3600s), but the server’s compose `XFR_MAX_DURATION` is defined as `60`, the server will forcibly sever the connection exactly at 60 seconds as a traffic safeguard. Adjust this to the maximum duration you are comfortable allowing testers to utilize.
 
-### Environment Variables Reference
+### Environment Reference
 
 | Variable | Default | Description |
 |---|---|---|
-| `XFR_PORT` | `9000` | TCP/UDP listening port |
-| `XFR_MAX_DURATION` | `60` | Maximum test duration (seconds) |
-| `XFR_RATE_LIMIT` | `2` | Max concurrent test sessions |
-| `XFR_ALLOW_CIDR` | `0.0.0.0/0` | Source IP whitelist (CIDR notation) |
+| `XFR_PORT` | `9000` | TCP/UDP listening port to execute tests over. |
+| `XFR_MAX_DURATION`| `3600` | Maximum host test duration in seconds (safeguard). |
+| `XFR_RATE_LIMIT` | `2` | Max concurrent active testing sessions allowed. |
+| `XFR_ALLOW_CIDR` | `0.0.0.0/0` | Permitted Source IP whitelist (CIDR notation). |
 
 ---
 
 ## 🖥️ UI Walkthrough
 
-### Session Ready — Results View
-
-After a test completes, the dashboard displays real-time telemetry with throughput graph, RTT, and packet loss:
-
-![XFR Session Ready — throughput graph and metrics display](screenshots/09-XFR/XFR-1.png)
-
-**Key metrics shown:**
-- **Throughput** (Mbps) — live graph + final value
-- **RTT (ms)** — average round-trip time
-- **Packet Loss (%)** — detected loss per interval
-
 ### Custom Configuration Panel
 
-The configuration panel allows full control over the test target and parameters:
+The updated configuration panel layout was redesigned to make room for granular path modeling variables:
 
-![XFR Custom Config — port, protocol, direction, bitrate, streams](screenshots/09-XFR/XFR-2.png)
-
-**Config options:**
-| Field | Description |
-|---|---|
-| **Target Host** | IP or hostname of the `xfr-target` container |
-| **Port** | Must match `XFR_PORT` on the target (default `9000`) |
-| **Protocol** | TCP, UDP, or QUIC |
-| **Direction** | Upload (↑), Download (↓), or Bidirectional (↕) |
-| **Bitrate** | Target rate (e.g. `200M`) — leave blank for max |
-| **Duration** | Test duration in seconds |
-| **Streams** | Parallel streams (1–8) |
-| **PSK** | Optional pre-shared key for authentication |
+**New Configuration Settings:**
+* **DSCP / TOS:** Allows forcing traffic into specific Prisma SD-WAN QoS priority queues. You can type Hex, Decimal or explicit EF markings.
+* **TCP Congestion Avoidance:** Seamlessly drop-down to benchmark Cubic vs BBR routing profiles.
+* **Client Flow Port:** Native tracking feature; manually stipulate the source port you plan to emit from. Essential for identifying exactly which traffic flow corresponds to this test in your Prisma Access or Prisma SD-WAN analytics view. 
 
 ---
 
-## 🎯 Quick Targets (Reusability)
+## 📊 Advanced Metrics
 
-Pre-configure frequently used target hosts via the `XFR_QUICK_TARGETS` environment variable on the **Traffic Generator** container:
+The testing framework now intelligently switches visual graphs and data endpoints depending on if a UDP or TCP payload testing flow is selected.
+
+### TCP: Retransmit Tracking & Windowing
+
+When testing TCP, the dashboard automatically reveals active `TCP Window` fluctuations and visualizes `TCP Retransmits` directly over the throughput tracking graph:
+
+![XFR Live TCP](screenshots/09-XFR/XFR-live-tcp.png)
+
+This visually correlates drops in speed sequentially with spikes in retransmissions! Opening the **Test Details** dialog will also provide an aggregate byte loss breakdown on test conclusion:
+
+![XFR Details](screenshots/09-XFR/XFR-details.png)
+
+
+### UDP: Packet Loss & Jitter Tracking
+
+When testing UDP, the framework seamlessly pivots to a metric analysis tailored for latency-sensitive traffic. The UI substitutes Windowing for real-time tracking of `Packet Loss` spikes:
+
+![XFR Live UDP](screenshots/09-XFR/XFR-live-udp.png)
+
+---
+
+## 🎯 Quick Targets 
+
+Pre-configure frequently used target hosts via the `XFR_QUICK_TARGETS` environment variable:
 
 ```bash
 XFR_QUICK_TARGETS="Hetzner:xxx.xxx.xxx.xxx,Lab-DC:10.0.0.5,Branch-Router:192.168.1.1"
@@ -127,17 +113,18 @@ These appear as **pill buttons** below the Target Host input — one click to po
 
 ---
 
-## 🔬 Protocol Specifics
+## 🔬 Protocol Tracking (Prisma SD-WAN)
 
-| Protocol | Source Port | Notes |
+If you are a Prisma Administrator utilizing the dashboard, Stigix overrides basic flow handling to support Deep Packet Tracking. 
+
+| Protocol | Source Port Configuration | Identification Strategy |
 |---|---|---|
-| **UDP** | `40000 + sequence_id` | Fixed port for SD-WAN flow log identification |
-| **QUIC** | `40000 + sequence_id` | Same deterministic mapping as UDP |
-| **TCP** | OS ephemeral | Source port pinning not available for TCP |
+| **UDP** | Explicit via `Client Flow Port` | Matches the specified `Client Flow Port` straight into the Prisma SD-WAN flow browser logs for pure traffic isolation identification. |
+| **QUIC** | Explicit via `Client Flow Port` | Functions equivalently to the UDP engine mapping trace. |
+| **TCP** | Explicit via `Client Flow Port` | Modern XFR permits direct binding to local source ports prior to execution. By enforcing the port to `30528`, you can query the Prisma Application Browser filtering by `source-port=30528` and instantly prove path performance! |
 
 ---
 
 ## 📚 External Resources
 
 - [XFR GitHub Repository](https://github.com/lance0/xfr) — official engine documentation
-- [XFR Docker Image](https://hub.docker.com/r/jsuzanne/xfr-target) — `jsuzanne/xfr-target:latest`
