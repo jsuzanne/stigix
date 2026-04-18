@@ -402,10 +402,10 @@ export default function Speedtest({ token }: Props) {
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <div className="flex items-center justify-between mb-1.5">
-                                                <label className="text-[10px] font-black text-text-muted tracking-widest">Duration (s)</label>
-                                                <span className="text-[8px] font-bold text-text-muted/50 tracking-wider uppercase">Min 10 — Max 3600</span>
-                                            </div>
+                                            <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 flex items-center justify-between">
+                                                <span>Duration (s)</span>
+                                                <span className="text-[8px] font-bold opacity-50 lowercase tracking-normal">10-3600</span>
+                                            </label>
                                             <input
                                                 type="number"
                                                 min="10"
