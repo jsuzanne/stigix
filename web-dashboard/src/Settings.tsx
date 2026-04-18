@@ -2711,8 +2711,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                             <MapPin size={20} />
                         </div>
                         <div>
-                            <h2 className="text-lg font-black text-text-primary tracking-tight">Targets Repository</h2>
-                            <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Shared sdwan-voice-echo / stigix sites — reused across Speedtest, Voice, Security &amp; Failover</p>
+                            <h2 className="text-lg font-black text-text-primary tracking-tight">Stigix Targets Repository</h2>
+                            <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Shared stigix endpoints — reused across Speedtest, Voice, Security &amp; Failover</p>
                         </div>
                     </div>
 
@@ -2721,14 +2721,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                         <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-5 shadow-inner">
                             <div className="flex items-center justify-between">
                                 <h3 className="text-[10px] font-black text-text-muted tracking-[0.2em] uppercase flex items-center gap-2">
-                                    {editingTargetId ? '✏️ Edit Target' : '📡 New Remote Target'}
+                                    {editingTargetId ? '✏️ Edit Stigix Target' : '📡 New Remote Stigix Target'}
                                 </h3>
                                 <button
                                     onClick={saveTarget}
                                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
                                 >
                                     {editingTargetId ? <Edit2 size={12} /> : <Plus size={12} />}
-                                    {editingTargetId ? 'Update' : 'Add Target'}
+                                    {editingTargetId ? 'Update' : 'Add Stigix Target'}
                                 </button>
                             </div>
                             {targetError && (
