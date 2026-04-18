@@ -93,25 +93,6 @@ This visually correlates drops in speed sequentially with spikes in retransmissi
 ![XFR Details](screenshots/09-XFR/XFR-details.png)
 
 
-### UDP: Packet Loss & Jitter Tracking
-
-When testing UDP, the framework seamlessly pivots to a metric analysis tailored for latency-sensitive traffic. The UI substitutes Windowing for real-time tracking of `Packet Loss` spikes:
-
-![XFR Live UDP](screenshots/09-XFR/XFR-live-udp.png)
-
----
-
-## 🎯 Quick Targets 
-
-Pre-configure frequently used target hosts via the `XFR_QUICK_TARGETS` environment variable:
-
-```bash
-XFR_QUICK_TARGETS="Hetzner:xxx.xxx.xxx.xxx,Lab-DC:10.0.0.5,Branch-Router:192.168.1.1"
-```
-
-These appear as **pill buttons** below the Target Host input — one click to populate the field instantly.
-
----
 
 ## 🔬 Protocol Tracking (Prisma SD-WAN)
 
