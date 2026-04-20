@@ -1093,50 +1093,57 @@ export default function Vyos(props: VyosProps) {
                             {/* Dense Stats Row */}
                             <div className="grid grid-cols-2 gap-2 py-2 border-y border-border/50">
                                 <div className="flex flex-col">
-                                    <label className="text-[9px] font-black text-text-muted uppercase tracking-widest opacity-60">Operations</label>
+                                    <label className="text-[9px] font-semibold text-text-muted uppercase tracking-widest opacity-50">Operations</label>
                                     <div className="flex items-center gap-2">
                                         {seq.actions.length === 1 && (
                                             <div className="p-1 bg-card rounded border border-border/50">
                                                 {getCommandIcon(seq.actions[0].command, 12)}
                                             </div>
                                         )}
-                                        <span className="text-xs font-bold text-text-primary uppercase tracking-tighter">
+                                        <span className="text-xs font-semibold text-text-primary tracking-normal">
                                             {seq.actions.length === 1
                                                 ? getCommandDisplayName(seq.actions[0].command)
-                                                : `${seq.actions.length} commands`
+                                                : `${seq.actions.length} actions`
                                             }
                                         </span>
                                     </div>
                                 </div>
                                 <div className="flex flex-col">
-                                    <label className="text-[9px] font-black text-text-muted uppercase tracking-widest opacity-60">Deployment</label>
-                                    <span className="text-xs font-bold text-text-primary uppercase tracking-tighter">{seq.enabled ? 'Enabled' : 'Staged'}</span>
+                                    <label className="text-[9px] font-semibold text-text-muted uppercase tracking-widest opacity-50">Status</label>
+                                    <span className="text-xs font-semibold text-text-primary">{seq.enabled ? 'Enabled' : 'Staged'}</span>
                                 </div>
                             </div>
 
                             {/* Target Preview - Compact */}
-                            <div className="flex items-center gap-2 overflow-hidden">
-                                <Server size={12} className="text-text-muted flex-shrink-0 opacity-50" />
-                                <div className="flex gap-1.5 truncate">
+                            <div className="flex items-start gap-2 overflow-hidden">
+                                <Server size={12} className="text-text-muted flex-shrink-0 opacity-50 mt-1" />
+                                <div className="flex flex-wrap gap-1.5">
                                     {seq.actions.slice(0, 2).map((a, i) => {
                                         const router = routers.find(r => r.id === a.router_id);
                                         const paramDisplay = formatActionParameters(a.command, a.parameters);
+                                        const hasIface = !['deny-traffic', 'allow-traffic', 'clear-all-blocks', 'show-denied'].includes(a.command);
                                         return (
-                                            <span key={i} className="text-[10px] bg-card-secondary/80 text-text-secondary px-2 py-0.5 rounded border border-border/50 whitespace-nowrap font-mono tracking-tighter">
+                                            <span key={i} className="text-[11px] bg-card-secondary/80 text-text-secondary px-2.5 py-1 rounded-lg border border-border/50 font-mono tracking-tight">
                                                 {paramDisplay ? (
-                                                    <>{paramDisplay} on {router?.name || '?'}</>
-                                                ) : (
                                                     <>
-                                                        {router?.name || '?'}
-                                                        {!['deny-traffic', 'allow-traffic', 'clear-all-blocks', 'show-denied'].includes(a.command) && `:${a.interface}`}
+                                                        <span className="text-text-primary">{paramDisplay}</span>
+                                                        {' on '}
+                                                        <span className="text-purple-400 font-semibold">{router?.name || '?'}{hasIface && a.interface ? `:${a.interface}` : ''}</span>
                                                     </>
+                                                ) : (
+                                                    <span className="text-purple-400 font-semibold text-[12px]">
+                                                        {router?.name || '?'}{hasIface && a.interface ? `:${a.interface}` : ''}
+                                                    </span>
                                                 )}
                                             </span>
                                         );
                                     })}
                                     {seq.actions.length > 2 && (
-                                        <span className="text-[9px] text-text-muted font-black uppercase tracking-tighter self-center">+{seq.actions.length - 2}</span>
+                                        <span className="text-[9px] text-text-muted font-semibold self-center">+{seq.actions.length - 2} more</span>
                                     )}
+                                </div>
+                            </div>
+                             )}
                                 </div>
                             </div>
 
@@ -1149,17 +1156,17 @@ export default function Vyos(props: VyosProps) {
                                             ? "bg-green-500 ring-green-500/30 animate-pulse"
                                             : seq.enabled ? "bg-blue-500 ring-blue-500/20" : "bg-zinc-700 ring-transparent"
                                     )} />
-                                    <div className="flex flex-col">
-                                        <span className="text-[10px] font-black text-text-primary uppercase tracking-tighter leading-none">
-                                            {seq.cycle_duration > 0
-                                                ? (seq.lastRun ? new Date(seq.lastRun).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Scheduled')
-                                                : (seq.lastRun ? new Date(seq.lastRun).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ready')
-                                            }
-                                        </span>
-                                        <span className="text-[8px] text-text-muted font-bold uppercase tracking-widest mt-0.5 opacity-60">
-                                            {seq.executionMode === 'STEP_BY_STEP' ? 'Interactive Mode' : seq.cycle_duration > 0 ? 'Last Pulse' : 'Manual Trigger'}
-                                        </span>
-                                    </div>
+                                <div className="flex flex-col">
+                                    <span className="text-[11px] font-bold text-text-primary leading-none">
+                                        {seq.cycle_duration > 0
+                                            ? (seq.lastRun ? new Date(seq.lastRun).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Scheduled')
+                                            : (seq.lastRun ? new Date(seq.lastRun).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ready')
+                                        }
+                                    </span>
+                                    <span className="text-[8px] text-text-muted font-medium mt-0.5 opacity-60">
+                                        {seq.executionMode === 'STEP_BY_STEP' ? 'Interactive mode' : seq.cycle_duration > 0 ? 'Last run' : 'Manual trigger'}
+                                    </span>
+                                </div>
                                 </div>
 
                                 <button
@@ -1172,7 +1179,7 @@ export default function Vyos(props: VyosProps) {
                                     }}
                                     disabled={activeExecution !== null}
                                     className={cn(
-                                        "flex items-center gap-2 px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all shadow-sm active:scale-95 disabled:opacity-30 disabled:grayscale",
+                                        "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-[11px] tracking-wide transition-all shadow-sm active:scale-95 disabled:opacity-30 disabled:grayscale",
                                         activeExecution?.sequenceId === seq.id
                                             ? "bg-card-secondary text-text-muted cursor-not-allowed"
                                             : seq.executionMode === 'STEP_BY_STEP'
@@ -1631,9 +1638,9 @@ export default function Vyos(props: VyosProps) {
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[110] flex items-center justify-center p-4">
                     <div className="bg-card border border-border w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
                         <div className="p-8 border-b border-border flex items-center justify-between bg-card/80 backdrop-blur-md sticky top-0 z-10">
-                            <h3 className="text-2xl font-black text-text-primary flex items-center gap-4 tracking-tighter">
-                                <Activity size={28} className="text-purple-500" />
-                                {editingSeq.id ? 'Mission Parameters' : 'Blueprint Mission'}
+                            <h3 className="text-xl font-bold text-text-primary flex items-center gap-3 tracking-tight">
+                                <Activity size={22} className="text-purple-500" />
+                                {editingSeq.id ? 'Edit Sequence' : 'New Sequence'}
                             </h3>
                             <button onClick={() => setShowSeqModal(false)} className="text-text-muted hover:text-text-primary transition-all bg-card-secondary p-2 rounded-full border border-border/50">
                                 <XCircle size={24} />
@@ -1641,32 +1648,32 @@ export default function Vyos(props: VyosProps) {
                         </div>
 
                         <div className="p-8 overflow-y-auto flex-1 space-y-8 custom-scrollbar">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.3em] pl-1">Mission Identifier</label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-semibold text-text-muted tracking-widest pl-1">Sequence name</label>
                                     <input
                                         type="text"
                                         value={editingSeq.name}
                                         onChange={(e) => setEditingSeq({ ...editingSeq, name: e.target.value })}
-                                        placeholder="e.g. AWS-CONVERGENCE-STRESS"
-                                        className="w-full bg-card-secondary border border-border rounded-2xl px-5 py-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-purple-500/50 font-black uppercase tracking-tight text-sm shadow-inner transition-all"
+                                        placeholder="e.g. Branch1 WAN Degradation"
+                                        className="w-full bg-card-secondary border border-border rounded-2xl px-5 py-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-purple-500/50 font-medium tracking-normal text-sm shadow-inner transition-all"
                                     />
                                 </div>
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.3em] pl-1">Execution Mode</label>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-semibold text-text-muted tracking-widest pl-1">Execution mode</label>
                                     <select
                                         value={editingSeq.executionMode}
                                         onChange={(e) => setEditingSeq({ ...editingSeq, executionMode: e.target.value as any })}
-                                        className="w-full bg-card-secondary border border-border rounded-2xl px-5 py-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-purple-500/50 font-black uppercase tracking-tight text-sm appearance-none cursor-pointer shadow-inner transition-all"
+                                        className="w-full bg-card-secondary border border-border rounded-2xl px-5 py-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-purple-500/50 font-medium tracking-normal text-sm appearance-none cursor-pointer shadow-inner transition-all"
                                     >
                                         <option value="CYCLE">Timed Cycle</option>
-                                        <option value="STEP_BY_STEP">Step-by-Step Sequence</option>
+                                        <option value="STEP_BY_STEP">Step-by-Step</option>
                                     </select>
                                 </div>
-                                <div className="space-y-3">
+                                <div className="space-y-2">
                                     {editingSeq.executionMode === 'CYCLE' ? (
                                         <>
-                                            <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.3em] pl-1">Cycle duration (Min)</label>
+                                            <label className="text-[10px] font-semibold text-text-muted tracking-widest pl-1">Cycle duration</label>
                                             <select
                                                 value={editingSeq.cycle_duration}
                                                 onChange={(e) => {
@@ -1678,34 +1685,34 @@ export default function Vyos(props: VyosProps) {
                                                     }));
                                                     setEditingSeq({ ...editingSeq, cycle_duration: val, actions: updatedActions });
                                                 }}
-                                                className="w-full bg-card-secondary border border-border rounded-2xl px-5 py-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-purple-500/50 font-black uppercase tracking-tight text-sm appearance-none cursor-pointer shadow-inner transition-all"
+                                                className="w-full bg-card-secondary border border-border rounded-2xl px-5 py-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-purple-500/50 font-medium tracking-normal text-sm appearance-none cursor-pointer shadow-inner transition-all"
                                             >
-                                                <option value={0}>Manual Trigger Only</option>
-                                                <option value={10}>10 Minute Cycle</option>
-                                                <option value={30}>30 Minute Cycle</option>
-                                                <option value={60}>60 Minute Cycle</option>
-                                                <option value={120}>2 Hour Cycle</option>
-                                                <option value={1440}>24 Hour Cycle</option>
+                                                <option value={0}>Manual trigger only</option>
+                                                <option value={10}>Every 10 minutes</option>
+                                                <option value={30}>Every 30 minutes</option>
+                                                <option value={60}>Every hour</option>
+                                                <option value={120}>Every 2 hours</option>
+                                                <option value={1440}>Every 24 hours</option>
                                             </select>
                                         </>
                                     ) : (
                                         <div className="p-4 bg-purple-600/5 border border-purple-500/10 rounded-2xl h-full flex flex-col justify-center">
-                                            <p className="text-[10px] text-text-muted font-bold leading-tight uppercase">
-                                                Manual Control: Actions run only when you click Next. Ideal for live POCs and design walkthroughs.
+                                            <p className="text-[10px] text-text-muted font-medium leading-tight">
+                                                Manual control: actions run only when you click Next. Ideal for live demos and walkthroughs.
                                             </p>
                                         </div>
                                     )}
                                 </div>
-                            </div>
+            </div>
 
-                            <div className="space-y-6">
+                            <div className="space-y-4">
                                 <div className="flex items-center justify-between bg-purple-600/5 p-4 rounded-2xl border border-purple-500/20 shadow-sm">
                                     <div className="flex flex-col">
-                                        <h4 className="text-[11px] font-black text-text-primary uppercase tracking-[0.3em]">Operational Flow</h4>
-                                        <span className="text-[10px] text-text-muted font-bold uppercase">
+                                        <h4 className="text-[12px] font-semibold text-text-primary">Actions</h4>
+                                        <span className="text-[10px] text-text-muted">
                                             {editingSeq.executionMode === 'CYCLE'
-                                                ? 'ACTIONS WILL TRIGGER AT DEFINED OFFSETS WITHIN THE CYCLE'
-                                                : 'ACTIONS ARE ORDERED FOR STEP-BY-STEP MANUAL EXECUTION'}
+                                                ? 'Each action fires at its T+ offset within the cycle'
+                                                : 'Actions execute one at a time in order'}
                                         </span>
                                     </div>
                                     <button
@@ -1719,27 +1726,27 @@ export default function Vyos(props: VyosProps) {
                                                     id: `act-${Date.now()}`,
                                                     offset_minutes: nextOffset,
                                                     router_id: routers[0]?.id || '',
-                                                    interface: defaultInterface, // Will be ignored for block/unblock/clear actions
+                                                    interface: defaultInterface,
                                                     command: 'interface-down',
                                                     parameters: {}
                                                 }]
                                             });
                                         }}
-                                        className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-purple-900/20 active:scale-95"
+                                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[11px] font-semibold transition-all shadow-lg shadow-purple-900/20 active:scale-95 flex items-center gap-1.5"
                                     >
-                                        + APPEND ACTION
+                                        <Plus size={13} /> Add action
                                     </button>
                                 </div>
 
-                                <div className="space-y-6">
+                                <div className="space-y-4">
                                     {editingSeq.actions.map((action, idx) => (
                                         <div key={idx} className="bg-card-secondary/50 border border-border rounded-2xl p-4 space-y-4 group relative animate-in slide-in-from-left-6 duration-300 shadow-sm">
                                             <div className="absolute top-0 left-0 w-1.5 h-full bg-purple-500/20 group-hover:bg-purple-500/40 transition-all rounded-l-2xl" />
 
                                             <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-6">
-                                                    <div className="flex flex-col items-center justify-center p-3 bg-card rounded-xl border border-border shadow-sm">
-                                                        <span className="text-[8px] text-text-muted font-black uppercase tracking-tighter mb-0.5">T+ (Min)</span>
+                                                <div className="flex items-center gap-4">
+                                                    <div className="flex flex-col items-center justify-center p-3 bg-card rounded-xl border border-border shadow-sm min-w-[56px]">
+                                                        <span className="text-[8px] text-text-muted font-semibold tracking-tight mb-0.5">T+ min</span>
                                                         <input
                                                             type="number"
                                                             value={action.offset_minutes}
@@ -1771,9 +1778,9 @@ export default function Vyos(props: VyosProps) {
                                                 </button>
                                             </div>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[9px] font-black text-text-muted uppercase tracking-widest pl-1 flex items-center gap-1.5"><Server size={8} /> Target Node</label>
+                                                    <label className="text-[9px] font-semibold text-text-muted tracking-widest pl-1 flex items-center gap-1.5"><Server size={9} /> Router</label>
                                                     <select
                                                         value={action.router_id}
                                                         onChange={(e) => {
@@ -1785,16 +1792,16 @@ export default function Vyos(props: VyosProps) {
                                                             }
                                                             setEditingSeq({ ...editingSeq, actions: newActions });
                                                         }}
-                                                        className="w-full bg-card border border-border rounded-xl px-4 py-3 text-[11px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-black uppercase appearance-none cursor-pointer transition-all"
+                                                        className="w-full bg-card border border-border rounded-xl px-4 py-3 text-[12px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-medium appearance-none cursor-pointer transition-all"
                                                     >
                                                         {routers.map(r => <option key={r.id} value={r.id}>{r.name} ({r.host})</option>)}
                                                     </select>
                                                 </div>
 
-                                                {/* Interface Path - Hidden for block/unblock/clear actions */}
+                                                {/* Interface — hidden for block/unblock/clear actions */}
                                                 {!['deny-traffic', 'allow-traffic', 'clear-all-blocks'].includes(action.command) && (
                                                     <div className="space-y-1.5">
-                                                        <label className="text-[9px] font-black text-text-muted uppercase tracking-widest pl-1 flex items-center gap-1.5"><Wifi size={8} /> Interface Path</label>
+                                                        <label className="text-[9px] font-semibold text-text-muted tracking-widest pl-1 flex items-center gap-1.5"><Wifi size={9} /> Interface</label>
                                                         <select
                                                             value={action.interface}
                                                             onChange={(e) => {
@@ -1802,10 +1809,10 @@ export default function Vyos(props: VyosProps) {
                                                                 newActions[idx].interface = e.target.value;
                                                                 setEditingSeq({ ...editingSeq, actions: newActions });
                                                             }}
-                                                            className="w-full bg-card border border-border rounded-xl px-4 py-3 text-[11px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-black uppercase appearance-none cursor-pointer transition-all"
+                                                            className="w-full bg-card border border-border rounded-xl px-4 py-3 text-[12px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-medium appearance-none cursor-pointer transition-all"
                                                         >
                                                             {(routers.find(r => r.id === action.router_id)?.interfaces || []).map(iface => (
-                                                                <option key={iface.name} value={iface.name} title={iface.description || undefined}>{iface.name} {iface.description ? `- ${iface.description}` : ''}</option>
+                                                                <option key={iface.name} value={iface.name} title={iface.description || undefined}>{iface.name}{iface.description ? ` — ${iface.description}` : ''}</option>
                                                             ))}
                                                         </select>
                                                     </div>
@@ -1814,7 +1821,7 @@ export default function Vyos(props: VyosProps) {
                                                 {action.command === 'set-qos' && (
                                                     <>
                                                         <div className="space-y-1.5">
-                                                            <label className="text-[9px] font-black text-text-muted uppercase tracking-widest pl-1 flex items-center gap-1.5"><Activity size={8} /> Latency (ms)</label>
+                                                            <label className="text-[9px] font-semibold text-text-muted tracking-widest pl-1 flex items-center gap-1.5"><Activity size={9} /> Latency (ms)</label>
                                                             <input
                                                                 type="number"
                                                                 value={action.parameters?.latency || 0}
@@ -1823,11 +1830,11 @@ export default function Vyos(props: VyosProps) {
                                                                     newActions[idx].parameters = { ...newActions[idx].parameters, latency: parseInt(e.target.value) };
                                                                     setEditingSeq({ ...editingSeq, actions: newActions });
                                                                 }}
-                                                                className="w-full bg-card border border-border rounded-xl px-4 py-3 text-[11px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-black shadow-inner transition-all"
+                                                                className="w-full bg-card border border-border rounded-xl px-4 py-3 text-[12px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-medium shadow-inner transition-all"
                                                             />
                                                         </div>
                                                         <div className="space-y-1.5">
-                                                            <label className="text-[9px] font-black text-text-muted uppercase tracking-widest pl-1 flex items-center gap-1.5"><Activity size={8} /> Loss (%)</label>
+                                                            <label className="text-[9px] font-semibold text-text-muted tracking-widest pl-1 flex items-center gap-1.5"><Activity size={9} /> Packet loss (%)</label>
                                                             <input
                                                                 type="number"
                                                                 value={action.parameters?.loss || 0}
@@ -1836,11 +1843,11 @@ export default function Vyos(props: VyosProps) {
                                                                     newActions[idx].parameters = { ...newActions[idx].parameters, loss: parseInt(e.target.value) };
                                                                     setEditingSeq({ ...editingSeq, actions: newActions });
                                                                 }}
-                                                                className="w-full bg-card border border-border rounded-xl px-4 py-3 text-[11px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-black shadow-inner transition-all"
+                                                                className="w-full bg-card border border-border rounded-xl px-4 py-3 text-[12px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-medium shadow-inner transition-all"
                                                             />
                                                         </div>
                                                         <div className="space-y-1.5">
-                                                            <label className="text-[9px] font-black text-text-muted uppercase tracking-widest pl-1 flex items-center gap-1.5"><Activity size={8} /> Rate (e.g. 10mbit)</label>
+                                                            <label className="text-[9px] font-semibold text-text-muted tracking-widest pl-1 flex items-center gap-1.5"><Activity size={9} /> Rate limit (e.g. 10mbit)</label>
                                                             <input
                                                                 type="text"
                                                                 value={action.parameters?.rate || ''}
@@ -1849,7 +1856,7 @@ export default function Vyos(props: VyosProps) {
                                                                     newActions[idx].parameters = { ...newActions[idx].parameters, rate: e.target.value };
                                                                     setEditingSeq({ ...editingSeq, actions: newActions });
                                                                 }}
-                                                                className="w-full bg-card border border-border rounded-xl px-4 py-3 text-[11px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-black shadow-inner transition-all"
+                                                                className="w-full bg-card border border-border rounded-xl px-4 py-3 text-[12px] text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-medium shadow-inner transition-all"
                                                             />
                                                         </div>
                                                     </>
@@ -1925,24 +1932,24 @@ export default function Vyos(props: VyosProps) {
                             </div>
                         </div>
 
-                        <div className="p-8 border-t border-border bg-card/80 backdrop-blur-md rounded-b-3xl flex gap-4 sticky bottom-0 z-10">
+                        <div className="p-6 border-t border-border bg-card/80 backdrop-blur-md rounded-b-3xl flex gap-3 sticky bottom-0 z-10">
                             <button
                                 onClick={() => setShowSeqModal(false)}
-                                className="flex-1 px-6 py-4 rounded-2xl bg-card-secondary hover:bg-card-hover text-text-muted font-black transition-all text-xs uppercase tracking-[0.3em] border border-border/50 shadow-inner"
+                                className="flex-1 px-6 py-3 rounded-2xl bg-card-secondary hover:bg-card-hover text-text-muted font-semibold transition-all text-sm border border-border/50"
                             >
-                                DISCARD
+                                Cancel
                             </button>
                             <button
                                 onClick={saveSequence}
                                 disabled={!editingSeq.name || editingSeq.actions.length === 0}
                                 title={
-                                    !editingSeq.name ? "⚠️ Mission Identifier is required" :
-                                        editingSeq.actions.length === 0 ? "⚠️ Add at least one action" :
-                                            "Save this mission"
+                                    !editingSeq.name ? "Sequence name is required" :
+                                        editingSeq.actions.length === 0 ? "Add at least one action" :
+                                            "Save this sequence"
                                 }
-                                className="flex-2 px-10 py-4 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-black transition-all shadow-xl shadow-purple-900/40 text-xs uppercase tracking-[0.3em] disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-purple-600 flex items-center justify-center gap-3 active:scale-95"
+                                className="flex-2 px-10 py-3 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-semibold transition-all shadow-xl shadow-purple-900/40 text-sm disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-purple-600 flex items-center justify-center gap-2 active:scale-95"
                             >
-                                <CheckCircle size={20} /> SAVE
+                                <CheckCircle size={18} /> Save sequence
                             </button>
                         </div>
                     </div>
