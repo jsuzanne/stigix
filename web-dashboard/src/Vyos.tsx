@@ -1114,7 +1114,7 @@ export default function Vyos(props: VyosProps) {
                                 </div>
                             </div>
 
-                            {/* Target Preview - Compact */}
+                            {/* Target Preview */}
                             <div className="flex items-start gap-2 overflow-hidden">
                                 <Server size={12} className="text-text-muted flex-shrink-0 opacity-50 mt-1" />
                                 <div className="flex flex-wrap gap-1.5">
@@ -1122,6 +1122,9 @@ export default function Vyos(props: VyosProps) {
                                         const router = routers.find(r => r.id === a.router_id);
                                         const paramDisplay = formatActionParameters(a.command, a.parameters);
                                         const hasIface = !['deny-traffic', 'allow-traffic', 'clear-all-blocks', 'show-denied'].includes(a.command);
+                                        const ifaceMeta = hasIface && a.interface
+                                            ? router?.interfaces.find(ifc => ifc.name === a.interface)
+                                            : undefined;
                                         return (
                                             <span key={i} className="text-[11px] bg-card-secondary/80 text-text-secondary px-2.5 py-1 rounded-lg border border-border/50 font-mono tracking-tight">
                                                 {paramDisplay ? (
@@ -1129,11 +1132,19 @@ export default function Vyos(props: VyosProps) {
                                                         <span className="text-text-primary">{paramDisplay}</span>
                                                         {' on '}
                                                         <span className="text-purple-400 font-semibold">{router?.name || '?'}{hasIface && a.interface ? `:${a.interface}` : ''}</span>
+                                                        {ifaceMeta?.description && (
+                                                            <span className="text-text-muted ml-1">({ifaceMeta.description})</span>
+                                                        )}
                                                     </>
                                                 ) : (
-                                                    <span className="text-purple-400 font-semibold text-[12px]">
-                                                        {router?.name || '?'}{hasIface && a.interface ? `:${a.interface}` : ''}
-                                                    </span>
+                                                    <>
+                                                        <span className="text-purple-400 font-semibold text-[12px]">
+                                                            {router?.name || '?'}{hasIface && a.interface ? `:${a.interface}` : ''}
+                                                        </span>
+                                                        {ifaceMeta?.description && (
+                                                            <span className="text-text-muted ml-1 text-[10px]">({ifaceMeta.description})</span>
+                                                        )}
+                                                    </>
                                                 )}
                                             </span>
                                         );
@@ -1206,24 +1217,24 @@ export default function Vyos(props: VyosProps) {
 
             {view === 'history' && (
                 <div className="space-y-4">
-                    {/* Tactical Filter Bar */}
+                    {/* Filter Bar */}
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-3 bg-card border border-border p-4 rounded-2xl shadow-sm">
                         <div className="md:col-span-2 relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={14} />
                             <input
                                 type="text"
-                                placeholder="Search Mission, Node, or Command..."
+                                placeholder="Search sequence, router or action..."
                                 value={historySearch}
                                 onChange={(e) => setHistorySearch(e.target.value)}
-                                className="w-full bg-card-secondary border border-border rounded-xl pl-9 pr-4 py-2.5 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-green-500/50 font-bold placeholder:text-text-muted/50 uppercase tracking-tight transition-all"
+                                className="w-full bg-card-secondary border border-border rounded-xl pl-9 pr-4 py-2.5 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-green-500/50 font-medium placeholder:text-text-muted/50 tracking-normal transition-all"
                             />
                         </div>
                         <select
                             value={historyMissionFilter}
                             onChange={(e) => setHistoryMissionFilter(e.target.value)}
-                            className="bg-card-secondary border border-border rounded-xl px-4 py-2.5 text-xs text-text-secondary focus:outline-none font-bold uppercase cursor-pointer transition-all hover:border-text-muted/30"
+                            className="bg-card-secondary border border-border rounded-xl px-4 py-2.5 text-xs text-text-secondary focus:outline-none font-medium cursor-pointer transition-all hover:border-text-muted/30"
                         >
-                            <option value="all">ANY MISSION</option>
+                            <option value="all">Any sequence</option>
                             {[...new Set(history.map(h => h.sequence_name))].map(name => (
                                 <option key={name} value={name}>{name}</option>
                             ))}
@@ -1231,9 +1242,9 @@ export default function Vyos(props: VyosProps) {
                         <select
                             value={historyNodeFilter}
                             onChange={(e) => setHistoryNodeFilter(e.target.value)}
-                            className="bg-card-secondary border border-border rounded-xl px-4 py-2.5 text-xs text-text-secondary focus:outline-none font-bold uppercase cursor-pointer transition-all hover:border-text-muted/30"
+                            className="bg-card-secondary border border-border rounded-xl px-4 py-2.5 text-xs text-text-secondary focus:outline-none font-medium cursor-pointer transition-all hover:border-text-muted/30"
                         >
-                            <option value="all">ANY NODE</option>
+                            <option value="all">Any router</option>
                             {[...new Set(history.map(h => h.router_id))].map(id => (
                                 <option key={id} value={id}>{id}</option>
                             ))}
@@ -1241,9 +1252,9 @@ export default function Vyos(props: VyosProps) {
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={() => setIsGrouped(!isGrouped)}
-                                className={`flex-1 px-4 py-2.5 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${isGrouped ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-card-secondary text-text-muted border-border hover:border-text-muted/30'}`}
+                                className={`flex-1 px-4 py-2.5 rounded-xl border text-[11px] font-semibold transition-all ${isGrouped ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-card-secondary text-text-muted border-border hover:border-text-muted/30'}`}
                             >
-                                Group Runs
+                                Group runs
                             </button>
                         </div>
                     </div>
@@ -1252,11 +1263,11 @@ export default function Vyos(props: VyosProps) {
                         <table className="w-full text-left text-xs border-collapse">
                             <thead className="bg-card-secondary/80 border-b border-border sticky top-0">
                                 <tr>
-                                    <th className="px-6 py-5 font-black text-text-muted uppercase tracking-[0.2em]">Execution Time</th>
-                                    <th className="px-6 py-5 font-black text-text-muted uppercase tracking-[0.2em]">Mission Type</th>
-                                    <th className="px-6 py-5 font-black text-text-muted uppercase tracking-[0.2em]">Target Node</th>
-                                    <th className="px-6 py-5 font-black text-text-muted uppercase tracking-[0.2em]">Objective</th>
-                                    <th className="px-6 py-5 font-black text-text-muted uppercase tracking-[0.2em] text-center">Verdict</th>
+                                    <th className="px-4 py-3 font-semibold text-text-muted text-[10px] uppercase tracking-wider">Time</th>
+                                    <th className="px-4 py-3 font-semibold text-text-muted text-[10px] uppercase tracking-wider">Sequence</th>
+                                    <th className="px-4 py-3 font-semibold text-text-muted text-[10px] uppercase tracking-wider">Router</th>
+                                    <th className="px-4 py-3 font-semibold text-text-muted text-[10px] uppercase tracking-wider">Action</th>
+                                    <th className="px-4 py-3 font-semibold text-text-muted text-[10px] uppercase tracking-wider text-center">Result</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border/50">
@@ -1354,55 +1365,47 @@ export default function Vyos(props: VyosProps) {
                                     }
 
                                     return filtered.map((log, idx) => (
-                                        <tr key={idx} className="hover:bg-card-secondary transition-colors group">
-                                            <td className="px-6 py-5">
-                                                <div className="text-text-primary font-mono font-bold text-sm tracking-tight">{new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
-                                                <div className="text-[9px] text-text-muted font-black uppercase tracking-tighter mt-1">{new Date(log.timestamp).toLocaleDateString()}</div>
+                                        <tr key={idx} className="hover:bg-card-secondary/40 transition-colors border-b border-border/30 last:border-0">
+                                            <td className="px-4 py-2.5">
+                                                <span className="text-text-primary font-mono text-[11px] font-medium">{new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                                                <span className="text-text-muted font-mono text-[9px] ml-2 opacity-50">{new Date(log.timestamp).toLocaleDateString()}</span>
                                             </td>
-                                            <td className="px-6 py-5">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="p-1.5 bg-purple-500/10 rounded-lg">
-                                                        {getCommandIcon(log.command, 14)}
+                                            <td className="px-4 py-2.5">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="p-1 bg-purple-500/10 rounded">
+                                                        {getCommandIcon(log.command, 12)}
                                                     </div>
-                                                    <div className="flex flex-col">
-                                                        <span className="text-text-primary font-black uppercase tracking-tight">{log.sequence_name}</span>
-                                                        {(() => {
-                                                            const seq = sequences.find(s => s.id === log.sequence_id);
-                                                            const action = seq?.actions.find(a => a.id === log.action_id);
-                                                            if (action && seq && seq.cycle_duration > 0) {
-                                                                return <span className="text-[9px] text-purple-500 font-black uppercase">T+{action.offset_minutes}m offset</span>;
-                                                            }
-                                                            return null;
-                                                        })()}
-                                                    </div>
+                                                    <span className="text-text-primary font-medium text-[11px]">{log.sequence_name}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-5">
-                                                <div className="flex flex-col">
-                                                    <span className="text-text-secondary font-bold uppercase text-[10px]">{log.router_id}</span>
-                                                    {!['simple-block', 'simple-unblock', 'clear-blocks', 'get-blocks'].includes(log.command) && (
-                                                        <span className="text-[9px] text-text-muted/60 font-mono">{log.interface || 'global'}</span>
+                                            <td className="px-4 py-2.5">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-text-secondary font-medium text-[11px]">{log.router_id}</span>
+                                                    {!['deny-traffic', 'allow-traffic', 'clear-all-blocks', 'show-denied', 'simple-block', 'simple-unblock', 'clear-blocks', 'get-blocks'].includes(log.command) && log.interface && (
+                                                        <span className="px-1.5 py-0.5 bg-purple-500/10 text-purple-400 rounded font-mono text-[11px] border border-purple-500/20">{log.interface}</span>
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-5">
+                                            <td className="px-4 py-2.5">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="px-2 py-0.5 bg-card-secondary rounded text-text-secondary font-black uppercase text-[9px] tracking-widest border border-border/50">{log.command}</span>
+                                                    <span className="px-2 py-0.5 bg-card-secondary rounded text-text-secondary font-medium text-[10px] border border-border/50">{getCommandDisplayName(log.command)}</span>
                                                     {(() => {
                                                         const paramDisplay = formatActionParameters(log.command, log.parameters);
                                                         return paramDisplay ? (
-                                                            <span className="text-[9px] text-blue-400 font-mono">{paramDisplay}</span>
+                                                            <span className="text-[10px] text-blue-400 font-mono">{paramDisplay}</span>
                                                         ) : null;
                                                     })()}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-5 text-center">
-                                                <div className="flex justify-center">
-                                                    <div className={`flex items-center gap-2 px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${log.status === 'success' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'}`}>
-                                                        {log.status === 'success' ? <CheckCircle size={10} /> : <AlertCircle size={10} />}
-                                                        {log.status}
-                                                    </div>
-                                                </div>
+                                            <td className="px-4 py-2.5 text-center">
+                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[9px] font-semibold ${
+                                                    log.status === 'success'
+                                                        ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                                                        : 'bg-red-500/10 text-red-400 border-red-500/20'
+                                                }`}>
+                                                    {log.status === 'success' ? <CheckCircle size={10} /> : <AlertCircle size={10} />}
+                                                    {log.status === 'success' ? 'OK' : 'Failed'}
+                                                </span>
                                             </td>
                                         </tr>
                                     ));
@@ -1956,41 +1959,45 @@ export default function Vyos(props: VyosProps) {
             {showEditRouterModal && editingRouter && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[110] flex items-center justify-center p-4">
                     <div className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col">
-                        <div className="p-8 border-b border-border flex items-center justify-between">
-                            <h3 className="text-xl font-black text-text-primary flex items-center gap-3 uppercase tracking-tighter">
-                                <Settings size={24} className="text-purple-500" /> Node Parameters: {editingRouter.name}
+                        <div className="p-6 border-b border-border flex items-center justify-between">
+                            <h3 className="text-lg font-semibold text-text-primary flex items-center gap-3">
+                                <Settings size={20} className="text-purple-500" />
+                                {editingRouter.name}
                             </h3>
                             <button onClick={() => setShowEditRouterModal(false)} className="text-text-muted hover:text-text-primary transition-all bg-card-secondary p-1.5 rounded-full border border-border/50">
                                 <XCircle size={20} />
                             </button>
                         </div>
 
-                        <div className="p-8 space-y-6">
+                        <div className="p-6 space-y-5">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5 opacity-50">
-                                    <label className="text-[10px] font-black text-text-muted uppercase tracking-widest pl-1">Router ID</label>
+                                    <label className="text-[10px] font-semibold text-text-muted tracking-widest pl-1">Router ID</label>
                                     <input value={editingRouter.id} disabled className="w-full bg-card-secondary/50 border border-border rounded-xl px-4 py-3 text-xs font-mono text-text-primary" />
                                 </div>
                                 <div className="space-y-1.5 opacity-50">
-                                    <label className="text-[10px] font-black text-text-muted uppercase tracking-widest pl-1">IP Address</label>
+                                    <label className="text-[10px] font-semibold text-text-muted tracking-widest pl-1">IP address</label>
                                     <input value={editingRouter.host} disabled className="w-full bg-card-secondary/50 border border-border rounded-xl px-4 py-3 text-xs font-mono text-text-primary" />
                                 </div>
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black text-text-muted uppercase tracking-widest pl-1">Description</label>
+                                <label className="text-[10px] font-semibold text-text-muted tracking-widest pl-1">Description</label>
                                 <input
                                     type="text"
                                     value={editingRouter.location || ''}
                                     onChange={(e) => setEditingRouter({ ...editingRouter, location: e.target.value })}
-                                    className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm font-bold text-text-primary tracking-tight focus:ring-1 focus:ring-purple-500/50 outline-none transition-all shadow-inner"
+                                    className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm font-medium text-text-primary tracking-normal focus:ring-1 focus:ring-purple-500/50 outline-none transition-all shadow-inner"
                                 />
                             </div>
 
                             <div className="flex items-center justify-between p-4 bg-card-secondary/50 rounded-xl border border-border">
-                                <div>
-                                    <h4 className="text-xs font-black text-text-primary uppercase tracking-widest">Vyos Status</h4>
-                                    <p className="text-[10px] text-text-muted font-bold">Active for mission sequences</p>
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${editingRouter.enabled ? 'bg-green-500 shadow-[0_0_6px_2px_rgba(34,197,94,0.4)] animate-pulse' : 'bg-zinc-600'}`} />
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-text-primary">{editingRouter.enabled ? 'Enabled' : 'Disabled'}</h4>
+                                        <p className="text-[10px] text-text-muted">Router is {editingRouter.enabled ? 'active and available for sequences' : 'inactive — sequences will skip it'}</p>
+                                    </div>
                                 </div>
                                 <button
                                     onClick={() => setEditingRouter({ ...editingRouter, enabled: !editingRouter.enabled })}
@@ -2001,9 +2008,9 @@ export default function Vyos(props: VyosProps) {
                             </div>
                         </div>
 
-                        <div className="p-8 border-t border-border bg-card/50 flex gap-4">
-                            <button onClick={() => setShowEditRouterModal(false)} className="flex-1 px-6 py-3 rounded-xl bg-card-secondary border border-border/50 text-text-muted font-black text-xs uppercase tracking-widest shadow-inner transition-all hover:bg-card-hover">ABORT</button>
-                            <button onClick={saveRouterChanges} className="flex-2 px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs uppercase tracking-widest shadow-lg shadow-purple-900/20 transition-all active:scale-95">SYNC Node</button>
+                        <div className="p-5 border-t border-border bg-card/50 flex gap-3">
+                            <button onClick={() => setShowEditRouterModal(false)} className="flex-1 px-6 py-2.5 rounded-xl bg-card-secondary border border-border/50 text-text-muted font-medium text-sm shadow-inner transition-all hover:bg-card-hover">Cancel</button>
+                            <button onClick={saveRouterChanges} className="flex-2 px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-sm shadow-lg shadow-purple-900/20 transition-all active:scale-95">Save changes</button>
                         </div>
                     </div>
                 </div>
