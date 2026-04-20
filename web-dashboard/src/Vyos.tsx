@@ -191,7 +191,9 @@ export default function Vyos(props: VyosProps) {
     const [isGrouped, setIsGrouped] = useState(false);
 
     // Live Monitoring State
-    const [activeExecution, setActiveExecution] = useState<{ sequenceId: string, step: string, status: string, error?: string } | null>(null);
+    const [activeExecution, setActiveExecution] = useState<{ sequenceId: string, step: string, status: string, error?: string, cliEquivalent?: string[], action?: any } | null>(null);
+    const [liveEvents, setLiveEvents] = useState<{ sequenceId: string, step: string, status: string, error?: string, cliEquivalent?: string[], action?: any, ts: number }[]>([]);
+    const [showingCli, setShowingCli] = useState<number | null>(null); // index of expanded CLI block
 
     // Modals
     const [showAddModal, setShowAddModal] = useState(false);
@@ -298,6 +300,9 @@ export default function Vyos(props: VyosProps) {
 
         socket.on('vyos:sequence_step', (data) => {
             setActiveExecution(data);
+            if (data.status === 'success' || data.status === 'failed') {
+                setLiveEvents(prev => [{ ...data, ts: Date.now() }, ...prev].slice(0, 100));
+            }
         });
 
         socket.on('vyos:sequence_completed', (_log) => {
@@ -764,6 +769,64 @@ export default function Vyos(props: VyosProps) {
                             <span className="text-[10px] text-purple-200 font-mono bg-purple-500/20 px-1.5 rounded">{activeExecution.step}</span>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Live Events Feed (last N operations with CLI block) */}
+            {liveEvents.length > 0 && (
+                <div className="fixed bottom-6 right-8 z-[90] w-[420px] max-h-96 overflow-y-auto space-y-2 flex flex-col">
+                    <div className="flex items-center justify-between px-1 pb-1">
+                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest opacity-50">Live Events</span>
+                        <button onClick={() => setLiveEvents([])} className="text-[9px] text-red-400 hover:text-red-300 font-black uppercase tracking-widest opacity-60 hover:opacity-100 transition-all">Clear</button>
+                    </div>
+                    {liveEvents.map((ev, idx) => (
+                        <div key={idx} className={cn(
+                            'bg-card/95 border backdrop-blur-md rounded-xl shadow-xl overflow-hidden',
+                            ev.status === 'success' ? 'border-green-500/30' : 'border-red-500/30'
+                        )}>
+                            <div className="flex items-center gap-3 px-4 py-2.5">
+                                {ev.status === 'success'
+                                    ? <CheckCircle size={14} className="text-green-500 shrink-0" />
+                                    : <XCircle size={14} className="text-red-500 shrink-0" />
+                                }
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-black text-text-primary uppercase tracking-tight">{getCommandDisplayName(ev.step)}</span>
+                                        {ev.action?.interface && (
+                                            <span className="text-[9px] font-mono text-text-muted bg-card-secondary px-1.5 py-0.5 rounded">{ev.action.interface}</span>
+                                        )}
+                                    </div>
+                                    <span className="text-[9px] text-text-muted font-mono opacity-50">{new Date(ev.ts).toLocaleTimeString()}</span>
+                                </div>
+                                {ev.cliEquivalent && ev.cliEquivalent.length > 0 && (
+                                    <button
+                                        onClick={() => setShowingCli(showingCli === idx ? null : idx)}
+                                        title="Show VyOS CLI equivalent"
+                                        className={cn(
+                                            'shrink-0 p-1.5 rounded-lg border transition-all text-[9px] font-black uppercase tracking-widest flex items-center gap-1',
+                                            showingCli === idx
+                                                ? 'bg-blue-600/20 border-blue-500/40 text-blue-400'
+                                                : 'bg-card-secondary border-border text-text-muted hover:border-blue-500/40 hover:text-blue-400'
+                                        )}
+                                    >
+                                        <Terminal size={10} /> CLI
+                                    </button>
+                                )}
+                            </div>
+                            {showingCli === idx && ev.cliEquivalent && (
+                                <div className="border-t border-border/50 bg-black/40 px-4 py-3">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">VyOS CLI Equivalent</span>
+                                        <button
+                                            onClick={() => { navigator.clipboard.writeText(ev.cliEquivalent!.join('\n')); toast.success('Copied!'); }}
+                                            className="text-[8px] font-black text-text-muted hover:text-blue-400 uppercase tracking-widest transition-all"
+                                        >Copy</button>
+                                    </div>
+                                    <pre className="text-[10px] font-mono text-green-400 leading-relaxed whitespace-pre-wrap">{ev.cliEquivalent.join('\n')}</pre>
+                                </div>
+                            )}
+                        </div>
+                    ))}
                 </div>
             )}
 

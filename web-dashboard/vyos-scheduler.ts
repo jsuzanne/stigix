@@ -189,10 +189,10 @@ export class VyosScheduler extends EventEmitter {
 
                 const startTime = performance.now();
                 try {
-                    this.emit('sequence:step', { sequenceId: seq.id, step: action.command, status: 'running' });
+                    this.emit('sequence:step', { sequenceId: seq.id, step: action.command, status: 'running', action });
 
                     // Adapt to Manager's executeAction signature
-                    await this.manager.executeAction(action.router_id, {
+                    const result = await this.manager.executeAction(action.router_id, {
                         id: action.id,
                         offset_minutes: action.offset_minutes,
                         router_id: action.router_id,
@@ -202,11 +202,11 @@ export class VyosScheduler extends EventEmitter {
 
                     const duration = Math.round(performance.now() - startTime);
                     this.logActionExecution(seq.id, action, 'success', undefined, runId, duration);
-                    this.emit('sequence:step', { sequenceId: seq.id, step: action.command, status: 'success' });
+                    this.emit('sequence:step', { sequenceId: seq.id, step: action.command, status: 'success', action, cliEquivalent: result?.cliEquivalent });
                 } catch (error: any) {
                     const duration = Math.round(performance.now() - startTime);
                     this.logActionExecution(seq.id, action, 'failed', error.message, runId, duration);
-                    this.emit('sequence:step', { sequenceId: seq.id, step: action.command, status: 'failed', error: error.message });
+                    this.emit('sequence:step', { sequenceId: seq.id, step: action.command, status: 'failed', error: error.message, action });
                 }
             };
 
@@ -407,9 +407,9 @@ export class VyosScheduler extends EventEmitter {
 
         const startTime = performance.now();
         try {
-            this.emit('sequence:step', { sequenceId: seq.id, stepIndex, step: action.command, status: 'running' });
+            this.emit('sequence:step', { sequenceId: seq.id, stepIndex, step: action.command, status: 'running', action });
 
-            await this.manager.executeAction(action.router_id, {
+            const result = await this.manager.executeAction(action.router_id, {
                 id: action.id,
                 offset_minutes: action.offset_minutes,
                 router_id: action.router_id,
@@ -419,7 +419,7 @@ export class VyosScheduler extends EventEmitter {
 
             const duration = Math.round(performance.now() - startTime);
             this.logActionExecution(seq.id, action, 'success', undefined, runId, duration);
-            this.emit('sequence:step', { sequenceId: seq.id, stepIndex, step: action.command, status: 'success' });
+            this.emit('sequence:step', { sequenceId: seq.id, stepIndex, step: action.command, status: 'success', action, cliEquivalent: result?.cliEquivalent });
 
             // Move pointer to next step automatically if successful
             if (stepIndex < seq.actions.length - 1) {
@@ -429,7 +429,7 @@ export class VyosScheduler extends EventEmitter {
         } catch (error: any) {
             const duration = Math.round(performance.now() - startTime);
             this.logActionExecution(seq.id, action, 'failed', error.message, runId, duration);
-            this.emit('sequence:step', { sequenceId: seq.id, stepIndex, step: action.command, status: 'failed', error: error.message });
+            this.emit('sequence:step', { sequenceId: seq.id, stepIndex, step: action.command, status: 'failed', error: error.message, action });
             throw error;
         }
     }

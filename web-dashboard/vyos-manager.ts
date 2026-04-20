@@ -349,29 +349,40 @@ export class VyosManager extends EventEmitter {
         const scrubbedArgs = args.map(arg => (arg === router.apiKey ? '***' : arg));
         log('VYOS', `Executing CLI: ${this.pythonPath} ${scrubbedArgs.join(' ')}`, 'debug');
 
-        // NEW: Log full command for debugging (with real values for troubleshooting)
-        const fullCommand = `vyos_sdwan_ctl.py --host ${router.host} --key ${router.apiKey.substring(0, 8)}... ${args.slice(6).join(' ')}`;
-        log('VYOS', `Full command: ${fullCommand}`, 'info');
+        // Always pass --verbose so we capture the CLI equivalent on stderr
+        const verboseArgs = [args[0], '--verbose', ...args.slice(1)];
 
         return new Promise((resolve, reject) => {
-            const proc = spawn(this.pythonPath, args);
+            const proc = spawn(this.pythonPath, verboseArgs);
             let output = '';
-            let errorMsg = '';
+            let stderrBuf = '';
 
             proc.stdout.on('data', (data) => output += data.toString());
-            proc.stderr.on('data', (data) => errorMsg += data.toString());
+            proc.stderr.on('data', (data) => stderrBuf += data.toString());
 
             proc.on('close', (code) => {
+                // Parse CLI equivalent from stderr (lines after "VyOS CLI equivalent:")
+                let cliEquivalent: string[] | undefined;
+                const cliMarker = 'VyOS CLI equivalent:';
+                const markerIdx = stderrBuf.indexOf(cliMarker);
+                if (markerIdx !== -1) {
+                    cliEquivalent = stderrBuf
+                        .substring(markerIdx + cliMarker.length)
+                        .split('\n')
+                        .map(l => l.trim())
+                        .filter(l => l.length > 0 && !l.startsWith('{'));
+                }
+
                 if (code === 0) {
                     try {
                         const jsonStart = output.indexOf('{');
                         const jsonStr = jsonStart !== -1 ? output.substring(jsonStart) : output;
-                        resolve(JSON.parse(jsonStr));
+                        resolve({ ...JSON.parse(jsonStr), cliEquivalent });
                     } catch {
-                        resolve({ success: true, output });
+                        resolve({ success: true, output, cliEquivalent });
                     }
                 } else {
-                    reject(new Error(errorMsg.trim() || `Process exited with code ${code}`));
+                    reject(new Error(stderrBuf.trim() || `Process exited with code ${code}`));
                 }
             });
         });
