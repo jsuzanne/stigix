@@ -116,9 +116,15 @@ def get_router_info(host, apikey, verify=False):
         }
 
 def op_set_interface_state(iface, shutdown, version):
-    """Shut/no-shut interface (same for 1.4 and 1.5)"""
+    """Shut/no-shut interface (same for 1.4 and 1.5)
+    
+    Note: VyOS 'disable' is a presence node (no value).
+    The REST API on some VyOS 1.4 builds rejects the path when
+    no leaf value is provided, so we append an empty string ''.
+    This is harmless and accepted by both 1.4 and 1.5.
+    """
     if shutdown:
-        return [{"op": "set", "path": ["interfaces", "ethernet", iface, "disable"]}]
+        return [{"op": "set", "path": ["interfaces", "ethernet", iface, "disable", ""]}]
     else:
         return [{"op": "delete", "path": ["interfaces", "ethernet", iface, "disable"]}]
 
