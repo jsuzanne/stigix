@@ -1143,9 +1143,6 @@ export default function Vyos(props: VyosProps) {
                                     )}
                                 </div>
                             </div>
-                             )}
-                                </div>
-                            </div>
 
                             {/* Footer: Status & Execution */}
                             <div className="flex items-center justify-between mt-auto pt-2">
