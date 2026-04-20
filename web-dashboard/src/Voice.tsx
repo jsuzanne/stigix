@@ -953,6 +953,7 @@ export default function Voice(props: VoiceProps) {
                                     { key: 'event', label: 'Disposition' },
                                     { key: 'target', label: 'Site' },
                                     { key: 'target_ip', label: 'Endpoint' },
+                                    { key: 'src_port', label: 'Src Port' },
                                     { key: 'loss_pct', label: 'Loss / MOS' },
                                     { key: 'avg_rtt_ms', label: 'RTT / Jitter', right: true },
                                 ].map(col => (
@@ -996,6 +997,23 @@ export default function Voice(props: VoiceProps) {
                                     </td>
                                     {/* Endpoint (IP:port) column */}
                                     <td className="py-4 px-3 text-[10px] font-mono font-bold text-text-muted">{call.target}</td>
+                                    {/* Source Port column */}
+                                    <td className="py-4 px-3">
+                                        {(() => {
+                                            const sp = deriveSourcePort(call.call_id);
+                                            return sp !== '?' ? (
+                                                <button
+                                                    onClick={() => { navigator.clipboard.writeText(sp); toast.success(`Port ${sp} copied`); }}
+                                                    title="Click to copy — use in Prisma SD-WAN flow browser to filter this call's RTP stream"
+                                                    className="font-mono text-[11px] font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded hover:bg-cyan-500/20 transition-all cursor-copy"
+                                                >
+                                                    {sp}
+                                                </button>
+                                            ) : (
+                                                <span className="text-text-muted opacity-30">—</span>
+                                            );
+                                        })()}
+                                    </td>
                                     <td className="py-4 px-3">
                                         {call.event === 'end' && call.loss_pct !== undefined ? (
                                             <div className="flex items-center gap-4">
