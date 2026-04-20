@@ -1260,7 +1260,14 @@ export default function Vyos(props: VyosProps) {
                     </div>
 
                     <div className="bg-card border border-border rounded-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300 shadow-sm">
-                        <table className="w-full text-left text-xs border-collapse">
+                        <table className="w-full text-left text-xs border-collapse table-fixed">
+                            <colgroup>
+                                <col className="w-[130px]" />
+                                <col className="w-[28%]" />
+                                <col className="w-[18%]" />
+                                <col className="w-[30%]" />
+                                <col className="w-[90px]" />
+                            </colgroup>
                             <thead className="bg-card-secondary/80 border-b border-border sticky top-0">
                                 <tr>
                                     <th className="px-4 py-3 font-semibold text-text-muted text-[10px] uppercase tracking-wider">Time</th>
@@ -1366,16 +1373,16 @@ export default function Vyos(props: VyosProps) {
 
                                     return filtered.map((log, idx) => (
                                         <tr key={idx} className="hover:bg-card-secondary/40 transition-colors border-b border-border/30 last:border-0">
-                                            <td className="px-4 py-2.5">
+                                            <td className="px-4 py-2.5 whitespace-nowrap">
                                                 <span className="text-text-primary font-mono text-[11px] font-medium">{new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                                                 <span className="text-text-muted font-mono text-[9px] ml-2 opacity-50">{new Date(log.timestamp).toLocaleDateString()}</span>
                                             </td>
-                                            <td className="px-4 py-2.5">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="p-1 bg-purple-500/10 rounded">
+                                            <td className="px-4 py-2.5 max-w-0">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <div className="p-1 bg-purple-500/10 rounded flex-shrink-0">
                                                         {getCommandIcon(log.command, 12)}
                                                     </div>
-                                                    <span className="text-text-primary font-medium text-[11px]">{log.sequence_name}</span>
+                                                    <span className="text-text-primary font-medium text-[11px] truncate" title={log.sequence_name}>{log.sequence_name}</span>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-2.5">
@@ -1386,13 +1393,13 @@ export default function Vyos(props: VyosProps) {
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-2.5">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="px-2 py-0.5 bg-card-secondary rounded text-text-secondary font-medium text-[10px] border border-border/50">{getCommandDisplayName(log.command)}</span>
+                                            <td className="px-4 py-2.5 max-w-0">
+                                                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                                                    <span className="px-2 py-0.5 bg-card-secondary rounded text-text-secondary font-medium text-[10px] border border-border/50 whitespace-nowrap">{getCommandDisplayName(log.command)}</span>
                                                     {(() => {
                                                         const paramDisplay = formatActionParameters(log.command, log.parameters);
                                                         return paramDisplay ? (
-                                                            <span className="text-[10px] text-blue-400 font-mono">{paramDisplay}</span>
+                                                            <span className="text-[10px] text-blue-400 font-mono truncate">{paramDisplay}</span>
                                                         ) : null;
                                                     })()}
                                                 </div>
