@@ -35,7 +35,13 @@ def api_call(host, api_key, operations, verify=False):
         "key": (None, api_key),
     }
     resp = requests.post(url, files=files, verify=verify)
-    resp.raise_for_status()
+    if not resp.ok:
+        # Show the actual VyOS error body to help diagnose 400/500 issues
+        try:
+            body = resp.text.strip()
+        except Exception:
+            body = "<unreadable response>"
+        raise RuntimeError(f"{resp.status_code} {resp.reason} — {url}\nVyOS response: {body}")
     r = resp.json()
     if not r.get("success", False):
         raise RuntimeError(f"VyOS API error: {r.get('error')}")
@@ -115,16 +121,27 @@ def get_router_info(host, apikey, verify=False):
             'hostname': None
         }
 
+def ops_to_vyos_cli(operations):
+    """Convert a list of API operations to the equivalent VyOS CLI commands.
+    
+    Useful for debugging: you can paste the output directly in 'configure' mode.
+    """
+    lines = []
+    for op in operations:
+        # Strip trailing empty strings (presence nodes have no value in CLI)
+        path_parts = [p for p in op.get("path", []) if p != ""]
+        cmd = f"{op['op']} {' '.join(path_parts)}"
+        lines.append(cmd)
+    return lines
+
 def op_set_interface_state(iface, shutdown, version):
     """Shut/no-shut interface (same for 1.4 and 1.5)
-    
-    Note: VyOS 'disable' is a presence node (no value).
-    The REST API on some VyOS 1.4 builds rejects the path when
-    no leaf value is provided, so we append an empty string ''.
-    This is harmless and accepted by both 1.4 and 1.5.
+
+    'disable' is a presence node in VyOS YANG (no value, just exists or not).
+    The REST API accepts the path without a trailing value for this case.
     """
     if shutdown:
-        return [{"op": "set", "path": ["interfaces", "ethernet", iface, "disable", ""]}]
+        return [{"op": "set", "path": ["interfaces", "ethernet", iface, "disable"]}]
     else:
         return [{"op": "delete", "path": ["interfaces", "ethernet", iface, "disable"]}]
 
@@ -968,7 +985,16 @@ def main():
         ops = op_set_combined_qos(args.iface, version)
     
     if args.verbose:
-        print(f"API Operations:\n{json.dumps(ops, indent=2)}", file=sys.stderr)
+        print("API Operations:", file=sys.stderr)
+        print(json.dumps(ops, indent=2), file=sys.stderr)
+        cli_lines = ops_to_vyos_cli(ops)
+        print("\nVyOS CLI equivalent:", file=sys.stderr)
+        print("  configure", file=sys.stderr)
+        for line in cli_lines:
+            print(f"  {line}", file=sys.stderr)
+        print("  commit", file=sys.stderr)
+        print("  exit", file=sys.stderr)
+        print("", file=sys.stderr)
     
     try:
         res = api_call(args.host, args.key, ops, verify=args.secure)
