@@ -18,7 +18,7 @@ const deriveSourcePort = (callId: string): string => {
     return '?';
 };
 
-const CallProgress = ({ callId, duration, seenAt }: { callId: string, duration: number, seenAt: number }) => {
+const CallProgress = ({ duration, seenAt }: { duration: number, seenAt: number }) => {
     const [, setTick] = useState(0);
 
     useEffect(() => {
@@ -668,7 +668,6 @@ export default function Voice(props: VoiceProps) {
                                             </div>
 
                                             <CallProgress
-                                                callId={call.call_id}
                                                 duration={call.duration}
                                                 seenAt={seenAtMap.current.get(call.call_id) ?? Date.now()}
                                             />
