@@ -5386,9 +5386,9 @@ const generateRunScore = async (runId: string, testType: 'url'|'dns'|'threat', t
     // 1. Fetch raw test results for this runId from the test logger (since they were just saved)
     // We cannot just pass results directly easily because of async batch orchestration limitations, 
     // it's cleaner to read them via runId.
-    const rawResultsRes = await testLogger.getResults({ search: runId, limit: 200, type: testType });
-    // Filter strictly by runId string
-    const rawResults = rawResultsRes.results.filter(r => r.runId === runId);
+    const rawResultsRes = await testLogger.getResults({ runId, limit: 500, type: testType });
+    // runId filter is now applied inside the logger, no need to re-filter
+    const rawResults = rawResultsRes.results;
     
     if (rawResults.length === 0) return;
 

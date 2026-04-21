@@ -144,6 +144,7 @@ export class TestLogger {
         search?: string;
         type?: 'url' | 'dns' | 'threat';
         status?: 'blocked' | 'allowed' | 'sinkholed' | 'error';
+        runId?: string;
     } = {}): Promise<{ results: TestResult[]; total: number }> {
         try {
             const allResults = await this.readAllResults();
@@ -158,6 +159,10 @@ export class TestLogger {
                     r.name.toLowerCase().includes(searchLower) ||
                     r.status.toLowerCase().includes(searchLower)
                 );
+            }
+
+            if (options.runId) {
+                filtered = filtered.filter(r => r.runId === options.runId);
             }
 
             if (options.type) {
