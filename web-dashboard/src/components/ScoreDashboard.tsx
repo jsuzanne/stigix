@@ -186,11 +186,18 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                 </div>
                 
                 <div className="flex items-center justify-between z-10">
-                    <div className="flex items-center gap-2">
-                        <div className={`p-1.5 rounded-lg border ${score >= 90 ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
-                            <Activity size={14} />
+                    <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                            <div className={`p-1.5 rounded-lg border ${score >= 90 ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
+                                <Activity size={14} />
+                            </div>
+                            <h3 className="text-[11px] font-black tracking-widest text-text-primary uppercase">{type === 'url' ? 'URL Filter' : 'DNS Security'}</h3>
                         </div>
-                        <h3 className="text-[11px] font-black tracking-widest text-text-primary uppercase">{type === 'url' ? 'URL Filter' : 'DNS Security'}</h3>
+                        <p className="text-[9px] text-text-muted opacity-60 leading-tight pl-0.5">
+                            {type === 'url'
+                                ? 'Weighted % of malicious URL categories correctly blocked by firewall'
+                                : 'Weighted % of malicious DNS domains correctly blocked or sinkholed'}
+                        </p>
                     </div>
                 </div>
 
@@ -208,7 +215,10 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
 
                 <div className="flex flex-col gap-2 z-10 mt-2">
                     <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-text-muted font-bold tracking-widest">BASELINE:</span>
+                        <div className="flex items-center gap-1 group/baseline relative">
+                            <span className="text-[10px] text-text-muted font-bold tracking-widest">BASELINE:</span>
+                            <span className="text-text-muted opacity-40 cursor-help text-[9px]" title="Pin a reference run taken when your policy is in a known-good state. The Gap Alerts section will highlight any category that regressed since that snapshot — useful for detecting accidental rule changes.">ⓘ</span>
+                        </div>
                         {baseline ? (
                             <span className="text-[10px] font-black tabular-nums text-text-primary">
                                 {baseline.scores[type]} <span className="text-text-muted font-normal">({new Date(baseline.timestamp).toLocaleDateString()})</span>
