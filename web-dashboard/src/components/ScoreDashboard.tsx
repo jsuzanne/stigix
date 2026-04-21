@@ -9,6 +9,9 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     const [urlDiff, setUrlDiff] = useState<any>(null);
     const [dnsDiff, setDnsDiff] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [expandLatest, setExpandLatest] = useState<Record<string, boolean>>({});
+    const [expandGap, setExpandGap] = useState<Record<string, boolean>>({});
+    const PREVIEW_LIMIT = 5;
 
     const authHeader = { 'Authorization': `Bearer ${token}` };
 
@@ -244,23 +247,37 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
 
     const renderGapAlerts = (diff: any, title: string) => {
         if (!diff) return null;
-        const { regressions, improvements } = diff;
-        
+        const { regressions, improvements, scoreDelta } = diff;
         if (regressions.length === 0 && improvements.length === 0) return null;
+
+        const key = title;
+        const expanded = expandGap[key];
+        const sortedReg = [...regressions].sort((a, b) => b.weight - a.weight);
+        const sortedImp = [...improvements].sort((a, b) => b.weight - a.weight);
+        const visibleReg = expanded ? sortedReg : sortedReg.slice(0, PREVIEW_LIMIT);
+        const visibleImp = expanded ? sortedImp : sortedImp.slice(0, PREVIEW_LIMIT);
+        const totalHidden = (sortedReg.length + sortedImp.length) - (visibleReg.length + visibleImp.length);
 
         return (
             <div className="p-4 bg-card border border-border rounded-xl">
-                <h4 className="text-[10px] font-black tracking-widest text-text-muted mb-3 flex items-center gap-1.5">
-                    <BarChart2 size={12} /> {title} GAP ANALYSIS
-                </h4>
-                
-                {regressions.length > 0 && (
-                    <div className="mb-4">
+                <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-[10px] font-black tracking-widest text-text-muted flex items-center gap-1.5">
+                        <BarChart2 size={12} /> {title} GAP ANALYSIS
+                    </h4>
+                    <div className="flex items-center gap-2">
+                        {regressions.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-red-500/10 border border-red-500/20 text-red-500">{regressions.length} ↓</span>}
+                        {improvements.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-green-500/10 border border-green-500/20 text-green-500">{improvements.length} ↑</span>}
+                        {scoreDelta !== undefined && <span className={`px-1.5 py-0.5 rounded text-[9px] font-black border ${scoreDelta < 0 ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-green-500/10 border-green-500/20 text-green-500'}`}>{scoreDelta > 0 ? '+' : ''}{scoreDelta?.toFixed(1)}</span>}
+                    </div>
+                </div>
+
+                {sortedReg.length > 0 && (
+                    <div className="mb-3">
                         <div className="flex items-center gap-1.5 text-[10px] font-black text-red-500 mb-2 tracking-widest bg-red-500/10 px-2 py-1 rounded w-fit">
                             <ShieldAlert size={12} /> POLICY REGRESSIONS
                         </div>
                         <div className="flex flex-col gap-1.5">
-                            {regressions.map((r: any, idx: number) => (
+                            {visibleReg.map((r: any, idx: number) => (
                                 <div key={idx} className="flex items-center justify-between text-xs p-2 bg-background rounded-lg border border-red-500/20">
                                     <span className="font-semibold text-text-primary capitalize">{r.category.replace(/-/g, ' ')}</span>
                                     <div className="flex flex-col items-end">
@@ -277,13 +294,13 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                     </div>
                 )}
 
-                {improvements.length > 0 && (
+                {sortedImp.length > 0 && (
                     <div>
                         <div className="flex items-center gap-1.5 text-[10px] font-black text-green-500 mb-2 tracking-widest bg-green-500/10 px-2 py-1 rounded w-fit">
                             <ShieldCheck size={12} /> POLICY IMPROVEMENTS
                         </div>
                         <div className="flex flex-col gap-1.5">
-                            {improvements.map((r: any, idx: number) => (
+                            {visibleImp.map((r: any, idx: number) => (
                                 <div key={idx} className="flex items-center justify-between text-xs p-2 bg-background rounded-lg border border-green-500/20">
                                     <span className="font-semibold text-text-primary capitalize">{r.category.replace(/-/g, ' ')}</span>
                                     <div className="flex flex-col items-end">
@@ -298,6 +315,17 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                             ))}
                         </div>
                     </div>
+                )}
+
+                {totalHidden > 0 && (
+                    <button onClick={() => setExpandGap(p => ({ ...p, [key]: true }))} className="mt-3 w-full text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary py-1.5 border border-border rounded-lg hover:bg-hover transition-all">
+                        + {totalHidden} more (sorted by weight)
+                    </button>
+                )}
+                {expanded && (sortedReg.length + sortedImp.length) > PREVIEW_LIMIT && (
+                    <button onClick={() => setExpandGap(p => ({ ...p, [key]: false }))} className="mt-2 w-full text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary py-1 transition-all">
+                        ↑ collapse
+                    </button>
                 )}
             </div>
         );
@@ -354,26 +382,42 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                         {(['url', 'dns'] as const).map(type => {
                             const diff = type === 'url' ? urlLatestDiff : dnsLatestDiff;
                             const color = type === 'url' ? '#8b5cf6' : '#0ea5e9';
-                            const bgColor = type === 'url' ? 'bg-purple-500/10 border-purple-500/20' : 'bg-blue-500/10 border-blue-500/20';
                             if (!diff) return null;
+
+                            const allChanges = [...diff.changes].sort((a, b) => b.weight - a.weight);
+                            const regressions = allChanges.filter(c => (c.before === 'blocked' || c.before === 'sinkholed') && c.after !== 'blocked' && c.after !== 'sinkholed');
+                            const improvements = allChanges.filter(c => (c.after === 'blocked' || c.after === 'sinkholed') && c.before !== 'blocked' && c.before !== 'sinkholed');
+                            const neutral = allChanges.filter(c => !regressions.includes(c) && !improvements.includes(c));
+                            const sorted = [...regressions, ...improvements, ...neutral];
+
+                            const expanded = expandLatest[type];
+                            const visible = expanded ? sorted : sorted.slice(0, PREVIEW_LIMIT);
+                            const hiddenCount = sorted.length - visible.length;
+
                             return (
                                 <div key={type} className="p-4 bg-card border border-border rounded-xl">
-                                    <h4 className="text-[10px] font-black tracking-widest text-text-muted mb-3 flex items-center justify-between">
-                                        <span className="flex items-center gap-1.5">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h4 className="text-[10px] font-black tracking-widest text-text-muted flex items-center gap-1.5">
                                             <Activity size={12} style={{color}} />
                                             <span style={{color}}>{type.toUpperCase()}</span> LATEST CHANGES
-                                        </span>
-                                        <span className="text-[9px] opacity-50">{diff.prevTime} → {diff.latestTime}</span>
-                                    </h4>
+                                        </h4>
+                                        <div className="flex items-center gap-2">
+                                            {regressions.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-red-500/10 border border-red-500/20 text-red-500">{regressions.length} ↓ GAP</span>}
+                                            {improvements.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-green-500/10 border border-green-500/20 text-green-500">{improvements.length} ↑ FIXED</span>}
+                                            {neutral.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-card border border-border text-text-muted">{neutral.length} CHG</span>}
+                                            <span className="text-[9px] opacity-40">{diff.prevTime} → {diff.latestTime}</span>
+                                        </div>
+                                    </div>
+
                                     {diff.changes.length === 0 ? (
                                         <div className="flex items-center gap-1.5 text-[10px] text-text-muted opacity-60">
                                             <CheckCircle size={11} /> No changes between last 2 runs
                                         </div>
                                     ) : (
                                         <div className="flex flex-col gap-1.5">
-                                            {diff.changes.map((c, idx) => {
-                                                const isRegression = (c.before === 'blocked' || c.before === 'sinkholed') && c.after !== 'blocked' && c.after !== 'sinkholed';
-                                                const isImprovement = (c.after === 'blocked' || c.after === 'sinkholed') && c.before !== 'blocked' && c.before !== 'sinkholed';
+                                            {visible.map((c, idx) => {
+                                                const isRegression = regressions.includes(c);
+                                                const isImprovement = improvements.includes(c);
                                                 return (
                                                     <div key={idx} className={`flex items-center justify-between text-xs p-2 rounded-lg border ${
                                                         isRegression ? 'bg-red-500/5 border-red-500/20' : isImprovement ? 'bg-green-500/5 border-green-500/20' : 'bg-card border-border'
@@ -390,6 +434,16 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                                                     </div>
                                                 );
                                             })}
+                                            {hiddenCount > 0 && (
+                                                <button onClick={() => setExpandLatest(p => ({ ...p, [type]: true }))} className="mt-1 w-full text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary py-1.5 border border-border rounded-lg hover:bg-hover transition-all">
+                                                    + {hiddenCount} more (sorted by weight)
+                                                </button>
+                                            )}
+                                            {expanded && sorted.length > PREVIEW_LIMIT && (
+                                                <button onClick={() => setExpandLatest(p => ({ ...p, [type]: false }))} className="mt-1 w-full text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary py-1 transition-all">
+                                                    ↑ collapse
+                                                </button>
+                                            )}
                                         </div>
                                     )}
                                 </div>
