@@ -34,7 +34,9 @@ const CallProgress = ({ duration, seenAt }: { duration: number, seenAt: number }
         <div className="mt-3 space-y-1.5">
             <div className="flex justify-between items-center text-[8px] font-black text-text-muted uppercase tracking-widest opacity-80">
                 <span className="flex items-center gap-1"><Clock size={8} className="text-blue-500" /> Progress</span>
-                <span className="text-blue-500 font-mono">{remaining}s left</span>
+                <span className={`font-mono ${remaining === 0 ? 'text-text-muted italic' : 'text-blue-500'}`}>
+                    {remaining === 0 ? 'ending…' : `${remaining} sec`}
+                </span>
             </div>
             <div className="h-1 w-full bg-blue-500/10 rounded-full overflow-hidden border border-blue-500/5">
                 <div
