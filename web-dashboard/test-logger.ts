@@ -16,7 +16,7 @@ export interface TestResult {
     timestamp: number;
     type: 'url' | 'dns' | 'threat';
     name: string;
-    status: 'blocked' | 'allowed' | 'sinkholed' | 'error';
+    status: 'allowed' | 'blocked' | 'sinkholed' | 'unreachable' | 'error';
     details?: {
         url?: string;
         domain?: string;

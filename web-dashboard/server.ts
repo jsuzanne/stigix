@@ -4719,6 +4719,102 @@ app.get('/api/logs', (req, res) => {
 
 // ===== SECURITY TESTING API =====
 
+// --- Security Score v2 Models ---
+export interface TestResultForScore {
+    testId: number;
+    testType: 'url' | 'dns' | 'threat';
+    testName: string;
+    categoryId: string; // The specific ID like 'malware', 'proxies', etc. We use testName/identifier to map this if needed
+    status: 'allowed' | 'blocked' | 'sinkholed' | 'unreachable' | 'error';
+    weight: number;
+}
+
+export interface CategorySnapshot {
+    status: 'allowed' | 'blocked' | 'sinkholed' | 'unreachable' | 'error';
+    weight: number;
+}
+
+export type RunBreakdown = {
+    url: Record<string, CategorySnapshot>;
+    dns: Record<string, CategorySnapshot>;
+    threat: Record<string, CategorySnapshot>;
+};
+
+export interface RunScore {
+    url: number | null;
+    dns: number | null;
+    threat: number | null;
+}
+
+export interface CategoryDiff {
+    category: string;
+    type: 'url' | 'dns' | 'threat';
+    weight: number;
+    before: 'allowed' | 'blocked' | 'sinkholed' | 'unreachable' | 'error';
+    after: 'allowed' | 'blocked' | 'sinkholed' | 'unreachable' | 'error';
+}
+
+export interface ScoreHistoryEntry {
+    runId: string;
+    timestamp: number;
+    trigger: 'scheduled' | 'manual';
+    type: 'url' | 'dns' | 'threat';
+    scores: RunScore; // Contains the specific type score (and passes forward the others)
+    breakdown: RunBreakdown; 
+    delta: number | null;
+    isBaseline: boolean;
+    testCount: {
+        url: number;
+        dns: number;
+        threat: number;
+    };
+}
+
+const CATEGORY_WEIGHTS: Record<string, number> = {
+    // Weight 3 — Critical
+    'malware': 3,
+    'real-time-c2': 3,
+    'real-time-malware': 3,
+    'real-time-phishing': 3,
+    'ransomware': 3,
+    'dns-tunneling': 3,
+    'dga': 3,
+    'cname-cloaking': 3, 
+
+    // Weight 2 — High risk
+    'phishing': 2,
+    'exploits': 2,
+    'fastflux': 2,
+    'nrd': 2,
+    'nxns': 2,
+    'malicious-nrd': 2,
+    'dangling': 2,
+    'dns-rebinding': 2,
+    'dns-infiltration': 2,
+    'compromised-dns': 2,
+
+    // Weight 1 — Medium
+    'proxy-avoidance': 1,
+    'proxy': 1,
+    'grayware': 1,
+    'real-time-grayware': 1,
+    'hacking': 1,
+    'parked': 1,
+    'dynamic-dns': 1,
+    'ddns': 1,
+    'cybersquatting': 1,
+    'wildcard-abuse': 1,
+    'subdomain-reputation': 1,
+    'dnsmisconfig-claimable': 1,
+
+    // Weight 0.5 — Low
+    'gambling': 0.5,
+    'adult': 0.5,
+    'social-networking': 0.5,
+    'weapons': 0.5,
+};
+const DEFAULT_WEIGHT = 1;
+
 const DEFAULT_SECURITY_CONFIG = {
     url_filtering: { enabled_categories: [], protocol: 'http' },
     dns_security: { enabled_tests: [] },
@@ -4729,6 +4825,11 @@ const DEFAULT_SECURITY_CONFIG = {
         threat: { enabled: false, interval_minutes: 120, last_run_time: null, next_run_time: null }
     },
     statistics: { total_tests_run: 0, url_tests_blocked: 0, url_tests_allowed: 0, dns_tests_blocked: 0, dns_tests_sinkholed: 0, dns_tests_allowed: 0, threat_tests_blocked: 0, threat_tests_allowed: 0, last_test_time: null },
+    scoreBaseline: {
+        url: null as string | null,
+        dns: null as string | null,
+        threat: null as string | null
+    },
     edlTesting: {
         ipList: { remoteUrl: null, lastSyncTime: 0, elements: [] },
         urlList: { remoteUrl: null, lastSyncTime: 0, elements: [] },
@@ -5087,19 +5188,20 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
 
 
 // Helper: Add test result to history
-const addTestResult = async (testType: string, testName: string, result: any, testId?: number, details?: any) => {
+const addTestResult = async (testType: string, testName: string, result: any, testId?: number, details?: any, runId?: string) => {
     const config = getSecurityConfig();
     if (!config) return;
 
     const id = testId || getNextTestId();
 
-    const historyEntry = {
+    const historyEntry: any = {
         testId: id,
         timestamp: Date.now(),
         testType,
         testName,
         result,
     };
+    if (runId) historyEntry.runId = runId;
 
     // 1. Log to Security History Line-delimited JSON
     try {
@@ -5121,7 +5223,8 @@ const addTestResult = async (testType: string, testName: string, result: any, te
         type: testType === 'url_filtering' ? 'url' : testType === 'dns_security' ? 'dns' : 'threat',
         name: testName,
         status: result.status || 'error',
-        details: details || { ...result }
+        details: details || { ...result },
+        runId
     };
 
     // 4. Enrich with SLS if enabled
@@ -5185,7 +5288,161 @@ const updateStatistics = (testType: string, status: string) => {
     saveSecurityConfig(config);
 };
 
-// Scheduled Execution
+// --- Security Score v2 Logic ---
+const SCORE_HISTORY_FILE = path.join(APP_CONFIG.logDir, 'score-history.jsonl');
+
+const getCategoryId = (name: string, type: 'url' | 'dns' | 'threat'): string => {
+    if (type === 'url') {
+        const cat = URL_CATEGORIES.find(c => c.name === name);
+        return cat ? cat.id : name.toLowerCase();
+    } else if (type === 'dns') {
+        const test = DNS_TEST_DOMAINS.find(d => d.name === name);
+        return test ? test.id : name.toLowerCase();
+    }
+    return name.toLowerCase(); // threat
+};
+
+const getLatestScoreHistory = (): ScoreHistoryEntry[] => {
+    if (!fs.existsSync(SCORE_HISTORY_FILE)) return [];
+    try {
+        const logs = fs.readFileSync(SCORE_HISTORY_FILE, 'utf8')
+            .split('\n')
+            .filter(Boolean)
+            .map(l => JSON.parse(l));
+        return logs;
+    } catch {
+        return [];
+    }
+};
+
+const persistScore = (entry: ScoreHistoryEntry) => {
+    const history = getLatestScoreHistory();
+    history.push(entry);
+    // Keep 500 max
+    const rotated = history.slice(-500);
+    const content = rotated.map(r => JSON.stringify(r)).join('\n') + '\n';
+    fs.mkdirSync(path.dirname(SCORE_HISTORY_FILE), { recursive: true });
+    fs.writeFileSync(SCORE_HISTORY_FILE, content, 'utf8');
+};
+
+const computeScoreForType = (results: TestResultForScore[], type: 'url' | 'dns' | 'threat'): { score: number | null, breakdown: Record<string, CategorySnapshot> } => {
+    const breakdown: Record<string, CategorySnapshot> = {};
+
+    for (const r of results) {
+        const catId = getCategoryId(r.testName, type);
+        const w = CATEGORY_WEIGHTS[catId] ?? DEFAULT_WEIGHT;
+        breakdown[catId] = { status: r.status, weight: w };
+    }
+
+    const entries = Object.values(breakdown);
+    if (entries.length === 0) return { score: null, breakdown };
+
+    const totalWeight = entries.reduce((s, e) => s + e.weight, 0);
+    const blockedWeight = entries
+        .filter(e => e.status === 'blocked' || e.status === 'sinkholed')
+        .reduce((s, e) => s + e.weight, 0);
+
+    const score = totalWeight > 0 ? Math.round((blockedWeight / totalWeight) * 1000) / 10 : null;
+
+    return { score, breakdown };
+};
+
+const diffRuns = (before: ScoreHistoryEntry, after: ScoreHistoryEntry, type: 'url' | 'dns' | 'threat'): { regressions: CategoryDiff[], improvements: CategoryDiff[] } => {
+    const regressions: CategoryDiff[] = [];
+    const improvements: CategoryDiff[] = [];
+
+    const beforeMap = before.breakdown[type] || {};
+    const afterMap = after.breakdown[type] || {};
+
+    for (const [catId, afterSnap] of Object.entries(afterMap)) {
+        const beforeSnap = beforeMap[catId];
+        if (!beforeSnap) continue;
+        if (beforeSnap.status === afterSnap.status) continue;
+
+        const diff: CategoryDiff = {
+            category: catId,
+            type,
+            weight: afterSnap.weight,
+            before: beforeSnap.status,
+            after: afterSnap.status,
+        };
+
+        const wasGood = beforeSnap.status === 'blocked' || beforeSnap.status === 'sinkholed';
+        const isGood = afterSnap.status === 'blocked' || afterSnap.status === 'sinkholed';
+
+        if (wasGood && !isGood) {
+            regressions.push(diff);
+        } else if (!wasGood && isGood) {
+            improvements.push(diff);
+        }
+    }
+
+    regressions.sort((a, b) => b.weight - a.weight);
+    return { regressions, improvements };
+};
+
+// Generates a ScoreHistoryEntry from a freshly completed batch of tests
+const generateRunScore = async (runId: string, testType: 'url'|'dns'|'threat', trigger: 'scheduled'|'manual') => {
+    // 1. Fetch raw test results for this runId from the test logger (since they were just saved)
+    // We cannot just pass results directly easily because of async batch orchestration limitations, 
+    // it's cleaner to read them via runId.
+    const rawResultsRes = await testLogger.getResults({ search: runId, limit: 200, type: testType });
+    // Filter strictly by runId string
+    const rawResults = rawResultsRes.results.filter(r => r.runId === runId);
+    
+    if (rawResults.length === 0) return;
+
+    // Convert to TestResultForScore
+    const resultsForScore: TestResultForScore[] = rawResults.map(r => ({
+        testId: r.id,
+        testType: r.type,
+        testName: r.name,
+        categoryId: getCategoryId(r.name, r.type),
+        status: r.status,
+        weight: CATEGORY_WEIGHTS[getCategoryId(r.name, r.type)] ?? DEFAULT_WEIGHT
+    }));
+
+    // 2. Compute
+    const { score, breakdown } = computeScoreForType(resultsForScore, testType);
+
+    // 3. Keep old scores and breakdown from previous run for other types
+    const history = getLatestScoreHistory();
+    const lastEntry = history[history.length - 1];
+
+    const prevScores: RunScore = lastEntry ? { ...lastEntry.scores } : { url: null, dns: null, threat: null };
+    const prevBreakdown: RunBreakdown = lastEntry ? {
+        url: { ...lastEntry.breakdown?.url },
+        dns: { ...lastEntry.breakdown?.dns },
+        threat: { ...lastEntry.breakdown?.threat },
+    } : { url: {}, dns: {}, threat: {} };
+    const prevCounts = lastEntry ? { ...lastEntry.testCount } : { url: 0, dns: 0, threat: 0 };
+
+    // Overlay new type data on top of carried-forward previous state
+    const newScores: RunScore = { ...prevScores, [testType]: score };
+    const newBreakdown: RunBreakdown = { ...prevBreakdown, [testType]: breakdown };
+    const newCounts = { ...prevCounts, [testType]: resultsForScore.length };
+
+    // Delta calculation specifically for the type we just ran
+    let delta = null;
+    if (lastEntry && lastEntry.scores[testType] !== null && score !== null) {
+        delta = Math.round((score - lastEntry.scores[testType]!) * 10) / 10;
+    }
+
+    const newEntry: ScoreHistoryEntry = {
+        runId,
+        timestamp: Date.now(),
+        trigger,
+        type: testType,
+        scores: newScores,
+        breakdown: newBreakdown,
+        delta,
+        isBaseline: false,
+        testCount: newCounts
+    };
+
+    persistScore(newEntry);
+    console.log(`[SCORE] Generated new ${testType.toUpperCase()} score: ${score} (Run ${runId})`);
+};
 let urlTestInterval: NodeJS.Timeout | null = null;
 let dnsTestInterval: NodeJS.Timeout | null = null;
 let threatTestInterval: NodeJS.Timeout | null = null;
@@ -5204,6 +5461,7 @@ const runScheduledUrlTests = async () => {
     }
 
     const execPromise = promisify(exec);
+    const runId = `sched-url-${Date.now()}`;
 
     for (const categoryId of config.url_filtering.enabled_categories) {
         const category = URL_CATEGORIES.find((c: any) => c.id === categoryId);
@@ -5237,14 +5495,16 @@ const runScheduledUrlTests = async () => {
                 category: category.name,
                 blockPageDetected: isBlockPage,
                 testPageDetected: isTestPage
-            }, testId);
+            }, testId, undefined, runId);
 
             console.log(`[SECURITY-URL] [${testId}] ${status.toUpperCase()} - Category: ${category.name} | Code: ${httpCode}${isBlockPage ? ' (Block Page Detected)' : ''}`);
         } catch (e) {
             updateStatistics('url_filtering', 'blocked');
-            addTestResult('url_filtering', category.name, { success: false, status: 'blocked', url: category.url, category: category.name }, getNextTestId());
+            addTestResult('url_filtering', category.name, { success: false, status: 'blocked', url: category.url, category: category.name }, getNextTestId(), undefined, runId);
         }
     }
+
+    await generateRunScore(runId, 'url', 'scheduled');
 };
 
 const runScheduledDnsTests = async () => {
@@ -5261,6 +5521,7 @@ const runScheduledDnsTests = async () => {
     }
 
     const execPromise = promisify(exec);
+    const runId = `sched-dns-${Date.now()}`;
 
     for (const testId of config.dns_security.enabled_tests) {
         const test = DNS_TEST_DOMAINS.find((t: any) => t.id === testId);
@@ -5297,7 +5558,7 @@ const runScheduledDnsTests = async () => {
                 domain: test.domain,
                 testName: test.name,
                 output: stdout.substring(0, 500) // Store sample for UI
-            }, getNextTestId());
+            }, getNextTestId(), undefined, runId);
         } catch (e: any) {
             // Even if the command exit code is non-zero, it might contain sinkhole info (like nslookup)
             const errorOutput = e.stdout + e.stderr;
@@ -5308,7 +5569,7 @@ const runScheduledDnsTests = async () => {
                     status: 'sinkholed',
                     domain: test.domain,
                     testName: test.name
-                }, getNextTestId());
+                }, getNextTestId(), undefined, runId);
             } else {
                 updateStatistics('dns_security', 'blocked');
                 addTestResult('dns_security', test.name, {
@@ -5317,10 +5578,12 @@ const runScheduledDnsTests = async () => {
                     domain: test.domain,
                     testName: test.name,
                     error: e.message
-                }, getNextTestId());
+                }, getNextTestId(), undefined, runId);
             }
         }
     }
+
+    await generateRunScore(runId, 'dns', 'scheduled');
 };
 
 const runScheduledThreatTests = async () => {
@@ -5753,17 +6016,17 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
         return res.status(400).json({ error: 'Tests array is required' });
     }
 
-    const batchId = getNextBatchId();
+    const runId = `manual-url-${Date.now()}`;
     const results = [];
 
-    logTest(`[URL-BATCH-${batchId}] Starting batch URL filtering test with ${tests.length} tests`);
+    logTest(`[URL-BATCH-${runId}] Starting batch URL filtering test with ${tests.length} tests`);
 
     for (let i = 0; i < tests.length; i++) {
         const test = tests[i];
         const testId = getNextTestId();
 
         try {
-            logTest(`[URL-BATCH-${batchId}][URL-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.url} (${test.category})`);
+            logTest(`[URL-BATCH-${runId}][URL-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.url} (${test.category})`);
 
             const execPromise = promisify(exec);
             const curlCommand = `curl -sSL --max-time 10 -w '%{http_code}' '${test.url}'`;
@@ -5821,7 +6084,7 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
                     command: curlCommand,
                     blockPageDetected: isBlockPage,
                     testPageDetected: isTestPage
-                });
+                }, runId);
             } catch (curlError: any) {
                 logTest(`[URL-TEST-${testId}] Final status: blocked (curl error: ${curlError.message})`);
 
@@ -5839,22 +6102,27 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
                     url: test.url,
                     error: curlError.message,
                     command: curlCommand
-                });
+                }, runId);
             }
         } catch (e: any) {
             logTest(`[URL-TEST-${testId}] Error: ${e.message}`);
 
-            results.push({
+            const result = {
                 success: false,
                 status: 'error',
                 url: test.url,
                 category: test.category,
                 error: e.message
-            });
+            };
+            results.push(result);
+            // Needs generic logging even on outer catch
+            await addTestResult('url_filtering', test.category, result, testId, undefined, runId);
         }
     }
 
-    logTest(`[URL-BATCH-${batchId}] Batch completed: ${results.length} tests executed`);
+    logTest(`[URL-BATCH-${runId}] Batch completed: ${results.length} tests executed`);
+    await generateRunScore(runId, 'url', 'manual');
+
     res.json({ results });
 });
 
@@ -6007,18 +6275,18 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
     }
 
     const results = [];
-    const batchId = getNextBatchId(); // Unique rotating batch ID
+    const runId = `manual-dns-${Date.now()}`;
 
     // Helper function to wait
     const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-    logTest(`[DNS-BATCH-${batchId}] Starting batch test with ${tests.length} domains`);
+    logTest(`[DNS-BATCH-${runId}] Starting batch test with ${tests.length} domains`);
 
     for (let i = 0; i < tests.length; i++) {
         const test = tests[i];
         const testId = getNextTestId(); // Generate unique ID for each test
 
-        logTest(`[DNS-BATCH-${batchId}][DNS-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.domain} (${test.testName})`);
+        logTest(`[DNS-BATCH-${runId}][DNS-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.domain} (${test.testName})`);
 
         try {
             // exec already imported at top
@@ -6070,7 +6338,7 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
                 };
 
                 results.push(result);
-                addTestResult('dns_security', test.testName, result, testId);
+                addTestResult('dns_security', test.testName, result, testId, undefined, runId);
             } catch (dnsError: any) {
                 // Check if it's actually a sinkhole response masked as an error (e.g., nslookup SERVFAIL)
                 const combinedErrorOutput = ((dnsError.stdout || '') + (dnsError.stderr || '')).toLowerCase();
@@ -6085,7 +6353,7 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
                         reason: 'Sinkhole keyword detected in error output'
                     };
                     results.push(result);
-                    addTestResult('dns_security', test.testName, result, testId);
+                    addTestResult('dns_security', test.testName, result, testId, undefined, runId);
                 } else {
                     const isCommandError = dnsError.message.includes('command not found') || dnsError.message.includes('not found');
                     const result = {
@@ -6097,21 +6365,116 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
                         error: dnsError.message
                     };
                     results.push(result);
-                    addTestResult('dns_security', test.testName, result, testId);
+                    addTestResult('dns_security', test.testName, result, testId, undefined, runId);
                 }
             }
         } catch (e: any) {
-            results.push({
+            const result = {
                 success: false,
                 status: 'error',
                 domain: test.domain,
                 testName: test.testName,
                 error: e.message
-            });
+            };
+            results.push(result);
+            addTestResult('dns_security', test.testName, result, testId, undefined, runId);
         }
     }
 
+    await generateRunScore(runId, 'dns', 'manual');
+
     res.json({ results });
+});
+
+// --- API: SCORE TRACKING ---
+
+app.get('/api/security/scores', authenticateToken, (req, res) => {
+    const history = getLatestScoreHistory();
+    res.json(history.slice(-100).reverse());
+});
+
+app.get('/api/security/scores/latest', authenticateToken, (req, res) => {
+    const history = getLatestScoreHistory();
+    const type = req.query.type as string;
+
+    if (history.length === 0) return res.status(404).json({ error: 'No scores found' });
+    
+    if (type) {
+        const typeHistory = history.filter(h => h.type === type);
+        if (typeHistory.length === 0) return res.status(404).json({ error: `No scores found for type ${type}` });
+        return res.json(typeHistory[typeHistory.length - 1]);
+    }
+    
+    res.json(history[history.length - 1]);
+});
+
+app.get('/api/security/scores/baseline', authenticateToken, (req, res) => {
+    const config = getSecurityConfig();
+    const type = req.query.type as string; // 'url' or 'dns'
+    if (!config?.scoreBaseline || !type || !(type in config.scoreBaseline)) {
+        return res.status(404).json({ error: 'Baseline not found or invalid type' });
+    }
+    const baselineRunId = (config.scoreBaseline as any)[type];
+    
+    if (!baselineRunId) return res.status(404).json({ error: 'No baseline set for ' + type });
+
+    const history = getLatestScoreHistory();
+    const baseline = history.find(h => h.runId === baselineRunId);
+    if (!baseline) return res.status(404).json({ error: 'Baseline run ID not found in history' });
+
+    res.json(baseline);
+});
+
+app.post('/api/security/scores/baseline', authenticateToken, (req, res) => {
+    const { runId, type } = req.body;
+    const config = getSecurityConfig();
+    if (!config || !type) return res.status(400).json({ error: 'Configuration not loaded or missing type' });
+
+    const history = getLatestScoreHistory();
+    const entry = history.find(h => h.runId === runId);
+    if (!entry) return res.status(404).json({ error: 'Run ID not found' });
+
+    if (!config.scoreBaseline) {
+        config.scoreBaseline = { url: null, dns: null, threat: null };
+    }
+    (config.scoreBaseline as any)[type] = runId;
+    saveSecurityConfig(config);
+
+    // Update in-memory and file to flag the baseline
+    history.forEach(h => {
+        if (h.type === type) h.isBaseline = false;
+        if (h.runId === runId) h.isBaseline = true;
+    });
+    const content = history.map(r => JSON.stringify(r)).join('\n') + '\n';
+    fs.writeFileSync(SCORE_HISTORY_FILE, content, 'utf8');
+
+    res.json({ success: true, baseline: entry });
+});
+
+app.get('/api/security/scores/diff', authenticateToken, (req, res) => {
+    const { from, to, type } = req.query;
+    if (!from || !to || !type) return res.status(400).json({ error: 'from, to, and type params are required' });
+
+    const history = getLatestScoreHistory();
+    const before = history.find(h => h.runId === from);
+    const after = history.find(h => h.runId === to);
+
+    if (!before || !after) return res.status(404).json({ error: 'Runs not found' });
+
+    const diff = diffRuns(before, after, type as any);
+    res.json(diff);
+});
+
+app.delete('/api/security/scores', authenticateToken, (req, res) => {
+    if (fs.existsSync(SCORE_HISTORY_FILE)) {
+        fs.unlinkSync(SCORE_HISTORY_FILE);
+    }
+    const config = getSecurityConfig();
+    if (config && config.scoreBaseline) {
+        config.scoreBaseline = { url: null, dns: null, threat: null };
+        saveSecurityConfig(config);
+    }
+    res.json({ success: true });
 });
 
 // --- EDL (External Dynamic List) API ---

@@ -3,6 +3,7 @@ import { Shield, Play, AlertTriangle, CheckCircle, XCircle, Clock, Download, Tra
 import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
 import { URL_CATEGORIES, DNS_TEST_DOMAINS } from '../shared/security-categories';
+import { ScoreDashboard } from './components/ScoreDashboard';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -809,6 +810,8 @@ export default function Security({ token }: SecurityProps) {
                     )}
                 </div>
             </div>
+
+            <ScoreDashboard />
 
             {/* Statistics Dashboard */}
             {config.statistics && (

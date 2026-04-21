@@ -1,0 +1,286 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { Shield, ShieldAlert, ShieldCheck, Activity, Target, ArrowUpRight, ArrowDownRight, Clock, RefreshCw, BarChart2, CheckCircle, AlertTriangle } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+
+export const ScoreDashboard = () => {
+    const [scores, setScores] = useState<any[]>([]);
+    const [urlBaseline, setUrlBaseline] = useState<any>(null);
+    const [dnsBaseline, setDnsBaseline] = useState<any>(null);
+    const [urlDiff, setUrlDiff] = useState<any>(null);
+    const [dnsDiff, setDnsDiff] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+
+    const fetchData = async () => {
+        try {
+            // Fetch history
+            const res = await fetch('/api/security/scores');
+            if (res.ok) {
+                const data = await res.json();
+                setScores(data);
+            }
+
+            // Fetch baselines
+            const urlBaselineRes = await fetch('/api/security/scores/baseline?type=url');
+            if (urlBaselineRes.ok) setUrlBaseline(await urlBaselineRes.json());
+            else setUrlBaseline(null);
+
+            const dnsBaselineRes = await fetch('/api/security/scores/baseline?type=dns');
+            if (dnsBaselineRes.ok) setDnsBaseline(await dnsBaselineRes.json());
+            else setDnsBaseline(null);
+
+        } catch (e) {
+            console.error('Failed to fetch score dashboard data', e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchDiff = async (type: 'url' | 'dns') => {
+        if (!scores.length) return;
+        const latest = scores[0]; // because scores are reversed, 0 is newest
+        const baseline = type === 'url' ? urlBaseline : dnsBaseline;
+        if (!baseline || !latest) return;
+        
+        try {
+            const res = await fetch(`/api/security/scores/diff?type=${type}&from=${baseline.runId}&to=${latest.runId}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (type === 'url') setUrlDiff(data);
+                else setDnsDiff(data);
+            }
+        } catch(e) {}
+    };
+
+    useEffect(() => {
+        fetchData();
+        const interval = setInterval(fetchData, 10000);
+        return () => clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        if (!loading && urlBaseline) fetchDiff('url');
+        if (!loading && dnsBaseline) fetchDiff('dns');
+    }, [scores, urlBaseline, dnsBaseline, loading]);
+
+    const handleSetBaseline = async (runId: string, type: 'url' | 'dns') => {
+        try {
+            await fetch('/api/security/scores/baseline', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ runId, type })
+            });
+            fetchData();
+        } catch (e) {
+            console.error('Failed to set baseline', e);
+        }
+    };
+
+    if (loading && !scores.length) {
+        return (
+            <div className="flex items-center gap-2 p-4 text-text-muted text-xs">
+                <RefreshCw size={14} className="animate-spin" /> Loading Score Dashboard...
+            </div>
+        );
+    }
+
+    const latestUrlScore = scores.find(s => s.type === 'url');
+    const latestDnsScore = scores.find(s => s.type === 'dns');
+
+    // Prepare chart data (reverse back to chronological order)
+    const chartData = [...scores].reverse().map(s => ({
+        timestamp: s.timestamp,
+        timeLabel: new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        urlScore: s.scores?.url,
+        dnsScore: s.scores?.dns,
+        runId: s.runId,
+        type: s.type
+    }));
+
+    const renderGauge = (type: 'url' | 'dns', entry: any, baseline: any, diff: any) => {
+        if (!entry) return (
+            <div className="flex flex-col items-center justify-center p-6 bg-card border border-border rounded-xl">
+                <Shield size={24} className="text-text-muted mb-2 opacity-50" />
+                <span className="text-xs text-text-muted font-bold tracking-widest uppercase">No {type.toUpperCase()} Data</span>
+            </div>
+        );
+
+        const score = entry.scores?.[type] ?? 0;
+        const color = score >= 90 ? 'text-green-500' : score >= 70 ? 'text-yellow-500' : 'text-red-500';
+        const bgRing = score >= 90 ? 'text-green-500/20' : score >= 70 ? 'text-yellow-500/20' : 'text-red-500/20';
+
+        return (
+            <div className="flex flex-col gap-4 bg-card border border-border p-5 rounded-xl shadow-sm relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none transition-all group-hover:scale-110 group-hover:opacity-10">
+                    <Shield size={100} />
+                </div>
+                
+                <div className="flex items-center justify-between z-10">
+                    <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded-lg border ${score >= 90 ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
+                            <Activity size={14} />
+                        </div>
+                        <h3 className="text-[11px] font-black tracking-widest text-text-primary uppercase">{type === 'url' ? 'URL Filter' : 'DNS Security'}</h3>
+                    </div>
+                </div>
+
+                <div className="flex items-end gap-3 z-10">
+                    <div className={`text-4xl font-black tabular-nums tracking-tighter ${color} drop-shadow-md`}>
+                        {score} <span className="text-sm font-bold opacity-50 relative -top-3 left-0">/ 100</span>
+                    </div>
+                    {entry.delta !== null && entry.delta !== undefined && entry.delta !== 0 && (
+                        <div className={`flex items-center text-[10px] font-bold pb-1.5 ${entry.delta > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {entry.delta > 0 ? <ArrowUpRight size={12} className="mr-0.5" /> : <ArrowDownRight size={12} className="mr-0.5" />}
+                            {Math.abs(entry.delta)}
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex flex-col gap-2 z-10 mt-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-text-muted font-bold tracking-widest">BASELINE:</span>
+                        {baseline ? (
+                            <span className="text-[10px] font-black tabular-nums text-text-primary">
+                                {baseline.scores[type]} <span className="text-text-muted font-normal">({new Date(baseline.timestamp).toLocaleDateString()})</span>
+                            </span>
+                        ) : (
+                            <span className="text-[10px] font-bold text-yellow-500">Not Set</span>
+                        )}
+                    </div>
+                    
+                    <button 
+                        onClick={() => handleSetBaseline(entry.runId, type)}
+                        className={`text-[9px] font-black tracking-widest w-full py-1.5 rounded-md border transition-all ${
+                            entry.isBaseline ? 'bg-blue-500/10 border-blue-500/20 text-blue-500 cursor-default' : 'bg-card hover:bg-hover border-border text-text-muted hover:text-text-primary'
+                        }`}
+                        disabled={entry.isBaseline}
+                    >
+                        {entry.isBaseline ? 'CURRENT BASELINE' : 'SET AS BASELINE'}
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    const renderGapAlerts = (diff: any, title: string) => {
+        if (!diff) return null;
+        const { regressions, improvements } = diff;
+        
+        if (regressions.length === 0 && improvements.length === 0) return null;
+
+        return (
+            <div className="p-4 bg-card border border-border rounded-xl">
+                <h4 className="text-[10px] font-black tracking-widest text-text-muted mb-3 flex items-center gap-1.5">
+                    <BarChart2 size={12} /> {title} GAP ANALYSIS
+                </h4>
+                
+                {regressions.length > 0 && (
+                    <div className="mb-4">
+                        <div className="flex items-center gap-1.5 text-[10px] font-black text-red-500 mb-2 tracking-widest bg-red-500/10 px-2 py-1 rounded w-fit">
+                            <ShieldAlert size={12} /> POLICY REGRESSIONS
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            {regressions.map((r: any, idx: number) => (
+                                <div key={idx} className="flex items-center justify-between text-xs p-2 bg-background rounded-lg border border-red-500/20">
+                                    <span className="font-semibold text-text-primary capitalize">{r.category.replace(/-/g, ' ')}</span>
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-[10px] text-text-muted font-black tracking-widest">WEIGHT: {r.weight}</span>
+                                        <div className="flex items-center gap-1 text-[10px] font-black">
+                                            <span className="text-green-500 line-through opacity-70">Blocked</span>
+                                            <span className="text-text-muted">➔</span>
+                                            <span className="text-red-500">{r.after}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {improvements.length > 0 && (
+                    <div>
+                        <div className="flex items-center gap-1.5 text-[10px] font-black text-green-500 mb-2 tracking-widest bg-green-500/10 px-2 py-1 rounded w-fit">
+                            <ShieldCheck size={12} /> POLICY IMPROVEMENTS
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            {improvements.map((r: any, idx: number) => (
+                                <div key={idx} className="flex items-center justify-between text-xs p-2 bg-background rounded-lg border border-green-500/20">
+                                    <span className="font-semibold text-text-primary capitalize">{r.category.replace(/-/g, ' ')}</span>
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-[10px] text-text-muted font-black tracking-widest">WEIGHT: {r.weight}</span>
+                                        <div className="flex items-center gap-1 text-[10px] font-black">
+                                            <span className="text-red-500 line-through opacity-70">{r.before}</span>
+                                            <span className="text-text-muted">➔</span>
+                                            <span className="text-green-500">Blocked</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    return (
+        <div className="flex flex-col gap-6 w-full animate-fade-in mb-6">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-black text-text-primary tracking-tight">Security Posture Score</h2>
+                    <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[9px] font-black text-indigo-400 tracking-widest uppercase">Live Metrics v2</span>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* Gauges Side */}
+                <div className="flex flex-col gap-4 col-span-1">
+                    {renderGauge('url', latestUrlScore, urlBaseline, urlDiff)}
+                    {renderGauge('dns', latestDnsScore, dnsBaseline, dnsDiff)}
+                </div>
+
+                {/* Charts & Gaps Side */}
+                <div className="flex flex-col gap-4 col-span-1 lg:col-span-2">
+                    <div className="h-48 bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-black tracking-widest text-text-muted uppercase flex items-center gap-1.5">
+                                <Activity size={12} /> Score Trend
+                            </span>
+                        </div>
+                        <div className="flex-1 min-h-0">
+                            {chartData.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                                        <XAxis dataKey="timeLabel" tick={{ fontSize: 9, fill: 'currentColor', opacity: 0.5 }} tickLine={false} axisLine={false} />
+                                        <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: 'currentColor', opacity: 0.5 }} tickLine={false} axisLine={false} />
+                                        <Tooltip 
+                                            contentStyle={{ backgroundColor: 'rgb(var(--color-bg-card))', border: '1px solid rgb(var(--color-border))', borderRadius: '8px', fontSize: '11px', fontWeight: 'bold' }}
+                                            itemStyle={{ fontWeight: 'black', letterSpacing: '0.05em' }}
+                                        />
+                                        <Line type="monotone" dataKey="urlScore" name="URL Score" stroke="#8b5cf6" strokeWidth={3} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
+                                        <Line type="monotone" dataKey="dnsScore" name="DNS Score" stroke="#0ea5e9" strokeWidth={3} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="h-full flex items-center justify-center text-xs text-text-muted font-black tracking-widest opacity-50">NO HISTORY DATA</div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {renderGapAlerts(urlDiff, 'URL')}
+                        {renderGapAlerts(dnsDiff, 'DNS')}
+                        
+                        {!urlDiff && !dnsDiff && scores.length > 0 && (
+                            <div className="col-span-2 flex items-center justify-center p-6 bg-card border border-border rounded-xl">
+                                <div className="flex items-center gap-2 text-text-muted opacity-60">
+                                    <CheckCircle size={14} />
+                                    <span className="text-[10px] font-black tracking-widest uppercase">No Baseline Deviations Detected</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
