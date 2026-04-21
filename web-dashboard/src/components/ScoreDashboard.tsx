@@ -266,7 +266,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                                     <div className="flex flex-col items-end">
                                         <span className="text-[10px] text-text-muted font-black tracking-widest">WEIGHT: {r.weight}</span>
                                         <div className="flex items-center gap-1 text-[10px] font-black">
-                                            <span className="text-green-500 line-through opacity-70">Blocked</span>
+                                            <span className="text-green-500 line-through opacity-70">{r.before}</span>
                                             <span className="text-text-muted">➔</span>
                                             <span className="text-red-500">{r.after}</span>
                                         </div>
@@ -291,7 +291,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                                         <div className="flex items-center gap-1 text-[10px] font-black">
                                             <span className="text-red-500 line-through opacity-70">{r.before}</span>
                                             <span className="text-text-muted">➔</span>
-                                            <span className="text-green-500">Blocked</span>
+                                            <span className="text-green-500">{r.after}</span>
                                         </div>
                                     </div>
                                 </div>
