@@ -18,6 +18,35 @@ const deriveSourcePort = (callId: string): string => {
     return '?';
 };
 
+const CallProgress = ({ timestamp, duration }: { timestamp: string, duration: number }) => {
+    const startTimeInstance = React.useMemo(() => new Date(timestamp), [timestamp]);
+    const [now, setNow] = useState(Date.now());
+
+    useEffect(() => {
+        const timer = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    const elapsed = Math.max(0, Math.floor((now - startTimeInstance.getTime()) / 1000));
+    const remaining = Math.max(0, duration - elapsed);
+    const progress = Math.min(100, Math.max(0, (elapsed / duration) * 100));
+
+    return (
+        <div className="mt-3 space-y-1.5">
+            <div className="flex justify-between items-center text-[8px] font-black text-text-muted uppercase tracking-widest opacity-80">
+                <span className="flex items-center gap-1"><Clock size={8} className="text-blue-500" /> Progress</span>
+                <span className="text-blue-500 font-mono">{remaining}s left</span>
+            </div>
+            <div className="h-1 w-full bg-blue-500/10 rounded-full overflow-hidden border border-blue-500/5">
+                <div 
+                    className="h-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)] transition-all duration-1000 ease-linear"
+                    style={{ width: `${progress}%` }}
+                />
+            </div>
+        </div>
+    );
+};
+
 interface VoiceProps {
     token: string;
     externalStatus?: any;
@@ -628,6 +657,8 @@ export default function Voice(props: VoiceProps) {
                                             <div className="text-[9px] text-text-muted font-bold uppercase tracking-widest opacity-60">
                                                 {call.codec} • {call.duration}s
                                             </div>
+
+                                            <CallProgress timestamp={call.timestamp} duration={call.duration} />
                                         </div>
                                         <div className="flex items-center gap-2 bg-green-600/10 px-2.5 py-1.5 rounded-xl border border-green-500/20 shrink-0">
                                             <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
