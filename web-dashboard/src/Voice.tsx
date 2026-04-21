@@ -18,28 +18,39 @@ const deriveSourcePort = (callId: string): string => {
     return '?';
 };
 
-const CallProgress = ({ timestamp, duration }: { timestamp: string, duration: number }) => {
-    const startTimeInstance = React.useMemo(() => new Date(timestamp), [timestamp]);
-    const [now, setNow] = useState(Date.now());
+const CallProgress = ({ timestamp, duration, serverNow }: { timestamp: string, duration: number, serverNow: number }) => {
+    const startTimeMs = React.useMemo(() => new Date(timestamp).getTime(), [timestamp]);
+    const [localElapsed, setLocalElapsed] = useState(0);
+    const lastSync = React.useRef(Date.now());
 
     useEffect(() => {
-        const timer = setInterval(() => setNow(Date.now()), 1000);
+        // Reset local timer when we get a fresh server sync
+        setLocalElapsed(0);
+        lastSync.current = Date.now();
+    }, [serverNow]);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setLocalElapsed(Date.now() - lastSync.current);
+        }, 1000);
         return () => clearInterval(timer);
     }, []);
 
-    const elapsed = Math.max(0, Math.floor((now - startTimeInstance.getTime()) / 1000));
-    const remaining = Math.max(0, duration - elapsed);
-    const progress = Math.min(100, Math.max(0, (elapsed / duration) * 100));
+    // Time passed on server + time passed locally since last sync
+    const totalElapsedMs = (serverNow - startTimeMs) + localElapsed;
+    const elapsedSec = Math.max(0, Math.floor(totalElapsedMs / 1000));
+    const remaining = Math.max(0, duration - elapsedSec);
+    const progress = Math.min(100, Math.max(0, (elapsedSec / duration) * 100));
 
     return (
-        <div className="mt-3 space-y-1.5">
+        <div className="mt-3 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-500">
             <div className="flex justify-between items-center text-[8px] font-black text-text-muted uppercase tracking-widest opacity-80">
                 <span className="flex items-center gap-1"><Clock size={8} className="text-blue-500" /> Progress</span>
                 <span className="text-blue-500 font-mono">{remaining}s left</span>
             </div>
             <div className="h-1 w-full bg-blue-500/10 rounded-full overflow-hidden border border-blue-500/5">
                 <div 
-                    className="h-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)] transition-all duration-1000 ease-linear"
+                    className="h-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.3)] transition-all duration-300 ease-linear"
                     style={{ width: `${progress}%` }}
                 />
             </div>
@@ -104,6 +115,7 @@ export default function Voice(props: VoiceProps) {
     const [enabled, setEnabled] = useState(false);
     const [config, setConfig] = useState<VoiceControl | null>(null);
     const [rawServers, setRawServers] = useState('');
+    const [serverTime, setServerTime] = useState(Date.now());
     const [calls, setCalls] = useState<VoiceCall[]>([]);
     const [loading, setLoading] = useState(true);
     const [isDirty, setIsDirty] = useState(false);
@@ -132,6 +144,7 @@ export default function Voice(props: VoiceProps) {
     // ════════════════════════════════════════════════
     useEffect(() => {
         if (!externalStatus) return;
+        if (externalStatus.timestamp) setServerTime(externalStatus.timestamp);
         if (externalStatus.stats) setCalls(externalStatus.stats);
         if (externalStatus.control && !isDirty) {
             setEnabled(externalStatus.control.enabled);
@@ -658,7 +671,11 @@ export default function Voice(props: VoiceProps) {
                                                 {call.codec} • {call.duration}s
                                             </div>
 
-                                            <CallProgress timestamp={call.timestamp} duration={call.duration} />
+                                            <CallProgress 
+                                                timestamp={call.timestamp} 
+                                                duration={call.duration} 
+                                                serverNow={serverTime} 
+                                            />
                                         </div>
                                         <div className="flex items-center gap-2 bg-green-600/10 px-2.5 py-1.5 rounded-xl border border-green-500/20 shrink-0">
                                             <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
