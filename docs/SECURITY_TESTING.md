@@ -5,7 +5,7 @@
 The Security Testing feature enables controlled testing of Palo Alto Networks / Prisma Access security policies for demos and POCs. It provides automated testing of URL Filtering, DNS Security, and Threat Prevention capabilities.
 
 **Version:** 1.2.2  
-**Last Updated:** 2026-03-05
+**Last Updated:** 2026-04-21
 
 ---
 
@@ -53,9 +53,10 @@ The Security Testing feature enables controlled testing of Palo Alto Networks / 
 5. [Test Categories](#test-categories)
 6. [Scheduled Execution](#scheduled-execution)
 7. [Statistics Tracking](#statistics-tracking)
-8. [Persistent Logging](#persistent-logging)
-9. [EDL Testing](#edl-testing)
-10. [Maintenance](#maintenance)
+8. [Security Score Tracking (v2)](#security-score-tracking-v2)
+9. [Persistent Logging](#persistent-logging)
+10. [EDL Testing](#edl-testing)
+11. [Maintenance](#maintenance)
 
 ---
 
@@ -67,6 +68,7 @@ The Security Testing feature enables controlled testing of Palo Alto Networks / 
 ┌─────────────────────────────────────────────────────────────┐
 │                      Frontend (React)                        │
 │  - Security.tsx (Main Component)                            │
+│  - ScoreDashboard.tsx (Security Score v2 Panel)             │
 │  - Statistics Dashboard                                      │
 │  - Split-Scheduler Controls (URL, DNS, Threat)               │
 │  - Execution Log Display                                     │
@@ -74,16 +76,18 @@ The Security Testing feature enables controlled testing of Palo Alto Networks / 
                        │ REST API
 ┌──────────────────────▼──────────────────────────────────────┐
 │                   Backend (Node.js/Express)                  │
-│  - API Endpoints (Config, Tests, Results)                    │
+│  - API Endpoints (Config, Tests, Results, Scores)            │
 │  - Test Execution Engine (curl/nslookup)                    │
 │  - Split-Scheduler (URL, DNS, Threat jobs)                  │
+│  - Score Engine (computeScore, diffRuns, generateRunScore)   │
 │  - Statistics Tracker                                        │
 └──────────────────────┬──────────────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────────────┐
 │              Configuration & Data Storage                    │
 │  - config/security-tests.json                               │
-│  - Test History (last 50 results)                           │
+│  - logs/test-results.jsonl   (test log with runId)          │
+│  - logs/score-history.jsonl  (score snapshots, 500 max)     │
 │  - Statistics (blocked/allowed counts)                       │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -93,19 +97,23 @@ The Security Testing feature enables controlled testing of Palo Alto Networks / 
 **Manual Test Execution:**
 ```
 User clicks "Run All Enabled"
-  → Frontend calls /api/security/url-test-batch
-  → Backend executes curl commands for each enabled category
-  → Results logged to test_history
+  → Frontend calls /api/security/url-test-batch or /api/security/dns-test-batch
+  → Backend generates a unique runId (e.g. manual-url-1745000000000)
+  → Backend executes curl/nslookup for each enabled category
+  → Each TestResult is persisted to logs/test-results.jsonl with the runId
   → Statistics updated (blocked/allowed counters)
-  → Frontend refreshes and displays results
+  → generateRunScore(runId, type) called — computes weighted score and appends to logs/score-history.jsonl
+  → Frontend refreshes and displays results + score on ScoreDashboard
 ```
 
 **Scheduled Test Execution (Split-Scheduler):**
 ```
 Independent Scheduler (URL, DNS, or Threat) triggers
+  → Backend generates a unique runId (e.g. scheduled-url-1745000000000)
   → Specific runScheduled[Type]Tests() executes
-  → Runs subset of enabled tests for that category
-  → Updates statistics automatically
+  → Runs subset of enabled tests for that category (5 random)
+  → Each result logged with runId to test-results.jsonl
+  → generateRunScore(runId, type) called after batch completes
   → Updates specific last_run_time and next_run_time
   → Continues in background
 ```
@@ -383,6 +391,87 @@ curl -fsS --max-time 20 ENDPOINT -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.t
 
 ---
 
+### Score Tracking (v2)
+
+#### GET `/api/security/scores`
+Get score history (last 100 entries, newest first).
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response:**
+```json
+[
+  {
+    "runId": "manual-url-1745000000000",
+    "timestamp": 1745000000000,
+    "trigger": "manual",
+    "type": "url",
+    "scores": { "url": 87.5, "dns": 92.1, "threat": null },
+    "breakdown": { "url": { "malware": { "status": "blocked", "weight": 3 } } },
+    "delta": -5.2,
+    "isBaseline": false,
+    "testCount": { "url": 67, "dns": 24, "threat": 0 }
+  }
+]
+```
+
+---
+
+#### GET `/api/security/scores/latest`
+Get the most recent score entry (optionally filtered by type).
+
+**Query Parameters:**
+- `type` (optional): `url` | `dns` | `threat`
+
+---
+
+#### GET `/api/security/scores/baseline`
+Get the current baseline snapshot for a specific type.
+
+**Query Parameters:**
+- `type` (required): `url` | `dns` | `threat`
+
+---
+
+#### POST `/api/security/scores/baseline`
+Pin a run as the baseline reference for gap alerting.
+
+**Request Body:**
+```json
+{ "runId": "manual-url-1745000000000", "type": "url" }
+```
+
+**Response:**
+```json
+{ "success": true, "baseline": { ... } }
+```
+
+---
+
+#### GET `/api/security/scores/diff`
+Compute the diff between two runs (for gap detection).
+
+**Query Parameters:**
+- `type` (required): `url` | `dns`
+- `from` (required): baseline runId
+- `to` (required): target runId
+
+**Response:**
+```json
+{
+  "regressions": [ { "category": "malware", "before": "blocked", "after": "allowed", "weight": 3 } ],
+  "improvements": [],
+  "scoreDelta": -15.2
+}
+```
+
+---
+
+#### DELETE `/api/security/scores`
+Clear all score history and reset baselines.
+
+---
+
 ### Test Results
 
 #### GET `/api/security/results`
@@ -455,17 +544,35 @@ const [eicarEndpoints, setEicarEndpoints] = useState<string[]>([]);
 | `runDNSBatchTest()` | Execute all enabled DNS tests |
 | `runThreatTest()` | Execute EICAR test(s) |
 | `addLog()` | Add entry to execution log |
-| `getStatusBadge()` | Render status indicator (blocked/allowed) |
+| `getStatusBadge()` | Render status indicator (blocked/allowed/sinkholed) |
 
 **UI Sections:**
 
-1. **Statistics Dashboard** - 4 stat cards showing test counts
-2. **Scheduled Execution** - Toggle and configuration controls
-3. **URL Filtering Tests** - 67 categories with checkboxes
-4. **DNS Security Tests** - 24 domains (Basic + Advanced)
-5. **Threat Prevention** - Multiple EICAR endpoint inputs
-6. **Test Results** - History table with export/clear
-7. **Execution Log** - Real-time test execution feed
+1. **Security Posture Score** — `ScoreDashboard.tsx` panel (v2), always shown first
+2. **Statistics Dashboard** — 4 stat cards showing cumulative test counts
+3. **Scheduled Execution** — Toggle and configuration controls
+4. **URL Filtering Tests** — 67 categories with checkboxes
+5. **DNS Security Tests** — 24 domains (Basic + Advanced)
+6. **Threat Prevention** — Multiple EICAR endpoint inputs
+7. **Test Results** — History table with export/clear
+8. **Execution Log** — Real-time test execution feed
+
+---
+
+### ScoreDashboard.tsx
+
+Dedicated score visualization panel mounted inside `Security.tsx`. Fetches score history autonomously and refreshes every 10 seconds.
+
+**Props:** `token: string` — JWT auth token passed from parent
+
+**Features:**
+- **URL & DNS Score Gauges** — Displays current weighted score (0–100) with color coding (green ≥90, yellow ≥70, red <70)
+- **Score Trend Chart** — Recharts `LineChart` showing history of URL (purple) and DNS (blue) scores over time
+- **Run Markers** — Dots on the chart at each actual test run (1 dot per 5-min window to prevent clutter at high frequency)
+- **Custom Hover Tooltip** — Shows exact date/time, trigger type (▶ Manual / 🕐 Scheduled), and score values
+- **Baseline Controls** — Pin any run as the reference snapshot; displays baseline score and date
+- **Latest Changes Panel** — Client-side diff between the two most recent consecutive runs per type, showing which specific categories changed (e.g. `phishing: allowed → blocked`) with `↓ GAP` / `↑ FIXED` badges
+- **Baseline Gap Alerts** — When a baseline is set, highlights any category that regressed since the snapshot
 
 ---
 
@@ -612,6 +719,100 @@ To reset statistics, manually edit `config/security-tests.json`:
 ```
 
 ---
+
+---
+
+## Security Score Tracking (v2)
+
+### Overview
+
+The Security Score Tracking system provides a quantitative measure of how effectively your firewall policies handle each URL and DNS test category. It was introduced in `v1.2.2-patch.68`.
+
+Two independent scores are computed:
+- **URL Score** — Weighted % of malicious URL categories correctly blocked by the firewall
+- **DNS Score** — Weighted % of malicious DNS domains correctly blocked or sinkholed
+
+Higher scores indicate better policy coverage. A score of 100 means every tested category was blocked.
+
+### Scoring Logic
+
+Each category in `CATEGORY_WEIGHTS` (defined in `server.ts`) has an assigned weight reflecting its security importance:
+
+| Weight | Examples |
+|--------|----------|
+| `3` | Malware, Phishing, C2, Ransomware, DNS Tunneling |
+| `2` | Hacking, Phishing (DNS), NXNS, Dangling |
+| `1` | Grayware, Gambling, P2P, etc. |
+| `0.5` | Adult, Social Networking |
+
+The score formula:
+```
+Score = (Sum of weights of blocked categories / Sum of weights of all tested categories) × 100
+```
+
+A category counts as "secure" if its status is `blocked` or `sinkholed`.
+
+### runId: Batch Grouping
+
+Every batch execution (manual or scheduled) generates a unique `runId`:
+- Manual URL batch: `manual-url-<timestamp>`
+- Scheduled URL batch: `scheduled-url-<timestamp>`
+- Manual DNS batch: `manual-dns-<timestamp>`
+
+The `runId` is attached to every `TestResult` entry in `logs/test-results.jsonl`. After a batch completes, `generateRunScore(runId, type)` aggregates those results and computes the score snapshot.
+
+### Persistence
+
+Scores are appended to `logs/score-history.jsonl` (max 500 entries, rotated automatically).
+
+Each entry contains:
+```json
+{
+  "runId": "manual-url-1745000000000",
+  "timestamp": 1745000000000,
+  "trigger": "manual",
+  "type": "url",
+  "scores": { "url": 87.5, "dns": 92.1, "threat": null },
+  "breakdown": {
+    "url": {
+      "malware": { "status": "blocked", "weight": 3 },
+      "phishing": { "status": "allowed", "weight": 3 }
+    }
+  },
+  "delta": -5.2,
+  "isBaseline": false,
+  "testCount": { "url": 67, "dns": 24, "threat": 0 }
+}
+```
+
+### Baseline
+
+The baseline is a reference snapshot of your security posture at a known-good state.  
+
+**How to use:**
+1. Run a full URL and/or DNS batch test after validating your firewall policy
+2. Click **SET AS BASELINE** on the gauge card in the ScoreDashboard
+3. From that point on, the **Baseline Gap Alerts** panel will highlight any category that *regressed* compared to the baseline (e.g. a category that was `blocked` is now `allowed`)
+
+**Use case:** Detect accidental policy changes. For example, if a VPN policy change accidentally removed the malware URL filtering profile, the malware category would show a `↓ GAP` regression on the next test run.
+
+The baseline `runId` is persisted in `config/security-tests.json` under the `scoreBaseline` key.
+
+### Latest Changes Panel
+
+Separate from the baseline, the **Latest Changes** panel computes a client-side diff between the **last two consecutive runs** of each type. This does not require a baseline to be set and always shows the most recent variation:
+
+- `↓ GAP` — A category was blocked/sinkholed and is now allowed (policy regression)
+- `↑ FIXED` — A category was allowed and is now blocked/sinkholed (policy improvement)
+- `CHG` — Status changed in a neutral direction
+
+---
+
+## Persistent Logging
+
+Test results are persisted to `logs/test-results.jsonl` (append-only, one JSON object per line). Each entry includes `id`, `timestamp`, `type`, `name`, `status`, `details`, and `runId`. The logger retains results based on the configured retention policy.
+
+Score history is persisted to `logs/score-history.jsonl` (max 500 entries, auto-rotated). See [Security Score Tracking (v2)](#security-score-tracking-v2) for the full schema.
 
 ---
 
@@ -763,12 +964,12 @@ docker-compose restart stigix
 
 ## Future Enhancements
 
+- [x] ~~Test result comparison (before/after policy changes)~~ → Implemented as Security Score Tracking v2
 - [ ] HTTPS URL filtering support (requires SSL decryption)
 - [ ] Custom test profiles (save favorite combinations)
-- [ ] Email notifications for test results
-- [ ] Advanced reporting and analytics
-- [ ] Multi-firewall support
-- [ ] Test result comparison (before/after policy changes)
+- [ ] Email notifications for score regressions
+- [ ] Advanced reporting and PDF export
+- [ ] Multi-firewall / multi-node score aggregation
 - [ ] Database persistence for unlimited history
 
 ---
@@ -783,6 +984,6 @@ For issues or questions:
 
 ---
 
-**Document Version:** 1.8  
-**Feature Version:** 1.2.2  
-**Last Updated:** 2026-03-05
+**Document Version:** 2.0  
+**Feature Version:** 1.2.2-patch.75  
+**Last Updated:** 2026-04-21

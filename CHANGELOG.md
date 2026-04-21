@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.75] - 2026-04-21
+### Changed
+- **Security Score**: Added score description subtitles on each gauge card — URL Score explains "Weighted % of malicious URL categories correctly blocked by firewall", DNS Score explains "Weighted % of malicious DNS domains correctly blocked or sinkholed". 📝
+- **Security Score**: Added `ⓘ` tooltip on the BASELINE label explaining the purpose of pinning a reference run and how gap alerting works. 💡
+
+## [v1.2.2-patch.74] - 2026-04-21
+### Added
+- **Security Score**: Added **Latest Changes** panel — client-side diff between the two most recent consecutive runs per type (URL/DNS). Shows exactly which categories changed status with `↓ GAP` / `↑ FIXED` / `CHG` badges and a time range. No baseline required. 🔍
+- **Security Score**: Chart dot decimation — dots now only appear every 5-minute window to prevent clutter when tests run every minute. The score line itself still renders all data points. ⚡
+
+## [v1.2.2-patch.73] - 2026-04-21
+### Added
+- **Security Score**: Run markers on the Score Trend chart — colored dots (🟣 URL, 🔵 DNS) appear at each actual test execution. Scheduled runs display an additional outer ring to distinguish them from manual runs. 📍
+- **Security Score**: Rich custom chart tooltip showing exact date/time, trigger type (▶ Manual / 🕐 Scheduled), and both URL+DNS scores on hover. 🎯
+- **Security Score**: Legend in chart header: `● URL  ● DNS  ○ Scheduled`. 📊
+
+## [v1.2.2-patch.72] - 2026-04-21
+### Fixed
+- **Security Score**: Fixed `ScoreDashboard` not showing any data — all 5 `fetch()` calls were missing `Authorization: Bearer <token>` headers, causing silent 401 responses. Added `token` prop to `ScoreDashboard`, passed from `Security.tsx` parent. 🔐
+
+## [v1.2.2-patch.71] - 2026-04-21
+### Fixed
+- **Security Score**: Fixed `runId` missing from `TestResult` interface in `test-logger.ts`. TypeScript was silently dropping the `runId` field on every logged entry, making score grouping impossible — `generateRunScore()` always found 0 results and returned early. 🛠️
+
 ## [v1.2.2-patch.42] - 2026-04-17
 ### Changed
 - **Settings UI**: Restructured the Custom Probe Configuration form layout. Upgraded from a cramped 4-column layout into a spacious 2-column grid layout spanning two rows to completely eliminate tight text wrapping. 📐
