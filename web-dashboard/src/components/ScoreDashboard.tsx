@@ -146,7 +146,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     };
 
     // Custom tooltip showing run details
-    const CustomTooltip = ({ active, payload, label }: any) => {
+    const CustomTooltip = ({ active, payload }: any) => {
         if (!active || !payload?.length) return null;
         const data = payload[0]?.payload;
         return (
