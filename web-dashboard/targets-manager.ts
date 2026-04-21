@@ -163,7 +163,7 @@ export class TargetsManager {
                 const voicePort = portStr ? parseInt(portStr, 10) : 6100;
                 return {
                     id: `syn-voice-${host}`,
-                    name: host,
+                    name: s.label || s.name || host,  // prefer explicit label/name over raw IP
                     host: host.trim(),
                     enabled: true,
                     capabilities: { ...EMPTY_CAPS, voice: true },

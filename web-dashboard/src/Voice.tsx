@@ -197,9 +197,12 @@ export default function Voice(props: VoiceProps) {
             const key = `${t.host}:${t.ports?.voice ?? 6100}`;
             const settings = serverMap.get(key);
             serverMap.delete(key); // mark consumed — leftover = manual
+            // Use the registry name, but if it looks like a raw IP (no letters), show host as fallback label
+            const isIpName = /^[\d.]+$/.test(t.name);
+            const displayName = isIpName ? t.host : t.name;
             return {
                 id: t.id,
-                name: t.name,
+                name: displayName,
                 host: t.host,
                 port: String(t.ports?.voice ?? 6100),
                 codec: settings?.codec || 'G.711-ulaw',
