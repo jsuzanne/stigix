@@ -79,3 +79,12 @@ body {
   min-height: 100vh;
   transition: background-color 0.3s ease, color 0.3s ease;
 }
+
+@keyframes blink-slow {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.15; }
+}
+
+.animate-blink-slow {
+  animation: blink-slow 2s ease-in-out infinite;
+}

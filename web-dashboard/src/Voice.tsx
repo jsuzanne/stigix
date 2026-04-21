@@ -675,7 +675,7 @@ export default function Voice(props: VoiceProps) {
                                             />
                                         </div>
                                         <div className="flex items-center gap-2 bg-green-600/10 px-2.5 py-1.5 rounded-xl border border-green-500/20 shrink-0">
-                                            <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                                            <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-blink-slow" />
                                             <span className="text-[9px] text-green-500 font-black tracking-tight">Live</span>
                                         </div>
                                     </div>
