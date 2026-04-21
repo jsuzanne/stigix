@@ -346,15 +346,15 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* Gauges Side */}
-                <div className="flex flex-col gap-4 col-span-1">
+            <div className="flex flex-col lg:flex-row gap-4 items-start">
+                {/* Gauges — left column, sticky so they stay top-aligned */}
+                <div className="flex flex-col gap-4 w-full lg:w-80 shrink-0 lg:sticky lg:top-4">
                     {renderGauge('url', latestUrlScore, urlBaseline)}
                     {renderGauge('dns', latestDnsScore, dnsBaseline)}
                 </div>
 
-                {/* Charts & Gaps Side */}
-                <div className="flex flex-col gap-4 col-span-1 lg:col-span-2">
+                {/* Charts & Gaps — right column, grows freely */}
+                <div className="flex flex-col gap-4 flex-1 min-w-0">
                     <div className="h-56 bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col">
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-[10px] font-black tracking-widest text-text-muted uppercase flex items-center gap-1.5">
