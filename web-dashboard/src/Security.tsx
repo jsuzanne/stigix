@@ -811,7 +811,7 @@ export default function Security({ token }: SecurityProps) {
                 </div>
             </div>
 
-            <ScoreDashboard />
+            <ScoreDashboard token={token} />
 
             {/* Statistics Dashboard */}
             {config.statistics && (

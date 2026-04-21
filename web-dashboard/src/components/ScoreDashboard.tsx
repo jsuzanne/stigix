@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Shield, ShieldAlert, ShieldCheck, Activity, Target, ArrowUpRight, ArrowDownRight, Clock, RefreshCw, BarChart2, CheckCircle, AlertTriangle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
-export const ScoreDashboard = () => {
+export const ScoreDashboard = ({ token }: { token: string }) => {
     const [scores, setScores] = useState<any[]>([]);
     const [urlBaseline, setUrlBaseline] = useState<any>(null);
     const [dnsBaseline, setDnsBaseline] = useState<any>(null);
@@ -10,21 +10,21 @@ export const ScoreDashboard = () => {
     const [dnsDiff, setDnsDiff] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
+    const authHeader = { 'Authorization': `Bearer ${token}` };
+
     const fetchData = async () => {
         try {
-            // Fetch history
-            const res = await fetch('/api/security/scores');
+            const res = await fetch('/api/security/scores', { headers: authHeader });
             if (res.ok) {
                 const data = await res.json();
                 setScores(data);
             }
 
-            // Fetch baselines
-            const urlBaselineRes = await fetch('/api/security/scores/baseline?type=url');
+            const urlBaselineRes = await fetch('/api/security/scores/baseline?type=url', { headers: authHeader });
             if (urlBaselineRes.ok) setUrlBaseline(await urlBaselineRes.json());
             else setUrlBaseline(null);
 
-            const dnsBaselineRes = await fetch('/api/security/scores/baseline?type=dns');
+            const dnsBaselineRes = await fetch('/api/security/scores/baseline?type=dns', { headers: authHeader });
             if (dnsBaselineRes.ok) setDnsBaseline(await dnsBaselineRes.json());
             else setDnsBaseline(null);
 
@@ -37,12 +37,12 @@ export const ScoreDashboard = () => {
 
     const fetchDiff = async (type: 'url' | 'dns') => {
         if (!scores.length) return;
-        const latest = scores[0]; // because scores are reversed, 0 is newest
+        const latest = scores[0];
         const baseline = type === 'url' ? urlBaseline : dnsBaseline;
         if (!baseline || !latest) return;
-        
+
         try {
-            const res = await fetch(`/api/security/scores/diff?type=${type}&from=${baseline.runId}&to=${latest.runId}`);
+            const res = await fetch(`/api/security/scores/diff?type=${type}&from=${baseline.runId}&to=${latest.runId}`, { headers: authHeader });
             if (res.ok) {
                 const data = await res.json();
                 if (type === 'url') setUrlDiff(data);
@@ -55,7 +55,7 @@ export const ScoreDashboard = () => {
         fetchData();
         const interval = setInterval(fetchData, 10000);
         return () => clearInterval(interval);
-    }, []);
+    }, [token]);
 
     useEffect(() => {
         if (!loading && urlBaseline) fetchDiff('url');
@@ -66,7 +66,7 @@ export const ScoreDashboard = () => {
         try {
             await fetch('/api/security/scores/baseline', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...authHeader },
                 body: JSON.stringify({ runId, type })
             });
             fetchData();
