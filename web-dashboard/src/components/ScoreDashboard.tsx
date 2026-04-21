@@ -134,6 +134,12 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     const urlLatestDiff = computeLatestDiff('url');
     const dnsLatestDiff = computeLatestDiff('dns');
 
+    // Proper category label — capitalise acronyms and title-case the rest
+    const formatCategory = (cat: string) =>
+        cat.replace(/-/g, ' ')
+           .replace(/\b(dns|url|ip|c2|dga|p2p|vpn|ips|edl|nxns|eicar)\b/gi, s => s.toUpperCase())
+           .replace(/\b(\w)/g, c => c.toUpperCase());
+
     // Custom dot: show only on actual run points that pass the 5-min window filter
     const CustomDot = (lineType: 'url' | 'dns', color: string) => (props: any) => {
         const { cx, cy, payload } = props;
@@ -259,34 +265,36 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
         const totalHidden = (sortedReg.length + sortedImp.length) - (visibleReg.length + visibleImp.length);
 
         return (
-            <div className="p-4 bg-card border border-border rounded-xl">
+            <div className="mt-4 pt-4 border-t border-border">
                 <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-[10px] font-black tracking-widest text-text-muted flex items-center gap-1.5">
-                        <BarChart2 size={12} /> {title} GAP ANALYSIS
-                    </h4>
-                    <div className="flex items-center gap-2">
-                        {regressions.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-red-500/10 border border-red-500/20 text-red-500">{regressions.length} ↓</span>}
-                        {improvements.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-green-500/10 border border-green-500/20 text-green-500">{improvements.length} ↑</span>}
-                        {scoreDelta !== undefined && <span className={`px-1.5 py-0.5 rounded text-[9px] font-black border ${scoreDelta < 0 ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-green-500/10 border-green-500/20 text-green-500'}`}>{scoreDelta > 0 ? '+' : ''}{scoreDelta?.toFixed(1)}</span>}
+                    <h5 className="text-[10px] font-black tracking-widest text-text-muted flex items-center gap-1.5">
+                        <BarChart2 size={11} /> BASELINE GAP ANALYSIS
+                    </h5>
+                    <div className="flex items-center gap-1.5">
+                        {sortedReg.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-red-500/10 border border-red-500/20 text-red-500">{sortedReg.length} ↓</span>}
+                        {sortedImp.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-green-500/10 border border-green-500/20 text-green-500">{sortedImp.length} ↑</span>}
+                        {scoreDelta !== undefined && scoreDelta !== null && (
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-black border ${
+                                scoreDelta < 0 ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-green-500/10 border-green-500/20 text-green-500'
+                            }`}>{scoreDelta > 0 ? '+' : ''}{scoreDelta.toFixed(1)}</span>
+                        )}
                     </div>
                 </div>
 
                 {sortedReg.length > 0 && (
-                    <div className="mb-3">
-                        <div className="flex items-center gap-1.5 text-[10px] font-black text-red-500 mb-2 tracking-widest bg-red-500/10 px-2 py-1 rounded w-fit">
-                            <ShieldAlert size={12} /> POLICY REGRESSIONS
+                    <div className="mb-2">
+                        <div className="flex items-center gap-1 text-[9px] font-black text-red-500 mb-1.5 tracking-widest">
+                            <ShieldAlert size={10} /> POLICY REGRESSIONS
                         </div>
-                        <div className="flex flex-col gap-1.5">
+                        <div className="flex flex-col gap-1">
                             {visibleReg.map((r: any, idx: number) => (
                                 <div key={idx} className="flex items-center justify-between text-xs p-2 bg-background rounded-lg border border-red-500/20">
-                                    <span className="font-semibold text-text-primary capitalize">{r.category.replace(/-/g, ' ')}</span>
-                                    <div className="flex flex-col items-end">
-                                        <span className="text-[10px] text-text-muted font-black tracking-widest">WEIGHT: {r.weight}</span>
-                                        <div className="flex items-center gap-1 text-[10px] font-black">
-                                            <span className="text-green-500 line-through opacity-70">{r.before}</span>
-                                            <span className="text-text-muted">➔</span>
-                                            <span className="text-red-500">{r.after}</span>
-                                        </div>
+                                    <span className="font-semibold text-text-primary">{formatCategory(r.category)}</span>
+                                    <div className="flex items-center gap-1.5 text-[10px] font-black">
+                                        <span className="text-[9px] text-text-muted font-bold">w:{r.weight}</span>
+                                        <span className="text-green-500 line-through opacity-70">{r.before}</span>
+                                        <span className="text-text-muted opacity-40">→</span>
+                                        <span className="text-red-500">{r.after}</span>
                                     </div>
                                 </div>
                             ))}
@@ -296,20 +304,18 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
 
                 {sortedImp.length > 0 && (
                     <div>
-                        <div className="flex items-center gap-1.5 text-[10px] font-black text-green-500 mb-2 tracking-widest bg-green-500/10 px-2 py-1 rounded w-fit">
-                            <ShieldCheck size={12} /> POLICY IMPROVEMENTS
+                        <div className="flex items-center gap-1 text-[9px] font-black text-green-500 mb-1.5 tracking-widest">
+                            <ShieldCheck size={10} /> POLICY IMPROVEMENTS
                         </div>
-                        <div className="flex flex-col gap-1.5">
+                        <div className="flex flex-col gap-1">
                             {visibleImp.map((r: any, idx: number) => (
                                 <div key={idx} className="flex items-center justify-between text-xs p-2 bg-background rounded-lg border border-green-500/20">
-                                    <span className="font-semibold text-text-primary capitalize">{r.category.replace(/-/g, ' ')}</span>
-                                    <div className="flex flex-col items-end">
-                                        <span className="text-[10px] text-text-muted font-black tracking-widest">WEIGHT: {r.weight}</span>
-                                        <div className="flex items-center gap-1 text-[10px] font-black">
-                                            <span className="text-red-500 line-through opacity-70">{r.before}</span>
-                                            <span className="text-text-muted">➔</span>
-                                            <span className="text-green-500">{r.after}</span>
-                                        </div>
+                                    <span className="font-semibold text-text-primary">{formatCategory(r.category)}</span>
+                                    <div className="flex items-center gap-1.5 text-[10px] font-black">
+                                        <span className="text-[9px] text-text-muted font-bold">w:{r.weight}</span>
+                                        <span className="text-red-400 line-through opacity-70">{r.before}</span>
+                                        <span className="text-text-muted opacity-40">→</span>
+                                        <span className="text-green-500">{r.after}</span>
                                     </div>
                                 </div>
                             ))}
@@ -318,12 +324,12 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                 )}
 
                 {totalHidden > 0 && (
-                    <button onClick={() => setExpandGap(p => ({ ...p, [key]: true }))} className="mt-3 w-full text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary py-1.5 border border-border rounded-lg hover:bg-hover transition-all">
+                    <button onClick={() => setExpandGap(p => ({ ...p, [key]: true }))} className="mt-2 w-full text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary py-1.5 border border-border rounded-lg hover:bg-hover transition-all">
                         + {totalHidden} more (sorted by weight)
                     </button>
                 )}
                 {expanded && (sortedReg.length + sortedImp.length) > PREVIEW_LIMIT && (
-                    <button onClick={() => setExpandGap(p => ({ ...p, [key]: false }))} className="mt-2 w-full text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary py-1 transition-all">
+                    <button onClick={() => setExpandGap(p => ({ ...p, [key]: false }))} className="mt-1 w-full text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary py-1 transition-all">
                         ↑ collapse
                     </button>
                 )}
@@ -377,14 +383,20 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                         </div>
                     </div>
 
-                    {/* Latest Changes — consecutive run diff, no baseline needed */}
+                    {/* Latest Changes + embedded Gap Analysis — one card per type */}
                     <div className="flex flex-col gap-3">
                         {(['url', 'dns'] as const).map(type => {
                             const diff = type === 'url' ? urlLatestDiff : dnsLatestDiff;
+                            const gapDiff = type === 'url' ? urlDiff : dnsDiff;
                             const color = type === 'url' ? '#8b5cf6' : '#0ea5e9';
-                            if (!diff) return null;
 
-                            const allChanges = [...diff.changes].sort((a, b) => b.weight - a.weight);
+                            const hasChanges = diff && diff.changes.length > 0;
+                            const hasGap = gapDiff && (gapDiff.regressions?.length > 0 || gapDiff.improvements?.length > 0);
+
+                            // Skip entire card if nothing to show
+                            if (!hasChanges && !hasGap) return null;
+
+                            const allChanges = hasChanges ? [...diff.changes].sort((a, b) => b.weight - a.weight) : [];
                             const regressions = allChanges.filter(c => (c.before === 'blocked' || c.before === 'sinkholed') && c.after !== 'blocked' && c.after !== 'sinkholed');
                             const improvements = allChanges.filter(c => (c.after === 'blocked' || c.after === 'sinkholed') && c.before !== 'blocked' && c.before !== 'sinkholed');
                             const neutral = allChanges.filter(c => !regressions.includes(c) && !improvements.includes(c));
@@ -396,6 +408,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
 
                             return (
                                 <div key={type} className="p-4 bg-card border border-border rounded-xl">
+                                    {/* Header */}
                                     <div className="flex items-center justify-between mb-3">
                                         <h4 className="text-[10px] font-black tracking-widest text-text-muted flex items-center gap-1.5">
                                             <Activity size={12} style={{color}} />
@@ -405,31 +418,28 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                                             {regressions.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-red-500/10 border border-red-500/20 text-red-500">{regressions.length} ↓ GAP</span>}
                                             {improvements.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-green-500/10 border border-green-500/20 text-green-500">{improvements.length} ↑ FIXED</span>}
                                             {neutral.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-card border border-border text-text-muted">{neutral.length} CHG</span>}
-                                            <span className="text-[9px] opacity-40">{diff.prevTime} → {diff.latestTime}</span>
+                                            {diff && <span className="text-[9px] opacity-40">{diff.prevTime} → {diff.latestTime}</span>}
                                         </div>
                                     </div>
 
-                                    {diff.changes.length === 0 ? (
-                                        <div className="flex items-center gap-1.5 text-[10px] text-text-muted opacity-60">
-                                            <CheckCircle size={11} /> No changes between last 2 runs
-                                        </div>
-                                    ) : (
+                                    {/* Changes list */}
+                                    {hasChanges ? (
                                         <div className="flex flex-col gap-1.5">
                                             {visible.map((c, idx) => {
-                                                const isRegression = regressions.includes(c);
-                                                const isImprovement = improvements.includes(c);
+                                                const isReg = regressions.includes(c);
+                                                const isImp = improvements.includes(c);
                                                 return (
                                                     <div key={idx} className={`flex items-center justify-between text-xs p-2 rounded-lg border ${
-                                                        isRegression ? 'bg-red-500/5 border-red-500/20' : isImprovement ? 'bg-green-500/5 border-green-500/20' : 'bg-card border-border'
+                                                        isReg ? 'bg-red-500/5 border-red-500/20' : isImp ? 'bg-green-500/5 border-green-500/20' : 'bg-card border-border'
                                                     }`}>
-                                                        <span className="font-semibold text-text-primary capitalize">{c.category.replace(/-/g, ' ')}</span>
+                                                        <span className="font-semibold text-text-primary">{formatCategory(c.category)}</span>
                                                         <div className="flex items-center gap-1.5 text-[10px] font-black">
                                                             <span className={c.before === 'blocked' || c.before === 'sinkholed' ? 'text-green-500' : 'text-red-400'}>{c.before}</span>
                                                             <span className="text-text-muted opacity-40">→</span>
                                                             <span className={c.after === 'blocked' || c.after === 'sinkholed' ? 'text-green-500' : 'text-red-400'}>{c.after}</span>
                                                             <span className={`ml-1 px-1 py-0.5 rounded text-[8px] font-black tracking-widest border ${
-                                                                isRegression ? 'text-red-500 bg-red-500/10 border-red-500/20' : isImprovement ? 'text-green-500 bg-green-500/10 border-green-500/20' : 'text-text-muted border-border'
-                                                            }`}>{isRegression ? '↓ GAP' : isImprovement ? '↑ FIXED' : 'CHG'}</span>
+                                                                isReg ? 'text-red-500 bg-red-500/10 border-red-500/20' : isImp ? 'text-green-500 bg-green-500/10 border-green-500/20' : 'text-text-muted border-border'
+                                                            }`}>{isReg ? '↓ GAP' : isImp ? '↑ FIXED' : 'CHG'}</span>
                                                         </div>
                                                     </div>
                                                 );
@@ -445,19 +455,16 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                                                 </button>
                                             )}
                                         </div>
+                                    ) : (
+                                        !hasGap && <div className="flex items-center gap-1.5 text-[10px] text-text-muted opacity-60"><CheckCircle size={11} /> No changes between last 2 runs</div>
                                     )}
+
+                                    {/* Baseline Gap Analysis — embedded below, separated by a divider */}
+                                    {renderGapAlerts(gapDiff, type.toUpperCase())}
                                 </div>
                             );
                         })}
                     </div>
-
-                    {/* Baseline Gap Alerts */}
-                    {(urlDiff || dnsDiff) && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {renderGapAlerts(urlDiff, 'URL')}
-                            {renderGapAlerts(dnsDiff, 'DNS')}
-                        </div>
-                    )}
                 </div>
             </div>
         </div>
