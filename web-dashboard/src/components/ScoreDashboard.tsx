@@ -96,7 +96,7 @@ export const ScoreDashboard = () => {
         type: s.type
     }));
 
-    const renderGauge = (type: 'url' | 'dns', entry: any, baseline: any, diff: any) => {
+    const renderGauge = (type: 'url' | 'dns', entry: any, baseline: any) => {
         if (!entry) return (
             <div className="flex flex-col items-center justify-center p-6 bg-card border border-border rounded-xl">
                 <Shield size={24} className="text-text-muted mb-2 opacity-50" />
@@ -234,8 +234,8 @@ export const ScoreDashboard = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Gauges Side */}
                 <div className="flex flex-col gap-4 col-span-1">
-                    {renderGauge('url', latestUrlScore, urlBaseline, urlDiff)}
-                    {renderGauge('dns', latestDnsScore, dnsBaseline, dnsDiff)}
+                    {renderGauge('url', latestUrlScore, urlBaseline)}
+                    {renderGauge('dns', latestDnsScore, dnsBaseline)}
                 </div>
 
                 {/* Charts & Gaps Side */}
