@@ -332,7 +332,7 @@ def main():
                  print(f"⏳ Simulation disabled. Waiting for {len(active_calls)} calls to finish...")
         
         # Determine check interval
-        sleep_time = control.get("sleep_between_calls", 5) if control.get("enabled") else 5
+        sleep_time = max(1, control.get("sleep_between_calls", 5)) if control.get("enabled") else 5
         time.sleep(sleep_time)
 
 if __name__ == "__main__":

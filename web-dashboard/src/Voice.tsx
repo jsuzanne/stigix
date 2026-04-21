@@ -519,9 +519,9 @@ export default function Voice(props: VoiceProps) {
                                         <Clock size={9} /> Inter-Call (s)
                                     </label>
                                     <input
-                                        type="number" min={0}
+                                        type="number" min={1}
                                         value={config.sleep_between_calls}
-                                        onChange={e => { setIsDirty(true); setConfig(p => p ? { ...p, sleep_between_calls: parseInt(e.target.value) } : null); }}
+                                        onChange={e => { setIsDirty(true); setConfig(p => p ? { ...p, sleep_between_calls: Math.max(1, parseInt(e.target.value) || 1) } : null); }}
                                         className="w-16 bg-card-secondary/50 border border-border text-text-primary rounded-lg px-2 py-1.5 text-xs font-black focus:ring-1 focus:ring-blue-500 outline-none shadow-sm"
                                     />
                                 </div>
