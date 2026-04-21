@@ -28,6 +28,7 @@ export interface TestResult {
         resolvedIp?: string;
     };
     slsDiagnostic?: any;
+    runId?: string;
 }
 
 export interface LogStats {
