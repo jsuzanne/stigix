@@ -90,11 +90,49 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     const chartData = [...scores].reverse().map(s => ({
         timestamp: s.timestamp,
         timeLabel: new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        fullTime: new Date(s.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         urlScore: s.scores?.url,
         dnsScore: s.scores?.dns,
         runId: s.runId,
-        type: s.type
+        type: s.type,
+        trigger: s.trigger || 'manual'
     }));
+
+    // Custom dot: show only when this entry is an actual run of that type
+    const CustomDot = (lineType: 'url' | 'dns', color: string) => (props: any) => {
+        const { cx, cy, payload } = props;
+        if (payload.type !== lineType) return null;
+        return (
+            <g>
+                <circle cx={cx} cy={cy} r={5} fill={color} stroke="white" strokeWidth={1.5} opacity={0.9} />
+                {payload.trigger === 'scheduled' && (
+                    <circle cx={cx} cy={cy} r={8} fill="none" stroke={color} strokeWidth={1} opacity={0.4} />
+                )}
+            </g>
+        );
+    };
+
+    // Custom tooltip showing run details
+    const CustomTooltip = ({ active, payload, label }: any) => {
+        if (!active || !payload?.length) return null;
+        const data = payload[0]?.payload;
+        return (
+            <div style={{ background: 'var(--color-bg-card, #1e1e2e)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px 14px', fontSize: '11px' }}>
+                <div style={{ fontWeight: 900, letterSpacing: '0.08em', marginBottom: 6, opacity: 0.5, fontSize: 9, textTransform: 'uppercase' }}>
+                    {data?.fullTime}
+                </div>
+                <div style={{ fontWeight: 900, letterSpacing: '0.06em', marginBottom: 6, fontSize: 10, color: data?.type === 'url' ? '#8b5cf6' : '#0ea5e9', textTransform: 'uppercase' }}>
+                    {data?.type?.toUpperCase()} Run · {data?.trigger === 'scheduled' ? '🕐 Scheduled' : '▶ Manual'}
+                </div>
+                {payload.map((p: any) => p.value !== null && p.value !== undefined && (
+                    <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, color: p.color, fontWeight: 700 }}>
+                        <span>{p.name}</span>
+                        <span>{p.value.toFixed(1)}</span>
+                    </div>
+                ))}
+            </div>
+        );
+    };
 
     const renderGauge = (type: 'url' | 'dns', entry: any, baseline: any) => {
         if (!entry) return (
@@ -240,24 +278,26 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
 
                 {/* Charts & Gaps Side */}
                 <div className="flex flex-col gap-4 col-span-1 lg:col-span-2">
-                    <div className="h-48 bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col">
+                    <div className="h-56 bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col">
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-[10px] font-black tracking-widest text-text-muted uppercase flex items-center gap-1.5">
                                 <Activity size={12} /> Score Trend
                             </span>
+                            <div className="flex items-center gap-3 text-[9px] font-black tracking-widest text-text-muted opacity-60">
+                                <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#8b5cf6'}}/>URL</span>
+                                <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#0ea5e9'}}/>DNS</span>
+                                <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',border:'1.5px solid #aaa',background:'transparent'}}/>Scheduled</span>
+                            </div>
                         </div>
                         <div className="flex-1 min-h-0">
                             {chartData.length > 0 ? (
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                                    <LineChart data={chartData} margin={{ top: 8, right: 5, left: -20, bottom: 0 }}>
                                         <XAxis dataKey="timeLabel" tick={{ fontSize: 9, fill: 'currentColor', opacity: 0.5 }} tickLine={false} axisLine={false} />
                                         <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: 'currentColor', opacity: 0.5 }} tickLine={false} axisLine={false} />
-                                        <Tooltip 
-                                            contentStyle={{ backgroundColor: 'rgb(var(--color-bg-card))', border: '1px solid rgb(var(--color-border))', borderRadius: '8px', fontSize: '11px', fontWeight: 'bold' }}
-                                            itemStyle={{ fontWeight: 'black', letterSpacing: '0.05em' }}
-                                        />
-                                        <Line type="monotone" dataKey="urlScore" name="URL Score" stroke="#8b5cf6" strokeWidth={3} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
-                                        <Line type="monotone" dataKey="dnsScore" name="DNS Score" stroke="#0ea5e9" strokeWidth={3} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
+                                        <Tooltip content={<CustomTooltip />} />
+                                        <Line type="monotone" dataKey="urlScore" name="URL Score" stroke="#8b5cf6" strokeWidth={2.5} dot={CustomDot('url', '#8b5cf6')} activeDot={{ r: 5 }} isAnimationActive={false} />
+                                        <Line type="monotone" dataKey="dnsScore" name="DNS Score" stroke="#0ea5e9" strokeWidth={2.5} dot={CustomDot('dns', '#0ea5e9')} activeDot={{ r: 5 }} isAnimationActive={false} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             ) : (
