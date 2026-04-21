@@ -86,22 +86,55 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     const latestUrlScore = scores.find(s => s.type === 'url');
     const latestDnsScore = scores.find(s => s.type === 'dns');
 
-    // Prepare chart data (reverse back to chronological order)
-    const chartData = [...scores].reverse().map(s => ({
-        timestamp: s.timestamp,
-        timeLabel: new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        fullTime: new Date(s.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        urlScore: s.scores?.url,
-        dnsScore: s.scores?.dns,
-        runId: s.runId,
-        type: s.type,
-        trigger: s.trigger || 'manual'
-    }));
+    // Prepare chart data — keep all points for the line, but mark dot only
+    // if it's the first run in its 5-minute window (avoids clutter at 1-run/min)
+    const chartData = (() => {
+        const chronological = [...scores].reverse();
+        const lastDotTs: Record<string, number> = { url: 0, dns: 0 };
+        const DOT_WINDOW_MS = 5 * 60 * 1000; // 5 min
+        return chronological.map(s => {
+            const showDot = s.timestamp - lastDotTs[s.type] >= DOT_WINDOW_MS;
+            if (showDot) lastDotTs[s.type] = s.timestamp;
+            return {
+                timestamp: s.timestamp,
+                timeLabel: new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                fullTime: new Date(s.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                urlScore: s.scores?.url,
+                dnsScore: s.scores?.dns,
+                runId: s.runId,
+                type: s.type,
+                trigger: s.trigger || 'manual',
+                showDot,
+            };
+        });
+    })();
 
-    // Custom dot: show only when this entry is an actual run of that type
+    // Latest Changes: diff between the two most recent runs of each type (client-side, no baseline needed)
+    const computeLatestDiff = (type: 'url' | 'dns') => {
+        const runs = scores.filter(s => s.type === type); // already newest-first
+        if (runs.length < 2) return null;
+        const latest = runs[0];
+        const prev = runs[1];
+        const latestBreakdown: Record<string, any> = latest.breakdown?.[type] || {};
+        const prevBreakdown: Record<string, any> = prev.breakdown?.[type] || {};
+        const changes: { category: string; before: string; after: string; weight: number }[] = [];
+        for (const [cat, snap] of Object.entries(latestBreakdown)) {
+            const prevSnap = prevBreakdown[cat];
+            if (!prevSnap) continue;
+            if (prevSnap.status !== (snap as any).status) {
+                changes.push({ category: cat, before: prevSnap.status, after: (snap as any).status, weight: (snap as any).weight });
+            }
+        }
+        return { changes, prevTime: new Date(prev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), latestTime: new Date(latest.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+    };
+
+    const urlLatestDiff = computeLatestDiff('url');
+    const dnsLatestDiff = computeLatestDiff('dns');
+
+    // Custom dot: show only on actual run points that pass the 5-min window filter
     const CustomDot = (lineType: 'url' | 'dns', color: string) => (props: any) => {
         const { cx, cy, payload } = props;
-        if (payload.type !== lineType) return null;
+        if (payload.type !== lineType || !payload.showDot) return null;
         return (
             <g>
                 <circle cx={cx} cy={cy} r={5} fill={color} stroke="white" strokeWidth={1.5} opacity={0.9} />
@@ -306,19 +339,61 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {renderGapAlerts(urlDiff, 'URL')}
-                        {renderGapAlerts(dnsDiff, 'DNS')}
-                        
-                        {!urlDiff && !dnsDiff && scores.length > 0 && (
-                            <div className="col-span-2 flex items-center justify-center p-6 bg-card border border-border rounded-xl">
-                                <div className="flex items-center gap-2 text-text-muted opacity-60">
-                                    <CheckCircle size={14} />
-                                    <span className="text-[10px] font-black tracking-widest uppercase">No Baseline Deviations Detected</span>
+                    {/* Latest Changes — consecutive run diff, no baseline needed */}
+                    <div className="flex flex-col gap-3">
+                        {(['url', 'dns'] as const).map(type => {
+                            const diff = type === 'url' ? urlLatestDiff : dnsLatestDiff;
+                            const color = type === 'url' ? '#8b5cf6' : '#0ea5e9';
+                            const bgColor = type === 'url' ? 'bg-purple-500/10 border-purple-500/20' : 'bg-blue-500/10 border-blue-500/20';
+                            if (!diff) return null;
+                            return (
+                                <div key={type} className="p-4 bg-card border border-border rounded-xl">
+                                    <h4 className="text-[10px] font-black tracking-widest text-text-muted mb-3 flex items-center justify-between">
+                                        <span className="flex items-center gap-1.5">
+                                            <Activity size={12} style={{color}} />
+                                            <span style={{color}}>{type.toUpperCase()}</span> LATEST CHANGES
+                                        </span>
+                                        <span className="text-[9px] opacity-50">{diff.prevTime} → {diff.latestTime}</span>
+                                    </h4>
+                                    {diff.changes.length === 0 ? (
+                                        <div className="flex items-center gap-1.5 text-[10px] text-text-muted opacity-60">
+                                            <CheckCircle size={11} /> No changes between last 2 runs
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col gap-1.5">
+                                            {diff.changes.map((c, idx) => {
+                                                const isRegression = (c.before === 'blocked' || c.before === 'sinkholed') && c.after !== 'blocked' && c.after !== 'sinkholed';
+                                                const isImprovement = (c.after === 'blocked' || c.after === 'sinkholed') && c.before !== 'blocked' && c.before !== 'sinkholed';
+                                                return (
+                                                    <div key={idx} className={`flex items-center justify-between text-xs p-2 rounded-lg border ${
+                                                        isRegression ? 'bg-red-500/5 border-red-500/20' : isImprovement ? 'bg-green-500/5 border-green-500/20' : 'bg-card border-border'
+                                                    }`}>
+                                                        <span className="font-semibold text-text-primary capitalize">{c.category.replace(/-/g, ' ')}</span>
+                                                        <div className="flex items-center gap-1.5 text-[10px] font-black">
+                                                            <span className={c.before === 'blocked' || c.before === 'sinkholed' ? 'text-green-500' : 'text-red-400'}>{c.before}</span>
+                                                            <span className="text-text-muted opacity-40">→</span>
+                                                            <span className={c.after === 'blocked' || c.after === 'sinkholed' ? 'text-green-500' : 'text-red-400'}>{c.after}</span>
+                                                            <span className={`ml-1 px-1 py-0.5 rounded text-[8px] font-black tracking-widest border ${
+                                                                isRegression ? 'text-red-500 bg-red-500/10 border-red-500/20' : isImprovement ? 'text-green-500 bg-green-500/10 border-green-500/20' : 'text-text-muted border-border'
+                                                            }`}>{isRegression ? '↓ GAP' : isImprovement ? '↑ FIXED' : 'CHG'}</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })}
                     </div>
+
+                    {/* Baseline Gap Alerts */}
+                    {(urlDiff || dnsDiff) && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {renderGapAlerts(urlDiff, 'URL')}
+                            {renderGapAlerts(dnsDiff, 'DNS')}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
