@@ -23,9 +23,8 @@ export default {
     let size = searchParams.get("size") || "10m";
     let code = parseInt(searchParams.get("code") || "500", 10);
 
-    // ---------- Auth simple par clé partagée ou Signature Maître ----------
+    // ---------- Auth: MASTER_SIGNATURE_KEY only ----------
     const masterKey = env.MASTER_SIGNATURE_KEY;
-    const sharedKey = env.SHARED_KEY;
     const providedKey = searchParams.get("key");
     const tsgId = searchParams.get("tsg");
 
@@ -36,17 +35,11 @@ export default {
     if (!isProtectedMode) {
       authorized = true;
     } else if (masterKey && tsgId && providedKey) {
-      // Logic Signature Maître : key === SHA256(tsg + ":" + masterKey)
+      // key === SHA256(tsg + ":" + MASTER_SIGNATURE_KEY)
       const expectedKey = await sha256(`${tsgId}:${masterKey}`);
       authorized = providedKey === expectedKey;
-    } else if (sharedKey) {
-      // Fallback Clé Partagée Statique
-      const headerKey = headers.get("X-Stigix-Key");
-      const urlKey = searchParams.get("key");
-      const keyToValue = urlKey || headerKey;
-      authorized = keyToValue === sharedKey;
-    } else if (!masterKey && !sharedKey) {
-      // Si aucune sécurité n'est configurée, on laisse passer
+    } else if (!masterKey) {
+      // No security configured — open access
       authorized = true;
     }
 

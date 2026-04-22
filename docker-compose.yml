@@ -58,7 +58,6 @@ services:
       # --- Stigix Cloud & Probes ---
       - STIGIX_REGISTRY_URL=${STIGIX_REGISTRY_URL:-https://stigix-registry.jlsuzanne.workers.dev}
       - STIGIX_TARGET_BASE_URL=${STIGIX_TARGET_BASE_URL:-}
-      - STIGIX_TARGET_SHARED_KEY=${STIGIX_TARGET_SHARED_KEY:-}
       - STIGIX_TARGET_MASTER_KEY=${STIGIX_TARGET_MASTER_KEY:-}
 
     healthcheck:

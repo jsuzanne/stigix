@@ -93,22 +93,19 @@ export class TargetManager {
         }
         this.baseUrl = rawBase;
 
-        // 3. Derive Shared Key
-        // Priority: JSON Master Key > Env Master Key > Env Legacy Shared Key
+        // 3. Derive Shared Key: SHA256(tsgId + ":" + MASTER_SIGNATURE_KEY)
+        // MASTER_SIGNATURE_KEY is the only supported auth method.
         const masterKey = jsonConfig.masterKey || process.env.STIGIX_TARGET_MASTER_KEY;
         const tsgId = process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID || '';
-        let key = process.env.STIGIX_TARGET_SHARED_KEY || '';
+        let key = '';
 
         if (masterKey && tsgId) {
-            // key = SHA256(tsgId + ":" + masterKey)
             key = crypto.createHash('sha256').update(`${tsgId}:${masterKey}`).digest('hex');
-            log('TARGET', `Master Signature ${jsonConfig.masterKey ? '(UI)' : '(ENV)'} generated for TSG ${tsgId}`);
-        } else if (!key && tsgId) {
-            const clientId = process.env.PRISMA_SDWAN_CLIENT_ID;
-            if (clientId) {
-                key = crypto.createHash('sha256').update(`${tsgId}:${clientId}:stigix-v1`).digest('hex');
-                log('TARGET', `Derived PoC key from TSG/Client ID`);
-            }
+            log('TARGET', `Master key derived for TSG ${tsgId} ${jsonConfig.masterKey ? '(UI config)' : '(ENV)'}`);
+        } else if (masterKey && !tsgId) {
+            log('TARGET', 'STIGIX_TARGET_MASTER_KEY set but PRISMA_SDWAN_TSGID is missing — target probes will be unauthorized', 'warn');
+        } else {
+            log('TARGET', 'No STIGIX_TARGET_MASTER_KEY configured — worker running in open-access mode', 'warn');
         }
 
         this.sharedKey = key;
