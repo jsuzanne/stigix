@@ -7088,16 +7088,13 @@ app.get('/api/admin/system/mcp-status', authenticateToken, async (req, res) => {
 
 app.get('/api/admin/system/dashboard-data', authenticateToken, async (req, res) => {
     try {
-        const statsFile = path.join(APP_CONFIG.logDir, 'stats.json');
+        // 1. Stats — aggregate across all active client files
+        let stats: any = aggregateStats();
+        if (!stats) {
+            stats = { total_requests: 0, requests_by_app: {}, errors_by_app: {}, timestamp: Math.floor(Date.now() / 1000) };
+        }
 
-        // 1. Stats (Non-blocking)
-        let stats = { total_requests: 0, requests_by_app: {}, errors_by_app: {}, timestamp: Math.floor(Date.now() / 1000) };
-        try {
-            const statsData = await fs.promises.readFile(statsFile, 'utf8');
-            stats = JSON.parse(statsData);
-        } catch (e) { }
-
-        // 2. Traffic Status (Heartbeat)
+        // 2. Traffic Status (Heartbeat based on most recent client timestamp)
         let status = 'stopped';
         if (stats.timestamp) {
             const now = Math.floor(Date.now() / 1000);
