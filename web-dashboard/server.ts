@@ -2669,12 +2669,22 @@ const readFile = (filePath: string) => {
 // Helper to aggregate stats from multiple clients
 const aggregateStats = () => {
     const logDir = APP_CONFIG.logDir;
-    const statsFiles = fs.readdirSync(logDir).filter(f => f.startsWith('stats-') && f.endsWith('.json'));
-    
-    // Also include legacy stats.json if it exists
-    if (fs.existsSync(path.join(logDir, 'stats.json'))) {
-        statsFiles.push('stats.json');
-    }
+    const nowMs = Date.now();
+    const STALE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
+
+    // Only include files modified within the last 3 minutes — avoids counting
+    // stale files from previous container sessions (e.g. stats-client-01-778.json
+    // from an old run co-existing with the current stats-client-01-551.json)
+    const statsFiles = fs.readdirSync(logDir)
+        .filter(f => f.startsWith('stats-') && f.endsWith('.json'))
+        .filter(f => {
+            try {
+                const mtime = fs.statSync(path.join(logDir, f)).mtimeMs;
+                return (nowMs - mtime) < STALE_THRESHOLD_MS;
+            } catch {
+                return false;
+            }
+        });
 
     if (statsFiles.length === 0) return null;
 
@@ -2777,19 +2787,20 @@ app.post('/api/traffic/start', (req, res) => {
 // API: Traffic Control - Stop
 app.post('/api/traffic/stop', (req, res) => {
     const defaultInterval = parseFloat(process.env.SLEEP_BETWEEN_REQUESTS || '1.0');
-    let config: any = { control: { enabled: false, sleep_interval: defaultInterval }, applications: [] };
+    let config: any = { control: { enabled: false, sleep_interval: defaultInterval, client_count: 1 }, applications: [] };
 
     if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
         try {
             config = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
             if (!config.control) config.control = { enabled: false, sleep_interval: defaultInterval };
             config.control.enabled = false;
+            config.control.client_count = 1; // always reset to 1 client on stop
         } catch (e) { }
     }
 
     fs.writeFileSync(APPLICATIONS_CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
     console.log('Traffic generation stopped via API');
-    res.json({ success: true, running: false, sleep_interval: config.control.sleep_interval });
+    res.json({ success: true, running: false, sleep_interval: config.control.sleep_interval, client_count: 1 });
 });
 
 // API: Traffic Control - Settings

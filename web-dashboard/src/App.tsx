@@ -1391,18 +1391,25 @@ export default function App() {
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
                     <XAxis
                       dataKey="time"
-                      stroke="rgba(255,255,255,0.3)"
-                      fontSize={10}
+                      tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }}
                       tickLine={false}
-                      axisLine={false}
-                      minTickGap={30}
+                      axisLine={{ stroke: 'rgba(100,116,139,0.2)' }}
+                      minTickGap={timeRange === '1h' ? 60 : timeRange === '6h' ? 40 : 80}
+                      interval="preserveStartEnd"
                     />
                     <YAxis
-                      stroke="rgba(255,255,255,0.3)"
-                      fontSize={10}
+                      tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }}
                       tickLine={false}
                       axisLine={false}
+                      width={52}
                       tickFormatter={(value) => `${value}`}
+                      label={{
+                        value: 'req/min',
+                        angle: -90,
+                        position: 'insideLeft',
+                        offset: 14,
+                        style: { fill: '#94a3b8', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }
+                      }}
                     />
                     <Tooltip
                       contentStyle={{
