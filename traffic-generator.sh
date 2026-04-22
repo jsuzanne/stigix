@@ -292,8 +292,8 @@ function updateStats() {
         ((APP_ERRORS[$app_name]++))
     fi
     
-    # Write stats every 5 requests
-    if (( (TOTAL_REQUESTS % 5) == 0 )); then
+    # Write stats every 5 requests (or first request)
+    if (( TOTAL_REQUESTS == 1 || (TOTAL_REQUESTS % 5) == 0 )); then
         writeStats
     fi
 }
@@ -505,9 +505,9 @@ function master_loop() {
             client_count=0
         fi
         
-        # Get list of running worker PIDs (excluding the master)
-        # We use a pattern that matches our worker command line
-        local worker_pids=($(pgrep -f "traffic-generator.sh.*--worker" || true))
+        # Get list of running worker PIDs (excluding the master and the pgrep itself)
+        # We use a pattern that matches our worker command line precisely
+        local worker_pids=($(pgrep -f "traffic-generator.sh.*--worker" | grep -v "$$" | grep -v "pgrep" || true))
         local current_count=${#worker_pids[@]}
         
         if (( current_count < client_count )); then

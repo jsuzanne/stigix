@@ -2742,16 +2742,17 @@ app.get('/api/traffic/status', (req, res) => {
     if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
         try {
             const config = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
-            const control = config.control || { enabled: false, sleep_interval: defaultInterval };
+            const control = config.control || { enabled: false, sleep_interval: defaultInterval, client_count: 1 };
             res.json({
                 running: control.enabled || false,
-                sleep_interval: control.sleep_interval || defaultInterval
+                sleep_interval: control.sleep_interval || defaultInterval,
+                client_count: control.client_count || 1
             });
         } catch (e) {
-            res.json({ running: false, sleep_interval: defaultInterval });
+            res.json({ running: false, sleep_interval: defaultInterval, client_count: 1 });
         }
     } else {
-        res.json({ running: false, sleep_interval: defaultInterval });
+        res.json({ running: false, sleep_interval: defaultInterval, client_count: 1 });
     }
 });
 
@@ -2792,24 +2793,34 @@ app.post('/api/traffic/stop', (req, res) => {
 });
 
 // API: Traffic Control - Settings
-app.post('/api/traffic/settings', authenticateToken, (req, res) => {
-    const { sleep_interval } = req.body;
-    if (typeof sleep_interval !== 'number') return res.status(400).json({ error: 'Invalid sleep_interval' });
-
+// API: Traffic Control - Set Rate & Client Count
+app.post('/api/traffic/rate', authenticateToken, (req, res) => {
+    const { rate, client_count } = req.body;
     const defaultInterval = parseFloat(process.env.SLEEP_BETWEEN_REQUESTS || '1.0');
-    let config: any = { control: { enabled: false, sleep_interval: defaultInterval }, applications: [] };
+
+    let config: any = { control: { enabled: false, sleep_interval: defaultInterval, client_count: 1 }, applications: [] };
 
     if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
         try {
             config = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
-            if (!config.control) config.control = { enabled: false, sleep_interval: defaultInterval };
+            if (!config.control) config.control = { enabled: false, sleep_interval: defaultInterval, client_count: 1 };
         } catch (e) { }
     }
 
-    config.control.sleep_interval = Math.max(0.01, Math.min(60, sleep_interval));
+    if (rate !== undefined) config.control.sleep_interval = Math.max(0.01, Math.min(60, parseFloat(rate)));
+    if (client_count !== undefined) config.control.client_count = Math.max(1, Math.min(20, parseInt(client_count)));
+    
     fs.writeFileSync(APPLICATIONS_CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
-    console.log(`Traffic sleep_interval updated to ${config.control.sleep_interval}s`);
+    console.log(`Traffic updated: rate=${config.control.sleep_interval}s, clients=${config.control.client_count}`);
     res.json({ success: true, settings: config.control });
+});
+
+// Alias for legacy support
+app.post('/api/traffic/settings', authenticateToken, (req, res) => {
+    const { sleep_interval } = req.body;
+    req.body.rate = sleep_interval;
+    // @ts-ignore
+    return app._router.handle({ method: 'POST', url: '/api/traffic/rate', body: req.body }, res);
 });
 
 // API: Voice Control - Status
