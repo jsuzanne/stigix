@@ -5581,6 +5581,8 @@ const runScheduledDnsTests = async () => {
                 }, getNextTestId(), undefined, runId);
             }
         }
+        // Add a small delay between tests to avoid triggering firewall flood protection
+        await new Promise(resolve => setTimeout(resolve, 200));
     }
 
     await generateRunScore(runId, 'dns', 'scheduled');
@@ -6379,6 +6381,9 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
             results.push(result);
             addTestResult('dns_security', test.testName, result, testId, undefined, runId);
         }
+
+        // Add a small delay between tests to avoid triggering firewall flood protection
+        await wait(200);
     }
 
     await generateRunScore(runId, 'dns', 'manual');
