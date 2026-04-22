@@ -178,29 +178,37 @@ function loadAppsToMemory() {
     log_info "Loaded ${#CACHED_APPS[@]} applications into memory (Total weight: $TOTAL_WEIGHT)"
 }
 
-# Weighted random selection for applications (Memory optimized)
+# Global output variables — avoids subshell when caller uses $(getWeightedApp)
+SELECTED_APP=""
+SELECTED_ENDPOINT=""
+
+# Weighted random selection — writes result to globals, never echo
+# This MUST NOT be called inside $(...) or the cache won't persist
 function getWeightedApp() {
     if [[ "$DECLARE_APPS_LOADED" == "false" ]]; then
         loadAppsToMemory
     fi
-    
+
     if [[ $TOTAL_WEIGHT -eq 0 ]]; then
-        echo "google.com|/"
+        SELECTED_APP="google.com"
+        SELECTED_ENDPOINT="/"
         return
     fi
-    
+
     local rand=$((RANDOM % TOTAL_WEIGHT))
     local cumul=0
-    
+
     for i in "${!CACHED_WEIGHTS[@]}"; do
         ((cumul += CACHED_WEIGHTS[i]))
         if ((rand < cumul)); then
-            echo "${CACHED_APPS[$i]}|${CACHED_ENDPOINTS[$i]}"
+            SELECTED_APP="${CACHED_APPS[$i]}"
+            SELECTED_ENDPOINT="${CACHED_ENDPOINTS[$i]}"
             return
         fi
     done
-    
-    echo "${CACHED_APPS[0]}|${CACHED_ENDPOINTS[0]}"
+
+    SELECTED_APP="${CACHED_APPS[0]}"
+    SELECTED_ENDPOINT="${CACHED_ENDPOINTS[0]}"
 }
 
 # ============================================================================
@@ -393,6 +401,9 @@ function main() {
         exit 1
     fi
     
+    # Load apps into memory ONCE here in the parent shell — not inside $(...)
+    loadAppsToMemory
+
     # Cache config check: only re-read config every 10 requests to avoid jq overhead
     local config_check_counter=0
     local config_file="${CONFIG_DIR}/applications-config.json"
@@ -444,13 +455,15 @@ function main() {
         fi
         
         # Get random variables
-        local interface=$(getRandomInterface)
-        local user_agent=$(getRandomUserAgent)
-        
-        # Get weighted app selection
-        local app_data=$(getWeightedApp)
-        local app="${app_data%%|*}"
-        local endpoint="${app_data#*|}"
+        local interface
+        interface=$(getRandomInterface)
+        local user_agent
+        user_agent=$(getRandomUserAgent)
+
+        # Get weighted app — call directly, NOT inside $(...) so cache persists
+        getWeightedApp
+        local app="$SELECTED_APP"
+        local endpoint="$SELECTED_ENDPOINT"
         
         # Skip if empty
         if [[ -z "$app" ]]; then

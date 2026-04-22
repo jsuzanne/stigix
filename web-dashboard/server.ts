@@ -3053,15 +3053,14 @@ app.get('/api/traffic/history', authenticateToken, async (req, res) => {
         if (range === '24h') minutes = 1440;
         if (range === 'all') minutes = TRAFFIC_HISTORY_RETENTION;
 
-        const { stdout } = await promisify(exec)(`tail -n ${minutes} "${TRAFFIC_HISTORY_FILE}"`);
-        const history = stdout.split('\n')
-            .filter(line => line.trim())
+        // Read the last N lines without buffering the whole file into exec stdout
+        const content = fs.readFileSync(TRAFFIC_HISTORY_FILE, 'utf8');
+        const lines = content.split('\n').filter(l => l.trim());
+        const recent = lines.slice(-minutes);
+
+        const history = recent
             .map(line => {
-                try {
-                    return JSON.parse(line);
-                } catch (e) {
-                    return null;
-                }
+                try { return JSON.parse(line); } catch (e) { return null; }
             })
             .filter(item => item !== null);
 
