@@ -393,6 +393,21 @@ function main() {
         exit 1
     fi
     
+    # Cache config check: only re-read config every 10 requests to avoid jq overhead
+    local config_check_counter=0
+    local config_file="${CONFIG_DIR}/applications-config.json"
+    local legacy_control_file="${CONFIG_DIR}/traffic-control.json"
+
+    # Initial config read
+    local enabled="false"
+    if [[ -f "$config_file" ]]; then
+        enabled=$(jq -r '.control.enabled // false' "$config_file" 2>/dev/null)
+        SLEEP_BETWEEN_REQUESTS=$(jq -r '.control.sleep_interval // 1' "$config_file" 2>/dev/null)
+    elif [[ -f "$legacy_control_file" ]]; then
+        enabled=$(jq -r '.enabled // false' "$legacy_control_file" 2>/dev/null)
+        SLEEP_BETWEEN_REQUESTS=$(jq -r '.sleep_interval // 1' "$legacy_control_file" 2>/dev/null)
+    fi
+
     # Main loop
     while true; do
         # Check for reset signal
@@ -408,24 +423,23 @@ function main() {
             writeStats
         fi
 
-        # Check if traffic generation is enabled
-        local config_file="${CONFIG_DIR}/applications-config.json"
-        local legacy_control_file="${CONFIG_DIR}/traffic-control.json"
-        local enabled="false"
-        
-        if [[ -f "$config_file" ]]; then
-            local control_data=$(jq -r '.control' "$config_file" 2>/dev/null)
-            enabled=$(echo "$control_data" | jq -r '.enabled // false' 2>/dev/null)
-            SLEEP_BETWEEN_REQUESTS=$(echo "$control_data" | jq -r '.sleep_interval // 1' 2>/dev/null)
-        elif [[ -f "$legacy_control_file" ]]; then
-            local control_data=$(cat "$legacy_control_file" 2>/dev/null)
-            enabled=$(echo "$control_data" | jq -r '.enabled // false' 2>/dev/null)
-            SLEEP_BETWEEN_REQUESTS=$(echo "$control_data" | jq -r '.sleep_interval // 1' 2>/dev/null)
+        # Re-read config every 10 iterations to pick up rate/enabled changes without jq per-request
+        (( config_check_counter++ ))
+        if (( config_check_counter >= 10 )); then
+            config_check_counter=0
+            if [[ -f "$config_file" ]]; then
+                enabled=$(jq -r '.control.enabled // false' "$config_file" 2>/dev/null)
+                SLEEP_BETWEEN_REQUESTS=$(jq -r '.control.sleep_interval // 1' "$config_file" 2>/dev/null)
+            elif [[ -f "$legacy_control_file" ]]; then
+                enabled=$(jq -r '.enabled // false' "$legacy_control_file" 2>/dev/null)
+                SLEEP_BETWEEN_REQUESTS=$(jq -r '.sleep_interval // 1' "$legacy_control_file" 2>/dev/null)
+            fi
         fi
-        
+
         if [[ "$enabled" != "true" ]]; then
             # Traffic is paused, sleep and check again
             sleep 5
+            config_check_counter=10  # force re-read on next iteration
             continue
         fi
         
@@ -505,17 +519,18 @@ function master_loop() {
             client_count=0
         fi
         
-        # Get list of running worker PIDs (excluding the master and the pgrep itself)
-        # We use a pattern that matches our worker command line precisely
-        local worker_pids=($(pgrep -f "traffic-generator.sh.*--worker" | grep -v "$$" | grep -v "pgrep" || true))
+        # Get list of running worker PIDs — use word-boundary (-w) to avoid
+        # a master PID like 1234 accidentally matching worker PID 12345
+        local master_pid=$$
+        local worker_pids=($(pgrep -f "traffic-generator.sh.*--worker" | grep -w -v "$master_pid" || true))
         local current_count=${#worker_pids[@]}
         
         if (( current_count < client_count )); then
             local to_start=$((client_count - current_count))
             log_info "📈 [MASTER] Scaling UP: $current_count -> $client_count. Starting $to_start new workers..."
             for i in $(seq 1 $to_start); do
-                # Generate unique client ID for worker
-                local worker_id="client-$(printf "%02d" $((current_count + i)))"
+                # Use timestamp suffix for uniqueness — avoids stats file collisions on restart
+                local worker_id="client-$(printf "%02d" $((current_count + i)))-$(date +%s | tail -c 4)"
                 /bin/bash "$0" "$worker_id" --worker &
                 log_info "  + Worker $worker_id started (PID: $!)"
             done
