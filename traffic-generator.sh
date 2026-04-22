@@ -369,6 +369,7 @@ function makeRequest() {
     local http_code
     http_code=$(curl \
         --interface "$interface" \
+        --ipv4 \
         -H "User-Agent: $user_agent" \
         -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
         -H "Accept-Language: en-US,en;q=0.9,fr;q=0.8" \
