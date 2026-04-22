@@ -2666,30 +2666,72 @@ const readFile = (filePath: string) => {
     }
 };
 
+// Helper to aggregate stats from multiple clients
+const aggregateStats = () => {
+    const logDir = APP_CONFIG.logDir;
+    const statsFiles = fs.readdirSync(logDir).filter(f => f.startsWith('stats-') && f.endsWith('.json'));
+    
+    // Also include legacy stats.json if it exists
+    if (fs.existsSync(path.join(logDir, 'stats.json'))) {
+        statsFiles.push('stats.json');
+    }
+
+    if (statsFiles.length === 0) return null;
+
+    const aggregate = {
+        timestamp: 0,
+        total_requests: 0,
+        requests_by_app: {} as Record<string, number>,
+        errors_by_app: {} as Record<string, number>,
+        clients: [] as string[]
+    };
+
+    statsFiles.forEach(file => {
+        const content = readFile(path.join(logDir, file));
+        if (!content) return;
+        try {
+            const data = JSON.parse(content);
+            if (data.timestamp > aggregate.timestamp) aggregate.timestamp = data.timestamp;
+            aggregate.total_requests += data.total_requests || 0;
+            if (data.client_id) aggregate.clients.push(data.client_id);
+
+            // Sum up requests by app
+            if (data.requests_by_app) {
+                Object.entries(data.requests_by_app).forEach(([app, count]) => {
+                    aggregate.requests_by_app[app] = (aggregate.requests_by_app[app] || 0) + (count as number);
+                });
+            }
+
+            // Sum up errors by app
+            if (data.errors_by_app) {
+                Object.entries(data.errors_by_app).forEach(([app, count]) => {
+                    aggregate.errors_by_app[app] = (aggregate.errors_by_app[app] || 0) + (count as number);
+                });
+            }
+        } catch (e) {
+            console.error(`Error parsing stats file ${file}:`, e);
+        }
+    });
+
+    return aggregate;
+};
+
 // API: Get Status
 app.get('/api/status', (req, res) => {
     // In Docker/Cross-container, checks via systemctl don't work.
-    // We check if stats.json has been updated recently (heartbeat).
-    const statsFile = path.join(APP_CONFIG.logDir, 'stats.json');
+    // We check if any stats-*.json has been updated recently (heartbeat).
+    const stats = aggregateStats();
+    if (!stats) return res.json({ status: 'stopped' });
 
-    fs.readFile(statsFile, 'utf8', (err, data) => {
-        if (err) return res.json({ status: 'stopped' });
+    const lastUpdate = stats.timestamp; // Unix timestamp in seconds
+    const now = Math.floor(Date.now() / 1000);
 
-        try {
-            const stats = JSON.parse(data);
-            const lastUpdate = stats.timestamp; // Unix timestamp in seconds
-            const now = Math.floor(Date.now() / 1000);
-
-            // If updated within last 15 seconds, it's running
-            if (now - lastUpdate < 15) {
-                res.json({ status: 'running' });
-            } else {
-                res.json({ status: 'stopped' });
-            }
-        } catch (e) {
-            res.json({ status: 'unknown' });
-        }
-    });
+    // If updated within last 15 seconds, it's running
+    if (now - lastUpdate < 15) {
+        res.json({ status: 'running', clientCount: stats.clients.length });
+    } else {
+        res.json({ status: 'stopped' });
+    }
 });
 
 // API: Traffic Control - Get Status
@@ -2956,13 +2998,9 @@ app.delete('/api/voice/counter', authenticateToken, (req, res) => {
 
 // API: Get Stats
 app.get('/api/stats', (req, res) => {
-    const content = readFile(STATS_FILE);
-    if (!content) return res.json({ error: 'Stats not found' });
-    try {
-        res.json(JSON.parse(content));
-    } catch (e) {
-        res.json({ error: 'Invalid JSON' });
-    }
+    const stats = aggregateStats();
+    if (!stats) return res.json({ error: 'Stats not found' });
+    res.json(stats);
 });
 
 // API: Reset Stats

@@ -13,7 +13,7 @@ SCRIPT_DIR="/opt/sdwan-traffic-gen"
 CONFIG_DIR="${SCRIPT_DIR}/config"
 LOG_DIR="/var/log/sdwan-traffic-gen"
 LOGFILE="${LOG_DIR}/traffic.log"
-STATS_FILE="${LOG_DIR}/stats.json"
+STATS_FILE="${LOG_DIR}/stats-${CLIENTID}.json"
 VERSION_FILE="/app/VERSION"
 
 # Get version
@@ -137,64 +137,70 @@ function getRandomUserAgent() {
 }
 
 # Weighted random selection for applications
-function getWeightedApp() {
+# Global array to cache applications
+DECLARE_APPS_LOADED=false
+CACHED_APPS=()
+CACHED_WEIGHTS=()
+CACHED_ENDPOINTS=()
+TOTAL_WEIGHT=0
+
+function loadAppsToMemory() {
     local config_file="${CONFIG_DIR}/applications-config.json"
     local legacy_file="${CONFIG_DIR}/applications.txt"
     
-    local total=0
-    local -a apps weights endpoints
+    TOTAL_WEIGHT=0
+    CACHED_APPS=()
+    CACHED_WEIGHTS=()
+    CACHED_ENDPOINTS=()
     
     if [[ -f "$config_file" ]]; then
-        # Parse JSON config
         local apps_json=$(jq -r '.applications[] | if type == "string" then . else "\(.domain)|\(.weight)|\(.endpoint)" end' "$config_file" 2>/dev/null)
-        if [[ -z "$apps_json" ]]; then
-            log_error "Failed to parse applications from $config_file"
-            echo "google.com|/"
-            return
-        fi
-        
         while read -r line; do
             local app=$(echo "$line" | cut -d'|' -f1)
             local weight=$(echo "$line" | cut -d'|' -f2)
             local endpoint=$(echo "$line" | cut -d'|' -f3)
-            
-            # Skip comments and empty lines
             [[ "$app" =~ ^#.*$ || -z "$app" ]] && continue
-            
-            apps+=("$app")
-            weights+=("$weight")
-            endpoints+=("$endpoint")
-            ((total += weight))
+            CACHED_APPS+=("$app")
+            CACHED_WEIGHTS+=("$weight")
+            CACHED_ENDPOINTS+=("$endpoint")
+            ((TOTAL_WEIGHT += weight))
         done <<< "$apps_json"
     elif [[ -f "$legacy_file" ]]; then
-        # Fallback to legacy format
         while IFS='|' read -r app weight endpoint; do
             [[ "$app" =~ ^#.*$ || -z "$app" ]] && continue
-            apps+=("$app")
-            weights+=("$weight")
-            endpoints+=("$endpoint")
-            ((total += weight))
+            CACHED_APPS+=("$app")
+            CACHED_WEIGHTS+=("$weight")
+            CACHED_ENDPOINTS+=("$endpoint")
+            ((TOTAL_WEIGHT += weight))
         done < "$legacy_file"
     fi
+    DECLARE_APPS_LOADED=true
+    log_info "Loaded ${#CACHED_APPS[@]} applications into memory (Total weight: $TOTAL_WEIGHT)"
+}
+
+# Weighted random selection for applications (Memory optimized)
+function getWeightedApp() {
+    if [[ "$DECLARE_APPS_LOADED" == "false" ]]; then
+        loadAppsToMemory
+    fi
     
-    if [[ $total -eq 0 ]]; then
-        log_error "No valid applications found in config"
+    if [[ $TOTAL_WEIGHT -eq 0 ]]; then
         echo "google.com|/"
         return
     fi
     
-    local rand=$((RANDOM % total))
+    local rand=$((RANDOM % TOTAL_WEIGHT))
     local cumul=0
     
-    for i in "${!weights[@]}"; do
-        ((cumul += weights[i]))
+    for i in "${!CACHED_WEIGHTS[@]}"; do
+        ((cumul += CACHED_WEIGHTS[i]))
         if ((rand < cumul)); then
-            echo "${apps[$i]}|${endpoints[$i]}"
+            echo "${CACHED_APPS[$i]}|${CACHED_ENDPOINTS[$i]}"
             return
         fi
     done
     
-    echo "${apps[0]}|${endpoints[0]}"
+    echo "${CACHED_APPS[0]}|${CACHED_ENDPOINTS[0]}"
 }
 
 # ============================================================================
@@ -398,6 +404,7 @@ function main() {
             unset APP_ERRORS
             declare -A APP_ERRORS
             rm -f "${LOG_DIR}/.reset_stats"
+            loadAppsToMemory
             writeStats
         fi
 
@@ -470,11 +477,69 @@ function main() {
 }
 
 # ============================================================================
-# SIGNAL HANDLERS
+# MASTER/WORKER MANAGEMENT
 # ============================================================================
 
-trap 'log_info "Received SIGTERM, shutting down..."; exit 0' SIGTERM
-trap 'log_info "Received SIGINT, shutting down..."; exit 0' SIGINT
+# Check for --worker flag
+IS_WORKER=false
+if [[ "$2" == "--worker" ]]; then
+    IS_WORKER=true
+fi
+
+function master_loop() {
+    log_info "🚀 [MASTER] Stigix Traffic Manager starting... (Version: $VERSION)"
+    
+    while true; do
+        # Read config for client count and enabled status
+        local config_file="${CONFIG_DIR}/applications-config.json"
+        local client_count=1
+        local enabled="false"
+        
+        if [[ -f "$config_file" ]]; then
+            enabled=$(jq -r '.control.enabled // false' "$config_file" 2>/dev/null)
+            client_count=$(jq -r '.control.client_count // 1' "$config_file" 2>/dev/null)
+        fi
+
+        # If traffic is disabled, we should have 0 workers
+        if [[ "$enabled" != "true" ]]; then
+            client_count=0
+        fi
+        
+        # Get list of running worker PIDs (excluding the master)
+        # We use a pattern that matches our worker command line
+        local worker_pids=($(pgrep -f "traffic-generator.sh.*--worker" || true))
+        local current_count=${#worker_pids[@]}
+        
+        if (( current_count < client_count )); then
+            local to_start=$((client_count - current_count))
+            log_info "📈 [MASTER] Scaling UP: $current_count -> $client_count. Starting $to_start new workers..."
+            for i in $(seq 1 $to_start); do
+                # Generate unique client ID for worker
+                local worker_id="client-$(printf "%02d" $((current_count + i)))"
+                /bin/bash "$0" "$worker_id" --worker &
+                log_info "  + Worker $worker_id started (PID: $!)"
+            done
+        elif (( current_count > client_count )); then
+            local to_stop=$((current_count - client_count))
+            log_info "📉 [MASTER] Scaling DOWN: $current_count -> $client_count. Stopping $to_stop workers..."
+            for i in $(seq 1 $to_stop); do
+                local pid_to_kill=${worker_pids[$i-1]}
+                log_info "  - Stopping Worker PID: $pid_to_kill"
+                kill "$pid_to_kill" 2>/dev/null || true
+            done
+        fi
+        
+        # Check for reset signal
+        if [[ -f "${LOG_DIR}/.reset_stats" ]]; then
+            log_info "♻️ [MASTER] Reset signal received. Propagating to workers..."
+            # Workers check for this file in their loop too, but we help by clearing it once they've had time
+            # Actually, workers will see it themselves. We just wait.
+            sleep 2
+        fi
+
+        sleep 5
+    done
+}
 
 # ============================================================================
 # INITIALIZATION
@@ -483,7 +548,13 @@ trap 'log_info "Received SIGINT, shutting down..."; exit 0' SIGINT
 # Create directories if needed
 mkdir -p "$CONFIG_DIR" "$LOG_DIR" 2>/dev/null || true
 
-# Run main loop
-main
+# Main Execution Path
+if [[ "$IS_WORKER" == "true" ]]; then
+    # We are a worker. We generate traffic.
+    main
+else
+    # We are the master. We manage scaling.
+    master_loop
+fi
 
 

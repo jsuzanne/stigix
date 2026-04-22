@@ -90,6 +90,7 @@ export default function App() {
   // Traffic Control State
   const [trafficRunning, setTrafficRunning] = useState(false);
   const [trafficRate, setTrafficRate] = useState(1.0);
+  const [trafficClientCount, setTrafficClientCount] = useState(1);
   const [updatingRate, setUpdatingRate] = useState(false);
   const [configValid, setConfigValid] = useState(false);
 
@@ -344,6 +345,7 @@ export default function App() {
       const data = await res.json();
       setTrafficRunning(data.running || false);
       if (data.sleep_interval) setTrafficRate(data.sleep_interval);
+      if (data.client_count) setTrafficClientCount(data.client_count);
     } catch (e) {
       console.error('Failed to fetch traffic status');
     }
@@ -372,26 +374,28 @@ export default function App() {
       if (res.ok) {
         setTrafficRunning(data.running);
         if (data.sleep_interval) setTrafficRate(data.sleep_interval);
+        if (data.client_count) setTrafficClientCount(data.client_count);
       }
     } catch (e) {
       console.error('Failed to toggle traffic');
     }
   };
 
-  const updateTrafficRate = async (val: number) => {
+  const updateTrafficSettings = async (rate?: number, clients?: number) => {
     if (!token) return;
     setUpdatingRate(true);
     try {
-      const res = await fetch('/api/traffic/settings', {
+      const res = await fetch('/api/traffic/rate', {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sleep_interval: val })
+        body: JSON.stringify({ rate, client_count: clients })
       });
       if (res.ok) {
-        setTrafficRate(val);
+        if (rate !== undefined) setTrafficRate(rate);
+        if (clients !== undefined) setTrafficClientCount(clients);
       }
     } catch (e) {
-      console.error('Failed to update traffic rate');
+      console.error('Failed to update traffic settings');
     } finally {
       setUpdatingRate(false);
     }
@@ -972,31 +976,61 @@ export default function App() {
                   </p>
                 </div>
 
-                {/* Part 2: Integrated Slider */}
-                <div className="flex-1 max-w-md bg-card-secondary/50 p-3 rounded-lg border border-border/50 shadow-inner">
-                  <div className="flex items-center justify-between mb-2 px-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-black text-text-muted tracking-widest">Speed Control</span>
-                      <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 uppercase tracking-tighter">
-                        {trafficRate <= 0.5 ? '🚀 Turbo' : trafficRate <= 2 ? '⚡ Fast' : trafficRate <= 5 ? '📱 Normal' : '🐢 Slow'}
-                      </span>
+                <div className="flex-1 max-w-2xl grid grid-cols-1 md:grid-cols-2 gap-4 bg-card-secondary/50 p-3 rounded-lg border border-border/50 shadow-inner">
+                  {/* Part 2a: Speed Slider */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between px-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black text-text-muted tracking-widest uppercase">Traffic Speed</span>
+                        <span className="text-[9px] font-black text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 uppercase tracking-tighter">
+                          {trafficRate <= 0.5 ? '🚀 Turbo' : trafficRate <= 2 ? '⚡ Fast' : trafficRate <= 5 ? '📱 Normal' : '🐢 Slow'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-text-muted uppercase">{trafficRate}s delay</span>
                     </div>
-                    <span className="text-[10px] font-mono font-bold text-text-muted uppercase">{trafficRate}s delay</span>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm opacity-60">🚀</span>
+                      <input
+                        type="range"
+                        min="0.1"
+                        max="10"
+                        step="0.5"
+                        value={trafficRate}
+                        disabled={updatingRate}
+                        onChange={(e) => updateTrafficSettings(parseFloat(e.target.value), undefined)}
+                        className="flex-1 h-1.5 bg-card border border-border rounded-lg appearance-none cursor-pointer accent-blue-600 dark:accent-blue-500 hover:accent-blue-500 transition-all"
+                      />
+                      <span className="text-sm opacity-60">🐢</span>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">🚀</span>
-                    <input
-                      type="range"
-                      min="0.1"
-                      max="10"
-                      step="0.5"
-                      value={trafficRate}
-                      disabled={updatingRate}
-                      onChange={(e) => updateTrafficRate(parseFloat(e.target.value))}
-                      className="flex-1 h-1.5 bg-card border border-border rounded-lg appearance-none cursor-pointer accent-blue-600 dark:accent-blue-500 hover:accent-blue-500 transition-all"
-                    />
-                    <span className="text-lg">🐢</span>
+                  {/* Part 2b: Client Count Slider */}
+                  <div className="space-y-2 border-l border-border/50 pl-4">
+                    <div className="flex items-center justify-between px-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black text-text-muted tracking-widest uppercase">Traffic Density</span>
+                        <span className="text-[9px] font-black text-purple-600 dark:text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20 uppercase tracking-tighter">
+                          {trafficClientCount} {trafficClientCount > 1 ? 'Clients' : 'Client'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-text-muted uppercase">x{trafficClientCount} parallel</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Monitor size={14} className="text-text-muted opacity-60" />
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        step="1"
+                        value={trafficClientCount}
+                        disabled={updatingRate}
+                        onChange={(e) => updateTrafficSettings(undefined, parseInt(e.target.value))}
+                        className="flex-1 h-1.5 bg-card border border-border rounded-lg appearance-none cursor-pointer accent-purple-600 dark:accent-purple-500 hover:accent-purple-500 transition-all"
+                      />
+                      <Zap size={14} className="text-purple-500 opacity-60" />
+                    </div>
                   </div>
                 </div>
 
