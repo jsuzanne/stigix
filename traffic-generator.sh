@@ -13,7 +13,6 @@ SCRIPT_DIR="/opt/sdwan-traffic-gen"
 CONFIG_DIR="${SCRIPT_DIR}/config"
 LOG_DIR="/var/log/sdwan-traffic-gen"
 LOGFILE="${LOG_DIR}/traffic.log"
-STATS_FILE="${LOG_DIR}/stats-${CLIENTID}.json"
 VERSION_FILE="/app/VERSION"
 
 # Get version
@@ -23,7 +22,10 @@ else
     VERSION="1.1.0-patch.47"
 fi
 
+# CLIENTID must be set BEFORE STATS_FILE
 CLIENTID="${1:-client01}"
+STATS_FILE="${LOG_DIR}/stats-${CLIENTID}.json"
+
 MAX_TIMEOUT=15
 SLEEP_BETWEEN_REQUESTS=1
 
