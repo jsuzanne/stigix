@@ -29,6 +29,7 @@ export interface TestResult {
     };
     slsDiagnostic?: any;
     runId?: string;
+    previousStatus?: 'allowed' | 'blocked' | 'sinkholed' | 'unreachable' | 'error' | null;
 }
 
 export interface LogStats {
@@ -177,10 +178,30 @@ export class TestLogger {
             // Sort by timestamp descending (newest first)
             filtered.sort((a, b) => b.timestamp - a.timestamp);
 
+            // Build previousStatus: for each result, find the last prior result with same name+type
+            // We need the full chronological list to look backwards
+            const chronological = [...allResults].sort((a, b) => a.timestamp - b.timestamp);
+            const lastSeenStatus = new Map<string, 'allowed' | 'blocked' | 'sinkholed' | 'unreachable' | 'error'>();
+            const previousStatusMap = new Map<number, typeof lastSeenStatus extends Map<any, infer V> ? V : never>();
+            for (const r of chronological) {
+                const key = `${r.type}::${r.name}`;
+                const prev = lastSeenStatus.get(key);
+                if (prev !== undefined) {
+                    previousStatusMap.set(r.id, prev);
+                }
+                lastSeenStatus.set(key, r.status);
+            }
+
+            // Annotate filtered results with previousStatus
+            const annotated = filtered.map(r => ({
+                ...r,
+                previousStatus: previousStatusMap.has(r.id) ? previousStatusMap.get(r.id) : null
+            }));
+
             // Apply pagination
             const offset = options.offset || 0;
             const limit = options.limit || 50;
-            const paginated = filtered.slice(offset, offset + limit);
+            const paginated = annotated.slice(offset, offset + limit);
 
             return {
                 results: paginated,

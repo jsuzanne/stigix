@@ -18,6 +18,8 @@ interface TestResult {
     timestamp: number;
     testType: string;
     testName: string;
+    status: string;
+    previousStatus?: string | null;
     result: any;
 }
 
@@ -147,6 +149,7 @@ export default function Security({ token }: SecurityProps) {
 
     // Test results filter
     const [testTypeFilter, setTestTypeFilter] = useState<'all' | 'url_filtering' | 'dns_security' | 'threat_prevention'>('all');
+    const [showChangesOnly, setShowChangesOnly] = useState(false);
 
     // Search and pagination
     const [searchQuery, setSearchQuery] = useState('');
@@ -341,6 +344,7 @@ export default function Security({ token }: SecurityProps) {
                 testId: r.id,
                 testType: r.type,
                 testName: r.name,
+                previousStatus: r.previousStatus ?? null,
                 result: { status: r.status } // For getStatusBadge compatibility
             }));
 
@@ -1616,6 +1620,16 @@ export default function Security({ token }: SecurityProps) {
                                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
                                 </div>
                                 <button
+                                    onClick={() => setShowChangesOnly(v => !v)}
+                                    className={`px-4 py-3 border rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2 shadow-sm ${
+                                        showChangesOnly
+                                            ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
+                                            : 'bg-card-secondary hover:bg-card-hover border-border text-text-primary'
+                                    }`}
+                                >
+                                    ⚡ Changes Only
+                                </button>
+                                <button
                                     onClick={exportResults}
                                     disabled={testResults.length === 0}
                                     className="px-4 py-3 bg-card-secondary hover:bg-card-hover border border-border disabled:opacity-50 text-text-primary rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2 shadow-sm"
@@ -1652,50 +1666,88 @@ export default function Security({ token }: SecurityProps) {
                                                 <th className="text-left px-4 py-4 text-[9px] font-black text-text-muted tracking-widest">Timeline</th>
                                                 <th className="text-left px-4 py-4 text-[9px] font-black text-text-muted tracking-widest">List</th>
                                                 <th className="text-left px-4 py-4 text-[9px] font-black text-text-muted tracking-widest">Identity</th>
+                                                <th className="text-left px-4 py-4 text-[9px] font-black text-text-muted tracking-widest">Change</th>
                                                 <th className="text-right px-4 py-4 text-[9px] font-black text-text-muted tracking-widest">Disposition</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border/50">
-                                            {testResults.map((result, index) => (
-                                                <tr
-                                                    key={result.testId || index}
-                                                    onClick={() => result.testId && viewTestDetails(result.testId)}
-                                                    className="hover:bg-card-secondary/50 transition-all cursor-pointer group"
-                                                >
-                                                    <td className="px-4 py-4 text-xs text-text-muted font-black font-mono">
-                                                        #{result.testId || 'N/A'}
-                                                    </td>
-                                                    <td className="px-4 py-4 text-[10px] text-text-muted font-medium">
-                                                        <div className="flex items-center gap-2">
-                                                            <Clock size={12} className="opacity-50" />
-                                                            {new Date(result.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                                        </div>
-                                                        <div className="text-[9px] opacity-40 ml-5 font-bold uppercase tracking-tighter">
-                                                            {new Date(result.timestamp).toLocaleDateString()}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-4">
-                                                        <span className={cn(
-                                                            "px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border shadow-sm",
-                                                            result.testType === 'url_filtering' || result.testType === 'url' ? 'bg-blue-600/5 text-blue-600 dark:text-blue-400 border-blue-500/20' :
-                                                                result.testType === 'dns_security' || result.testType === 'dns' ? 'bg-purple-600/5 text-purple-600 dark:text-purple-400 border-purple-500/20' :
-                                                                    'bg-red-600/5 text-red-600 dark:text-red-400 border-red-500/20'
-                                                        )}>
-                                                            {result.testType === 'url_filtering' || result.testType === 'url' ? 'URL' :
-                                                                result.testType === 'dns_security' || result.testType === 'dns' ? 'DNS' :
-                                                                    'Threat'}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-4 text-[11px] text-text-primary font-bold tracking-tight truncate max-w-xs group-hover:text-blue-500 transition-colors">
-                                                        {result.testName}
-                                                    </td>
-                                                    <td className="px-4 py-4 text-right">
-                                                        <div className="flex justify-end">
-                                                            {getStatusBadge(result.result)}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                            {testResults
+                                                .filter(r => !showChangesOnly || (r.previousStatus !== null && r.previousStatus !== undefined && r.previousStatus !== r.status))
+                                                .map((result, index) => {
+                                                const hasChange = result.previousStatus !== null && result.previousStatus !== undefined && result.previousStatus !== result.status;
+                                                const isRegression = hasChange && (
+                                                    (result.previousStatus === 'blocked' || result.previousStatus === 'sinkholed') &&
+                                                    result.status !== 'blocked' && result.status !== 'sinkholed'
+                                                );
+                                                const isImprovement = hasChange && (
+                                                    (result.status === 'blocked' || result.status === 'sinkholed') &&
+                                                    result.previousStatus !== 'blocked' && result.previousStatus !== 'sinkholed'
+                                                );
+                                                return (
+                                                    <tr
+                                                        key={result.testId || index}
+                                                        onClick={() => result.testId && viewTestDetails(result.testId)}
+                                                        className={`hover:bg-card-secondary/50 transition-all cursor-pointer group ${
+                                                            isRegression ? 'bg-red-500/5' : isImprovement ? 'bg-green-500/5' : ''
+                                                        }`}
+                                                    >
+                                                        <td className="px-4 py-4 text-xs text-text-muted font-black font-mono">
+                                                            #{result.testId || 'N/A'}
+                                                        </td>
+                                                        <td className="px-4 py-4 text-[10px] text-text-muted font-medium">
+                                                            <div className="flex items-center gap-2">
+                                                                <Clock size={12} className="opacity-50" />
+                                                                {new Date(result.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                            </div>
+                                                            <div className="text-[9px] opacity-40 ml-5 font-bold uppercase tracking-tighter">
+                                                                {new Date(result.timestamp).toLocaleDateString()}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-4">
+                                                            <span className={cn(
+                                                                "px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border shadow-sm",
+                                                                result.testType === 'url_filtering' || result.testType === 'url' ? 'bg-blue-600/5 text-blue-600 dark:text-blue-400 border-blue-500/20' :
+                                                                    result.testType === 'dns_security' || result.testType === 'dns' ? 'bg-purple-600/5 text-purple-600 dark:text-purple-400 border-purple-500/20' :
+                                                                        'bg-red-600/5 text-red-600 dark:text-red-400 border-red-500/20'
+                                                            )}>
+                                                                {result.testType === 'url_filtering' || result.testType === 'url' ? 'URL' :
+                                                                    result.testType === 'dns_security' || result.testType === 'dns' ? 'DNS' :
+                                                                        'Threat'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-4 text-[11px] text-text-primary font-bold tracking-tight truncate max-w-xs group-hover:text-blue-500 transition-colors">
+                                                            {result.testName}
+                                                        </td>
+                                                        <td className="px-4 py-4">
+                                                            {hasChange ? (
+                                                                <div className="flex items-center gap-1 text-[10px] font-black">
+                                                                    <span className={result.previousStatus === 'blocked' || result.previousStatus === 'sinkholed' ? 'text-green-500' : 'text-red-400'}>
+                                                                        {result.previousStatus}
+                                                                    </span>
+                                                                    <span className="text-text-muted opacity-40">→</span>
+                                                                    <span className={result.status === 'blocked' || result.status === 'sinkholed' ? 'text-green-500' : 'text-red-400'}>
+                                                                        {result.status}
+                                                                    </span>
+                                                                    <span className={`ml-1 px-1 py-0.5 rounded text-[8px] font-black border ${
+                                                                        isRegression ? 'text-red-500 bg-red-500/10 border-red-500/20' :
+                                                                        isImprovement ? 'text-green-500 bg-green-500/10 border-green-500/20' :
+                                                                        'text-text-muted border-border'
+                                                                    }`}>
+                                                                        {isRegression ? '↓ GAP' : isImprovement ? '↑ FIXED' : 'CHG'}
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-text-muted opacity-20 text-[10px]">—</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-4 text-right">
+                                                            <div className="flex justify-end">
+                                                                {getStatusBadge(result.result)}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                     {loadingMore && (

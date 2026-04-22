@@ -6390,7 +6390,7 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
 
 app.get('/api/security/scores', authenticateToken, (req, res) => {
     const history = getLatestScoreHistory();
-    res.json(history.slice(-100).reverse());
+    res.json(history.slice(-288).reverse());
 });
 
 app.get('/api/security/scores/latest', authenticateToken, (req, res) => {

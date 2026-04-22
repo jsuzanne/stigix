@@ -134,6 +134,14 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     const urlLatestDiff = computeLatestDiff('url');
     const dnsLatestDiff = computeLatestDiff('dns');
 
+    // Min / max scores over the loaded history window
+    const urlScores = scores.filter(s => s.scores?.url != null).map(s => s.scores.url as number);
+    const dnsScores = scores.filter(s => s.scores?.dns != null).map(s => s.scores.dns as number);
+    const minUrlScore = urlScores.length ? Math.min(...urlScores) : null;
+    const maxUrlScore = urlScores.length ? Math.max(...urlScores) : null;
+    const minDnsScore = dnsScores.length ? Math.min(...dnsScores) : null;
+    const maxDnsScore = dnsScores.length ? Math.max(...dnsScores) : null;
+
     // Proper category label — capitalise acronyms and title-case the rest
     const formatCategory = (cat: string) =>
         cat.replace(/-/g, ' ')
@@ -176,7 +184,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
         );
     };
 
-    const renderGauge = (type: 'url' | 'dns', entry: any, baseline: any) => {
+    const renderGauge = (type: 'url' | 'dns', entry: any, baseline: any, minScore: number | null, maxScore: number | null) => {
         if (!entry) return (
             <div className="flex flex-col items-center justify-center p-6 bg-card border border-border rounded-xl">
                 <Shield size={24} className="text-text-muted mb-2 opacity-50" />
@@ -186,7 +194,6 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
 
         const score = entry.scores?.[type] ?? 0;
         const color = score >= 90 ? 'text-green-500' : score >= 70 ? 'text-yellow-500' : 'text-red-500';
-        const bgRing = score >= 90 ? 'text-green-500/20' : score >= 70 ? 'text-yellow-500/20' : 'text-red-500/20';
 
         return (
             <div className="flex flex-col gap-4 bg-card border border-border p-5 rounded-xl shadow-sm relative overflow-hidden group">
@@ -212,7 +219,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
 
                 <div className="flex items-end gap-3 z-10">
                     <div className={`text-4xl font-black tabular-nums tracking-tighter ${color} drop-shadow-md`}>
-                        {score} <span className="text-sm font-bold opacity-50 relative -top-3 left-0">/ 100</span>
+                        {score.toFixed(1)} <span className="text-sm font-bold opacity-50 relative -top-3 left-0">/ 100</span>
                     </div>
                     {entry.delta !== null && entry.delta !== undefined && entry.delta !== 0 && (
                         <div className={`flex items-center text-[10px] font-bold pb-1.5 ${entry.delta > 0 ? 'text-green-500' : 'text-red-500'}`}>
@@ -222,7 +229,17 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                     )}
                 </div>
 
-                <div className="flex flex-col gap-2 z-10 mt-2">
+                {/* Min / Max range */}
+                {minScore !== null && maxScore !== null && (
+                    <div className="flex items-center gap-1.5 text-[9px] font-bold text-text-muted z-10 -mt-2">
+                        <span className="text-red-400 opacity-70">MIN {minScore.toFixed(1)}</span>
+                        <span className="opacity-30">↔</span>
+                        <span className="text-green-400 opacity-70">MAX {maxScore.toFixed(1)}</span>
+                        <span className="opacity-30 ml-1">over loaded history</span>
+                    </div>
+                )}
+
+                <div className="flex flex-col gap-2 z-10">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1 group/baseline relative">
                             <span className="text-[10px] text-text-muted font-bold tracking-widest">BASELINE:</span>
@@ -342,15 +359,14 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <h2 className="text-xl font-black text-text-primary tracking-tight">Security Posture Score</h2>
-                    <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[9px] font-black text-indigo-400 tracking-widest uppercase">Live Metrics v2</span>
                 </div>
             </div>
 
             <div className="flex flex-col lg:flex-row gap-4 items-start">
                 {/* Gauges — left column, sticky so they stay top-aligned */}
                 <div className="flex flex-col gap-4 w-full lg:w-80 shrink-0 lg:sticky lg:top-4">
-                    {renderGauge('url', latestUrlScore, urlBaseline)}
-                    {renderGauge('dns', latestDnsScore, dnsBaseline)}
+                    {renderGauge('url', latestUrlScore, urlBaseline, minUrlScore, maxUrlScore)}
+                    {renderGauge('dns', latestDnsScore, dnsBaseline, minDnsScore, maxDnsScore)}
                 </div>
 
                 {/* Charts & Gaps — right column, grows freely */}
