@@ -1518,7 +1518,8 @@ const getDnsCommand = (domain: string): { command: string; type: string } => {
     // Priority 1: nslookup (Universal and provides CNAME info which is vital for sinkhole detection)
     // Adding timeout for robustness
     if (availableCommands.nslookup) {
-        const cmd = PLATFORM === 'win32' ? `nslookup -timeout=2 ${domain}` : `nslookup -timeout=2 ${domain}`;
+        // Use 5s timeout and trailing dot to prevent search domain lookups
+        const cmd = PLATFORM === 'win32' ? `nslookup -timeout=5 ${domain}.` : `nslookup -timeout=5 ${domain}.`;
         return { command: cmd, type: 'nslookup' };
     }
 
@@ -1537,7 +1538,7 @@ const getDnsCommand = (domain: string): { command: string; type: string } => {
     }
 
     // Ultimate fallback
-    return { command: `nslookup -timeout=2 ${domain}`, type: 'nslookup' };
+    return { command: `nslookup -timeout=5 ${domain}.`, type: 'nslookup' };
 };
 
 // Parse DNS command output based on command type
