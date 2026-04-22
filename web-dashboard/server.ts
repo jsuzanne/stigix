@@ -5257,9 +5257,10 @@ const addTestResult = async (testType: string, testName: string, result: any, te
         }
     }
 
+    const previousStatus = await testLogger.getLatestStatus(testResult.type, testResult.name);
     await testLogger.logTest(testResult);
 
-    return id;
+    return { id, previousStatus };
 };
 
 // Helper: Update statistics
@@ -5989,8 +5990,8 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             };
 
             logTest(`[URL-TEST-${testId}] Final status: ${result.status} (HTTP ${httpCode})`);
-            addTestResult('url_filtering', category || url, result, testId);
-            res.json(result);
+            const { previousStatus } = await addTestResult('url_filtering', category || url, result, testId);
+            res.json({ ...result, previousStatus });
         } catch (curlError: any) {
             // Curl error usually means blocked or network error
             const result = {
@@ -6003,8 +6004,8 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             };
 
             logTest(`[URL-TEST-${testId}] Final status: blocked (curl error: ${curlError.message})`);
-            addTestResult('url_filtering', category || url, result, testId);
-            res.json(result);
+            const { previousStatus } = await addTestResult('url_filtering', category || url, result, testId);
+            res.json({ ...result, previousStatus });
         }
     } catch (e: any) {
         res.status(500).json({ error: 'Test execution failed', message: e.message });
@@ -6225,8 +6226,8 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
             };
 
             logTest(`[DNS-TEST-${testId}] Test result:`, { domain, status, resolved });
-            addTestResult('dns_security', testName || domain, result, testId);
-            res.json(result);
+            const { previousStatus } = await addTestResult('dns_security', testName || domain, result, testId);
+            res.json({ ...result, previousStatus });
         } catch (dnsError: any) {
             // Even if the command failed (like nslookup returning SERVFAIL), it might contain sinkhole info
             const combinedErrorOutput = ((dnsError.stdout || '') + (dnsError.stderr || '')).toLowerCase();
@@ -6242,8 +6243,8 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
                     output: combinedErrorOutput,
                     reason: 'DNS error occurred, but Palo Alto Sinkhole keyword detected in response'
                 };
-                addTestResult('dns_security', testName || domain, result, testId);
-                return res.json(result);
+                const { previousStatus } = await addTestResult('dns_security', testName || domain, result, testId);
+                return res.json({ ...result, previousStatus });
             }
 
             const isCommandError = dnsError.message.includes('command not found') ||
@@ -6261,8 +6262,8 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
 
             logTest(`[DNS-TEST-${testId}] Error: ${isCommandError ? 'Command not available' : 'DNS blocked'} - ${dnsError.message}`);
 
-            addTestResult('dns_security', testName || domain, result, testId);
-            res.json(result);
+            const { previousStatus } = await addTestResult('dns_security', testName || domain, result, testId);
+            res.json({ ...result, previousStatus });
         }
     } catch (e: any) {
         res.status(500).json({ error: 'Test execution failed', message: e.message });

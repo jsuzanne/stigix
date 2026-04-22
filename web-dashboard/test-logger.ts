@@ -214,6 +214,19 @@ export class TestLogger {
     }
 
     /**
+     * Get the latest status for a specific test (by type and name)
+     */
+    async getLatestStatus(type: string, name: string): Promise<TestResult['status'] | null> {
+        try {
+            const allResults = await this.readAllResults();
+            const latest = allResults.find(r => r.type === type && r.name === name);
+            return latest ? latest.status : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    /**
      * Get a single test result by ID
      */
     async getResultById(id: number): Promise<TestResult | null> {

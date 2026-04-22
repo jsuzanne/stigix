@@ -455,6 +455,23 @@ export default function Security({ token }: SecurityProps) {
             dns_security: { ...config.dns_security, enabled_tests: allEnabled ? [] : allIds }
         });
     };
+    // Helper to notify of status changes during manual testing
+    const notifyStatusChange = (testName: string, current: string, previous: string | null) => {
+        if (!previous || current === previous) return;
+
+        const isRegression = (previous === 'blocked' || previous === 'sinkholed') && 
+                            (current !== 'blocked' && current !== 'sinkholed');
+        const isImprovement = (current === 'blocked' || current === 'sinkholed') && 
+                             (previous !== 'blocked' && previous !== 'sinkholed');
+
+        if (isRegression) {
+            showToast(`⚠️ REGRESSION: ${testName} is now ${current.toUpperCase()} (was ${previous.toUpperCase()})`, 'error');
+        } else if (isImprovement) {
+            showToast(`✅ FIXED: ${testName} is now ${current.toUpperCase()} (was ${previous.toUpperCase()})`, 'success');
+        } else {
+            showToast(`ℹ️ ${testName} status changed: ${previous} → ${current}`, 'info');
+        }
+    };
 
     const runURLTest = async (category: typeof URL_CATEGORIES[0]) => {
         setTesting({ ...testing, [`url-${category.id}`]: true });
@@ -465,6 +482,9 @@ export default function Security({ token }: SecurityProps) {
                 body: JSON.stringify({ url: category.url, category: category.name })
             });
             const result = await res.json();
+            if (result.status) {
+                notifyStatusChange(category.name, result.status, result.previousStatus);
+            }
             await fetchResults();
             await fetchConfig();
         } catch (e) {
@@ -509,6 +529,10 @@ export default function Security({ token }: SecurityProps) {
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ domain: test.domain, testName: test.name })
             });
+            const data = await res.json();
+            if (data.status) {
+                notifyStatusChange(test.name, data.status, data.previousStatus);
+            }
             await fetchResults();
             await fetchConfig();
         } catch (e) {
