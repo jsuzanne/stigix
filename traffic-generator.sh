@@ -503,53 +503,65 @@ fi
 function master_loop() {
     log_info "🚀 [MASTER] Stigix Traffic Manager starting... (Version: $VERSION)"
     
+    # Internal PID registry — track children we forked, never rely on pgrep
+    declare -A active_workers  # worker_id -> pid
+
     while true; do
-        # Read config for client count and enabled status
+        # Read config
         local config_file="${CONFIG_DIR}/applications-config.json"
         local client_count=1
         local enabled="false"
-        
+
         if [[ -f "$config_file" ]]; then
             enabled=$(jq -r '.control.enabled // false' "$config_file" 2>/dev/null)
             client_count=$(jq -r '.control.client_count // 1' "$config_file" 2>/dev/null)
         fi
 
-        # If traffic is disabled, we should have 0 workers
+        # If traffic is disabled, target 0 workers
         if [[ "$enabled" != "true" ]]; then
             client_count=0
         fi
-        
-        # Get list of running worker PIDs — use word-boundary (-w) to avoid
-        # a master PID like 1234 accidentally matching worker PID 12345
-        local master_pid=$$
-        local worker_pids=($(pgrep -f "traffic-generator.sh.*--worker" | grep -w -v "$master_pid" || true))
-        local current_count=${#worker_pids[@]}
-        
-        if (( current_count < client_count )); then
-            local to_start=$((client_count - current_count))
-            log_info "📈 [MASTER] Scaling UP: $current_count -> $client_count. Starting $to_start new workers..."
+
+        # Prune dead workers from registry using kill -0 (no signal sent, just liveness check)
+        local alive_count=0
+        for wid in "${!active_workers[@]}"; do
+            local wpid=${active_workers[$wid]}
+            if kill -0 "$wpid" 2>/dev/null; then
+                (( alive_count++ ))
+            else
+                unset active_workers[$wid]
+            fi
+        done
+
+        # Scale UP
+        if (( alive_count < client_count )); then
+            local to_start=$(( client_count - alive_count ))
+            log_info "📈 [MASTER] Scaling UP: $alive_count -> $client_count. Starting $to_start new workers..."
             for i in $(seq 1 $to_start); do
-                # Use timestamp suffix for uniqueness — avoids stats file collisions on restart
-                local worker_id="client-$(printf "%02d" $((current_count + i)))-$(date +%s | tail -c 4)"
+                local worker_id="client-$(printf '%02d' $(( alive_count + i )))-$(date +%s | tail -c 4)"
                 /bin/bash "$0" "$worker_id" --worker &
-                log_info "  + Worker $worker_id started (PID: $!)"
+                local wpid=$!
+                active_workers[$worker_id]=$wpid
+                log_info "  + Worker $worker_id started (PID: $wpid)"
             done
-        elif (( current_count > client_count )); then
-            local to_stop=$((current_count - client_count))
-            log_info "📉 [MASTER] Scaling DOWN: $current_count -> $client_count. Stopping $to_stop workers..."
-            for i in $(seq 1 $to_stop); do
-                local pid_to_kill=${worker_pids[$i-1]}
-                log_info "  - Stopping Worker PID: $pid_to_kill"
-                kill "$pid_to_kill" 2>/dev/null || true
+
+        # Scale DOWN
+        elif (( alive_count > client_count )); then
+            local to_stop=$(( alive_count - client_count ))
+            log_info "📉 [MASTER] Scaling DOWN: $alive_count -> $client_count. Stopping $to_stop workers..."
+            for wid in "${!active_workers[@]}"; do
+                (( to_stop <= 0 )) && break
+                local wpid=${active_workers[$wid]}
+                log_info "  - Stopping Worker $wid (PID: $wpid)"
+                kill "$wpid" 2>/dev/null || true
+                unset active_workers[$wid]
+                (( to_stop-- ))
             done
         fi
-        
-        # Check for reset signal
+
+        # Reset signal: just clear state, workers self-reset
         if [[ -f "${LOG_DIR}/.reset_stats" ]]; then
-            log_info "♻️ [MASTER] Reset signal received. Propagating to workers..."
-            # Workers check for this file in their loop too, but we help by clearing it once they've had time
-            # Actually, workers will see it themselves. We just wait.
-            sleep 2
+            log_info "♻️ [MASTER] Reset signal received. Workers will self-reset."
         fi
 
         sleep 5
