@@ -5806,45 +5806,43 @@ setTimeout(() => {
         vyosManager.checkHealth().catch(e => console.error('[VYOS] Health check error:', e));
     }, 60000);
 
-    // Traffic History Collector (60s)
+    // Traffic History Collector (60s) — uses aggregateStats() to match dashboard totals
     let lastTotalRequests = 0;
     let lastTimestamp = 0;
 
     setInterval(async () => {
         try {
-            const statsFile = path.join(APP_CONFIG.logDir, 'stats.json');
-            if (fs.existsSync(statsFile)) {
-                const stats = JSON.parse(fs.readFileSync(statsFile, 'utf8'));
-                const now = Math.floor(Date.now() / 1000);
+            // Use aggregateStats() — same source as the dashboard cards
+            const stats = aggregateStats();
+            if (!stats) return;
 
-                let rpm = 0;
-                if (lastTimestamp > 0 && now > lastTimestamp) {
-                    const deltaReq = stats.total_requests - lastTotalRequests;
-                    const deltaTime = now - lastTimestamp;
-                    rpm = Math.max(0, (deltaReq / deltaTime) * 60);
-                }
+            const now = Math.floor(Date.now() / 1000);
 
-                const snapshot = {
-                    timestamp: now,
-                    rpm: Math.round(rpm * 100) / 100,
-                    total_requests: stats.total_requests,
-                    requests_by_app: stats.requests_by_app
-                };
+            let rpm = 0;
+            if (lastTimestamp > 0 && now > lastTimestamp) {
+                const deltaReq = stats.total_requests - lastTotalRequests;
+                const deltaTime = now - lastTimestamp;
+                rpm = Math.max(0, (deltaReq / deltaTime) * 60);
+            }
 
-                fs.appendFileSync(TRAFFIC_HISTORY_FILE, JSON.stringify(snapshot) + '\n');
+            const snapshot = {
+                timestamp: now,
+                rpm: Math.round(rpm * 100) / 100,
+                total_requests: stats.total_requests,
+                requests_by_app: stats.requests_by_app
+            };
 
-                lastTotalRequests = stats.total_requests;
-                lastTimestamp = now;
+            fs.appendFileSync(TRAFFIC_HISTORY_FILE, JSON.stringify(snapshot) + '\n');
 
-                // Rotation Check (approx once per hour)
-                if (Math.random() < 0.02) {
-                    const { stdout } = await promisify(exec)(`wc -l "${TRAFFIC_HISTORY_FILE}"`);
-                    const count = parseInt(stdout.trim().split(' ')[0]);
-                    if (count > TRAFFIC_HISTORY_RETENTION * 1.2) {
-                        const { stdout: recent } = await promisify(exec)(`tail -n ${TRAFFIC_HISTORY_RETENTION} "${TRAFFIC_HISTORY_FILE}"`);
-                        fs.writeFileSync(TRAFFIC_HISTORY_FILE, recent);
-                    }
-                }
+            lastTotalRequests = stats.total_requests;
+            lastTimestamp = now;
+
+            // Rotation check — count lines without exec()
+            const content = fs.readFileSync(TRAFFIC_HISTORY_FILE, 'utf8');
+            const lineCount = content.split('\n').filter(l => l.trim()).length;
+            if (lineCount > TRAFFIC_HISTORY_RETENTION * 1.2) {
+                const lines = content.split('\n').filter(l => l.trim());
+                fs.writeFileSync(TRAFFIC_HISTORY_FILE, lines.slice(-TRAFFIC_HISTORY_RETENTION).join('\n') + '\n');
             }
         } catch (e) {
             console.error('[STATS] History collection failed:', e);

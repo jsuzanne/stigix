@@ -139,7 +139,17 @@ export default function App() {
   // Rate Calculation State - Use Refs to avoid stale closures in setInterval
   const prevTotalRequestsRef = useRef<number | null>(null);
   const prevTimestampRef = useRef<number | null>(null);
-  const [currentRpm, setCurrentRpm] = useState<number>(0);
+  const [currentRpm, setCurrentRpm] = useState<number>(() => {
+    try {
+      // Seed from last history point (most reliable) or from dedicated cache
+      const histCached = localStorage.getItem('stigix_history_1h');
+      if (histCached) {
+        const hist = JSON.parse(histCached);
+        if (hist.length > 0) return hist[hist.length - 1].requests || 0;
+      }
+      return parseFloat(localStorage.getItem('stigix_rpm_cache') || '0');
+    } catch { return 0; }
+  });
 
   const addUser = async () => {
     if (!token) return;
@@ -249,9 +259,11 @@ export default function App() {
           if (deltaReq > 0) {
             calculatedRpm = rpm;
             setCurrentRpm(rpm);
+            try { localStorage.setItem('stigix_rpm_cache', String(rpm)); } catch {}
           } else if (deltaTime > 15) {
             calculatedRpm = 0;
             setCurrentRpm(0);
+            try { localStorage.setItem('stigix_rpm_cache', '0'); } catch {}
           }
         }
       }
