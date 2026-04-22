@@ -1393,7 +1393,12 @@ const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB
 
 const logTest = (...args: any[]) => {
     const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
-    const timestamp = new Date().toISOString();
+    const now = new Date();
+    const timestamp = now.toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
     const logLine = `[${timestamp}] ${message}\n`;
 
     try {
@@ -1872,7 +1877,7 @@ try {
             if (!config.control.interface || config.control.interface === 'eth0') {
                 config.control.interface = GLOBAL_INTERFACE;
                 fs.writeFileSync(VOICE_CONFIG_FILE, JSON.stringify(config, null, 2));
-                console.log(`[VOICE-INIT] Synced interface to: ${GLOBAL_INTERFACE}`);
+                log('VOICE-INIT', `Synced interface to: ${GLOBAL_INTERFACE}`);
             }
         }
     }
@@ -2872,15 +2877,15 @@ app.get('/api/voice/config/export', authenticateToken, (req, res) => {
 app.post('/api/voice/config/import', authenticateToken, (req, res) => {
     try {
         const { config } = req.body;
-        console.log('[VOICE] Incoming import request');
-        if (DEBUG) console.log('[VOICE] Import Payload:', JSON.stringify(config, null, 2));
+        log('VOICE', 'Incoming import request');
+        if (DEBUG) log('VOICE', `Import Payload: ${JSON.stringify(config, null, 2)}`);
 
         if (!config || !config.control || !config.servers) {
-            console.error('[VOICE] Import failed: Invalid configuration structure', {
+            log('VOICE', `Import failed: Invalid configuration structure: ${JSON.stringify({
                 hasConfig: !!config,
                 hasControl: config ? !!config.control : false,
                 hasServers: config ? !!config.servers : false
-            });
+            })}`, 'error');
             return res.status(400).json({ success: false, error: 'Invalid voice configuration: Missing control or servers' });
         }
         // Preserve state if possible

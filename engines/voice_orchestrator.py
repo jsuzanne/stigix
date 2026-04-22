@@ -72,7 +72,9 @@ def load_control():
                 content = f.read().strip()
                 if content and not content.startswith('#'):
                     default_iface = content.split('\n')[0].strip()
-                    if DEBUG_MODE: print(f"📡 [VOICE] System Interface: {default_iface} (Source: interfaces.txt)")
+                    if DEBUG_MODE: 
+                        timestamp = time.strftime('%H:%M:%S')
+                        print(f"[{timestamp}] 📡 [VOICE] System Interface: {default_iface} (Source: interfaces.txt)")
         
         # Smart auto-detection fallback if interfaces.txt is empty or missing
         if default_iface == 'eth0':
@@ -82,7 +84,9 @@ def load_control():
                 output = subprocess.check_output(cmd, shell=True, text=True).strip()
                 if output:
                     default_iface = output
-                    if DEBUG_MODE: print(f"📡 Auto-detected default interface: {default_iface}")
+                    if DEBUG_MODE: 
+                        timestamp = time.strftime('%H:%M:%S')
+                        print(f"[{timestamp}] 📡 Auto-detected default interface: {default_iface}")
             except: pass
     except: pass
 
@@ -324,7 +328,9 @@ def main():
             else:
                 current_time = time.time()
                 if current_time - last_wait_log_time > 60: # Cooldown of 60 seconds
-                    if DEBUG_MODE: print(f"ℹ️  Wait: Max simultaneous calls reached ({len(active_calls)}/{control.get('max_simultaneous_calls', 3)})")
+                    if DEBUG_MODE: 
+                        timestamp = time.strftime('%H:%M:%S')
+                        print(f"[{timestamp}] ℹ️  Wait: Max simultaneous calls reached ({len(active_calls)}/{control.get('max_simultaneous_calls', 3)})")
                     sys.stdout.flush()
                     last_wait_log_time = current_time
         else:
