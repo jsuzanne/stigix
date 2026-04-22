@@ -5,6 +5,85 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.100] - 2026-04-22
+### Refactored
+- **Target Worker Auth**: Removed `SHARED_KEY` / `STIGIX_TARGET_SHARED_KEY` — `MASTER_SIGNATURE_KEY` is now the only supported authentication method. Derived key per request: `SHA256(TSGID:MASTER_KEY)`. Worker falls through to open-access if no master key is configured. 🔐
+- **target-manager.ts**: Removed `STIGIX_TARGET_SHARED_KEY` env fallback and the PoC derived key (`SHA256(tsg:clientId:stigix-v1)`). Clear warnings logged when key is missing. 🧹
+### Changed
+- **docker-compose.yml**: Removed `STIGIX_TARGET_SHARED_KEY` env variable. 🐳
+- **install.sh**: Removed `STIGIX_TARGET_SHARED_KEY` from generated `.env` template.
+- **docs**: Updated `ENVIRONMENT_VARIABLES.md` and `.env.example` to reflect single-key auth model. 📚
+
+## [v1.2.2-patch.99] - 2026-04-22
+### Performance
+- **Traffic Generator**: Added `--ipv4` flag to all `curl` calls. Host has no IPv6 route — without this, curl tried all AAAA addresses first (each failing with "Network is unreachable") before falling back to A records, wasting 1–2s per request on dual-stack destinations. ⚡
+
+## [v1.2.2-patch.98] - 2026-04-22
+### Fixed
+- **Traffic Rate Card**: `currentRpm` was never persisted — Traffic Rate always showed `0` on browser refresh. Now seeded from the last history entry on init and written to `localStorage` as `stigix_rpm_cache` on every update. 📊
+- **History Writer**: The 60s snapshot collector (`traffic-history.jsonl`) was reading `stats.json` directly (the old single-client file) instead of calling `aggregateStats()`. With multi-client traffic, this recorded ~1/N of actual traffic, causing chart totals to diverge from stat cards and seeding wrong RPM on refresh. Fixed to use `aggregateStats()` consistently. 🛠️
+- **Rotation**: Replaced `exec(wc -l / tail)` in history rotation with pure `fs` to avoid exec buffer limit issues.
+
+## [v1.2.2-patch.97] - 2026-04-22
+### Added
+- **Dashboard Persistence**: Stats and chart history now survive browser refresh via `localStorage` caching. 💾
+  - `stats` initialized from `stigix_stats_cache` on load — no flash to zero on refresh.
+  - History cached per time-range key (`stigix_history_1h/6h/24h`, last 300 points).
+  - `fetchHistory()` and live `processStats()` both write to localStorage on every update.
+  - Switching time ranges immediately shows the cached history while the API loads.
+
+## [v1.2.2-patch.96] - 2026-04-22
+### Fixed
+- **Traffic Control Dashboard**: Switching to another tab caused the entire Traffic Control view (including `LineChart`) to unmount. On return, recharts re-animated the line from zero. Fixed by keeping the dashboard always mounted in the DOM with CSS `hidden` class — component never unmounts. 🔒
+- **Chart**: Added `isAnimationActive={false}` on the `Line` component as a safety net against edge-case remounts.
+
+## [v1.2.2-patch.95] - 2026-04-22
+### Fixed
+- **Polling Intervals**: Tab switching triggered a full teardown and restart of all polling intervals because `view` was in the main `useEffect` dependency array. Split into two separate effects — initialization (runs once on login) and view-specific polling — preventing interval churn on navigation. ⏱️
+
+## [v1.2.2-patch.94] - 2026-04-22
+### Fixed
+- **Chart Axes**: Y/X axis labels were invisible in light mode. SVG elements inside recharts cannot inherit CSS custom properties. Replaced dynamic `var(--color-text-muted)` with concrete `#64748b` (neutral slate). 🎨
+- **Stats Aggregation**: Implemented 3-minute recency filter in `aggregateStats()` — only stats files modified within the last 3 minutes are included, preventing stale files from previous container runs or crashed workers from polluting totals. 🧹
+- **Density Default**: Stop API endpoint now explicitly resets `client_count` to `1` on disk, ensuring the UI slider correctly reflects the state on fresh startups. 🎛️
+
+## [v1.2.2-patch.93] - 2026-04-22
+### Fixed
+- **Dashboard API**: `/api/admin/system/dashboard-data` was reading `stats.json` (legacy single-client file) directly instead of calling `aggregateStats()`. Multi-client stats were never reflected in the stat cards. 🛠️
+
+## [v1.2.2-patch.92] - 2026-04-22
+### Fixed
+- **Traffic Generator**: `STATS_FILE` variable was assigned before `CLIENTID` was set — all workers wrote to `stats-.json` (empty suffix) instead of their own `stats-client-XX-YYY.json` file. Fixed initialization order. 🐛
+
+## [v1.2.2-patch.91] - 2026-04-22
+### Fixed
+- **Traffic Generator**: `getWeightedApp()` was called inside a `$(...)` subshell for process detection — the app cache array built inside never persisted to the parent shell, so `jq` ran on every single request. Refactored to use an internal PID registry and moved cache initialization to the parent scope. ⚡
+- **Backend**: Fixed `maxBuffer` crash in `exec()` calls when log output exceeded the Node.js default buffer limit. 🛠️
+
+## [v1.2.2-patch.90] - 2026-04-22
+### Fixed
+- **Traffic Generator**: Replaced `pgrep` (unreliable for detecting worker processes by name) with an internal PID registry array in the master loop, ensuring accurate worker count tracking and scale-up/scale-down decisions. 🔄
+
+## [v1.2.2-patch.89] - 2026-04-22
+### Performance
+- **Traffic Generator**: Three targeted optimizations for density scaling: pre-cached application list, reduced sleep granularity for faster ramp-up, and improved worker lifecycle management. ⚡
+
+## [v1.2.2-patch.88] - 2026-04-22
+### Fixed
+- **Traffic Generator**: Stabilized multi-client scaling logic and fixed stats aggregation across parallel worker processes. 🛠️
+
+## [v1.2.2-patch.87] - 2026-04-22
+### Added
+- **Traffic Generator**: Multi-client scaling — the master process dynamically spawns/terminates worker instances based on the configured `client_count` density slider. Each worker writes its own `stats-client-XX-YYY.json` file. Workers are identified by a shared session suffix. 📈
+- **Dashboard**: Traffic Density slider (1–10 parallel clients) and Traffic Speed slider exposed in the Traffic Control panel. 🎛️
+
+## [v1.2.2-patch.82] - 2026-04-22
+### Added
+- **Security Score**: Min/max score display on gauge cards. 📊
+- **Security Score**: "Change" column in test result tables showing delta vs. previous run.
+- **Security Score**: "Changes Only" filter to focus the result list on categories that shifted status.
+- **Security Score**: 24h score trend visualization. 📈
+
 ## [v1.2.2-patch.75] - 2026-04-21
 ### Changed
 - **Security Score**: Added score description subtitles on each gauge card — URL Score explains "Weighted % of malicious URL categories correctly blocked by firewall", DNS Score explains "Weighted % of malicious DNS domains correctly blocked or sinkholed". 📝
