@@ -275,9 +275,9 @@ export default function App() {
     }
   };
 
-  const fetchHistory = async () => {
+   const fetchHistory = async (silent = false) => {
     if (!token) return;
-    setIsHistoryLoading(true);
+    if (!silent) setIsHistoryLoading(true);
     try {
       const res = await fetch(`/api/traffic/history?range=${timeRange}`, { headers: authHeaders() });
       if (res.ok) {
@@ -294,7 +294,7 @@ export default function App() {
     } catch (e) {
       console.error('Failed to fetch traffic history');
     } finally {
-      setIsHistoryLoading(false);
+      if (!silent) setIsHistoryLoading(false);
     }
   };
 
@@ -570,9 +570,9 @@ export default function App() {
 
 
 
+  // One-time initialization on login — does NOT re-run on tab changes
   useEffect(() => {
     if (!token) return;
-    // Initial fetch for everything
     fetchDashboardData();
     checkConfigValid();
     fetchVersion();
@@ -585,20 +585,16 @@ export default function App() {
     fetchHistory();
     fetchFeatures();
 
-
-    // The "Single Clock" - Everything high-freq (3s baseline)
+    // Core 3s polling — always on, not restarted on tab changes
     const interval = setInterval(() => {
       fetchDashboardData();
       fetchTrafficStatus();
     }, 3000);
 
-    // RESTORE FAST POLLING (500ms) for Failover specifically when on that tab
-    let fastInterval: any = null;
-    if (view === 'failover') {
-      fastInterval = setInterval(() => {
-        fetchDashboardData();
-      }, 500);
-    }
+    // History refresh every 60s silently (no spinner, no chart flash)
+    const historyInterval = setInterval(() => {
+      fetchHistory(true);
+    }, 60000);
 
     const connectivityInterval = setInterval(() => {
       fetchConnectivity();
@@ -608,18 +604,26 @@ export default function App() {
       fetchSiteInfo();
     }, 30000);
 
-
     const maintenanceInterval = setInterval(() => {
       fetchMaintenance();
     }, 3600000);
 
     return () => {
       clearInterval(interval);
-      if (fastInterval) clearInterval(fastInterval);
+      clearInterval(historyInterval);
       clearInterval(connectivityInterval);
       clearInterval(maintenanceInterval);
     };
-  }, [token, view]); // Re-run when view changes to start/stop fast polling
+  }, [token]); // Only re-run when token changes (login/logout), NOT on tab changes
+
+  // Failover fast polling — separate effect so it doesn't disrupt other intervals
+  useEffect(() => {
+    if (!token || view !== 'failover') return;
+    const fastInterval = setInterval(() => {
+      fetchDashboardData();
+    }, 500);
+    return () => clearInterval(fastInterval);
+  }, [token, view]);
 
   useEffect(() => {
     if (token) fetchHistory();
