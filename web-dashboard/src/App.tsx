@@ -73,8 +73,18 @@ export default function App() {
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [history, setHistory] = useState<any[]>([]);
+  const [stats, setStats] = useState<Stats | null>(() => {
+    try {
+      const cached = localStorage.getItem('stigix_stats_cache');
+      return cached ? JSON.parse(cached) : null;
+    } catch { return null; }
+  });
+  const [history, setHistory] = useState<any[]>(() => {
+    try {
+      const cached = localStorage.getItem('stigix_history_1h');
+      return cached ? JSON.parse(cached) : [];
+    } catch { return []; }
+  });
   const [status, setStatus] = useState<'running' | 'stopped' | 'unknown'>('unknown');
   const [logs, setLogs] = useState<string[]>([]);
   const [globalConvStatus, setGlobalConvStatus] = useState<any[]>([]);
@@ -224,9 +234,11 @@ export default function App() {
     }
   };
 
-  const processStats = (data: Stats) => {
+   const processStats = (data: Stats) => {
     if (data.timestamp) {
       setStats(data);
+      // Persist stats across browser refresh
+      try { localStorage.setItem('stigix_stats_cache', JSON.stringify(data)); } catch {}
       // Calculate RPM
       let calculatedRpm = currentRpm;
       if (prevTotalRequestsRef.current !== null && prevTimestampRef.current !== null) {
@@ -269,6 +281,9 @@ export default function App() {
           const maxPoints = timeRange === '1h' ? 3600 : (timeRange === '6h' ? 21600 : 86400);
           if (newHistory.length > maxPoints) newHistory.shift();
 
+          // Persist updated history to localStorage
+          try { localStorage.setItem(`stigix_history_${timeRange}`, JSON.stringify(newHistory.slice(-300))); } catch {}
+
           return newHistory;
         });
       }
@@ -290,6 +305,8 @@ export default function App() {
           ...item.requests_by_app
         }));
         setHistory(formatted);
+        // Persist loaded history so it survives browser refresh
+        try { localStorage.setItem(`stigix_history_${timeRange}`, JSON.stringify(formatted.slice(-300))); } catch {}
       }
     } catch (e) {
       console.error('Failed to fetch traffic history');
@@ -626,7 +643,14 @@ export default function App() {
   }, [token, view]);
 
   useEffect(() => {
-    if (token) fetchHistory();
+    if (token) {
+      // Immediately show cached history for this range while API loads
+      try {
+        const cached = localStorage.getItem(`stigix_history_${timeRange}`);
+        if (cached) setHistory(JSON.parse(cached));
+      } catch {}
+      fetchHistory();
+    }
   }, [timeRange]);
 
 
