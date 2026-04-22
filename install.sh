@@ -119,13 +119,10 @@ cat <<EOF >> .env
 # The Target Worker URL where scenarios are hosted
 STIGIX_TARGET_BASE_URL=https://stigix-target.jlsuzanne.workers.dev
 
-# Master Key Architecture (Production/Multi-tenant)
-# Used with PRISMA_SDWAN_TSGID to generate dynamic per-tenant signatures
+# Master Key for target worker auth (must match MASTER_SIGNATURE_KEY on Cloudflare Worker)
+# Key is derived per request as SHA256(PRISMA_SDWAN_TSGID:STIGIX_TARGET_MASTER_KEY)
+# Leave commented if the worker runs in open-access mode (no key configured on CF side)
 # STIGIX_TARGET_MASTER_KEY=
-
-# Shared Key (Legacy/Debug)
-# Explicit static key for signature verification if not using Master Key
-# STIGIX_TARGET_SHARED_KEY=
 
 # Site name for dashboard display
 STIGIX_SITE_NAME=$(hostname | cut -d'.' -f1)
