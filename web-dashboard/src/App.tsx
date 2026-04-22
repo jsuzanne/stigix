@@ -961,9 +961,9 @@ export default function App() {
         )}
       </div>
 
-      {
-        view === 'dashboard' ? (
-          <>
+      {/* Traffic Control — always mounted so chart never re-animates on tab return */}
+      <div className={view !== 'dashboard' ? 'hidden' : ''}>
+        <>
             {/* Traffic Control Panel */}
             <div className="bg-card border border-border rounded-xl p-5 mb-8 shadow-sm">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -1436,7 +1436,7 @@ export default function App() {
                       dot={false}
                       activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: '#3b82f6' }}
                       name="Requests/Min"
-                      animationDuration={1500}
+                      isAnimationActive={false}
                     />
                     <Area
                       type="monotone"
@@ -1480,31 +1480,22 @@ export default function App() {
               </div>
             </div>
           </>
-        ) : view === 'performance' ? (
-          <ConnectivityPerformance token={token!} uiConfig={uiConfig} onManage={() => setView('settings')} />
-        ) : view === 'topology' ? (
-          <Topology token={token!} />
-        ) : view === 'security' ? (
-          <Security token={token!} />
-        ) : view === 'vyos' ? (
-          <Vyos token={token!} />
-        ) : view === 'iot' ? (
-          <Iot token={token!} />
-        ) : view === 'voice' ? (
-          <Voice token={token!} externalStatus={globalVoiceStatus} />
-        ) : view === 'failover' || view === 'convergence' ? (
-          <Failover token={token!} externalStatus={globalConvStatus} />
-        ) : view === 'settings' ? (
-          <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} />
-        ) : view === 'speedtest' && features.xfr_enabled ? (
-          <Speedtest token={token!} />
-        ) : view === 'events' ? (
-          <LiveEvents token={token!} />
-        ) : (
-          <div className="p-8 text-center text-text-muted font-bold uppercase tracking-widest">Select a module to begin</div>
-        )
-      }
-    </div >
+      </div>
+
+      {/* Other views — conditionally mounted */}
+      {view === 'performance' && (
+        <ConnectivityPerformance token={token!} uiConfig={uiConfig} onManage={() => setView('settings')} />
+      )}
+      {view === 'topology' && <Topology token={token!} />}
+      {view === 'security' && <Security token={token!} />}
+      {view === 'vyos' && <Vyos token={token!} />}
+      {view === 'iot' && <Iot token={token!} />}
+      {view === 'voice' && <Voice token={token!} externalStatus={globalVoiceStatus} />}
+      {(view === 'failover' || view === 'convergence') && <Failover token={token!} externalStatus={globalConvStatus} />}
+      {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} />}
+      {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
+      {view === 'events' && <LiveEvents token={token!} />}
+    </div>
   );
 }
 
