@@ -6932,13 +6932,18 @@ app.post('/api/security/edl-test', authenticateToken, async (req, res) => {
     res.json(summary);
 });
 
+// API: Get Cloud EICAR Signed URL
+app.get('/api/security/cloud-eicar-url', authenticateToken, (req, res) => {
+    const { url } = targetManager.getEffectiveUrl('advanced-custom#{"mode":"eicar"}');
+    res.json({ url });
+});
+
 // API: Threat Prevention Test (EICAR)
 app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
     const { endpoint, scenarioId } = req.body;
 
-    const testId = getNextTestId();
-
     if (scenarioId) {
+        const testId = getNextTestId();
         logTest(`[THREAT-TEST-${testId}] Stigix Cloud scenario requested: ${scenarioId}`);
         try {
             const probeResult = await targetManager.runProbe(scenarioId);
@@ -6960,24 +6965,26 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
             addTestResult('threat_prevention', `EICAR Test (Cloud: ${scenarioId})`, result, testId);
             return res.json({ success: true, results: [result], testId });
         } catch (error: any) {
-            logTest(`[THREAT-TEST-${testId}] Cloud scenario failed: ${error.message}`);
+            logTest(`[THREAT-TEST-ERR] Cloud scenario failed: ${error.message}`);
             return res.status(500).json({ error: `Cloud scenario execution failed: ${error.message}` });
         }
     }
 
-    logTest(`[THREAT-TEST-${testId}] EICAR test request received: ${endpoint} (Threat Prevention Test)`);
-
     if (!endpoint) {
-        logTest(`[THREAT-TEST-${testId}] Test failed: No endpoint provided`);
         return res.status(400).json({ error: 'Endpoint URL is required or provide a scenarioId' });
     }
 
+    // Support single endpoint or array
+    const endpointsArray = Array.isArray(endpoint) ? endpoint : [endpoint];
+
     // Validate URL format
-    try {
-        new URL(endpoint);
-    } catch (e) {
-        console.log('[DEBUG] EICAR test failed: Invalid URL format:', endpoint);
-        return res.status(400).json({ error: 'Invalid URL format' });
+    for (const ep of endpointsArray) {
+        try {
+            new URL(ep);
+        } catch (e) {
+            console.log('[DEBUG] EICAR test failed: Invalid URL format:', ep);
+            return res.status(400).json({ error: `Invalid URL format: ${ep}` });
+        }
     }
 
     const results = [];
@@ -6991,6 +6998,7 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
         const endpointsArray = Array.isArray(endpoint) ? endpoint : [endpoint];
 
         for (const ep of endpointsArray) {
+            const testId = getNextTestId();
             let hostname = '';
             try { hostname = new URL(ep).hostname; } catch (e) { hostname = ep; }
 
@@ -7009,7 +7017,7 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
                 logTest(`[THREAT-TEST-${testId}] ${hostname} is unreachable via ping`);
             }
 
-            const curlCommand = `curl -fsS --connect-timeout 5 --max-time 20 ${ep} -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`;
+            const curlCommand = `curl -fsS --connect-timeout 5 --max-time 20 "${ep}" -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`;
             logTest(`[THREAT-TEST-${testId}] Executing EICAR test for ${ep}: ${curlCommand}`);
 
             try {

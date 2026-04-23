@@ -166,9 +166,12 @@ export default function Security({ token }: SecurityProps) {
     const [systemHealth, setSystemHealth] = useState<any>(null);
 
 
-    // EICAR endpoint input
-    const [eicarEndpoint, setEicarEndpoint] = useState('');
+    // EICAR targets selection
+    const [cloudEicarUrl, setCloudEicarUrl] = useState('');
+    const [customEicarUrl, setCustomEicarUrl] = useState('');
+    const [selectedEicarTargets, setSelectedEicarTargets] = useState<string[]>([]);
     const [securityTargets, setSecurityTargets] = useState<any[]>([]);
+    const [targetReachability, setTargetReachability] = useState<Record<string, boolean | 'loading'>>({});
 
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
@@ -221,11 +224,23 @@ export default function Security({ token }: SecurityProps) {
         fetchConfig();
         fetchResults();
         fetchHealth();
+
         // Fetch shared targets with security capability
         fetch('/api/targets', { headers: authHeaders() })
             .then(r => r.json())
             .then(data => setSecurityTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.security)))
             .catch(() => { });
+
+        // Fetch cloud eicar url
+        fetch('/api/security/cloud-eicar-url', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(data => {
+                if (data.url) {
+                    setCloudEicarUrl(data.url);
+                    setSelectedEicarTargets(prev => prev.includes(data.url) ? prev : [...prev, data.url]); // Auto-select cloud by default
+                }
+            })
+            .catch(() => {});
 
         // Background polling for statistics (refreshes counters from scheduled tests)
         const pollInterval = setInterval(() => {
@@ -236,14 +251,42 @@ export default function Security({ token }: SecurityProps) {
         return () => clearInterval(pollInterval);
     }, []);
 
-    // Initialize eicarEndpoint from config only once
-    const eicarInitialized = React.useRef(false);
     useEffect(() => {
-        if (config?.threat_prevention?.eicar_endpoint && !eicarInitialized.current) {
-            setEicarEndpoint(config.threat_prevention.eicar_endpoint);
-            eicarInitialized.current = true;
+        const targetsToPing: { host: string, port: number }[] = [];
+        if (cloudEicarUrl) {
+            try { targetsToPing.push({ host: new URL(cloudEicarUrl).hostname, port: 443 }); } catch {}
         }
-    }, [config]);
+        securityTargets.forEach(st => {
+            if (!targetsToPing.find(t => t.host === st.host)) {
+                targetsToPing.push({ host: st.host, port: st.ports?.http ?? 8082 }); 
+            }
+        });
+
+        if (!targetsToPing.length) return;
+
+        const checkReachability = async () => {
+            for (const t of targetsToPing) {
+                setTargetReachability(prev => ({ ...prev, [t.host]: 'loading' }));
+                try {
+                    const res = await fetch('/api/convergence/reachability', {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ target: t.host, port: t.port })
+                    });
+                    const data = await res.json();
+                    setTargetReachability(prev => ({ ...prev, [t.host]: !!data.reachable }));
+                } catch {
+                    setTargetReachability(prev => ({ ...prev, [t.host]: false }));
+                }
+            }
+        };
+
+        checkReachability();
+        const interval = setInterval(checkReachability, 60000);
+        return () => clearInterval(interval);
+    }, [securityTargets, cloudEicarUrl, token]);
+
+
 
     const fetchHealth = async () => {
         try {
@@ -570,26 +613,30 @@ export default function Security({ token }: SecurityProps) {
     };
 
     const runThreatTest = async () => {
+        const endpointsToTest = [...selectedEicarTargets];
+        if (customEicarUrl && !endpointsToTest.includes(customEicarUrl)) {
+            endpointsToTest.push(customEicarUrl);
+        }
+
+        if (endpointsToTest.length === 0) {
+            showToast('Please select at least one target to test.', 'error');
+            return;
+        }
+
         setLoading(true);
-        showToast('Running EICAR threat test...', 'info');
+        showToast(`Running EICAR threat test to ${endpointsToTest.length} targets...`, 'info');
         try {
             const res = await fetch('/api/security/threat-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({ endpoint: eicarEndpoint })
+                body: JSON.stringify({ endpoint: endpointsToTest })
             });
             await fetchResults();
             await fetchConfig();
-            showToast('EICAR threat test completed!', 'success');
-
-            // Save endpoint to config
-            if (config) {
-                saveConfig({
-                    threat_prevention: { ...config.threat_prevention, eicar_endpoint: eicarEndpoint }
-                });
-            }
+            showToast('EICAR threat tests completed!', 'success');
         } catch (e) {
             console.error('Threat test failed:', e);
+            showToast('Threat test failed', 'error');
         } finally {
             setLoading(false);
         }
@@ -1285,49 +1332,115 @@ export default function Security({ token }: SecurityProps) {
 
                             <div className="space-y-3">
                                 <div>
-                                    {/* Target picker from shared registry */}
-                                    {securityTargets.length > 0 && (
-                                        <div className="mb-3">
-                                            <label className="block text-[10px] font-bold text-text-muted mb-1.5 uppercase tracking-widest">Available Security Targets</label>
-                                            <select
-                                                onChange={e => {
-                                                    if (!e.target.value) return;
-                                                    const t = securityTargets.find((st: any) => st.id === e.target.value);
-                                                    if (t) setEicarEndpoint(`http://${t.host}:${t.ports?.http ?? 8082}/eicar.com.txt`);
-                                                }}
-                                                className="w-full bg-card-secondary border border-border text-text-primary rounded-lg px-4 py-2 focus:border-red-500 outline-none text-sm"
-                                                defaultValue=""
-                                            >
-                                                <option value="">-- Select a Site (auto-fill URL) --</option>
-                                                {securityTargets.map((t: any) => (
-                                                    <option key={t.id} value={t.id}>{t.name} — {t.host}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
-                                    <label className="block text-sm font-medium text-text-secondary mb-2">
-                                        EICAR Endpoint URL
+                                    <label className="text-[10px] font-black text-text-muted tracking-widest mb-3 flex items-center gap-2">
+                                        <ShieldAlert size={14} className="text-red-500" />
+                                        Select Target endpoints to test
                                     </label>
+                                    
+                                    <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1">
+                                        {/* Cloudflare Worker Target */}
+                                        {cloudEicarUrl && (() => {
+                                            const isSelected = selectedEicarTargets.includes(cloudEicarUrl);
+                                            let host = '';
+                                            try { host = new URL(cloudEicarUrl).hostname; } catch {}
+                                            const status = targetReachability[host];
+                                            
+                                            return (
+                                                <div
+                                                    onClick={() => {
+                                                        setSelectedEicarTargets(prev => isSelected ? prev.filter(u => u !== cloudEicarUrl) : [...prev, cloudEicarUrl]);
+                                                    }}
+                                                    className={`bg-card border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-red-500 bg-red-600/5 shadow-red-500/10' : 'border-border'}`}
+                                                >
+                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-red-600 border-red-500' : 'bg-card-secondary border-border'}`}>
+                                                        {isSelected && <CheckCircle size={10} className="text-white" fill="currentColor" />}
+                                                    </div>
+                                                    <div className="flex flex-col min-w-0 flex-1">
+                                                        <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-red-500' : 'text-text-primary'}`}>Stigix Cloud (Public Worker)</h4>
+                                                        <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{cloudEicarUrl}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
+                                                        {status === 'loading' || status === undefined ? (
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
+                                                        ) : status ? (
+                                                            <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
+                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+
+                                        {/* Dynamic Stigix Targets */}
+                                        {securityTargets.map((t) => {
+                                            const url = `http://${t.host}:${t.ports?.http ?? 8082}/eicar.com.txt`;
+                                            const isSelected = selectedEicarTargets.includes(url);
+                                            const status = targetReachability[t.host];
+
+                                            return (
+                                                <div
+                                                    key={`tgt-${t.id}`}
+                                                    onClick={() => {
+                                                        setSelectedEicarTargets(prev => isSelected ? prev.filter(u => u !== url) : [...prev, url]);
+                                                    }}
+                                                    className={`bg-card border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-red-500 bg-red-600/5 shadow-red-500/10' : 'border-border'}`}
+                                                >
+                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-red-600 border-red-500' : 'bg-card-secondary border-border'}`}>
+                                                        {isSelected && <CheckCircle size={10} className="text-white" fill="currentColor" />}
+                                                    </div>
+                                                    <div className="flex flex-col min-w-0 flex-1">
+                                                        <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-red-500' : 'text-text-primary'}`}>{t.name}</h4>
+                                                        <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{url}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
+                                                        {status === 'loading' || status === undefined ? (
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
+                                                        ) : status ? (
+                                                            <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
+                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                
+                                <div className="mt-4 pt-4 border-t border-border">
+                                    <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Custom Endpoint URL (Optional)</label>
                                     <input
                                         type="text"
-                                        value={eicarEndpoint}
-                                        onChange={(e) => setEicarEndpoint(e.target.value)}
-                                        placeholder="Select a target above or enter URL manually"
-                                        className="w-full bg-card-secondary border border-border text-text-primary rounded-lg px-4 py-2 focus:border-red-500 outline-none"
+                                        value={customEicarUrl}
+                                        onChange={(e) => setCustomEicarUrl(e.target.value)}
+                                        placeholder="http://your-server.com/eicar.com.txt"
+                                        className="w-full bg-card-secondary border border-border text-text-primary rounded-lg px-4 py-2 focus:border-red-500 outline-none text-sm"
                                     />
                                 </div>
 
                                 <div className="flex gap-2">
                                     <button
-                                        onClick={() => copyToClipboard(`curl -fsS --max-time 20 ${eicarEndpoint} -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`)}
-                                        className="px-4 py-3 bg-card-hover hover:bg-card border border-border text-text-primary rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                                        onClick={() => {
+                                            const urls = [...selectedEicarTargets];
+                                            if (customEicarUrl && !urls.includes(customEicarUrl)) urls.push(customEicarUrl);
+                                            if (urls.length === 0) return showToast('Select a target first', 'error');
+                                            copyToClipboard(`curl -fsS --max-time 20 "${urls[0]}" -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`);
+                                        }}
+                                        className="px-4 py-3 bg-card-hover hover:bg-card border border-border text-text-primary rounded-lg font-medium transition-colors flex items-center justify-center gap-2 text-sm"
                                         title="Copy CLI command"
                                     >
-                                        <Copy size={18} /> Copy Command
+                                        <Copy size={16} /> Copy Command
                                     </button>
                                     <button
                                         onClick={runThreatTest}
-                                        disabled={loading || !eicarEndpoint || (systemHealth && !systemHealth.ready)}
+                                        disabled={loading || (selectedEicarTargets.length === 0 && !customEicarUrl) || (systemHealth && !systemHealth.ready)}
                                         className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 disabled:bg-card-secondary disabled:text-text-muted text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
                                     >
                                         <Play size={18} /> Run EICAR Test
