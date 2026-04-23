@@ -189,18 +189,21 @@ export default function Speedtest({ token }: Props) {
         return !isNaN(num) && num >= 0 && num <= 255 && num.toString() === val;
     };
 
-    const runTest = async () => {
-        if (!targetHost) {
+    const runTest = async (overrideHost?: string, overridePort?: number) => {
+        const h = overrideHost || targetHost;
+        const p = overridePort !== undefined ? overridePort : targetPort;
+        
+        if (!h) {
             toast.error('Host is required');
             return;
         }
 
         const body = mode === 'default' ? {
             mode: 'default',
-            target: { host: targetHost, port: targetPort }
+            target: { host: h, port: p }
         } : {
             mode: 'custom',
-            target: { host: targetHost, port: targetPort, psk },
+            target: { host: h, port: p, psk },
             protocol,
             direction,
             duration_sec: duration,
@@ -212,7 +215,7 @@ export default function Speedtest({ token }: Props) {
         };
 
         try {
-            console.log(`[XFR] Starting test to ${targetHost}:${targetPort}...`);
+            console.log(`[XFR] Starting test to ${h}:${p}...`);
             const res = await fetch('/api/tests/xfr', {
                 method: 'POST',
                 headers: authHeaders,
@@ -377,6 +380,18 @@ export default function Speedtest({ token }: Props) {
                                                     ) : (
                                                         <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
                                                     )}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setTargetHost(t.host);
+                                                            setTargetPort(9000);
+                                                            runTest(t.host, 9000);
+                                                        }}
+                                                        className="ml-2 p-1.5 rounded-md bg-blue-500/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-colors border border-blue-500/20 hover:border-blue-600 shadow-sm"
+                                                        title="Quick Launch Speedtest"
+                                                    >
+                                                        <Play size={10} fill="currentColor" />
+                                                    </button>
                                                 </div>
                                             </div>
                                         );
@@ -410,6 +425,18 @@ export default function Speedtest({ token }: Props) {
                                                     ) : (
                                                         <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
                                                     )}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setTargetHost(t.host);
+                                                            setTargetPort(port);
+                                                            runTest(t.host, port);
+                                                        }}
+                                                        className="ml-2 p-1.5 rounded-md bg-emerald-500/10 text-emerald-500 hover:bg-emerald-600 hover:text-white transition-colors border border-emerald-500/20 hover:border-emerald-600 shadow-sm"
+                                                        title="Quick Launch Speedtest"
+                                                    >
+                                                        <Play size={10} fill="currentColor" />
+                                                    </button>
                                                 </div>
                                             </div>
                                         );
@@ -575,7 +602,7 @@ export default function Speedtest({ token }: Props) {
                             )}
 
                             <button
-                                onClick={runTest}
+                                onClick={() => runTest()}
                                 disabled={isRunning || !targetHost || !isValidIpOrFqdn(targetHost) || !isValidDscp(dscp)}
                                 className={cn(
                                     "w-full py-4 rounded-xl font-black tracking-widest text-xs flex items-center justify-center gap-2 transition-all shadow-xl",
