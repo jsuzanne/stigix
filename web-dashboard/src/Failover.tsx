@@ -120,6 +120,8 @@ export default function Failover(props: FailoverProps) {
         };
         fetchThresholds();
 
+        // Fetch shared targets with convergence capability
+        fetch('/api/targets', { headers: authHeaders() })
             .then(r => r.json())
             .then(data => setConvergenceTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.convergence)))
             .catch(() => { });
