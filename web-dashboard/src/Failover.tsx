@@ -397,7 +397,10 @@ export default function Failover(props: FailoverProps) {
                                 {status === 'loading' || status === undefined ? (
                                     <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse" title="Checking reachability..." />
                                 ) : status ? (
-                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse" style={{ animationDuration: '3s' }} title="Reachable" />
+                                    <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                    </div>
                                 ) : (
                                     <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" title="Unreachable" />
                                 )}
