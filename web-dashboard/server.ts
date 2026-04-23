@@ -3064,16 +3064,15 @@ app.get('/api/traffic/history', authenticateToken, async (req, res) => {
         if (range === '24h') minutes = 1440;
         if (range === 'all') minutes = TRAFFIC_HISTORY_RETENTION;
 
-        // Read the last N lines without buffering the whole file into exec stdout
-        const content = fs.readFileSync(TRAFFIC_HISTORY_FILE, 'utf8');
-        const lines = content.split('\n').filter(l => l.trim());
-        const recent = lines.slice(-minutes);
+        const cutoffTs = Math.floor(Date.now() / 1000) - minutes * 60;
 
-        const history = recent
-            .map(line => {
-                try { return JSON.parse(line); } catch (e) { return null; }
-            })
-            .filter(item => item !== null);
+        const content = fs.readFileSync(TRAFFIC_HISTORY_FILE, 'utf8');
+        const history = content
+            .split('\n')
+            .filter(l => l.trim())
+            .map(line => { try { return JSON.parse(line); } catch { return null; } })
+            .filter(item => item !== null && item.timestamp >= cutoffTs)
+            .sort((a, b) => a.timestamp - b.timestamp); // guarantee chronological order
 
         res.json(history);
     } catch (e: any) {
@@ -5809,31 +5808,55 @@ setTimeout(() => {
     // Traffic History Collector (60s) — uses aggregateStats() to match dashboard totals
     let lastTotalRequests = 0;
     let lastTimestamp = 0;
+    let lastRpm = 0; // track previous rpm to detect anomalous spikes
 
     setInterval(async () => {
         try {
-            // Use aggregateStats() — same source as the dashboard cards
             const stats = aggregateStats();
-            if (!stats) return;
-
             const now = Math.floor(Date.now() / 1000);
+
+            if (!stats) {
+                // No active workers — write a zero-rpm heartbeat so the chart
+                // doesn't show a gap, and reset the baseline so the next tick
+                // doesn't inherit a stale lastTotalRequests.
+                const snapshot = { timestamp: now, rpm: 0, total_requests: lastTotalRequests, requests_by_app: {} };
+                fs.appendFileSync(TRAFFIC_HISTORY_FILE, JSON.stringify(snapshot) + '\n');
+                lastTimestamp = now;
+                return;
+            }
 
             let rpm = 0;
             if (lastTimestamp > 0 && now > lastTimestamp) {
                 const deltaReq = stats.total_requests - lastTotalRequests;
                 const deltaTime = now - lastTimestamp;
-                rpm = Math.max(0, (deltaReq / deltaTime) * 60);
+
+                if (deltaReq < 0) {
+                    // total_requests went backwards (worker/container reset) — skip this tick
+                    rpm = 0;
+                } else {
+                    rpm = (deltaReq / deltaTime) * 60;
+                    // Clamp spike: if rpm is > 10× the previous non-zero value, it's
+                    // almost certainly a counter discontinuity — discard this sample.
+                    if (lastRpm > 0 && rpm > lastRpm * 10) {
+                        console.warn(`[STATS] RPM spike detected (${Math.round(rpm)} vs prev ${Math.round(lastRpm)}) — skipping sample`);
+                        rpm = lastRpm; // hold the previous value instead of spiking
+                    }
+                }
             }
+
+            rpm = Math.max(0, Math.round(rpm * 100) / 100);
+            if (rpm > 0) lastRpm = rpm;
 
             const snapshot = {
                 timestamp: now,
-                rpm: Math.round(rpm * 100) / 100,
+                rpm,
                 total_requests: stats.total_requests,
                 requests_by_app: stats.requests_by_app
             };
 
             fs.appendFileSync(TRAFFIC_HISTORY_FILE, JSON.stringify(snapshot) + '\n');
 
+            // Always update baseline — critical to avoid spike on next tick
             lastTotalRequests = stats.total_requests;
             lastTimestamp = now;
 
