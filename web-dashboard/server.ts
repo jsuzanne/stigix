@@ -5744,7 +5744,7 @@ const runScheduledThreatTests = async () => {
     for (const endpoint of endpoints) {
         if (!endpoint) continue;
         try {
-            await execPromise(`curl -fsS --max-time 20 ${endpoint} -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`);
+            await execPromise(`curl -fsS --max-time 20 "${endpoint}" -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`);
             updateStatistics('threat_prevention', 'allowed');
             addTestResult('threat_prevention', 'EICAR Test', { success: true, status: 'allowed', endpoint }, getNextTestId());
         } catch (e) {

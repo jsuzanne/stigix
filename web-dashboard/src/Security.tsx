@@ -251,6 +251,22 @@ export default function Security({ token }: SecurityProps) {
         return () => clearInterval(pollInterval);
     }, []);
 
+    // Initialize eicar targets from config only once
+    const eicarInitialized = React.useRef(false);
+    useEffect(() => {
+        if (config?.threat_prevention && !eicarInitialized.current) {
+            const saved = config.threat_prevention.eicar_endpoints;
+            if (saved && Array.isArray(saved) && saved.length > 0) {
+                // If cloud URL was already added by the other useEffect, we don't want to duplicate
+                setSelectedEicarTargets(prev => Array.from(new Set([...prev, ...saved])));
+            } else if (config.threat_prevention.eicar_endpoint) {
+                // Legacy fallback
+                setSelectedEicarTargets(prev => Array.from(new Set([...prev, config.threat_prevention.eicar_endpoint])));
+            }
+            eicarInitialized.current = true;
+        }
+    }, [config]);
+
     useEffect(() => {
         const targetsToPing: { host: string, port: number }[] = [];
         if (cloudEicarUrl) {
@@ -634,6 +650,13 @@ export default function Security({ token }: SecurityProps) {
             await fetchResults();
             await fetchConfig();
             showToast('EICAR threat tests completed!', 'success');
+
+            // Save endpoints to config for scheduled tests
+            if (config) {
+                saveConfig({
+                    threat_prevention: { ...config.threat_prevention, eicar_endpoints: endpointsToTest }
+                });
+            }
         } catch (e) {
             console.error('Threat test failed:', e);
             showToast('Threat test failed', 'error');
