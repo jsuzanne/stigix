@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Shield, ShieldAlert, ShieldCheck, Activity, Target, ArrowUpRight, ArrowDownRight, Clock, RefreshCw, BarChart2, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, Activity, Target, ArrowUpRight, ArrowDownRight, Clock, RefreshCw, BarChart2, CheckCircle, AlertTriangle, GitCommit } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
 export const ScoreDashboard = ({ token }: { token: string }) => {
@@ -12,6 +12,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     const [expandLatest, setExpandLatest] = useState<Record<string, boolean>>({});
     const [expandGap, setExpandGap] = useState<Record<string, boolean>>({});
     const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | 'all'>('24h');
+    const [changesOnly, setChangesOnly] = useState(false);
     const PREVIEW_LIMIT = 5;
 
     const authHeader = { 'Authorization': `Bearer ${token}` };
@@ -90,20 +91,18 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     const latestUrlScore = scores.find(s => s.type === 'url');
     const latestDnsScore = scores.find(s => s.type === 'dns');
 
-    // Prepare chart data — keep all points for the line, but mark dot only
-    // if it's the first run in its 5-minute window (avoids clutter at 1-run/min)
+    // Prepare chart data
     const chartData = (() => {
         const chronological = [...scores].reverse();
         const lastDotTs: Record<string, number> = { url: 0, dns: 0 };
-        const DOT_WINDOW_MS = 5 * 60 * 1000; // 5 min
+        const DOT_WINDOW_MS = 5 * 60 * 1000;
 
-        // Time range filter
         const cutoff = timeRange === 'all' ? 0
             : timeRange === '1h' ? Date.now() - 60 * 60 * 1000
             : timeRange === '6h' ? Date.now() - 6 * 60 * 60 * 1000
             : Date.now() - 24 * 60 * 60 * 1000;
 
-        return chronological
+        const base = chronological
             .filter(s => s.timestamp >= cutoff)
             .map(s => {
                 const showDot = s.timestamp - lastDotTs[s.type] >= DOT_WINDOW_MS;
@@ -112,19 +111,49 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                     timestamp: s.timestamp,
                     timeLabel: new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     fullTime: new Date(s.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                    urlScore: s.scores?.url,
-                    dnsScore: s.scores?.dns,
+                    urlScore: s.scores?.url ?? null,
+                    dnsScore: s.scores?.dns ?? null,
                     runId: s.runId,
                     type: s.type,
                     trigger: s.trigger || 'manual',
                     showDot,
+                    deltaUrl: null as number | null,
+                    deltaDns: null as number | null,
                 };
             });
+
+        if (!changesOnly) return base;
+
+        // Changes-only: keep only transition points.
+        // URL and DNS are tracked independently but share the same timeline.
+        // Each entry carries the latest known value for BOTH types, so a single
+        // change event correctly positions both lines at the right y-value.
+        let prevUrl: number | null = null;
+        let prevDns: number | null = null;
+        const result: typeof base = [];
+        for (const pt of base) {
+            const urlChanged = pt.urlScore !== null && pt.urlScore !== prevUrl;
+            const dnsChanged = pt.dnsScore !== null && pt.dnsScore !== prevDns;
+            if (result.length === 0 || urlChanged || dnsChanged) {
+                result.push({
+                    ...pt,
+                    showDot: true,
+                    timeLabel: new Date(pt.timestamp).toLocaleString([], {
+                        month: 'short', day: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                    }),
+                    deltaUrl: urlChanged && prevUrl !== null ? Math.round((pt.urlScore! - prevUrl) * 10) / 10 : null,
+                    deltaDns: dnsChanged && prevDns !== null ? Math.round((pt.dnsScore! - prevDns) * 10) / 10 : null,
+                });
+            }
+            if (pt.urlScore !== null) prevUrl = pt.urlScore;
+            if (pt.dnsScore !== null) prevDns = pt.dnsScore;
+        }
+        return result;
     })();
 
-    // Dynamic dot radius: fewer points = bigger dots, more points = smaller dots
-    // Range: r=5 for ≤20 points, scales down to r=2 for ≥150 points
-    const dotRadius = Math.max(2, Math.min(5, Math.round(5 - (chartData.length - 20) * (3 / 130))));
+    // Dynamic dot radius — max in changesOnly (few points), scaled down for dense histories
+    const dotRadius = changesOnly ? 5 : Math.max(2, Math.min(5, Math.round(5 - (chartData.length - 20) * (3 / 130))));
 
     // Latest Changes: diff between the two most recent runs of each type (client-side, no baseline needed)
     const computeLatestDiff = (type: 'url' | 'dns') => {
@@ -177,7 +206,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
         );
     };
 
-    // Custom tooltip showing run details
+    // Custom tooltip showing run details (+ delta in changesOnly mode)
     const CustomTooltip = ({ active, payload }: any) => {
         if (!active || !payload?.length) return null;
         const data = payload[0]?.payload;
@@ -186,13 +215,23 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                 <div style={{ fontWeight: 900, letterSpacing: '0.08em', marginBottom: 6, opacity: 0.5, fontSize: 9, textTransform: 'uppercase' }}>
                     {data?.fullTime}
                 </div>
-                <div style={{ fontWeight: 900, letterSpacing: '0.06em', marginBottom: 6, fontSize: 10, color: data?.type === 'url' ? '#8b5cf6' : '#0ea5e9', textTransform: 'uppercase' }}>
-                    {data?.type?.toUpperCase()} Run · {data?.trigger === 'scheduled' ? '🕐 Scheduled' : '▶ Manual'}
-                </div>
+                {!changesOnly && (
+                    <div style={{ fontWeight: 900, letterSpacing: '0.06em', marginBottom: 6, fontSize: 10, color: data?.type === 'url' ? '#8b5cf6' : '#0ea5e9', textTransform: 'uppercase' }}>
+                        {data?.type?.toUpperCase()} Run · {data?.trigger === 'scheduled' ? '🕐 Scheduled' : '▶ Manual'}
+                    </div>
+                )}
                 {payload.map((p: any) => p.value !== null && p.value !== undefined && (
                     <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, color: p.color, fontWeight: 700 }}>
                         <span>{p.name}</span>
-                        <span>{p.value.toFixed(1)}</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {p.value.toFixed(1)}
+                            {changesOnly && (() => {
+                                const delta = p.dataKey === 'urlScore' ? data?.deltaUrl : data?.deltaDns;
+                                if (delta === null || delta === undefined) return null;
+                                const col = delta > 0 ? '#22c55e' : delta < 0 ? '#ef4444' : '#64748b';
+                                return <span style={{ fontSize: 9, fontWeight: 900, color: col }}>{delta > 0 ? '+' : ''}{delta}</span>;
+                            })()}
+                        </span>
                     </div>
                 ))}
             </div>
@@ -391,7 +430,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                             <span className="text-[10px] font-black tracking-widest text-text-muted uppercase flex items-center gap-1.5">
                                 <Activity size={12} /> Score Trend
                             </span>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
                                 {/* Time range selector */}
                                 <div className="flex items-center gap-0.5 bg-background rounded-lg p-0.5 border border-border">
                                     {(['1h', '6h', '24h', 'all'] as const).map(r => (
@@ -408,10 +447,22 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                                         </button>
                                     ))}
                                 </div>
+                                {/* Changes-only toggle */}
+                                <button
+                                    onClick={() => setChangesOnly(v => !v)}
+                                    title="Show only score change events"
+                                    className={`flex items-center gap-1 text-[9px] font-black tracking-widest px-2 py-0.5 rounded-md border transition-all ${
+                                        changesOnly
+                                            ? 'bg-violet-500/20 border-violet-500/40 text-violet-400'
+                                            : 'bg-background border-border text-text-muted hover:text-text-primary'
+                                    }`}
+                                >
+                                    <GitCommit size={9} /> Δ CHG
+                                </button>
                                 <div className="flex items-center gap-3 text-[9px] font-black tracking-widest text-text-muted opacity-60">
                                     <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#8b5cf6'}}/> URL</span>
                                     <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#0ea5e9'}}/> DNS</span>
-                                    <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',border:'1.5px solid #aaa',background:'transparent'}}/> Scheduled</span>
+                                    {!changesOnly && <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',border:'1.5px solid #aaa',background:'transparent'}}/> Scheduled</span>}
                                 </div>
                             </div>
                         </div>
