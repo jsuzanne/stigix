@@ -10,6 +10,10 @@ services:
     image: jsuzanne/stigix:stable
     container_name: stigix
     network_mode: host
+    # Uncomment to force specific DNS resolvers for the container
+    # dns:
+    #   - 1.1.1.1
+    #   - 9.9.9.9
     cap_add:
       - NET_ADMIN
       - NET_RAW
@@ -56,8 +60,8 @@ services:
       - STIGIX_REGISTRY_DISCOVERY_SEC=${STIGIX_REGISTRY_DISCOVERY_SEC:-120}
       - STIGIX_REGISTRY_MODE=${STIGIX_REGISTRY_MODE:-peer}
       # --- Stigix Cloud & Probes ---
-      - STIGIX_REGISTRY_URL=${STIGIX_REGISTRY_URL:-https://stigix-registry.jlsuzanne.workers.dev}
-      - STIGIX_TARGET_BASE_URL=${STIGIX_TARGET_BASE_URL:-}
+      - STIGIX_REGISTRY_URL=${STIGIX_REGISTRY_URL:-https://registry.stigix.io}
+      - STIGIX_TARGET_BASE_URL=${STIGIX_TARGET_BASE_URL:-https://target.stigix.io}
       - STIGIX_TARGET_MASTER_KEY=${STIGIX_TARGET_MASTER_KEY:-}
 
     healthcheck:

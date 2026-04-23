@@ -24,8 +24,8 @@ Required for site auto-detection, flow status, and SaaS data enrichment.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `STIGIX_REGISTRY_ENABLED` | Enable peer discovery via global registry | `true` |
-| `STIGIX_REGISTRY_URL` | URL of the Stigix Cloudflare Registry | `https://stigix-registry.jlsuzanne.workers.dev` |
-| `STIGIX_TARGET_BASE_URL` | Base URL for Stigix Cloud Probes (EICAR, Download) | `https://stigix-target.jlsuzanne.workers.dev` |
+| `STIGIX_REGISTRY_URL` | URL of the Stigix Cloudflare Registry | `https://registry.stigix.io` |
+| `STIGIX_TARGET_BASE_URL` | Base URL for Stigix Cloud Probes (EICAR, Download) | `https://target.stigix.io` |
 | `STIGIX_TARGET_MASTER_KEY` | Master secret for target worker auth. Derived key sent per request: `SHA256(TSGID:MASTER_KEY)`. Must match `MASTER_SIGNATURE_KEY` on the Cloudflare Worker. Omit for open-access mode. | - |
 | `STIGIX_SITE_NAME` | Display name for this instance in the registry | Auto-detected |
 

@@ -112,12 +112,12 @@ cat <<EOF >> .env
 
 # --- Registry & Autodiscovery (Optional) ---
 # STIGIX_REGISTRY_ENABLED=true
-# STIGIX_REGISTRY_URL=https://stigix-registry.jlsuzanne.workers.dev
+# STIGIX_REGISTRY_URL=https://registry.stigix.io
 # STIGIX_INSTANCE_ID=local-node-$(hostname | cut -d'.' -f1)
 
 # --- Stigix Cloud Probes (Signed URLs) ---
 # The Target Worker URL where scenarios are hosted
-STIGIX_TARGET_BASE_URL=https://stigix-target.jlsuzanne.workers.dev
+STIGIX_TARGET_BASE_URL=https://target.stigix.io
 
 # Master Key for target worker auth (must match MASTER_SIGNATURE_KEY on Cloudflare Worker)
 # Key is derived per request as SHA256(PRISMA_SDWAN_TSGID:STIGIX_TARGET_MASTER_KEY)
