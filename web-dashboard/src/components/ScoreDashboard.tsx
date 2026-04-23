@@ -171,7 +171,11 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                 changes.push({ category: cat, before: prevSnap.status, after: (snap as any).status, weight: (snap as any).weight });
             }
         }
-        return { changes, prevTime: new Date(prev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), latestTime: new Date(latest.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+        return {
+            changes,
+            prevTime: new Date(prev.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+            latestTime: new Date(latest.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        };
     };
 
     const urlLatestDiff = computeLatestDiff('url');
