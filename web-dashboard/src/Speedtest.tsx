@@ -309,7 +309,7 @@ export default function Speedtest({ token }: Props) {
 
                         <div className="space-y-4">
                             <div>
-                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Target Host</label>
+                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Stigix Target Host</label>
                                 <div className="relative group">
                                     <Target className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted/50" size={16} />
                                     <input
@@ -543,7 +543,7 @@ export default function Speedtest({ token }: Props) {
                             <h4 className="text-[10px] font-black text-blue-500 tracking-widest mb-1">Testing Note</h4>
                             <p className="text-[10px] text-text-muted leading-relaxed font-bold opacity-60">
                                 This tool sends bidirectional traffic to validate path throughput and latency.
-                                Ensure the target host has `xfr` running in server mode.
+                                Ensure the target is a Stigix target host OR has <a href="https://github.com/lance0/xfr" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">xfr</a> running in server mode.
                             </p>
                         </div>
                     </div>
