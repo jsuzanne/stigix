@@ -368,7 +368,12 @@ export default function Failover(props: FailoverProps) {
                 </div>
             </div>
 
-            <div className="flex flex-wrap gap-3 animate-in slide-in-from-bottom-4">
+            <div className="flex flex-col gap-3 animate-in slide-in-from-bottom-4 mt-6">
+                <div className="flex items-center gap-2 px-1">
+                    <Server size={14} className="text-text-muted" />
+                    <h3 className="text-sm font-bold text-text-primary tracking-tight">Stigix Targets</h3>
+                </div>
+                <div className="flex flex-wrap gap-3">
                 {allTargets.map((e) => {
                     const isSelected = selectedEndpoints.includes(e.id);
                     const status = reachability[e.id];
@@ -392,7 +397,7 @@ export default function Failover(props: FailoverProps) {
                                 {status === 'loading' || status === undefined ? (
                                     <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse" title="Checking reachability..." />
                                 ) : status ? (
-                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" title="Reachable" />
+                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse" style={{ animationDuration: '3s' }} title="Reachable" />
                                 ) : (
                                     <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" title="Unreachable" />
                                 )}
@@ -413,6 +418,7 @@ export default function Failover(props: FailoverProps) {
                         No targets available. Please ensure Stigix targets are connected or add one manually.
                     </div>
                 )}
+                </div>
             </div>
 
             {/* Active Tests Section */}

@@ -131,6 +131,37 @@ export default function Voice(props: VoiceProps) {
     const [newRow, setNewRow] = useState({ host: '', port: '6100', codec: 'G.711-ulaw', weight: '50', duration: '30' });
 
     // ════════════════════════════════════════════════
+    // Reachability polling
+    // ════════════════════════════════════════════════
+    const [reachability, setReachability] = useState<Record<string, boolean | 'loading'>>({});
+
+    useEffect(() => {
+        if (!targetRows.length) return;
+        const checkTargets = async () => {
+            const targetsToPing = targetRows.map(r => ({ host: r.host, port: r.port, id: r.id }));
+            
+            for (const t of targetsToPing) {
+                setReachability(prev => ({ ...prev, [t.id]: 'loading' }));
+                try {
+                    const res = await fetch('/api/convergence/reachability', {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ host: t.host, port: parseInt(t.port, 10) })
+                    });
+                    const data = await res.json();
+                    setReachability(prev => ({ ...prev, [t.id]: !!data.reachable }));
+                } catch {
+                    setReachability(prev => ({ ...prev, [t.id]: false }));
+                }
+            }
+        };
+        
+        checkTargets();
+        const interval = setInterval(checkTargets, 60000);
+        return () => clearInterval(interval);
+    }, [targetRows, token]);
+
+    // ════════════════════════════════════════════════
     // External status feed (WebSocket / poll from parent)
     // ════════════════════════════════════════════════
     useEffect(() => {
@@ -745,10 +776,19 @@ export default function Voice(props: VoiceProps) {
 
                                     {/* Site name */}
                                     <td className="py-3 px-3">
-                                        {row.isManual
-                                            ? <span className="text-[9px] text-orange-500 font-black uppercase tracking-wider px-1.5 py-0.5 bg-orange-500/10 border border-orange-500/20 rounded">Manual</span>
-                                            : <span className="text-xs font-black text-text-primary">{row.name}</span>
-                                        }
+                                        <div className="flex items-center gap-2">
+                                            {reachability[row.id] === 'loading' || reachability[row.id] === undefined ? (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
+                                            ) : reachability[row.id] ? (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse shrink-0" style={{ animationDuration: '3s' }} title="Reachable" />
+                                            ) : (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
+                                            )}
+                                            {row.isManual
+                                                ? <span className="text-[9px] text-orange-500 font-black uppercase tracking-wider px-1.5 py-0.5 bg-orange-500/10 border border-orange-500/20 rounded">Manual</span>
+                                                : <span className="text-xs font-black text-text-primary">{row.name}</span>
+                                            }
+                                        </div>
                                     </td>
 
                                     {/* Host:Port (read-only) */}

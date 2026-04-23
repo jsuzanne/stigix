@@ -197,6 +197,33 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
     const [isTestingConnectivity, setIsTestingConnectivity] = useState(false);
     const [connectivityResult, setConnectivityResult] = useState<{ success?: boolean; error?: string } | null>(null);
 
+    const [targetReachability, setTargetReachability] = useState<Record<string, boolean | 'loading'>>({});
+
+    useEffect(() => {
+        if (!targets.length) return;
+        const checkReachability = async () => {
+            const targetsToPing = targets.map(t => ({ id: t.id, host: t.host, port: t.ports?.convergence ?? 6200 }));
+            for (const t of targetsToPing) {
+                setTargetReachability(prev => ({ ...prev, [t.id]: 'loading' }));
+                try {
+                    const res = await fetch('/api/convergence/reachability', {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ host: t.host, port: t.port })
+                    });
+                    const data = await res.json();
+                    setTargetReachability(prev => ({ ...prev, [t.id]: !!data.reachable }));
+                } catch {
+                    setTargetReachability(prev => ({ ...prev, [t.id]: false }));
+                }
+            }
+        };
+
+        checkReachability();
+        const interval = setInterval(checkReachability, 60000);
+        return () => clearInterval(interval);
+    }, [targets, token]);
+
     const authHeaders = {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
@@ -2989,6 +3016,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                     </div>
                                     <div className="min-w-0">
                                         <div className="flex items-center gap-2">
+                                            {targetReachability[t.id] === 'loading' || targetReachability[t.id] === undefined ? (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
+                                            ) : targetReachability[t.id] ? (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse shrink-0" style={{ animationDuration: '3s' }} title="Reachable" />
+                                            ) : (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
+                                            )}
                                             <span className="text-[11px] font-black text-text-primary tracking-tight">{t.name}</span>
                                             {t.meta?.local_config && (
                                                 <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30" title="This target is saved in a local component configuration file">
