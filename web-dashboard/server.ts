@@ -5740,18 +5740,21 @@ const runScheduledThreatTests = async () => {
 
     const execPromise = promisify(exec);
     const endpoints = config.threat_prevention.eicar_endpoints || [config.threat_prevention.eicar_endpoint];
+    const runId = `scheduled-threat-${Date.now()}`;
 
     for (const endpoint of endpoints) {
         if (!endpoint) continue;
         try {
             await execPromise(`curl -fsS --max-time 20 "${endpoint}" -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`);
             updateStatistics('threat_prevention', 'allowed');
-            addTestResult('threat_prevention', 'EICAR Test', { success: true, status: 'allowed', endpoint }, getNextTestId());
+            addTestResult('threat_prevention', `EICAR Test (${endpoint})`, { success: true, status: 'allowed', endpoint }, getNextTestId(), undefined, runId);
         } catch (e) {
             updateStatistics('threat_prevention', 'blocked');
-            addTestResult('threat_prevention', 'EICAR Test', { success: false, status: 'blocked', endpoint }, getNextTestId());
+            addTestResult('threat_prevention', `EICAR Test (${endpoint})`, { success: false, status: 'blocked', endpoint }, getNextTestId(), undefined, runId);
         }
     }
+
+    await generateRunScore(runId, 'threat', 'scheduled');
 };
 
 const startSchedulers = () => {
@@ -6942,6 +6945,8 @@ app.get('/api/security/cloud-eicar-url', authenticateToken, (req, res) => {
 app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
     const { endpoint, scenarioId } = req.body;
 
+    const runId = `manual-threat-${Date.now()}`;
+
     if (scenarioId) {
         const testId = getNextTestId();
         logTest(`[THREAT-TEST-${testId}] Stigix Cloud scenario requested: ${scenarioId}`);
@@ -6962,7 +6967,8 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
             };
 
             logTest(`[THREAT-TEST-${testId}] Cloud scenario ${scenarioId} result: ${status.toUpperCase()}`);
-            addTestResult('threat_prevention', `EICAR Test (Cloud: ${scenarioId})`, result, testId);
+            addTestResult('threat_prevention', `EICAR Test (Cloud: ${scenarioId})`, result, testId, undefined, runId);
+            await generateRunScore(runId, 'threat', 'manual');
             return res.json({ success: true, results: [result], testId });
         } catch (error: any) {
             logTest(`[THREAT-TEST-ERR] Cloud scenario failed: ${error.message}`);
@@ -7032,7 +7038,7 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
                 };
 
                 logTest(`[THREAT-TEST-${testId}] EICAR test result: ALLOWED`, { endpoint: ep });
-                addTestResult('threat_prevention', `EICAR Test (${ep})`, result, testId);
+                addTestResult('threat_prevention', `EICAR Test (${ep})`, result, testId, undefined, runId);
                 results.push(result);
             } catch (curlError: any) {
                 const exitCode = curlError.code;
@@ -7059,10 +7065,12 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
                 };
 
                 logTest(`[THREAT-TEST-${testId}] EICAR test result: ${status.toUpperCase()}`, { endpoint: ep, error: curlError.message });
-                addTestResult('threat_prevention', `EICAR Test (${ep})`, result, testId);
+                addTestResult('threat_prevention', `EICAR Test (${ep})`, result, testId, undefined, runId);
                 results.push(result);
             }
         }
+
+        await generateRunScore(runId, 'threat', 'manual');
 
         console.log('[DEBUG] EICAR test completed:', { totalTests: results.length, results });
         res.json({ success: true, results });

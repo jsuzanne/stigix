@@ -6,8 +6,10 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     const [scores, setScores] = useState<any[]>([]);
     const [urlBaseline, setUrlBaseline] = useState<any>(null);
     const [dnsBaseline, setDnsBaseline] = useState<any>(null);
+    const [threatBaseline, setThreatBaseline] = useState<any>(null);
     const [urlDiff, setUrlDiff] = useState<any>(null);
     const [dnsDiff, setDnsDiff] = useState<any>(null);
+    const [threatDiff, setThreatDiff] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [expandLatest, setExpandLatest] = useState<Record<string, boolean>>({});
     const [expandGap, setExpandGap] = useState<Record<string, boolean>>({});
@@ -33,6 +35,10 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
             if (dnsBaselineRes.ok) setDnsBaseline(await dnsBaselineRes.json());
             else setDnsBaseline(null);
 
+            const threatBaselineRes = await fetch('/api/security/scores/baseline?type=threat', { headers: authHeader });
+            if (threatBaselineRes.ok) setThreatBaseline(await threatBaselineRes.json());
+            else setThreatBaseline(null);
+
         } catch (e) {
             console.error('Failed to fetch score dashboard data', e);
         } finally {
@@ -40,10 +46,10 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
         }
     };
 
-    const fetchDiff = async (type: 'url' | 'dns') => {
+    const fetchDiff = async (type: 'url' | 'dns' | 'threat') => {
         if (!scores.length) return;
         const latest = scores[0];
-        const baseline = type === 'url' ? urlBaseline : dnsBaseline;
+        const baseline = type === 'url' ? urlBaseline : type === 'dns' ? dnsBaseline : threatBaseline;
         if (!baseline || !latest) return;
 
         try {
@@ -51,7 +57,8 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
             if (res.ok) {
                 const data = await res.json();
                 if (type === 'url') setUrlDiff(data);
-                else setDnsDiff(data);
+                else if (type === 'dns') setDnsDiff(data);
+                else setThreatDiff(data);
             }
         } catch(e) {}
     };
@@ -65,9 +72,10 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     useEffect(() => {
         if (!loading && urlBaseline) fetchDiff('url');
         if (!loading && dnsBaseline) fetchDiff('dns');
-    }, [scores, urlBaseline, dnsBaseline, loading]);
+        if (!loading && threatBaseline) fetchDiff('threat');
+    }, [scores, urlBaseline, dnsBaseline, threatBaseline, loading]);
 
-    const handleSetBaseline = async (runId: string, type: 'url' | 'dns') => {
+    const handleSetBaseline = async (runId: string, type: 'url' | 'dns' | 'threat') => {
         try {
             await fetch('/api/security/scores/baseline', {
                 method: 'POST',
@@ -90,11 +98,12 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
 
     const latestUrlScore = scores.find(s => s.type === 'url');
     const latestDnsScore = scores.find(s => s.type === 'dns');
+    const latestThreatScore = scores.find(s => s.type === 'threat');
 
     // Prepare chart data
     const chartData = (() => {
         const chronological = [...scores].reverse();
-        const lastDotTs: Record<string, number> = { url: 0, dns: 0 };
+        const lastDotTs: Record<string, number> = { url: 0, dns: 0, threat: 0 };
         const DOT_WINDOW_MS = 5 * 60 * 1000;
 
         const cutoff = timeRange === 'all' ? 0
@@ -113,12 +122,14 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                     fullTime: new Date(s.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                     urlScore: s.scores?.url ?? null,
                     dnsScore: s.scores?.dns ?? null,
+                    threatScore: s.scores?.threat ?? null,
                     runId: s.runId,
                     type: s.type,
                     trigger: s.trigger || 'manual',
                     showDot,
                     deltaUrl: null as number | null,
                     deltaDns: null as number | null,
+                    deltaThreat: null as number | null,
                 };
             });
 
@@ -130,11 +141,13 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
         // change event correctly positions both lines at the right y-value.
         let prevUrl: number | null = null;
         let prevDns: number | null = null;
+        let prevThreat: number | null = null;
         const result: typeof base = [];
         for (const pt of base) {
             const urlChanged = pt.urlScore !== null && pt.urlScore !== prevUrl;
             const dnsChanged = pt.dnsScore !== null && pt.dnsScore !== prevDns;
-            if (result.length === 0 || urlChanged || dnsChanged) {
+            const threatChanged = pt.threatScore !== null && pt.threatScore !== prevThreat;
+            if (result.length === 0 || urlChanged || dnsChanged || threatChanged) {
                 result.push({
                     ...pt,
                     showDot: true,
@@ -144,10 +157,12 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                     }),
                     deltaUrl: urlChanged && prevUrl !== null ? Math.round((pt.urlScore! - prevUrl) * 10) / 10 : null,
                     deltaDns: dnsChanged && prevDns !== null ? Math.round((pt.dnsScore! - prevDns) * 10) / 10 : null,
+                    deltaThreat: threatChanged && prevThreat !== null ? Math.round((pt.threatScore! - prevThreat) * 10) / 10 : null,
                 });
             }
             if (pt.urlScore !== null) prevUrl = pt.urlScore;
             if (pt.dnsScore !== null) prevDns = pt.dnsScore;
+            if (pt.threatScore !== null) prevThreat = pt.threatScore;
         }
         return result;
     })();
@@ -156,7 +171,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     const dotRadius = changesOnly ? 5 : Math.max(2, Math.min(5, Math.round(5 - (chartData.length - 20) * (3 / 130))));
 
     // Latest Changes: diff between the two most recent runs of each type (client-side, no baseline needed)
-    const computeLatestDiff = (type: 'url' | 'dns') => {
+    const computeLatestDiff = (type: 'url' | 'dns' | 'threat') => {
         const runs = scores.filter(s => s.type === type); // already newest-first
         if (runs.length < 2) return null;
         const latest = runs[0];
@@ -180,14 +195,18 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
 
     const urlLatestDiff = computeLatestDiff('url');
     const dnsLatestDiff = computeLatestDiff('dns');
+    const threatLatestDiff = computeLatestDiff('threat');
 
     // Min / max scores over the loaded history window
     const urlScores = scores.filter(s => s.scores?.url != null).map(s => s.scores.url as number);
     const dnsScores = scores.filter(s => s.scores?.dns != null).map(s => s.scores.dns as number);
+    const threatScores = scores.filter(s => s.scores?.threat != null).map(s => s.scores.threat as number);
     const minUrlScore = urlScores.length ? Math.min(...urlScores) : null;
     const maxUrlScore = urlScores.length ? Math.max(...urlScores) : null;
     const minDnsScore = dnsScores.length ? Math.min(...dnsScores) : null;
     const maxDnsScore = dnsScores.length ? Math.max(...dnsScores) : null;
+    const minThreatScore = threatScores.length ? Math.min(...threatScores) : null;
+    const maxThreatScore = threatScores.length ? Math.max(...threatScores) : null;
 
     // Proper category label — capitalise acronyms and title-case the rest
     const formatCategory = (cat: string) =>
@@ -197,7 +216,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
 
     // Custom dot: show only on actual run points that pass the 5-min window filter
     // Radius is passed in dynamically so it responds to point density
-    const CustomDot = (lineType: 'url' | 'dns', color: string, r: number) => (props: any) => {
+    const CustomDot = (lineType: 'url' | 'dns' | 'threat', color: string, r: number) => (props: any) => {
         const { cx, cy, payload } = props;
         if (payload.type !== lineType || !payload.showDot) return null;
         return (
@@ -220,7 +239,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                     {data?.fullTime}
                 </div>
                 {!changesOnly && (
-                    <div style={{ fontWeight: 900, letterSpacing: '0.06em', marginBottom: 6, fontSize: 10, color: data?.type === 'url' ? '#8b5cf6' : '#0ea5e9', textTransform: 'uppercase' }}>
+                    <div style={{ fontWeight: 900, letterSpacing: '0.06em', marginBottom: 6, fontSize: 10, color: data?.type === 'url' ? '#8b5cf6' : data?.type === 'dns' ? '#0ea5e9' : '#ef4444', textTransform: 'uppercase' }}>
                         {data?.type?.toUpperCase()} Run · {data?.trigger === 'scheduled' ? '🕐 Scheduled' : '▶ Manual'}
                     </div>
                 )}
@@ -230,7 +249,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             {p.value.toFixed(1)}
                             {changesOnly && (() => {
-                                const delta = p.dataKey === 'urlScore' ? data?.deltaUrl : data?.deltaDns;
+                                const delta = p.dataKey === 'urlScore' ? data?.deltaUrl : p.dataKey === 'dnsScore' ? data?.deltaDns : data?.deltaThreat;
                                 if (delta === null || delta === undefined) return null;
                                 const col = delta > 0 ? '#22c55e' : delta < 0 ? '#ef4444' : '#64748b';
                                 return <span style={{ fontSize: 9, fontWeight: 900, color: col }}>{delta > 0 ? '+' : ''}{delta}</span>;
@@ -242,7 +261,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
         );
     };
 
-    const renderGauge = (type: 'url' | 'dns', entry: any, baseline: any, minScore: number | null, maxScore: number | null) => {
+    const renderGauge = (type: 'url' | 'dns' | 'threat', entry: any, baseline: any, minScore: number | null, maxScore: number | null) => {
         if (!entry) return (
             <div className="flex flex-col items-center justify-center p-6 bg-card border border-border rounded-xl">
                 <Shield size={24} className="text-text-muted mb-2 opacity-50" />
@@ -265,12 +284,14 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                             <div className={`p-1.5 rounded-lg border ${score >= 90 ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-blue-500/10 border-blue-500/20 text-blue-500'}`}>
                                 <Activity size={14} />
                             </div>
-                            <h3 className="text-[11px] font-black tracking-widest text-text-primary uppercase">{type === 'url' ? 'URL Filter' : 'DNS Security'}</h3>
+                            <h3 className="text-[11px] font-black tracking-widest text-text-primary uppercase">{type === 'url' ? 'URL Filter' : type === 'dns' ? 'DNS Security' : 'Threat Prevention'}</h3>
                         </div>
                         <p className="text-[9px] text-text-muted opacity-60 leading-tight pl-0.5">
                             {type === 'url'
                                 ? 'Weighted % of malicious URL categories correctly blocked by firewall'
-                                : 'Weighted % of malicious DNS domains correctly blocked or sinkholed'}
+                                : type === 'dns'
+                                    ? 'Weighted % of malicious DNS domains correctly blocked or sinkholed'
+                                    : 'Weighted % of EICAR files correctly blocked across all targets'}
                         </p>
                     </div>
                 </div>
@@ -425,6 +446,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                 <div className="flex flex-col gap-4 w-full lg:w-80 shrink-0 lg:sticky lg:top-4">
                     {renderGauge('url', latestUrlScore, urlBaseline, minUrlScore, maxUrlScore)}
                     {renderGauge('dns', latestDnsScore, dnsBaseline, minDnsScore, maxDnsScore)}
+                    {renderGauge('threat', latestThreatScore, threatBaseline, minThreatScore, maxThreatScore)}
                 </div>
 
                 {/* Charts & Gaps — right column, grows freely */}
@@ -466,6 +488,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                                 <div className="flex items-center gap-3 text-[9px] font-black tracking-widest text-text-muted opacity-60">
                                     <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#8b5cf6'}}/> URL</span>
                                     <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#0ea5e9'}}/> DNS</span>
+                                    <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#ef4444'}}/> Threat</span>
                                     {!changesOnly && <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',border:'1.5px solid #aaa',background:'transparent'}}/> Scheduled</span>}
                                 </div>
                             </div>
@@ -479,6 +502,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                                         <Tooltip content={<CustomTooltip />} />
                                         <Line type="monotone" dataKey="urlScore" name="URL Score" stroke="#8b5cf6" strokeWidth={2} dot={CustomDot('url', '#8b5cf6', dotRadius)} activeDot={{ r: dotRadius + 1 }} isAnimationActive={false} />
                                         <Line type="monotone" dataKey="dnsScore" name="DNS Score" stroke="#0ea5e9" strokeWidth={2} dot={CustomDot('dns', '#0ea5e9', dotRadius)} activeDot={{ r: dotRadius + 1 }} isAnimationActive={false} />
+                                        <Line type="monotone" dataKey="threatScore" name="Threat Score" stroke="#ef4444" strokeWidth={2} dot={CustomDot('threat', '#ef4444', dotRadius)} activeDot={{ r: dotRadius + 1 }} isAnimationActive={false} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             ) : (
@@ -489,10 +513,10 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
 
                     {/* Latest Changes + embedded Gap Analysis — one card per type */}
                     <div className="flex flex-col gap-3">
-                        {(['url', 'dns'] as const).map(type => {
-                            const diff = type === 'url' ? urlLatestDiff : dnsLatestDiff;
-                            const gapDiff = type === 'url' ? urlDiff : dnsDiff;
-                            const color = type === 'url' ? '#8b5cf6' : '#0ea5e9';
+                        {(['url', 'dns', 'threat'] as const).map(type => {
+                            const diff = type === 'url' ? urlLatestDiff : type === 'dns' ? dnsLatestDiff : threatLatestDiff;
+                            const gapDiff = type === 'url' ? urlDiff : type === 'dns' ? dnsDiff : threatDiff;
+                            const color = type === 'url' ? '#8b5cf6' : type === 'dns' ? '#0ea5e9' : '#ef4444';
 
                             const hasChanges = diff && diff.changes.length > 0;
                             const hasGap = gapDiff && (gapDiff.regressions?.length > 0 || gapDiff.improvements?.length > 0);
