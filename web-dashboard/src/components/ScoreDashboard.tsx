@@ -11,6 +11,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     const [loading, setLoading] = useState(true);
     const [expandLatest, setExpandLatest] = useState<Record<string, boolean>>({});
     const [expandGap, setExpandGap] = useState<Record<string, boolean>>({});
+    const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | 'all'>('24h');
     const PREVIEW_LIMIT = 5;
 
     const authHeader = { 'Authorization': `Bearer ${token}` };
@@ -95,22 +96,35 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
         const chronological = [...scores].reverse();
         const lastDotTs: Record<string, number> = { url: 0, dns: 0 };
         const DOT_WINDOW_MS = 5 * 60 * 1000; // 5 min
-        return chronological.map(s => {
-            const showDot = s.timestamp - lastDotTs[s.type] >= DOT_WINDOW_MS;
-            if (showDot) lastDotTs[s.type] = s.timestamp;
-            return {
-                timestamp: s.timestamp,
-                timeLabel: new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                fullTime: new Date(s.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                urlScore: s.scores?.url,
-                dnsScore: s.scores?.dns,
-                runId: s.runId,
-                type: s.type,
-                trigger: s.trigger || 'manual',
-                showDot,
-            };
-        });
+
+        // Time range filter
+        const cutoff = timeRange === 'all' ? 0
+            : timeRange === '1h' ? Date.now() - 60 * 60 * 1000
+            : timeRange === '6h' ? Date.now() - 6 * 60 * 60 * 1000
+            : Date.now() - 24 * 60 * 60 * 1000;
+
+        return chronological
+            .filter(s => s.timestamp >= cutoff)
+            .map(s => {
+                const showDot = s.timestamp - lastDotTs[s.type] >= DOT_WINDOW_MS;
+                if (showDot) lastDotTs[s.type] = s.timestamp;
+                return {
+                    timestamp: s.timestamp,
+                    timeLabel: new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    fullTime: new Date(s.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    urlScore: s.scores?.url,
+                    dnsScore: s.scores?.dns,
+                    runId: s.runId,
+                    type: s.type,
+                    trigger: s.trigger || 'manual',
+                    showDot,
+                };
+            });
     })();
+
+    // Dynamic dot radius: fewer points = bigger dots, more points = smaller dots
+    // Range: r=5 for ≤20 points, scales down to r=2 for ≥150 points
+    const dotRadius = Math.max(2, Math.min(5, Math.round(5 - (chartData.length - 20) * (3 / 130))));
 
     // Latest Changes: diff between the two most recent runs of each type (client-side, no baseline needed)
     const computeLatestDiff = (type: 'url' | 'dns') => {
@@ -149,14 +163,15 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
            .replace(/\b(\w)/g, c => c.toUpperCase());
 
     // Custom dot: show only on actual run points that pass the 5-min window filter
-    const CustomDot = (lineType: 'url' | 'dns', color: string) => (props: any) => {
+    // Radius is passed in dynamically so it responds to point density
+    const CustomDot = (lineType: 'url' | 'dns', color: string, r: number) => (props: any) => {
         const { cx, cy, payload } = props;
         if (payload.type !== lineType || !payload.showDot) return null;
         return (
             <g>
-                <circle cx={cx} cy={cy} r={5} fill={color} stroke="white" strokeWidth={1.5} opacity={0.9} />
+                <circle cx={cx} cy={cy} r={r} fill={color} stroke="white" strokeWidth={1} opacity={0.9} />
                 {payload.trigger === 'scheduled' && (
-                    <circle cx={cx} cy={cy} r={8} fill="none" stroke={color} strokeWidth={1} opacity={0.4} />
+                    <circle cx={cx} cy={cy} r={r + 3} fill="none" stroke={color} strokeWidth={1} opacity={0.4} />
                 )}
             </g>
         );
@@ -376,10 +391,28 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                             <span className="text-[10px] font-black tracking-widest text-text-muted uppercase flex items-center gap-1.5">
                                 <Activity size={12} /> Score Trend
                             </span>
-                            <div className="flex items-center gap-3 text-[9px] font-black tracking-widest text-text-muted opacity-60">
-                                <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#8b5cf6'}}/>URL</span>
-                                <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#0ea5e9'}}/>DNS</span>
-                                <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',border:'1.5px solid #aaa',background:'transparent'}}/>Scheduled</span>
+                            <div className="flex items-center gap-3">
+                                {/* Time range selector */}
+                                <div className="flex items-center gap-0.5 bg-background rounded-lg p-0.5 border border-border">
+                                    {(['1h', '6h', '24h', 'all'] as const).map(r => (
+                                        <button
+                                            key={r}
+                                            onClick={() => setTimeRange(r)}
+                                            className={`text-[9px] font-black tracking-widest px-2 py-0.5 rounded-md transition-all ${
+                                                timeRange === r
+                                                    ? 'bg-card text-text-primary shadow-sm'
+                                                    : 'text-text-muted hover:text-text-primary'
+                                            }`}
+                                        >
+                                            {r === 'all' ? 'ALL' : r.toUpperCase()}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="flex items-center gap-3 text-[9px] font-black tracking-widest text-text-muted opacity-60">
+                                    <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#8b5cf6'}}/> URL</span>
+                                    <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#0ea5e9'}}/> DNS</span>
+                                    <span className="flex items-center gap-1"><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',border:'1.5px solid #aaa',background:'transparent'}}/> Scheduled</span>
+                                </div>
                             </div>
                         </div>
                         <div className="flex-1 min-h-0">
@@ -389,8 +422,8 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                                         <XAxis dataKey="timeLabel" tick={{ fontSize: 9, fill: 'currentColor', opacity: 0.5 }} tickLine={false} axisLine={false} />
                                         <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: 'currentColor', opacity: 0.5 }} tickLine={false} axisLine={false} />
                                         <Tooltip content={<CustomTooltip />} />
-                                        <Line type="monotone" dataKey="urlScore" name="URL Score" stroke="#8b5cf6" strokeWidth={2.5} dot={CustomDot('url', '#8b5cf6')} activeDot={{ r: 5 }} isAnimationActive={false} />
-                                        <Line type="monotone" dataKey="dnsScore" name="DNS Score" stroke="#0ea5e9" strokeWidth={2.5} dot={CustomDot('dns', '#0ea5e9')} activeDot={{ r: 5 }} isAnimationActive={false} />
+                                        <Line type="monotone" dataKey="urlScore" name="URL Score" stroke="#8b5cf6" strokeWidth={2} dot={CustomDot('url', '#8b5cf6', dotRadius)} activeDot={{ r: dotRadius + 1 }} isAnimationActive={false} />
+                                        <Line type="monotone" dataKey="dnsScore" name="DNS Score" stroke="#0ea5e9" strokeWidth={2} dot={CustomDot('dns', '#0ea5e9', dotRadius)} activeDot={{ r: dotRadius + 1 }} isAnimationActive={false} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             ) : (
