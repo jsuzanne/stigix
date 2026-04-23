@@ -743,6 +743,40 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
         } catch (e) { alert('Import failed: ' + (e as Error).message); }
     };
 
+    const handleExportTargets = () => {
+        try {
+            const dataToExport = targets.map(t => ({
+                name: t.name,
+                host: t.host,
+                enabled: t.enabled,
+                capabilities: t.capabilities,
+                ports: t.ports
+            }));
+            const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `stigix-targets-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+        } catch (e) { alert('Export failed'); }
+    };
+
+    const handleImportTargets = async (content: string) => {
+        try {
+            const data = JSON.parse(content);
+            const targetsToImport = Array.isArray(data) ? data : data.targets;
+            if (!targetsToImport) throw new Error("Invalid format");
+
+            await fetch('/api/targets/import', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ targets: targetsToImport })
+            });
+            showSuccess('Targets imported successfully');
+            setTimeout(() => window.location.reload(), 1500);
+        } catch (e) { alert('Import failed: ' + (e as Error).message); }
+    };
+
     const handleExportApps = async () => {
         try {
             const res = await fetch('/api/config/applications/export?format=json', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -2733,13 +2767,45 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
 
             {activeTab === 'targets' && (
                 <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-emerald-600/10 rounded-lg text-emerald-600 dark:text-emerald-400">
-                            <MapPin size={20} />
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-emerald-600/10 rounded-lg text-emerald-600 dark:text-emerald-400">
+                                <MapPin size={20} />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-text-primary tracking-tight">Stigix Targets Repository</h2>
+                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Shared stigix endpoints — reused across Speedtest, Voice, Security &amp; Failover</p>
+                            </div>
                         </div>
-                        <div>
-                            <h2 className="text-lg font-black text-text-primary tracking-tight">Stigix Targets Repository</h2>
-                            <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Shared stigix endpoints — reused across Speedtest, Voice, Security &amp; Failover</p>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handleExportTargets}
+                                className="px-4 py-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                            >
+                                <Download size={14} />
+                                Export
+                            </button>
+                            <input
+                                id="import-targets"
+                                type="file"
+                                className="hidden"
+                                accept=".json"
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                        const reader = new FileReader();
+                                        reader.onload = (ev) => handleImportTargets(ev.target?.result as string);
+                                        reader.readAsText(file);
+                                    }
+                                }}
+                            />
+                            <button
+                                onClick={() => document.getElementById('import-targets')?.click()}
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
+                            >
+                                <Upload size={14} />
+                                Import
+                            </button>
                         </div>
                     </div>
 

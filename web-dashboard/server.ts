@@ -3858,6 +3858,33 @@ app.get('/api/targets', authenticateToken, (req, res) => {
     }
 });
 
+/** POST /api/targets/import — bulk import managed targets */
+app.post('/api/targets/import', authenticateToken, (req, res) => {
+    try {
+        const { targets } = req.body;
+        if (!Array.isArray(targets)) return res.status(400).json({ error: 'targets must be an array' });
+        
+        let imported = 0;
+        for (const t of targets) {
+            if (!t.name || !t.host) continue;
+            // Provide sensible defaults for capabilities if missing
+            const caps = t.capabilities || { voice: false, convergence: false, xfr: false, security: false, connectivity: false };
+            targetsManager.createTarget({
+                name: t.name,
+                host: t.host,
+                enabled: t.enabled ?? true,
+                capabilities: caps,
+                ports: t.ports || {}
+            });
+            imported++;
+        }
+        log('TARGETS', `Imported ${imported} targets`);
+        res.json({ success: true, count: imported });
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to import targets', detail: e.message });
+    }
+});
+
 /** POST /api/targets — create a new managed target */
 app.post('/api/targets', authenticateToken, (req, res) => {
     try {
