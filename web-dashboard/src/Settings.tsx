@@ -209,7 +209,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                     const res = await fetch('/api/convergence/reachability', {
                         method: 'POST',
                         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ host: t.host, port: t.port })
+                        body: JSON.stringify({ target: t.host, port: t.port })
                     });
                     const data = await res.json();
                     setTargetReachability(prev => ({ ...prev, [t.id]: !!data.reachable }));

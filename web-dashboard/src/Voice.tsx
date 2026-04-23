@@ -146,7 +146,7 @@ export default function Voice(props: VoiceProps) {
                     const res = await fetch('/api/convergence/reachability', {
                         method: 'POST',
                         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ host: t.host, port: parseInt(t.port, 10) })
+                        body: JSON.stringify({ target: t.host, port: parseInt(t.port, 10) })
                     });
                     const data = await res.json();
                     setReachability(prev => ({ ...prev, [t.id]: !!data.reachable }));
