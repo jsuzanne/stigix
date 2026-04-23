@@ -425,6 +425,13 @@ export default function Failover(props: FailoverProps) {
                                 >
                                     <Play size={10} fill="currentColor" />
                                 </button>
+                                <button
+                                    onClick={(e_stop_test) => { e_stop_test.stopPropagation(); stopTest(); }}
+                                    className="p-1.5 rounded-md bg-red-500/10 text-red-500 hover:bg-red-600 hover:text-white transition-colors border border-red-500/20 hover:border-red-600 shadow-sm"
+                                    title="Stop All Convergence Tests"
+                                >
+                                    <Square size={10} fill="currentColor" />
+                                </button>
                             </div>
                         </div>
                     );
