@@ -96,7 +96,42 @@ export default function Speedtest({ token }: Props) {
     const authHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
 
     const [quickTargets, setQuickTargets] = useState<{ label: string, host: string }[]>([]);
-    const [sharedTargets, setSharedTargets] = useState<{ id: string; name: string; host: string; capabilities: any }[]>([]);
+    const [sharedTargets, setSharedTargets] = useState<any[]>([]);
+
+    const [targetReachability, setTargetReachability] = useState<Record<string, boolean | 'loading'>>({});
+
+    useEffect(() => {
+        const targetsToPing: { host: string, port: number }[] = [];
+        quickTargets.forEach(qt => targetsToPing.push({ host: qt.host, port: 6200 }));
+        sharedTargets.forEach(st => {
+            if (!targetsToPing.find(t => t.host === st.host)) {
+                targetsToPing.push({ host: st.host, port: 6200 }); // Ping 6200 to verify it's a Stigix node
+            }
+        });
+
+        if (!targetsToPing.length) return;
+
+        const checkReachability = async () => {
+            for (const t of targetsToPing) {
+                setTargetReachability(prev => ({ ...prev, [t.host]: 'loading' }));
+                try {
+                    const res = await fetch('/api/convergence/reachability', {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ target: t.host, port: t.port })
+                    });
+                    const data = await res.json();
+                    setTargetReachability(prev => ({ ...prev, [t.host]: !!data.reachable }));
+                } catch {
+                    setTargetReachability(prev => ({ ...prev, [t.host]: false }));
+                }
+            }
+        };
+
+        checkReachability();
+        const interval = setInterval(checkReachability, 60000);
+        return () => clearInterval(interval);
+    }, [quickTargets, sharedTargets, token]);
 
     useEffect(() => {
         fetchHistory();
@@ -309,67 +344,105 @@ export default function Speedtest({ token }: Props) {
 
                         <div className="space-y-4">
                             <div>
-                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Stigix Target Host</label>
-                                <div className="relative group">
-                                    <Target className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted/50" size={16} />
-                                    <input
-                                        type="text"
-                                        value={targetHost}
-                                        onChange={e => setTargetHost(e.target.value)}
-                                        placeholder="e.g. 1.2.3.4"
-                                        className="w-full bg-card-secondary border border-border rounded-xl pl-10 pr-4 py-3 text-sm focus:border-blue-500 outline-none transition-all"
-                                    />
-                                </div>
-                                {/* Quick Targets — env-var entries + shared targets with xfr capability */}
-                                {(quickTargets.length > 0 || sharedTargets.length > 0) && (
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                        {/* Legacy XFR_QUICK_TARGETS env-var pills */}
-                                        {quickTargets.map((t, i) => (
-                                            <button
+                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-3 flex items-center gap-2">
+                                    <Target size={14} className="text-blue-500" />
+                                    Stigix Targets
+                                </label>
+                                
+                                <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1">
+                                    {quickTargets.map((t, i) => {
+                                        const isSelected = targetHost === t.host;
+                                        const status = targetReachability[t.host];
+                                        return (
+                                            <div
                                                 key={`env-${i}`}
-                                                onClick={() => setTargetHost(t.host)}
-                                                className={cn(
-                                                    "px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all duration-200 flex items-center gap-2",
-                                                    targetHost === t.host
-                                                        ? "bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-600/20 scale-[1.02]"
-                                                        : "bg-blue-600/5 text-blue-500 border-blue-500/10 hover:bg-blue-600/10 hover:border-blue-500/30"
-                                                )}
+                                                onClick={() => { setTargetHost(t.host); setTargetPort(9000); }}
+                                                className={`bg-card border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-blue-500 bg-blue-600/5 shadow-blue-500/10' : 'border-border'}`}
                                             >
-                                                <div className={cn("w-1 h-1 rounded-full", targetHost === t.host ? "bg-white" : "bg-blue-500")}></div>
-                                                {t.label}
-                                            </button>
-                                        ))}
-                                        {/* Shared Targets (registry) with xfr capability */}
-                                        {sharedTargets
-                                            .filter(st => !quickTargets.some(qt => qt.host === st.host))
-                                            .map((t) => (
-                                                <button
-                                                    key={`tgt-${t.id}`}
-                                                    onClick={() => setTargetHost(t.host)}
-                                                    className={cn(
-                                                        "px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all duration-200 flex items-center gap-2",
-                                                        targetHost === t.host
-                                                            ? "bg-emerald-600 text-white border-emerald-600 shadow-lg shadow-emerald-600/20 scale-[1.02]"
-                                                            : "bg-emerald-600/5 text-emerald-500 border-emerald-500/10 hover:bg-emerald-600/10 hover:border-emerald-500/30"
+                                                <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
+                                                    {isSelected && <Zap size={8} className="text-white" fill="currentColor" />}
+                                                </div>
+                                                <div className="flex flex-col min-w-0 flex-1">
+                                                    <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{t.label}</h4>
+                                                    <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{t.host}:9000</p>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
+                                                    {status === 'loading' || status === undefined ? (
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
+                                                    ) : status ? (
+                                                        <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
                                                     )}
-                                                >
-                                                    <div className={cn("w-1 h-1 rounded-full", targetHost === t.host ? "bg-white" : "bg-emerald-500")}></div>
-                                                    {t.name}
-                                                </button>
-                                            ))
-                                        }
-                                    </div>
-                                )}
-                            </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
 
-                            <div>
-                                <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Port</label>
-                                <input
-                                    type="number"
-                                    value={targetPort}
-                                    onChange={e => setTargetPort(parseInt(e.target.value))}
-                                    className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none transition-all"
-                                />
+                                    {sharedTargets.filter(st => !quickTargets.some(qt => qt.host === st.host)).map((t) => {
+                                        const isSelected = targetHost === t.host;
+                                        const status = targetReachability[t.host];
+                                        const port = t.ports?.xfr ?? 9000;
+                                        return (
+                                            <div
+                                                key={`tgt-${t.id}`}
+                                                onClick={() => { setTargetHost(t.host); setTargetPort(port); }}
+                                                className={`bg-card border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-emerald-500 bg-emerald-600/5 shadow-emerald-500/10' : 'border-border'}`}
+                                            >
+                                                <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-emerald-600 border-emerald-500' : 'bg-card-secondary border-border'}`}>
+                                                    {isSelected && <Zap size={8} className="text-white" fill="currentColor" />}
+                                                </div>
+                                                <div className="flex flex-col min-w-0 flex-1">
+                                                    <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-emerald-500' : 'text-text-primary'}`}>{t.name}</h4>
+                                                    <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{t.host}:{port}</p>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
+                                                    {status === 'loading' || status === undefined ? (
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
+                                                    ) : status ? (
+                                                        <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                <div className="mt-6 pt-5 border-t border-border space-y-4">
+                                    <div>
+                                        <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Custom Target IP / FQDN</label>
+                                        <div className="relative group">
+                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted/50">
+                                                <Network size={14} />
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={targetHost}
+                                                onChange={e => setTargetHost(e.target.value)}
+                                                placeholder="e.g. 1.2.3.4"
+                                                className="w-full bg-card-secondary border border-border rounded-xl pl-9 pr-4 py-3 text-sm focus:border-blue-500 outline-none transition-all font-mono"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Port</label>
+                                        <input
+                                            type="number"
+                                            value={targetPort}
+                                            onChange={e => setTargetPort(parseInt(e.target.value))}
+                                            className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none transition-all font-mono"
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
                             {mode === 'custom' && (
