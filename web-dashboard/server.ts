@@ -4,6 +4,7 @@ import net from 'net';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import dgram from 'dgram';
 //import { spawn, exec } from 'child_process';
 import { spawn, exec, execSync } from 'child_process';
 import { promisify } from 'util';
@@ -3740,6 +3741,50 @@ const startConnectivityMonitor = () => {
 startConnectivityMonitor();
 
 // --- Phase 7: Convergence & Failover Testing ---
+
+app.post('/api/convergence/reachability', authenticateToken, (req, res) => {
+    const { target, port } = req.body;
+    if (!target) return res.status(400).json({ error: 'Target required' });
+    const targetPort = port || 6200;
+    
+    const client = dgram.createSocket('udp4');
+    let answered = false;
+
+    client.on('message', (msg) => {
+        if (answered) return;
+        answered = true;
+        client.close();
+        res.json({ reachable: true });
+    });
+
+    client.on('error', (err) => {
+        if (answered) return;
+        answered = true;
+        client.close();
+        res.json({ reachable: false });
+    });
+
+    const timestamp = Date.now();
+    const payload = Buffer.from(`CONV:PING:ReachabilityTest:1:${timestamp}`);
+    
+    client.send(payload, targetPort, target, (err) => {
+        if (err) {
+            if (answered) return;
+            answered = true;
+            client.close();
+            res.json({ reachable: false });
+        }
+    });
+
+    setTimeout(() => {
+        if (!answered) {
+            answered = true;
+            client.close();
+            res.json({ reachable: false });
+        }
+    }, 1000);
+});
+
 
 app.get('/api/convergence/endpoints', authenticateToken, (req, res) => {
     try {

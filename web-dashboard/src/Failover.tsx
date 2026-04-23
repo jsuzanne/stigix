@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, ResponsiveContainer, YAxis } from 'recharts';
 import { Activity, Clock, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft } from 'lucide-react';
 import { isValidIpOrFqdn } from './utils/validation';
@@ -15,6 +15,23 @@ export default function Failover(props: FailoverProps) {
     const [showAddModal, setShowAddModal] = useState(false);
     const [newTarget, setNewTarget] = useState({ label: '', target: '', port: 6200 });
     const [convergenceTargets, setConvergenceTargets] = useState<any[]>([]);
+    const [reachability, setReachability] = useState<Record<string, boolean | 'loading'>>({});
+
+    const allTargets = useMemo(() => {
+        const combined = [...endpoints];
+        convergenceTargets.forEach(ct => {
+            if (!combined.some(e => e.target === ct.host)) {
+                combined.push({
+                    id: ct.id,
+                    label: ct.name,
+                    target: ct.host,
+                    port: ct.port || 6200,
+                    isRegistry: true
+                });
+            }
+        });
+        return combined;
+    }, [endpoints, convergenceTargets]);
 
     const [rate, setRate] = useState(50);
     const [selectedEndpoints, setSelectedEndpoints] = useState<string[]>([]);
@@ -103,8 +120,6 @@ export default function Failover(props: FailoverProps) {
         };
         fetchThresholds();
 
-        // Fetch shared targets with convergence capability
-        fetch('/api/targets', { headers: authHeaders() })
             .then(r => r.json())
             .then(data => setConvergenceTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.convergence)))
             .catch(() => { });
@@ -116,6 +131,29 @@ export default function Failover(props: FailoverProps) {
         }, 5000);
         return () => clearInterval(interval);
     }, []);
+
+    useEffect(() => {
+        const checkReachability = async () => {
+            if (allTargets.length === 0) return;
+            for (const target of allTargets) {
+                try {
+                    const res = await fetch('/api/convergence/reachability', {
+                        method: 'POST',
+                        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ target: target.target, port: target.port })
+                    });
+                    const data = await res.json();
+                    setReachability(prev => ({ ...prev, [target.id]: data.reachable }));
+                } catch {
+                    setReachability(prev => ({ ...prev, [target.id]: false }));
+                }
+            }
+        };
+        
+        checkReachability();
+        const intv = setInterval(checkReachability, 10000);
+        return () => clearInterval(intv);
+    }, [allTargets]);
 
     const addEndpoint = async () => {
         if (!newTarget.label || !newTarget.target) return;
@@ -145,7 +183,7 @@ export default function Failover(props: FailoverProps) {
     };
 
     const startTest = async (endpointIds: string[]) => {
-        const targets = endpoints.filter(e => endpointIds.includes(e.id));
+        const targets = allTargets.filter(e => endpointIds.includes(e.id));
         setIsStarting(true);
         try {
             await Promise.all(targets.map(endpoint =>
@@ -233,7 +271,7 @@ export default function Failover(props: FailoverProps) {
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const selectedCount = endpoints.filter(e => selectedEndpoints.includes(e.id)).length;
+    const selectedCount = allTargets.filter(e => selectedEndpoints.includes(e.id)).length;
 
     const getSourcePort = (testId: string): string => {
         try {
@@ -318,18 +356,20 @@ export default function Failover(props: FailoverProps) {
                             <button
                                 onClick={() => setShowAddModal(true)}
                                 disabled={activeTests.length > 0}
-                                className="mt-5 flex items-center gap-2 px-4 py-2 bg-card-secondary hover:bg-card-hover text-text-primary rounded-lg text-sm font-bold transition-all border border-border disabled:opacity-50 shadow-sm"
+                                className="mt-5 flex items-center justify-center w-8 h-8 bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary rounded-lg transition-all border border-border disabled:opacity-50 shadow-sm"
+                                title="Add Custom Target"
                             >
-                                <Plus size={18} /> ADD TARGET
+                                <Plus size={16} />
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 animate-in slide-in-from-bottom-4">
-                {endpoints.map((e) => {
+            <div className="flex flex-wrap gap-3 animate-in slide-in-from-bottom-4">
+                {allTargets.map((e) => {
                     const isSelected = selectedEndpoints.includes(e.id);
+                    const status = reachability[e.id];
                     return (
                         <div
                             key={e.id}
@@ -337,34 +377,38 @@ export default function Failover(props: FailoverProps) {
                                 if (isSelected) setSelectedEndpoints(selectedEndpoints.filter(id => id !== e.id));
                                 else setSelectedEndpoints([...selectedEndpoints, e.id]);
                             }}
-                            className={`bg-card border p-4 rounded-xl group cursor-pointer transition-all flex flex-col justify-between shadow-sm hover:shadow-md ${isSelected ? 'border-blue-500 bg-blue-600/5 shadow-blue-500/10' : 'border-border'}`}
+                            className={`bg-card border px-3 py-2 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-blue-500 bg-blue-600/5 shadow-blue-500/10' : 'border-border'}`}
                         >
-                            <div className="flex items-start justify-between mb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${isSelected ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
-                                        {isSelected && <Zap size={12} className="text-white" fill="currentColor" />}
-                                    </div>
-                                    <div>
-                                        <h4 className={`font-bold transition-colors tracking-tight ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{e.label}</h4>
-                                        <p className="text-[10px] text-text-muted font-mono mt-0.5">{e.target}:{e.port}</p>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={(e_stop) => { e_stop.stopPropagation(); deleteEndpoint(e.id); }}
-                                    className="text-text-muted hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                    <Trash2 size={14} />
-                                </button>
+                            <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
+                                {isSelected && <Zap size={8} className="text-white" fill="currentColor" />}
                             </div>
-                            <div className="w-full flex items-center justify-center gap-2 py-2 bg-card-secondary text-text-muted border border-border rounded-lg font-bold text-[10px] uppercase tracking-wider">
-                                {isSelected ? 'READY TO START' : 'SELECT TARGET'}
+                            <div className="flex flex-col">
+                                <h4 className={`text-xs font-bold transition-colors tracking-tight ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{e.label}</h4>
+                                <p className="text-[9px] text-text-muted font-mono mt-0.5">{e.target}:{e.port}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
+                                {status === 'loading' || status === undefined ? (
+                                    <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse" title="Checking reachability..." />
+                                ) : status ? (
+                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" title="Reachable" />
+                                ) : (
+                                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" title="Unreachable" />
+                                )}
+                                {!e.isRegistry && (
+                                    <button
+                                        onClick={(e_stop) => { e_stop.stopPropagation(); deleteEndpoint(e.id); }}
+                                        className="text-text-muted hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1"
+                                    >
+                                        <Trash2 size={12} />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     );
                 })}
-                {endpoints.length === 0 && (
-                    <div className="col-span-full py-12 text-center bg-card-secondary/20 border border-dashed border-border rounded-2xl text-text-muted text-sm">
-                        No targets defined. Click "Add Target" to set up your test plan.
+                {allTargets.length === 0 && (
+                    <div className="w-full py-6 text-center bg-card-secondary/20 border border-dashed border-border rounded-2xl text-text-muted text-xs">
+                        No targets available. Please ensure Stigix targets are connected or add one manually.
                     </div>
                 )}
             </div>
