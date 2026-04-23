@@ -437,6 +437,7 @@ function TopologyContent({ token }: TopologyProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [pathFilter, setPathFilter] = useState<'ALL' | 'ACTIVE' | 'BACKUP' | 'DOWN' | 'HUB'>('ALL');
     const [logicalViewSiteId, setLogicalViewSiteId] = useState<string | null>(null);
+    const [bgAsHub, setBgAsHub] = useState(true);
 
     // Filter state
     const [visibleSiteIds, setVisibleSiteIds] = useState<string[] | null>(() => {
@@ -469,10 +470,10 @@ function TopologyContent({ token }: TopologyProps) {
         topology.sites.forEach((s: any) => {
             const role = (s.element_cluster_role || s.site_role || '').toUpperCase();
             const isBG = s.branch_gateway === true || s.branch_gateway === 'true';
-            map.set(s.site_name, role === 'HUB' || isBG);
+            map.set(s.site_name, role === 'HUB' || (isBG && bgAsHub));
         });
         return map;
-    }, [topology]);
+    }, [topology, bgAsHub]);
 
     const isHubLike = useCallback((s: any) => {
         if (!s) return false;
@@ -482,8 +483,8 @@ function TopologyContent({ token }: TopologyProps) {
         }
         const role = (s.element_cluster_role || s.site_role || '').toUpperCase();
         const isBG = s.branch_gateway === true || s.branch_gateway === 'true';
-        return role === 'HUB' || isBG;
-    }, [siteHubStatus]);
+        return role === 'HUB' || (isBG && bgAsHub);
+    }, [siteHubStatus, bgAsHub]);
 
     const processTopology = useCallback((data: any) => {
         if (!data.sites) return;
@@ -682,7 +683,7 @@ function TopologyContent({ token }: TopologyProps) {
 
         setNodes(newNodes);
         setEdges(newEdges);
-    }, [logicalViewSiteId, setNodes, setEdges, visibleSiteIds]);
+    }, [logicalViewSiteId, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus]);
 
     const fetchTopology = useCallback(async () => {
         setLoading(true);
@@ -1077,9 +1078,24 @@ function TopologyContent({ token }: TopologyProps) {
                             </div>
                         </Panel>
 
-                        {/* Export Panel */}
-                        <Panel position="top-right" className="flex items-center gap-2">
+                        {/* Export & Toggles Panel */}
+                        <Panel position="top-right" className="flex flex-col gap-2 items-end">
                             <div className="bg-card/90 backdrop-blur-md border border-border p-1.5 rounded-2xl shadow-xl flex items-center gap-2">
+                                <button
+                                    onClick={() => setBgAsHub(prev => !prev)}
+                                    className={cn(
+                                        "px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-tighter transition-all flex items-center gap-1.5",
+                                        bgAsHub 
+                                            ? "bg-blue-500/20 text-blue-500 hover:bg-blue-500/30 border border-blue-500/30 shadow-sm" 
+                                            : "bg-card-secondary text-text-muted hover:text-text-primary border border-border/50"
+                                    )}
+                                    title="Toggle whether Branch Gateways appear as Hubs (top) or regular Branches (bottom)"
+                                >
+                                    <Server size={12} />
+                                    BG as Hub
+                                </button>
+                                <div className="h-4 w-px bg-border mx-1" />
+
                                 <button
                                     onClick={handleExportCsv}
                                     className="p-2 hover:bg-card-secondary rounded-xl text-text-muted hover:text-green-500 transition-all group flex items-center gap-2"
