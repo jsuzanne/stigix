@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Play, AlertTriangle, CheckCircle, XCircle, Clock, Download, Trash2, ChevronDown, ChevronUp, Copy, Filter, Link, Upload, RefreshCcw, ShieldAlert, Globe, ListTree, RefreshCw, MoreVertical, Settings, Database, Server, Info, Search, History as HistoryIcon, Zap, ChevronRight } from 'lucide-react';
+import { Shield, Play, AlertTriangle, CheckCircle, XCircle, Clock, Download, Trash2, ChevronDown, ChevronUp, Copy, Filter, Link, Upload, RefreshCcw, ShieldAlert, Globe, ListTree, RefreshCw, MoreVertical, Settings, Database, Server, Info, Search, History as HistoryIcon, Zap, ChevronRight, Activity } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
 import { URL_CATEGORIES, DNS_TEST_DOMAINS } from '../shared/security-categories';
@@ -1328,7 +1328,7 @@ export default function Security({ token }: SecurityProps) {
                 >
                     <div className="flex items-center gap-3">
                         <Shield size={20} className="text-red-400" />
-                        <h3 className="text-lg font-semibold text-foreground">Threat Prevention (Eicap)</h3>
+                        <h3 className="text-lg font-semibold text-foreground">Threat Prevention (Eicar)</h3>
                     </div>
                     {threatExpanded ? <ChevronUp size={20} className="text-text-secondary" /> : <ChevronDown size={20} className="text-text-secondary" />}
                 </button>

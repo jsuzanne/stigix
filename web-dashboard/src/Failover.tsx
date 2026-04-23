@@ -389,11 +389,9 @@ export default function Failover(props: FailoverProps) {
                             <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
                                 {isSelected && <Zap size={8} className="text-white" fill="currentColor" />}
                             </div>
-                            <div className="flex flex-col">
-                                <h4 className={`text-xs font-bold transition-colors tracking-tight ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{e.label}</h4>
-                                <p className="text-[9px] text-text-muted font-mono mt-0.5">{e.target}:{e.port}</p>
-                            </div>
-                            <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
+
+                            {/* Reachability Dot */}
+                            <div className="shrink-0 flex items-center justify-center w-4">
                                 {status === 'loading' || status === undefined ? (
                                     <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse" title="Checking reachability..." />
                                 ) : status ? (
@@ -404,6 +402,13 @@ export default function Failover(props: FailoverProps) {
                                 ) : (
                                     <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" title="Unreachable" />
                                 )}
+                            </div>
+
+                            <div className="flex flex-col flex-1 min-w-0">
+                                <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{e.label}</h4>
+                                <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{e.target}:{e.port}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
                                 {!e.isRegistry && (
                                     <button
                                         onClick={(e_stop) => { e_stop.stopPropagation(); deleteEndpoint(e.id); }}
