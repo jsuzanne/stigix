@@ -830,17 +830,30 @@ export default function Voice(props: VoiceProps) {
                                         />
                                     </td>
 
-                                    {/* Delete (manual only) */}
+                                    {/* Actions */}
                                     <td className="py-3 px-2">
-                                        {row.isManual && (
+                                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            {row.isManual && (
+                                                <button
+                                                    onClick={() => removeRow(row.id)}
+                                                    className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                                                    title="Remove"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            )}
                                             <button
-                                                onClick={() => removeRow(row.id)}
-                                                className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                                                title="Remove"
+                                                onClick={() => {
+                                                    if (!row.enabled) toggleRow(row.id);
+                                                    if (!enabled && !isStartingV && !isStoppingV) handleToggle();
+                                                }}
+                                                disabled={isStartingV || isStoppingV}
+                                                className="p-1.5 rounded-md bg-blue-500/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-colors border border-blue-500/20 hover:border-blue-600 shadow-sm disabled:opacity-50"
+                                                title="Quick Start Simulation for Target"
                                             >
-                                                <Trash2 size={12} />
+                                                <Play size={10} fill="currentColor" />
                                             </button>
-                                        )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
