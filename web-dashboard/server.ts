@@ -3326,11 +3326,14 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
         } else if (endpoint.type.toLowerCase() === 'cloud') {
             if (DEBUG) log('CONNECTIVITY', `[DEBUG] Executing CLOUD Probe for scenario: ${endpoint.target}`, 'debug');
             try {
-                // For cloud probes, 'target' is the scenario ID
                 const probeResult = await targetManager.runProbe(endpoint.target);
                 result.reachable = probeResult.success;
                 result.score = probeResult.score;
-                result.metrics.total_ms = probeResult.latency_ms;
+                if (probeResult.metrics) {
+                    result.metrics = { ...result.metrics, ...probeResult.metrics };
+                } else {
+                    result.metrics.total_ms = probeResult.latency_ms;
+                }
                 if (probeResult.data) {
                     result.data = probeResult.data;
                 }

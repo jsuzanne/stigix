@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import os from 'os';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { log } from './utils/logger.js';
 
 /**
@@ -23,6 +26,15 @@ export interface TargetProbeResult {
     latency_ms: number;
     message: string;
     data?: any; // For Egress Info (ip, country, pop)
+    metrics?: {
+        dns_ms: number;
+        tcp_ms: number;
+        tls_ms: number;
+        ttfb_ms: number;
+        total_ms: number;
+        size_bytes: number;
+        speed_bps: number;
+    };
 }
 
 const DEFAULT_SCENARIOS: TargetScenario[] = [
@@ -257,66 +269,85 @@ export class TargetManager {
 
         const startTime = Date.now();
         try {
-            const response = await fetch(signedUrl);
-            const latency = Date.now() - startTime;
+            const execPromise = promisify(exec);
+            const tmpFile = path.join(os.tmpdir(), `stigix_cloud_${Date.now()}_${Math.random().toString(36).substring(7)}.tmp`);
             
-            // Temporary debug logs for Stigix Cloud Probes
-            log('TARGET', `[CLOUD PROBE] Scenario ID: ${scenarioId}`, 'debug');
-            log('TARGET', `[CLOUD PROBE] URL Called: ${signedUrl}`, 'debug');
+            // Output only metrics to stdout, save body to temp file
+            const curlCmd = `curl -s -L -w "%{time_namelookup},%{time_connect},%{time_appconnect},%{time_starttransfer},%{time_total},%{http_code},%{size_download},%{speed_download}" -o "${tmpFile}" --max-time 15 "${signedUrl}"`;
+            
+            log('TARGET', `[CLOUD PROBE] Executing: ${curlCmd}`, 'debug');
+            const { stdout } = await execPromise(curlCmd, { maxBuffer: 1024 * 1024 });
+            
+            const [t_name, t_conn, t_app, t_start, t_tot, codeStr, sizeStr, speedStr] = stdout.trim().split(',');
+            const statusCode = parseInt(codeStr) || 0;
+            const latency = parseFloat(t_tot) * 1000 || (Date.now() - startTime);
 
-            if (!response.ok) {
-                const failResp = { success: false, score: 0, latency_ms: latency, message: `HTTP ${response.status}` };
+            const dns_ms = parseFloat(t_name) * 1000;
+            const tcp_ms = (parseFloat(t_conn) - parseFloat(t_name)) * 1000;
+            const tls_ms = parseFloat(t_app) > 0 ? (parseFloat(t_app) - parseFloat(t_conn)) * 1000 : 0;
+            const ttfb_ms = (parseFloat(t_start) - Math.max(parseFloat(t_app), parseFloat(t_conn))) * 1000;
+            
+            const metrics = {
+                dns_ms: Math.max(0, dns_ms),
+                tcp_ms: Math.max(0, tcp_ms),
+                tls_ms: Math.max(0, tls_ms),
+                ttfb_ms: Math.max(0, ttfb_ms),
+                total_ms: latency,
+                size_bytes: parseInt(sizeStr) || 0,
+                speed_bps: parseFloat(speedStr) || 0
+            };
+
+            let bodyStr = '';
+            if (fs.existsSync(tmpFile)) {
+                if (scenario.category === 'info') {
+                    bodyStr = fs.readFileSync(tmpFile, 'utf8');
+                }
+                fs.unlinkSync(tmpFile);
+            }
+
+            if (statusCode >= 400 || statusCode === 0) {
+                const failResp = { success: false, score: 0, latency_ms: latency, message: `HTTP ${statusCode}`, metrics };
                 log('TARGET', `[CLOUD PROBE] Response Error: ${JSON.stringify(failResp, null, 2)}`, 'debug');
                 return failResp;
             }
 
             if (scenario.category === 'info') {
-                const data = await response.json();
+                let data: any = {};
+                try { data = JSON.parse(bodyStr); } catch { }
                 const jsonResp = {
                     success: true,
                     score: 100, // Info doesn't really have a performance score, but it's "success"
                     latency_ms: latency,
-                    message: `Egress recognized: ${data.ip}`,
+                    message: `Egress recognized: ${data.ip || 'Unknown'}`,
                     data: {
-                        ip: data.ip,
-                        country: data.country,
-                        city: data.city,
-                        pop: data.colo
-                    }
+                        ip: data.ip || 'Unknown',
+                        country: data.country || 'Unknown',
+                        city: data.city || 'Unknown',
+                        pop: data.colo || 'Unknown'
+                    },
+                    metrics
                 };
-                log('TARGET', `[CLOUD PROBE] Result JSON Content: ${JSON.stringify(data, null, 2)}`, 'debug');
-                log('TARGET', `[CLOUD PROBE] Computed Return JSON: ${JSON.stringify(jsonResp, null, 2)}`, 'debug');
                 return jsonResp;
             }
 
             if (scenario.category === 'saas' || scenario.id === 'saas-slow') {
-                // Score based on latency. 5s is the threshold for 0.
                 const score = Math.max(0, Math.min(100, Math.round(100 * (1 - (latency - 200) / 4800))));
-                const resp = { success: true, score, latency_ms: latency, message: `Response received in ${latency}ms` };
-                log('TARGET', `[CLOUD PROBE] Metric Result: ${JSON.stringify(resp, null, 2)}`, 'debug');
+                const resp = { success: true, score, latency_ms: latency, message: `Response received in ${Math.round(latency)}ms`, metrics };
                 return resp;
             }
 
             if (scenario.category === 'download') {
-                await response.arrayBuffer(); // Consume payload
-                const totalTime = Date.now() - startTime;
-                // Score for 10MB download. 2s is excellent (100), 10s is poor (20).
-                const score = Math.max(0, Math.min(100, Math.round(100 * (1 - (totalTime - 1000) / 9000))));
-                const resp =  { success: true, score, latency_ms: totalTime, message: `Download complete` };
-                log('TARGET', `[CLOUD PROBE] Metric Result: ${JSON.stringify(resp, null, 2)}`, 'debug');
+                const score = Math.max(0, Math.min(100, Math.round(100 * (1 - (latency - 1000) / 9000))));
+                const resp =  { success: true, score, latency_ms: latency, message: `Download complete`, metrics };
                 return resp;
             }
 
             if (scenario.category === 'security') {
-                // Special case for EICAR: Success means BLOCKED (non-200 or timeout)
-                // But here we are the backend calling the worker.
-                const resp = { success: true, score: 100, latency_ms: latency, message: 'Endpoint reachable' };
-                log('TARGET', `[CLOUD PROBE] Metric Result: ${JSON.stringify(resp, null, 2)}`, 'debug');
+                const resp = { success: true, score: 100, latency_ms: latency, message: 'Endpoint reachable', metrics };
                 return resp;
             }
 
-            const okResp = { success: true, score: 100, latency_ms: latency, message: 'OK' };
-            log('TARGET', `[CLOUD PROBE] Default OK Result: ${JSON.stringify(okResp, null, 2)}`, 'debug');
+            const okResp = { success: true, score: 100, latency_ms: latency, message: 'OK', metrics };
             return okResp;
 
         } catch (error: any) {
