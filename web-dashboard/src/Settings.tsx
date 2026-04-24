@@ -1712,13 +1712,26 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                                     })()}
                                                 </div>
                                             ) : (
-                                                <input
-                                                    type="text"
-                                                    placeholder={newProbe.type === 'DNS' ? '8.8.8.8' : 'google.com'}
-                                                    className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
-                                                    value={newProbe.target}
-                                                    onChange={e => setNewProbe({ ...newProbe, target: e.target.value })}
-                                                />
+                                                <div className="space-y-1">
+                                                    <input
+                                                        type="text"
+                                                        placeholder={
+                                                            newProbe.type === 'DNS' ? '8.8.8.8' :
+                                                            newProbe.type === 'TCP' ? '192.168.1.100:8080' :
+                                                            newProbe.type === 'UDP' ? '192.168.1.100:5201' :
+                                                            'https://google.com'
+                                                        }
+                                                        className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                                        value={newProbe.target}
+                                                        onChange={e => setNewProbe({ ...newProbe, target: e.target.value })}
+                                                    />
+                                                    {(newProbe.type === 'TCP' || newProbe.type === 'UDP') && (
+                                                        <p className="text-[9px] text-text-muted opacity-60 px-1 font-bold">
+                                                            Format must be <span className="font-mono text-blue-500">IP:PORT</span> (e.g. 192.168.203.100:8080).
+                                                            {newProbe.type === 'UDP' && " Default port is 5201 (iperf3)."}
+                                                        </p>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
 
