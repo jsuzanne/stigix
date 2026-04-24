@@ -803,7 +803,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
 
                         <div className="p-8 space-y-8">
                             {/* Detailed Timing Breakdown (Stacked Area Chart) */}
-                            {selectedEndpoint.type.includes('HTTP') && (
+                            {(selectedEndpoint.type.includes('HTTP') || selectedEndpoint.type === 'CLOUD') && (
                                 <div className="space-y-4">
                                     <div className="flex items-center justify-between">
                                         <h4 className="text-xs font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
