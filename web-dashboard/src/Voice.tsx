@@ -140,20 +140,28 @@ export default function Voice(props: VoiceProps) {
         const checkTargets = async () => {
             const targetsToPing = targetRows.map(r => ({ host: r.host, port: r.port, id: r.id }));
             
-            for (const t of targetsToPing) {
+            await Promise.all(targetsToPing.map(async (t) => {
                 setReachability(prev => ({ ...prev, [t.id]: 'loading' }));
-                try {
-                    const res = await fetch('/api/convergence/reachability', {
-                        method: 'POST',
-                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ target: t.host, port: parseInt(t.port, 10) })
-                    });
-                    const data = await res.json();
-                    setReachability(prev => ({ ...prev, [t.id]: !!data.reachable }));
-                } catch {
-                    setReachability(prev => ({ ...prev, [t.id]: false }));
+                let isReachable = false;
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    try {
+                        const res = await fetch('/api/convergence/reachability', {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ target: t.host, port: parseInt(t.port, 10) })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.reachable) {
+                                isReachable = true;
+                                break;
+                            }
+                        }
+                    } catch {}
+                    if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
                 }
-            }
+                setReachability(prev => ({ ...prev, [t.id]: isReachable }));
+            }));
         };
         
         checkTargets();

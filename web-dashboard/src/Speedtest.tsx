@@ -112,20 +112,28 @@ export default function Speedtest({ token }: Props) {
         if (!targetsToPing.length) return;
 
         const checkReachability = async () => {
-            for (const t of targetsToPing) {
+            await Promise.all(targetsToPing.map(async (t) => {
                 setTargetReachability(prev => ({ ...prev, [t.host]: 'loading' }));
-                try {
-                    const res = await fetch('/api/convergence/reachability', {
-                        method: 'POST',
-                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ target: t.host, port: t.port })
-                    });
-                    const data = await res.json();
-                    setTargetReachability(prev => ({ ...prev, [t.host]: !!data.reachable }));
-                } catch {
-                    setTargetReachability(prev => ({ ...prev, [t.host]: false }));
+                let isReachable = false;
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    try {
+                        const res = await fetch('/api/convergence/reachability', {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ target: t.host, port: t.port })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.reachable) {
+                                isReachable = true;
+                                break;
+                            }
+                        }
+                    } catch {}
+                    if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
                 }
-            }
+                setTargetReachability(prev => ({ ...prev, [t.host]: isReachable }));
+            }));
         };
 
         checkReachability();

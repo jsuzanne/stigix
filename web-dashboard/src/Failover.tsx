@@ -138,19 +138,28 @@ export default function Failover(props: FailoverProps) {
     useEffect(() => {
         const checkReachability = async () => {
             if (allTargets.length === 0) return;
-            for (const target of allTargets) {
-                try {
-                    const res = await fetch('/api/convergence/reachability', {
-                        method: 'POST',
-                        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ target: target.target, port: target.port })
-                    });
-                    const data = await res.json();
-                    setReachability(prev => ({ ...prev, [target.id]: data.reachable }));
-                } catch {
-                    setReachability(prev => ({ ...prev, [target.id]: false }));
+            await Promise.all(allTargets.map(async (target) => {
+                setReachability(prev => ({ ...prev, [target.id]: 'loading' }));
+                let isReachable = false;
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    try {
+                        const res = await fetch('/api/convergence/reachability', {
+                            method: 'POST',
+                            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ target: target.target, port: target.port })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.reachable) {
+                                isReachable = true;
+                                break;
+                            }
+                        }
+                    } catch {}
+                    if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
                 }
-            }
+                setReachability(prev => ({ ...prev, [target.id]: isReachable }));
+            }));
         };
         
         checkReachability();
