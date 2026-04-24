@@ -31,28 +31,32 @@ const DEFAULT_SCENARIOS: TargetScenario[] = [
         label: 'Info / Egress',
         description: 'Identifies your public IP, Country and Cloudflare POP.',
         path: '/saas/info',
-        category: 'info'
+        category: 'info',
+        subdomain: 'info'
     },
     {
         id: 'saas-slow',
         label: 'Slow SaaS',
         description: 'Simulates a 5s backend delay to test path selection.',
         path: '/saas/slow',
-        category: 'saas'
+        category: 'saas',
+        subdomain: 'slow'
     },
     {
         id: 'download-large',
         label: 'Large Download',
         description: 'Downloads a 10MB payload to test throughput.',
         path: '/download/large',
-        category: 'download'
+        category: 'download',
+        subdomain: 'download'
     },
     {
         id: 'security-eicar',
         label: 'Security (EICAR)',
         description: 'Downloads the EICAR test file to check security policies.',
         path: '/security/eicar',
-        category: 'security'
+        category: 'security',
+        subdomain: 'security'
     }
 ];
 
@@ -198,8 +202,17 @@ export class TargetManager {
                 params: { mode: overrides.mode || 'info', delay: overrides.delay || 0 },
                 category: overrides.mode === 'large' ? 'download' : overrides.mode === 'error' ? 'error' : overrides.mode === 'eicar' ? 'security' : 'info'
             };
-            if (overrides.mode === 'large') scenario.params!.size = overrides.size || '5m';
-            if (overrides.mode === 'error') scenario.params!.code = overrides.code || 500;
+            if (overrides.mode === 'large') {
+                scenario.params!.size = overrides.size || '5m';
+                scenario.subdomain = 'download';
+            }
+            if (overrides.mode === 'error') {
+                scenario.params!.code = overrides.code || 500;
+                scenario.subdomain = 'error';
+            }
+            if (overrides.mode === 'info') scenario.subdomain = 'info';
+            if (overrides.mode === 'slow' || overrides.delay && overrides.delay > 0) scenario.subdomain = 'slow';
+            if (overrides.mode === 'eicar') scenario.subdomain = 'security';
 
             if (!this.baseUrl) return { url: '', scenario };
             const url = new URL(this.baseUrl);
