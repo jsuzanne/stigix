@@ -1534,11 +1534,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                             <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">
                                                 {newProbe.type === 'CLOUD' ? 'Stigix Probe' : 'Target URL / IP Address'}
                                             </label>
-                                            {newProbe.type === 'CLOUD' && !cloudConfig?.hasKey && (
+                                            {newProbe.type === 'CLOUD' && (!cloudConfig?.hasKey || !slsConfig?.tsg_id) && (
                                                 <div className="p-3 bg-red-600/10 border border-dashed border-red-500/30 rounded-xl flex gap-3 items-start animate-in zoom-in-95 duration-300">
                                                     <ShieldAlert size={14} className="text-red-500 mt-0.5 shrink-0" />
                                                     <p className="text-[10px] font-bold text-red-100 leading-relaxed opacity-90">
-                                                        Stigix Cloud Probes require a <strong>Master Key</strong> to be configured in the global environment variables. Please contact your system administrator.
+                                                        Stigix Cloud Probes require a <strong>Master Key</strong> and a <strong>TSG ID</strong> to be configured in the system settings.
                                                     </p>
                                                 </div>
                                             )}
@@ -1743,12 +1743,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig }: { token:
                                                 CANCEL
                                             </button>
                                             <button
+                                                disabled={newProbe.type === 'CLOUD' && (!cloudConfig?.hasKey || !slsConfig?.tsg_id)}
                                                 onClick={() => { addProbe(); setIsProbeModalOpen(false); }}
                                                 className={cn(
                                                     "px-8 py-3 rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg",
-                                                    editingIndex !== null
-                                                        ? "bg-amber-600 hover:bg-amber-500 text-white shadow-amber-900/40"
-                                                        : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40"
+                                                    (newProbe.type === 'CLOUD' && (!cloudConfig?.hasKey || !slsConfig?.tsg_id))
+                                                        ? "bg-card-hover text-text-muted opacity-50 cursor-not-allowed"
+                                                        : editingIndex !== null
+                                                            ? "bg-amber-600 hover:bg-amber-500 text-white shadow-amber-900/40"
+                                                            : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40"
                                                 )}
                                             >
                                                 {editingIndex !== null ? <RefreshCw size={14} className="animate-in spin-in duration-500" /> : <CheckCircle2 size={14} />}
