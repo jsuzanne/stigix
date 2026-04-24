@@ -3329,6 +3329,11 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                 const probeResult = await targetManager.runProbe(endpoint.target);
                 result.reachable = probeResult.success;
                 result.score = probeResult.score;
+                
+                if (probeResult.httpCode) result.httpCode = probeResult.httpCode;
+                if (probeResult.remoteIp) result.remoteIp = probeResult.remoteIp;
+                if (probeResult.remotePort) result.remotePort = probeResult.remotePort;
+                
                 if (probeResult.metrics) {
                     result.metrics = { ...result.metrics, ...probeResult.metrics };
                 } else {

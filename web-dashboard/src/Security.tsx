@@ -961,7 +961,7 @@ export default function Security({ token }: SecurityProps) {
 
                         <div className="bg-card border border-border p-5 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                             <div className="flex items-center justify-between mb-3 text-red-600 dark:text-red-400">
-                                <span className="text-[10px] font-black tracking-widest opacity-80">URL Filter</span>
+                                <span className="text-[10px] font-black tracking-widest opacity-80">URL Filtering</span>
                                 <div className="p-1.5 bg-red-600/10 rounded-lg border border-red-500/20">
                                     <Shield size={16} />
                                 </div>
@@ -1149,7 +1149,7 @@ export default function Security({ token }: SecurityProps) {
                         {(urlDiff || scores.find((s: any) => s.type === 'url')) && (
                             <div className="pt-2 border-t border-border mt-6">
                                 <ScoreLatestChanges type="url" scores={scores} />
-                                <ScoreGapAnalysis diff={urlDiff} title="URL Filter" />
+                                <ScoreGapAnalysis diff={urlDiff} title="URL Filtering" />
                             </div>
                         )}
                     </div>

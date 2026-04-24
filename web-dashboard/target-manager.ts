@@ -26,6 +26,9 @@ export interface TargetProbeResult {
     latency_ms: number;
     message: string;
     data?: any; // For Egress Info (ip, country, pop)
+    httpCode?: number;
+    remoteIp?: string;
+    remotePort?: number;
     metrics?: {
         dns_ms: number;
         tcp_ms: number;
@@ -273,12 +276,12 @@ export class TargetManager {
             const tmpFile = path.join(os.tmpdir(), `stigix_cloud_${Date.now()}_${Math.random().toString(36).substring(7)}.tmp`);
             
             // Output only metrics to stdout, save body to temp file
-            const curlCmd = `curl -s -L -w "%{time_namelookup},%{time_connect},%{time_appconnect},%{time_starttransfer},%{time_total},%{http_code},%{size_download},%{speed_download}" -o "${tmpFile}" --max-time 15 "${signedUrl}"`;
+            const curlCmd = `curl -s -L -w "%{time_namelookup},%{time_connect},%{time_appconnect},%{time_starttransfer},%{time_total},%{http_code},%{size_download},%{speed_download},%{remote_ip},%{remote_port}" -o "${tmpFile}" --max-time 15 "${signedUrl}"`;
             
             log('TARGET', `[CLOUD PROBE] Executing: ${curlCmd}`, 'debug');
             const { stdout } = await execPromise(curlCmd, { maxBuffer: 1024 * 1024 });
             
-            const [t_name, t_conn, t_app, t_start, t_tot, codeStr, sizeStr, speedStr] = stdout.trim().split(',');
+            const [t_name, t_conn, t_app, t_start, t_tot, codeStr, sizeStr, speedStr, r_ip, r_port] = stdout.trim().split(',');
             const statusCode = parseInt(codeStr) || 0;
             const latency = parseFloat(t_tot) * 1000 || (Date.now() - startTime);
 
@@ -306,7 +309,7 @@ export class TargetManager {
             }
 
             if (statusCode >= 400 || statusCode === 0) {
-                const failResp = { success: false, score: 0, latency_ms: latency, message: `HTTP ${statusCode}`, metrics };
+                const failResp = { success: false, score: 0, latency_ms: latency, message: `HTTP ${statusCode}`, metrics, httpCode: statusCode, remoteIp: r_ip, remotePort: parseInt(r_port) };
                 log('TARGET', `[CLOUD PROBE] Response Error: ${JSON.stringify(failResp, null, 2)}`, 'debug');
                 return failResp;
             }
@@ -325,29 +328,30 @@ export class TargetManager {
                         city: data.city || 'Unknown',
                         pop: data.colo || 'Unknown'
                     },
-                    metrics
+                    metrics,
+                    httpCode: statusCode, remoteIp: r_ip, remotePort: parseInt(r_port)
                 };
                 return jsonResp;
             }
 
             if (scenario.category === 'saas' || scenario.id === 'saas-slow') {
                 const score = Math.max(0, Math.min(100, Math.round(100 * (1 - (latency - 200) / 4800))));
-                const resp = { success: true, score, latency_ms: latency, message: `Response received in ${Math.round(latency)}ms`, metrics };
+                const resp = { success: true, score, latency_ms: latency, message: `Response received in ${Math.round(latency)}ms`, metrics, httpCode: statusCode, remoteIp: r_ip, remotePort: parseInt(r_port) };
                 return resp;
             }
 
             if (scenario.category === 'download') {
                 const score = Math.max(0, Math.min(100, Math.round(100 * (1 - (latency - 1000) / 9000))));
-                const resp =  { success: true, score, latency_ms: latency, message: `Download complete`, metrics };
+                const resp =  { success: true, score, latency_ms: latency, message: `Download complete`, metrics, httpCode: statusCode, remoteIp: r_ip, remotePort: parseInt(r_port) };
                 return resp;
             }
 
             if (scenario.category === 'security') {
-                const resp = { success: true, score: 100, latency_ms: latency, message: 'Endpoint reachable', metrics };
+                const resp = { success: true, score: 100, latency_ms: latency, message: 'Endpoint reachable', metrics, httpCode: statusCode, remoteIp: r_ip, remotePort: parseInt(r_port) };
                 return resp;
             }
 
-            const okResp = { success: true, score: 100, latency_ms: latency, message: 'OK', metrics };
+            const okResp = { success: true, score: 100, latency_ms: latency, message: 'OK', metrics, httpCode: statusCode, remoteIp: r_ip, remotePort: parseInt(r_port) };
             return okResp;
 
         } catch (error: any) {
