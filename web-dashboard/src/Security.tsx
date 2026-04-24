@@ -4,7 +4,7 @@ import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
 import { URL_CATEGORIES, DNS_TEST_DOMAINS } from '../shared/security-categories';
 import { ScoreDashboard } from './components/ScoreDashboard';
-import { useSecurityScores } from '../hooks/useSecurityScores';
+import { useSecurityScores } from './hooks/useSecurityScores';
 import { ScoreGapAnalysis, ScoreLatestChanges } from './components/ScoreDetails';
 
 function cn(...inputs: ClassValue[]) {
@@ -1146,7 +1146,7 @@ export default function Security({ token }: SecurityProps) {
                             })}
                         </div>
 
-                        {(urlDiff || scores.find(s => s.type === 'url')) && (
+                        {(urlDiff || scores.find((s: any) => s.type === 'url')) && (
                             <div className="pt-2 border-t border-border mt-6">
                                 <ScoreLatestChanges type="url" scores={scores} />
                                 <ScoreGapAnalysis diff={urlDiff} title="URL Filter" />
@@ -1340,7 +1340,7 @@ export default function Security({ token }: SecurityProps) {
                             </div>
                         </div>
 
-                        {(dnsDiff || scores.find(s => s.type === 'dns')) && (
+                        {(dnsDiff || scores.find((s: any) => s.type === 'dns')) && (
                             <div className="pt-2 border-t border-border mt-6">
                                 <ScoreLatestChanges type="dns" scores={scores} />
                                 <ScoreGapAnalysis diff={dnsDiff} title="DNS Protect" />

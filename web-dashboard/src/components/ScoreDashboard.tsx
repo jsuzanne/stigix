@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, Activity, GitCommit } from 'lucide-react';
+import { RefreshCw, Activity, GitCommit, Shield, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 export interface ScoreDashboardProps {
@@ -239,8 +239,6 @@ export const ScoreDashboard = ({ scores, loading, urlBaseline, dnsBaseline, thre
                 </div>
             </div>
         );
-    };
-
     };
 
     return (
