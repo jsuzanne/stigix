@@ -10,24 +10,24 @@ const PREVIEW_LIMIT = 5;
 
 export const ScoreGapAnalysis = ({ diff, title }: { diff: any, title: string }) => {
     const [expanded, setExpanded] = useState(false);
-    
-    if (!diff) return null;
-    const { regressions, improvements, scoreDelta } = diff;
-    
-    // Auto-expand if there are regressions, otherwise default to closed
-    // We do this by initializing state, but since we want to respond to diff changes:
-    // Let's just use the state directly. The user can toggle it.
-    // If we want it auto-open on regressions:
     const [hasAutoExpanded, setHasAutoExpanded] = useState(false);
-    if (regressions.length > 0 && !expanded && !hasAutoExpanded) {
-        setExpanded(true);
-        setHasAutoExpanded(true);
-    }
 
-    if (regressions.length === 0 && improvements.length === 0) return null;
+    const safeRegressions = diff?.regressions || [];
+    const safeImprovements = diff?.improvements || [];
+    const scoreDelta = diff?.scoreDelta;
 
-    const sortedReg = [...regressions].sort((a: any, b: any) => b.weight - a.weight);
-    const sortedImp = [...improvements].sort((a: any, b: any) => b.weight - a.weight);
+    React.useEffect(() => {
+        if (safeRegressions.length > 0 && !expanded && !hasAutoExpanded) {
+            setExpanded(true);
+            setHasAutoExpanded(true);
+        }
+    }, [safeRegressions.length, expanded, hasAutoExpanded]);
+
+    if (!diff) return null;
+    if (safeRegressions.length === 0 && safeImprovements.length === 0) return null;
+
+    const sortedReg = [...safeRegressions].sort((a: any, b: any) => b.weight - a.weight);
+    const sortedImp = [...safeImprovements].sort((a: any, b: any) => b.weight - a.weight);
     const visibleReg = expanded ? sortedReg : sortedReg.slice(0, PREVIEW_LIMIT);
     const visibleImp = expanded ? sortedImp : sortedImp.slice(0, PREVIEW_LIMIT);
     const totalHidden = (sortedReg.length + sortedImp.length) - (visibleReg.length + visibleImp.length);
@@ -109,35 +109,38 @@ export const ScoreGapAnalysis = ({ diff, title }: { diff: any, title: string }) 
 
 export const ScoreLatestChanges = ({ type, scores }: { type: 'url' | 'dns' | 'threat', scores: any[] }) => {
     const [expanded, setExpanded] = useState(false);
+    const [hasAutoExpanded, setHasAutoExpanded] = useState(false);
 
     const runs = scores.filter(s => s.type === type);
-    if (runs.length < 2) return null;
+    const hasEnoughRuns = runs.length >= 2;
     
-    const latest = runs[0];
-    const prev = runs[1];
-    const latestBreakdown: Record<string, any> = latest.breakdown?.[type] || {};
-    const prevBreakdown: Record<string, any> = prev.breakdown?.[type] || {};
+    const latest = hasEnoughRuns ? runs[0] : null;
+    const prev = hasEnoughRuns ? runs[1] : null;
+    const latestBreakdown: Record<string, any> = latest?.breakdown?.[type] || {};
+    const prevBreakdown: Record<string, any> = prev?.breakdown?.[type] || {};
     const changes: { category: string; before: string; after: string; weight: number }[] = [];
     
-    for (const [cat, snap] of Object.entries(latestBreakdown)) {
-        const prevSnap = prevBreakdown[cat];
-        if (!prevSnap) continue;
-        if (prevSnap.status !== (snap as any).status) {
-            changes.push({ category: cat, before: prevSnap.status, after: (snap as any).status, weight: (snap as any).weight });
+    if (hasEnoughRuns) {
+        for (const [cat, snap] of Object.entries(latestBreakdown)) {
+            const prevSnap = prevBreakdown[cat];
+            if (!prevSnap) continue;
+            if (prevSnap.status !== (snap as any).status) {
+                changes.push({ category: cat, before: prevSnap.status, after: (snap as any).status, weight: (snap as any).weight });
+            }
         }
     }
 
-    if (changes.length === 0) return null;
+    React.useEffect(() => {
+        if (changes.length > 0 && !expanded && !hasAutoExpanded) {
+            setExpanded(true);
+            setHasAutoExpanded(true);
+        }
+    }, [changes.length, expanded, hasAutoExpanded]);
 
-    const prevTime = new Date(prev.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    const latestTime = new Date(latest.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    if (!hasEnoughRuns || changes.length === 0) return null;
 
-    // Auto expand if there are changes and we haven't auto-expanded yet
-    const [hasAutoExpanded, setHasAutoExpanded] = useState(false);
-    if (changes.length > 0 && !expanded && !hasAutoExpanded) {
-        setExpanded(true);
-        setHasAutoExpanded(true);
-    }
+    const prevTime = new Date(prev!.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const latestTime = new Date(latest!.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
     const visibleChanges = expanded ? changes : changes.slice(0, PREVIEW_LIMIT);
     const totalHidden = changes.length - visibleChanges.length;
