@@ -879,8 +879,12 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                             <tr>
                                                 <th className="px-4 py-3 text-text-muted font-bold tracking-tight">Time</th>
                                                 <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-center">Score</th>
+                                                <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-center hidden lg:table-cell">DNS</th>
+                                                <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-center hidden lg:table-cell">TCP</th>
+                                                <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-center hidden lg:table-cell">TLS</th>
+                                                <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-center hidden lg:table-cell">TTFB</th>
                                                 <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-center">Total</th>
-                                                <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-center">IP Address</th>
+                                                <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-center hidden sm:table-cell">IP Address</th>
                                                 <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-right">HTTP Code</th>
                                             </tr>
                                         </thead>
@@ -893,11 +897,15 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                                             {r.score}
                                                         </span>
                                                     </td>
+                                                    <td className="px-4 py-3 text-center hidden lg:table-cell text-text-muted font-mono">{r.metrics.dns_ms !== undefined ? `${formatMs(r.metrics.dns_ms)}ms` : '-'}</td>
+                                                    <td className="px-4 py-3 text-center hidden lg:table-cell text-text-muted font-mono">{r.metrics.tcp_ms !== undefined ? `${formatMs(r.metrics.tcp_ms)}ms` : '-'}</td>
+                                                    <td className="px-4 py-3 text-center hidden lg:table-cell text-text-muted font-mono">{r.metrics.tls_ms !== undefined ? `${formatMs(r.metrics.tls_ms)}ms` : '-'}</td>
+                                                    <td className="px-4 py-3 text-center hidden lg:table-cell text-text-muted font-mono">{r.metrics.ttfb_ms !== undefined ? `${formatMs(r.metrics.ttfb_ms)}ms` : '-'}</td>
                                                     <td className="px-4 py-3 text-center font-mono text-text-secondary font-bold">{formatMs(r.metrics.total_ms)}ms</td>
-                                                    <td className="px-4 py-3 text-center text-text-muted font-mono truncate max-w-[120px]">{r.remoteIp || '-'}</td>
+                                                    <td className="px-4 py-3 text-center text-text-muted font-mono truncate max-w-[120px] hidden sm:table-cell">{r.remoteIp || '-'}</td>
                                                     <td className="px-4 py-3 text-right">
                                                         <span className={cn(
-                                                            "px-2 py-0.5 rounded font-black",
+                                                            "px-2 py-0.5 rounded font-black text-[11px]",
                                                             r.httpCode === 200 ? "text-green-600 dark:text-green-400 bg-green-500/10" : "text-orange-500 bg-orange-500/10"
                                                         )}>
                                                             {r.httpCode || 'N/A'}
