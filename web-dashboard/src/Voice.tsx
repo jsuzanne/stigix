@@ -850,17 +850,6 @@ export default function Voice(props: VoiceProps) {
                                                     <Trash2 size={12} />
                                                 </button>
                                             )}
-                                            <button
-                                                onClick={() => {
-                                                    if (!row.enabled) toggleRow(row.id);
-                                                    if (!enabled && !isStartingV && !isStoppingV) handleToggle();
-                                                }}
-                                                disabled={isStartingV || isStoppingV}
-                                                className="p-1.5 rounded-md bg-blue-500/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-colors border border-blue-500/20 hover:border-blue-600 shadow-sm disabled:opacity-50"
-                                                title="Quick Start Simulation for Target"
-                                            >
-                                                <Play size={10} fill="currentColor" />
-                                            </button>
                                         </div>
                                     </td>
                                 </tr>
