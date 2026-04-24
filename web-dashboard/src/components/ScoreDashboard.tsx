@@ -1,92 +1,19 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Shield, ShieldAlert, ShieldCheck, Activity, Target, ArrowUpRight, ArrowDownRight, Clock, RefreshCw, BarChart2, CheckCircle, AlertTriangle, GitCommit } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import React, { useState } from 'react';
+import { RefreshCw, Activity, GitCommit } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
-export const ScoreDashboard = ({ token }: { token: string }) => {
-    const [scores, setScores] = useState<any[]>([]);
-    const [urlBaseline, setUrlBaseline] = useState<any>(null);
-    const [dnsBaseline, setDnsBaseline] = useState<any>(null);
-    const [threatBaseline, setThreatBaseline] = useState<any>(null);
-    const [urlDiff, setUrlDiff] = useState<any>(null);
-    const [dnsDiff, setDnsDiff] = useState<any>(null);
-    const [threatDiff, setThreatDiff] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const [expandLatest, setExpandLatest] = useState<Record<string, boolean>>({});
-    const [expandGap, setExpandGap] = useState<Record<string, boolean>>({});
+export interface ScoreDashboardProps {
+    scores: any[];
+    loading: boolean;
+    urlBaseline: any;
+    dnsBaseline: any;
+    threatBaseline: any;
+    handleSetBaseline: (runId: string, type: 'url' | 'dns' | 'threat') => void;
+}
+
+export const ScoreDashboard = ({ scores, loading, urlBaseline, dnsBaseline, threatBaseline, handleSetBaseline }: ScoreDashboardProps) => {
     const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | 'all'>('24h');
     const [changesOnly, setChangesOnly] = useState(false);
-    const PREVIEW_LIMIT = 5;
-
-    const authHeader = { 'Authorization': `Bearer ${token}` };
-
-    const fetchData = async () => {
-        try {
-            const res = await fetch('/api/security/scores', { headers: authHeader });
-            if (res.ok) {
-                const data = await res.json();
-                setScores(data);
-            }
-
-            const urlBaselineRes = await fetch('/api/security/scores/baseline?type=url', { headers: authHeader });
-            if (urlBaselineRes.ok) setUrlBaseline(await urlBaselineRes.json());
-            else setUrlBaseline(null);
-
-            const dnsBaselineRes = await fetch('/api/security/scores/baseline?type=dns', { headers: authHeader });
-            if (dnsBaselineRes.ok) setDnsBaseline(await dnsBaselineRes.json());
-            else setDnsBaseline(null);
-
-            const threatBaselineRes = await fetch('/api/security/scores/baseline?type=threat', { headers: authHeader });
-            if (threatBaselineRes.ok) setThreatBaseline(await threatBaselineRes.json());
-            else setThreatBaseline(null);
-
-        } catch (e) {
-            console.error('Failed to fetch score dashboard data', e);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchDiff = async (type: 'url' | 'dns' | 'threat') => {
-        if (!scores.length) return;
-        const latest = scores[0];
-        const baseline = type === 'url' ? urlBaseline : type === 'dns' ? dnsBaseline : threatBaseline;
-        if (!baseline || !latest) return;
-
-        try {
-            const res = await fetch(`/api/security/scores/diff?type=${type}&from=${baseline.runId}&to=${latest.runId}`, { headers: authHeader });
-            if (res.ok) {
-                const data = await res.json();
-                if (type === 'url') setUrlDiff(data);
-                else if (type === 'dns') setDnsDiff(data);
-                else setThreatDiff(data);
-            }
-        } catch(e) {}
-    };
-
-    useEffect(() => {
-        fetchData();
-        const interval = setInterval(fetchData, 10000);
-        return () => clearInterval(interval);
-    }, [token]);
-
-    useEffect(() => {
-        if (!loading && urlBaseline) fetchDiff('url');
-        if (!loading && dnsBaseline) fetchDiff('dns');
-        if (!loading && threatBaseline) fetchDiff('threat');
-    }, [scores, urlBaseline, dnsBaseline, threatBaseline, loading]);
-
-    const handleSetBaseline = async (runId: string, type: 'url' | 'dns' | 'threat') => {
-        try {
-            await fetch('/api/security/scores/baseline', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...authHeader },
-                body: JSON.stringify({ runId, type })
-            });
-            fetchData();
-        } catch (e) {
-            console.error('Failed to set baseline', e);
-        }
-    };
 
     if (loading && !scores.length) {
         return (
@@ -170,33 +97,6 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     // Dynamic dot radius — max in changesOnly (few points), scaled down for dense histories
     const dotRadius = changesOnly ? 5 : Math.max(2, Math.min(5, Math.round(5 - (chartData.length - 20) * (3 / 130))));
 
-    // Latest Changes: diff between the two most recent runs of each type (client-side, no baseline needed)
-    const computeLatestDiff = (type: 'url' | 'dns' | 'threat') => {
-        const runs = scores.filter(s => s.type === type); // already newest-first
-        if (runs.length < 2) return null;
-        const latest = runs[0];
-        const prev = runs[1];
-        const latestBreakdown: Record<string, any> = latest.breakdown?.[type] || {};
-        const prevBreakdown: Record<string, any> = prev.breakdown?.[type] || {};
-        const changes: { category: string; before: string; after: string; weight: number }[] = [];
-        for (const [cat, snap] of Object.entries(latestBreakdown)) {
-            const prevSnap = prevBreakdown[cat];
-            if (!prevSnap) continue;
-            if (prevSnap.status !== (snap as any).status) {
-                changes.push({ category: cat, before: prevSnap.status, after: (snap as any).status, weight: (snap as any).weight });
-            }
-        }
-        return {
-            changes,
-            prevTime: new Date(prev.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-            latestTime: new Date(latest.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-        };
-    };
-
-    const urlLatestDiff = computeLatestDiff('url');
-    const dnsLatestDiff = computeLatestDiff('dns');
-    const threatLatestDiff = computeLatestDiff('threat');
-
     // Min / max scores over the loaded history window
     const urlScores = scores.filter(s => s.scores?.url != null).map(s => s.scores.url as number);
     const dnsScores = scores.filter(s => s.scores?.dns != null).map(s => s.scores.dns as number);
@@ -207,12 +107,6 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
     const maxDnsScore = dnsScores.length ? Math.max(...dnsScores) : null;
     const minThreatScore = threatScores.length ? Math.min(...threatScores) : null;
     const maxThreatScore = threatScores.length ? Math.max(...threatScores) : null;
-
-    // Proper category label — capitalise acronyms and title-case the rest
-    const formatCategory = (cat: string) =>
-        cat.replace(/-/g, ' ')
-           .replace(/\b(dns|url|ip|c2|dga|p2p|vpn|ips|edl|nxns|eicar)\b/gi, s => s.toUpperCase())
-           .replace(/\b(\w)/g, c => c.toUpperCase());
 
     // Custom dot: show only on actual run points that pass the 5-min window filter
     // Radius is passed in dynamically so it responds to point density
@@ -347,90 +241,6 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
         );
     };
 
-    const renderGapAlerts = (diff: any, title: string) => {
-        if (!diff) return null;
-        const { regressions, improvements, scoreDelta } = diff;
-        if (regressions.length === 0 && improvements.length === 0) return null;
-
-        const key = title;
-        const expanded = expandGap[key];
-        const sortedReg = [...regressions].sort((a, b) => b.weight - a.weight);
-        const sortedImp = [...improvements].sort((a, b) => b.weight - a.weight);
-        const visibleReg = expanded ? sortedReg : sortedReg.slice(0, PREVIEW_LIMIT);
-        const visibleImp = expanded ? sortedImp : sortedImp.slice(0, PREVIEW_LIMIT);
-        const totalHidden = (sortedReg.length + sortedImp.length) - (visibleReg.length + visibleImp.length);
-
-        return (
-            <div className="mt-4 pt-4 border-t border-border">
-                <div className="flex items-center justify-between mb-3">
-                    <h5 className="text-[10px] font-black tracking-widest text-text-muted flex items-center gap-1.5">
-                        <BarChart2 size={11} /> BASELINE GAP ANALYSIS
-                    </h5>
-                    <div className="flex items-center gap-1.5">
-                        {sortedReg.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-red-500/10 border border-red-500/20 text-red-500">{sortedReg.length} ↓</span>}
-                        {sortedImp.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-green-500/10 border border-green-500/20 text-green-500">{sortedImp.length} ↑</span>}
-                        {scoreDelta !== undefined && scoreDelta !== null && (
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-black border ${
-                                scoreDelta < 0 ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-green-500/10 border-green-500/20 text-green-500'
-                            }`}>{scoreDelta > 0 ? '+' : ''}{scoreDelta.toFixed(1)}</span>
-                        )}
-                    </div>
-                </div>
-
-                {sortedReg.length > 0 && (
-                    <div className="mb-2">
-                        <div className="flex items-center gap-1 text-[9px] font-black text-red-500 mb-1.5 tracking-widest">
-                            <ShieldAlert size={10} /> POLICY REGRESSIONS
-                        </div>
-                        <div className="flex flex-col gap-1">
-                            {visibleReg.map((r: any, idx: number) => (
-                                <div key={idx} className="flex items-center justify-between text-xs p-2 bg-background rounded-lg border border-red-500/20">
-                                    <span className="font-semibold text-text-primary">{formatCategory(r.category)}</span>
-                                    <div className="flex items-center gap-1.5 text-[10px] font-black">
-                                        <span className="text-[9px] text-text-muted font-bold">w:{r.weight}</span>
-                                        <span className="text-green-500 line-through opacity-70">{r.before}</span>
-                                        <span className="text-text-muted opacity-40">→</span>
-                                        <span className="text-red-500">{r.after}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {sortedImp.length > 0 && (
-                    <div>
-                        <div className="flex items-center gap-1 text-[9px] font-black text-green-500 mb-1.5 tracking-widest">
-                            <ShieldCheck size={10} /> POLICY IMPROVEMENTS
-                        </div>
-                        <div className="flex flex-col gap-1">
-                            {visibleImp.map((r: any, idx: number) => (
-                                <div key={idx} className="flex items-center justify-between text-xs p-2 bg-background rounded-lg border border-green-500/20">
-                                    <span className="font-semibold text-text-primary">{formatCategory(r.category)}</span>
-                                    <div className="flex items-center gap-1.5 text-[10px] font-black">
-                                        <span className="text-[9px] text-text-muted font-bold">w:{r.weight}</span>
-                                        <span className="text-red-400 line-through opacity-70">{r.before}</span>
-                                        <span className="text-text-muted opacity-40">→</span>
-                                        <span className="text-green-500">{r.after}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {totalHidden > 0 && (
-                    <button onClick={() => setExpandGap(p => ({ ...p, [key]: true }))} className="mt-2 w-full text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary py-1.5 border border-border rounded-lg hover:bg-hover transition-all">
-                        + {totalHidden} more (sorted by weight)
-                    </button>
-                )}
-                {expanded && (sortedReg.length + sortedImp.length) > PREVIEW_LIMIT && (
-                    <button onClick={() => setExpandGap(p => ({ ...p, [key]: false }))} className="mt-1 w-full text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary py-1 transition-all">
-                        ↑ collapse
-                    </button>
-                )}
-            </div>
-        );
     };
 
     return (
@@ -441,16 +251,16 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                 </div>
             </div>
 
-            <div className="flex flex-col lg:flex-row gap-4 items-start">
-                {/* Gauges — left column, sticky so they stay top-aligned */}
-                <div className="flex flex-col gap-4 w-full lg:w-80 shrink-0 lg:sticky lg:top-4">
+            <div className="flex flex-col gap-6 w-full">
+                {/* Gauges — Top row, horizontal */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
                     {renderGauge('url', latestUrlScore, urlBaseline, minUrlScore, maxUrlScore)}
                     {renderGauge('dns', latestDnsScore, dnsBaseline, minDnsScore, maxDnsScore)}
                     {renderGauge('threat', latestThreatScore, threatBaseline, minThreatScore, maxThreatScore)}
                 </div>
 
-                {/* Charts & Gaps — right column, grows freely */}
-                <div className="flex flex-col gap-4 flex-1 min-w-0">
+                {/* Chart and Details */}
+                <div className="flex flex-col gap-4 w-full">
                     <div className="h-56 bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col">
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-[10px] font-black tracking-widest text-text-muted uppercase flex items-center gap-1.5">
@@ -511,88 +321,7 @@ export const ScoreDashboard = ({ token }: { token: string }) => {
                         </div>
                     </div>
 
-                    {/* Latest Changes + embedded Gap Analysis — one card per type */}
-                    <div className="flex flex-col gap-3">
-                        {(['url', 'dns', 'threat'] as const).map(type => {
-                            const diff = type === 'url' ? urlLatestDiff : type === 'dns' ? dnsLatestDiff : threatLatestDiff;
-                            const gapDiff = type === 'url' ? urlDiff : type === 'dns' ? dnsDiff : threatDiff;
-                            const color = type === 'url' ? '#8b5cf6' : type === 'dns' ? '#0ea5e9' : '#ef4444';
 
-                            const hasChanges = diff && diff.changes.length > 0;
-                            const hasGap = gapDiff && (gapDiff.regressions?.length > 0 || gapDiff.improvements?.length > 0);
-
-                            // Skip entire card if nothing to show
-                            if (!hasChanges && !hasGap) return null;
-
-                            const allChanges = hasChanges ? [...diff.changes].sort((a, b) => b.weight - a.weight) : [];
-                            const regressions = allChanges.filter(c => (c.before === 'blocked' || c.before === 'sinkholed') && c.after !== 'blocked' && c.after !== 'sinkholed');
-                            const improvements = allChanges.filter(c => (c.after === 'blocked' || c.after === 'sinkholed') && c.before !== 'blocked' && c.before !== 'sinkholed');
-                            const neutral = allChanges.filter(c => !regressions.includes(c) && !improvements.includes(c));
-                            const sorted = [...regressions, ...improvements, ...neutral];
-
-                            const expanded = expandLatest[type];
-                            const visible = expanded ? sorted : sorted.slice(0, PREVIEW_LIMIT);
-                            const hiddenCount = sorted.length - visible.length;
-
-                            return (
-                                <div key={type} className="p-4 bg-card border border-border rounded-xl">
-                                    {/* Header */}
-                                    <div className="flex items-center justify-between mb-3">
-                                        <h4 className="text-[10px] font-black tracking-widest text-text-muted flex items-center gap-1.5">
-                                            <Activity size={12} style={{color}} />
-                                            <span style={{color}}>{type.toUpperCase()}</span> LATEST CHANGES
-                                        </h4>
-                                        <div className="flex items-center gap-2">
-                                            {regressions.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-red-500/10 border border-red-500/20 text-red-500">{regressions.length} ↓ GAP</span>}
-                                            {improvements.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-green-500/10 border border-green-500/20 text-green-500">{improvements.length} ↑ FIXED</span>}
-                                            {neutral.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-card border border-border text-text-muted">{neutral.length} CHG</span>}
-                                            {diff && <span className="text-[9px] opacity-40">{diff.prevTime} → {diff.latestTime}</span>}
-                                        </div>
-                                    </div>
-
-                                    {/* Changes list */}
-                                    {hasChanges ? (
-                                        <div className="flex flex-col gap-1.5">
-                                            {visible.map((c, idx) => {
-                                                const isReg = regressions.includes(c);
-                                                const isImp = improvements.includes(c);
-                                                return (
-                                                    <div key={idx} className={`flex items-center justify-between text-xs p-2 rounded-lg border ${
-                                                        isReg ? 'bg-red-500/5 border-red-500/20' : isImp ? 'bg-green-500/5 border-green-500/20' : 'bg-card border-border'
-                                                    }`}>
-                                                        <span className="font-semibold text-text-primary">{formatCategory(c.category)}</span>
-                                                        <div className="flex items-center gap-1.5 text-[10px] font-black">
-                                                            <span className={c.before === 'blocked' || c.before === 'sinkholed' ? 'text-green-500' : 'text-red-400'}>{c.before}</span>
-                                                            <span className="text-text-muted opacity-40">→</span>
-                                                            <span className={c.after === 'blocked' || c.after === 'sinkholed' ? 'text-green-500' : 'text-red-400'}>{c.after}</span>
-                                                            <span className={`ml-1 px-1 py-0.5 rounded text-[8px] font-black tracking-widest border ${
-                                                                isReg ? 'text-red-500 bg-red-500/10 border-red-500/20' : isImp ? 'text-green-500 bg-green-500/10 border-green-500/20' : 'text-text-muted border-border'
-                                                            }`}>{isReg ? '↓ GAP' : isImp ? '↑ FIXED' : 'CHG'}</span>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                            {hiddenCount > 0 && (
-                                                <button onClick={() => setExpandLatest(p => ({ ...p, [type]: true }))} className="mt-1 w-full text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary py-1.5 border border-border rounded-lg hover:bg-hover transition-all">
-                                                    + {hiddenCount} more (sorted by weight)
-                                                </button>
-                                            )}
-                                            {expanded && sorted.length > PREVIEW_LIMIT && (
-                                                <button onClick={() => setExpandLatest(p => ({ ...p, [type]: false }))} className="mt-1 w-full text-[10px] font-black tracking-widest text-text-muted hover:text-text-primary py-1 transition-all">
-                                                    ↑ collapse
-                                                </button>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        !hasGap && <div className="flex items-center gap-1.5 text-[10px] text-text-muted opacity-60"><CheckCircle size={11} /> No changes between last 2 runs</div>
-                                    )}
-
-                                    {/* Baseline Gap Analysis — embedded below, separated by a divider */}
-                                    {renderGapAlerts(gapDiff, type.toUpperCase())}
-                                </div>
-                            );
-                        })}
-                    </div>
                 </div>
             </div>
         </div>

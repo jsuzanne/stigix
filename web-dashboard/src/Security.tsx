@@ -4,6 +4,8 @@ import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
 import { URL_CATEGORIES, DNS_TEST_DOMAINS } from '../shared/security-categories';
 import { ScoreDashboard } from './components/ScoreDashboard';
+import { useSecurityScores } from '../hooks/useSecurityScores';
+import { ScoreGapAnalysis, ScoreLatestChanges } from './components/ScoreDetails';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -124,6 +126,13 @@ const SchedulerSettings = ({
 };
 
 export default function Security({ token }: SecurityProps) {
+    const {
+        scores, loading: scoresLoading,
+        urlBaseline, dnsBaseline, threatBaseline,
+        urlDiff, dnsDiff, threatDiff,
+        handleSetBaseline
+    } = useSecurityScores(token);
+
     const [config, setConfig] = useState<SecurityConfig | null>(null);
     const [testResults, setTestResults] = useState<TestResult[]>([]);
     const [loading, setLoading] = useState(false);
@@ -909,7 +918,14 @@ export default function Security({ token }: SecurityProps) {
                 </div>
             </div>
 
-            <ScoreDashboard token={token} />
+            <ScoreDashboard 
+                scores={scores} 
+                loading={scoresLoading} 
+                urlBaseline={urlBaseline} 
+                dnsBaseline={dnsBaseline} 
+                threatBaseline={threatBaseline} 
+                handleSetBaseline={handleSetBaseline} 
+            />
 
             {/* Statistics Dashboard */}
             {config.statistics && (
@@ -1129,6 +1145,13 @@ export default function Security({ token }: SecurityProps) {
                                 );
                             })}
                         </div>
+
+                        {(urlDiff || scores.find(s => s.type === 'url')) && (
+                            <div className="pt-2 border-t border-border mt-6">
+                                <ScoreLatestChanges type="url" scores={scores} />
+                                <ScoreGapAnalysis diff={urlDiff} title="URL Filter" />
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -1316,6 +1339,13 @@ export default function Security({ token }: SecurityProps) {
                                 })}
                             </div>
                         </div>
+
+                        {(dnsDiff || scores.find(s => s.type === 'dns')) && (
+                            <div className="pt-2 border-t border-border mt-6">
+                                <ScoreLatestChanges type="dns" scores={scores} />
+                                <ScoreGapAnalysis diff={dnsDiff} title="DNS Protect" />
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
