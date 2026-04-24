@@ -315,13 +315,44 @@ export default function Failover(props: FailoverProps) {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <div className="flex flex-col gap-1">
-                            <label className="text-[10px] text-text-muted font-bold uppercase tracking-widest pl-1">Global Precision (Rate)</label>
+                        {activeTests.length > 0 && (
+                            <button
+                                onClick={() => stopTest()}
+                                disabled={isStopping}
+                                className="flex items-center gap-2 px-4 py-2 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white rounded-lg text-sm font-bold transition-all border border-red-500/30 shadow-lg shadow-red-900/20 group disabled:opacity-50"
+                            >
+                                {isStopping ? <Activity size={16} className="animate-spin" /> : <Square size={16} fill="currentColor" className="group-hover:animate-pulse" />}
+                                {isStopping ? 'STOPPING...' : 'STOP ALL PROBES'}
+                            </button>
+                        )}
+                        {selectedCount > 0 && (
+                            <button
+                                onClick={() => startTest(selectedEndpoints)}
+                                disabled={isStarting}
+                                className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-blue-900/40 border border-blue-400/30 disabled:opacity-50"
+                            >
+                                {isStarting ? <Activity size={18} className="animate-spin" /> : <Play size={18} fill="currentColor" />}
+                                {isStarting ? 'STARTING...' : `START ${selectedCount} ${selectedCount === 1 ? 'TEST' : 'TESTS'}`}
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-3 animate-in slide-in-from-bottom-4 mt-6">
+                <div className="flex items-center justify-between px-1 mb-2">
+                    <div className="flex items-center gap-2">
+                        <Server size={14} className="text-text-muted" />
+                        <h3 className="text-sm font-bold text-text-primary tracking-tight">Stigix Targets</h3>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                            <label className="text-[10px] text-text-muted font-bold uppercase tracking-widest hidden sm:block">Precision Rate</label>
                             <select
                                 value={rate}
                                 onChange={(e) => setRate(parseInt(e.target.value))}
                                 disabled={activeTests.length > 0}
-                                className="bg-card-secondary border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 appearance-none"
+                                className="bg-card border border-border rounded-lg px-2 py-1 text-xs font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 appearance-none shadow-sm cursor-pointer"
                             >
                                 <option value="1">1 pps (1s)</option>
                                 <option value="5">5 pps (200ms)</option>
@@ -334,44 +365,14 @@ export default function Failover(props: FailoverProps) {
                                 <option value="1000">1000 pps (1ms)</option>
                             </select>
                         </div>
-                        <div className="flex items-center gap-4">
-                            {activeTests.length > 0 && (
-                                <button
-                                    onClick={() => stopTest()}
-                                    disabled={isStopping}
-                                    className="mt-5 flex items-center gap-2 px-4 py-2 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white rounded-lg text-sm font-bold transition-all border border-red-500/30 shadow-lg shadow-red-900/20 group disabled:opacity-50"
-                                >
-                                    {isStopping ? <Activity size={16} className="animate-spin" /> : <Square size={16} fill="currentColor" className="group-hover:animate-pulse" />}
-                                    {isStopping ? 'STOPPING...' : 'STOP ALL PROBES'}
-                                </button>
-                            )}
-                            {selectedCount > 0 && (
-                                <button
-                                    onClick={() => startTest(selectedEndpoints)}
-                                    disabled={isStarting}
-                                    className="mt-5 flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-blue-900/40 border border-blue-400/30 disabled:opacity-50"
-                                >
-                                    {isStarting ? <Activity size={18} className="animate-spin" /> : <Play size={18} fill="currentColor" />}
-                                    {isStarting ? 'STARTING...' : `START ${selectedCount} ${selectedCount === 1 ? 'TEST' : 'TESTS'}`}
-                                </button>
-                            )}
-                            <button
-                                onClick={() => setShowAddModal(true)}
-                                disabled={activeTests.length > 0}
-                                className="mt-5 flex items-center justify-center w-8 h-8 bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary rounded-lg transition-all border border-border disabled:opacity-50 shadow-sm"
-                                title="Add Custom Target"
-                            >
-                                <Plus size={16} />
-                            </button>
-                        </div>
+                        <button
+                            onClick={() => setShowAddModal(true)}
+                            disabled={activeTests.length > 0}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest bg-card hover:bg-card-hover text-text-muted hover:text-text-primary rounded-lg transition-all border border-border disabled:opacity-50 shadow-sm"
+                        >
+                            <Plus size={12} /> <span className="hidden sm:inline">Add Target</span>
+                        </button>
                     </div>
-                </div>
-            </div>
-
-            <div className="flex flex-col gap-3 animate-in slide-in-from-bottom-4 mt-6">
-                <div className="flex items-center gap-2 px-1">
-                    <Server size={14} className="text-text-muted" />
-                    <h3 className="text-sm font-bold text-text-primary tracking-tight">Stigix Targets</h3>
                 </div>
                 <div className="flex flex-wrap gap-3">
                 {allTargets.map((e) => {
@@ -417,21 +418,39 @@ export default function Failover(props: FailoverProps) {
                                         <Trash2 size={12} />
                                     </button>
                                 )}
-                                <button
-                                    onClick={(e_play) => { e_play.stopPropagation(); startTest([e.id]); }}
-                                    disabled={isStarting}
-                                    className="ml-2 p-1.5 rounded-md bg-blue-500/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-colors border border-blue-500/20 hover:border-blue-600 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title="Quick Launch Convergence Test"
-                                >
-                                    <Play size={10} fill="currentColor" />
-                                </button>
-                                <button
-                                    onClick={(e_stop_test) => { e_stop_test.stopPropagation(); stopTest(); }}
-                                    className="p-1.5 rounded-md bg-red-500/10 text-red-500 hover:bg-red-600 hover:text-white transition-colors border border-red-500/20 hover:border-red-600 shadow-sm"
-                                    title="Stop All Convergence Tests"
-                                >
-                                    <Square size={10} fill="currentColor" />
-                                </button>
+                                {(() => {
+                                    const activeTestForTarget = activeTests.find(t => t.target.id === e.id);
+                                    const isTesting = !!activeTestForTarget;
+
+                                    return (
+                                        <>
+                                            <button
+                                                onClick={(e_play) => { e_play.stopPropagation(); startTest([e.id]); }}
+                                                disabled={isStarting || isTesting}
+                                                className={`ml-2 p-1.5 rounded-md transition-colors border shadow-sm ${
+                                                    isTesting 
+                                                        ? 'bg-card-secondary text-text-muted border-transparent opacity-50 cursor-not-allowed' 
+                                                        : 'bg-blue-500/10 text-blue-500 hover:bg-blue-600 hover:text-white border-blue-500/20 hover:border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed'
+                                                }`}
+                                                title={isTesting ? "Test already running" : "Launch Convergence Test"}
+                                            >
+                                                <Play size={10} fill="currentColor" />
+                                            </button>
+                                            <button
+                                                onClick={(e_stop_test) => { e_stop_test.stopPropagation(); stopTest(activeTestForTarget?.testId); }}
+                                                disabled={!isTesting}
+                                                className={`p-1.5 rounded-md transition-all border shadow-sm ${
+                                                    isTesting
+                                                        ? 'bg-red-500 text-white hover:bg-red-600 border-red-500 shadow-red-500/40 cursor-pointer scale-110'
+                                                        : 'bg-card-secondary text-text-muted border-transparent opacity-30 cursor-not-allowed'
+                                                }`}
+                                                title={isTesting ? "Stop this test" : "No active test to stop"}
+                                            >
+                                                <Square size={10} fill="currentColor" />
+                                            </button>
+                                        </>
+                                    );
+                                })()}
                             </div>
                         </div>
                     );
@@ -866,26 +885,7 @@ export default function Failover(props: FailoverProps) {
                             </button>
                         </div>
                         <div className="p-6 space-y-4">
-                            {/* Shared registry suggestions */}
-                            {convergenceTargets.length > 0 && (
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-bold text-text-muted uppercase tracking-widest pl-1">From Registry (auto-fill)</label>
-                                    <select
-                                        onChange={e => {
-                                            if (!e.target.value) return;
-                                            const t = convergenceTargets.find((ct: any) => ct.id === e.target.value);
-                                            if (t) setNewTarget({ label: t.name, target: t.host, port: t.ports?.convergence ?? 6200 });
-                                        }}
-                                        className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-text-primary outline-none focus:ring-1 focus:ring-blue-500 transition-all"
-                                        defaultValue=""
-                                    >
-                                        <option value="">-- Select from Targets Registry --</option>
-                                        {convergenceTargets.filter((t: any) => !endpoints.some(e => e.target === t.host)).map((t: any) => (
-                                            <option key={t.id} value={t.id}>{t.name} — {t.host}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
+
                             <div className="space-y-1.5">
                                 <label className="text-xs font-bold text-text-muted uppercase tracking-widest pl-1">Target Label</label>
                                 <input
