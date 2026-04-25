@@ -218,6 +218,43 @@ const CONVERGENCE_COUNTER_FILE = path.join(APP_CONFIG.configDir, 'test-counter-c
 const CONVERGENCE_ENDPOINTS_FILE = path.join(APP_CONFIG.configDir, 'convergence-endpoints.json');
 const SYSTEM_APP_LOG = path.join(APP_CONFIG.logDir, 'app.log');
 
+// ─── Configuration Backup System ────────────────────────────────────────
+
+/**
+ * Creates rolling backups (.backup.1 to .backup.7) of a file before it is overwritten.
+ */
+function backupConfig(filePath: string) {
+    if (!fs.existsSync(filePath)) return;
+    try {
+        const maxBackups = 7;
+        for (let i = maxBackups - 1; i >= 1; i--) {
+            const src = `${filePath}.backup.${i}`;
+            const dest = `${filePath}.backup.${i + 1}`;
+            if (fs.existsSync(src)) {
+                fs.renameSync(src, dest);
+            }
+        }
+        fs.copyFileSync(filePath, `${filePath}.backup.1`);
+    } catch (e) {
+        log('SYSTEM', `Failed to create backup for ${path.basename(filePath)}: ${e}`, 'error');
+    }
+}
+
+// Intercept fs.writeFileSync to automatically backup critical config files
+const originalWriteFileSync = fs.writeFileSync;
+(fs as any).writeFileSync = function(file: any, data: any, options: any) {
+    const configFiles = [
+        VYOS_CONFIG_FILE, APPLICATIONS_CONFIG_FILE, SECURITY_CONFIG_FILE,
+        VOICE_CONFIG_FILE, CUSTOM_CONNECTIVITY_FILE, CONVERGENCE_ENDPOINTS_FILE,
+        CONVERGENCE_CONFIG_FILE, IOT_DEVICES_FILE, PRISMA_CONFIG_FILE,
+        UI_CONFIG_FILE, CLOUD_CONFIG_FILE
+    ];
+    if (typeof file === 'string' && configFiles.includes(file)) {
+        backupConfig(file);
+    }
+    return originalWriteFileSync.apply(this, arguments as any);
+};
+
 // ─── Egress Path Enrichment Helpers ────────────────────────────────────────
 
 /**
