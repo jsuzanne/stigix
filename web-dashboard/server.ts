@@ -7882,9 +7882,9 @@ const scheduleLogCleanup = () => {
         const deletedConnCount = await connectivityLogger.cleanup();
         console.log(`[LOG_CLEANUP] Deleted ${deletedConnCount} old connectivity-results log files`);
 
-        const filesToPrune5k = ['security-history.jsonl', 'traffic-history.jsonl', 'vyos-history.jsonl', 'score-history.jsonl', 'convergence-history.jsonl'];
-        for (const file of filesToPrune5k) {
-            await pruneLogFile(path.join(APP_CONFIG.logDir, file), 5000);
+        const filesToPrune10k = ['security-history.jsonl', 'traffic-history.jsonl', 'vyos-history.jsonl', 'score-history.jsonl', 'convergence-history.jsonl'];
+        for (const file of filesToPrune10k) {
+            await pruneLogFile(path.join(APP_CONFIG.logDir, file), 10000);
         }
 
         const filesToPrune1k = ['traffic.log', 'xfr.log', 'test-execution.log', 'app.log'];
