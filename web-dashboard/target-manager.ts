@@ -271,9 +271,10 @@ export class TargetManager {
         }
 
         const startTime = Date.now();
+        let tmpFile: string | null = null;
         try {
             const execPromise = promisify(exec);
-            const tmpFile = path.join(os.tmpdir(), `stigix_cloud_${Date.now()}_${Math.random().toString(36).substring(7)}.tmp`);
+            tmpFile = path.join(os.tmpdir(), `stigix_cloud_${Date.now()}_${Math.random().toString(36).substring(7)}.tmp`);
             
             // Output only metrics to stdout, save body to temp file
             const curlCmd = `curl -s -L -w "%{time_namelookup},%{time_connect},%{time_appconnect},%{time_starttransfer},%{time_total},%{http_code},%{size_download},%{speed_download},%{remote_ip},%{remote_port}" -o "${tmpFile}" --max-time 15 "${signedUrl}"`;
@@ -301,11 +302,10 @@ export class TargetManager {
             };
 
             let bodyStr = '';
-            if (fs.existsSync(tmpFile)) {
+            if (tmpFile && fs.existsSync(tmpFile)) {
                 if (scenario.category === 'info') {
                     bodyStr = fs.readFileSync(tmpFile, 'utf8');
                 }
-                fs.unlinkSync(tmpFile);
             }
 
             if (statusCode >= 400 || statusCode === 0) {
@@ -359,6 +359,10 @@ export class TargetManager {
             const errResp = { success: false, score: 0, latency_ms: latency, message: error.message };
             log('TARGET', `[CLOUD PROBE] Exception: ${JSON.stringify(errResp, null, 2)}`, 'debug');
             return errResp;
+        } finally {
+            if (tmpFile && fs.existsSync(tmpFile)) {
+                try { fs.unlinkSync(tmpFile); } catch (e) {}
+            }
         }
     }
 
