@@ -1307,8 +1307,13 @@ const getNextBatchId = (): string => {
         if (!fs.existsSync(BATCH_COUNTER_FILE)) {
             fs.writeFileSync(BATCH_COUNTER_FILE, JSON.stringify({ counter: 0 }));
         }
-        const data = JSON.parse(fs.readFileSync(BATCH_COUNTER_FILE, 'utf8'));
-        let nextId = (data.counter || 0) + 1;
+        let nextId = 1;
+        try {
+            const data = JSON.parse(fs.readFileSync(BATCH_COUNTER_FILE, 'utf8'));
+            nextId = (data.counter || 0) + 1;
+        } catch (e) {
+            nextId = 1; // Reset if corrupted
+        }
         if (nextId > 999) nextId = 1; // Rotate at 1000
         fs.writeFileSync(BATCH_COUNTER_FILE, JSON.stringify({ counter: nextId }));
         return nextId.toString().padStart(3, '0');
@@ -1322,8 +1327,13 @@ const getNextTestId = (): number => {
         if (!fs.existsSync(TEST_COUNTER_FILE)) {
             fs.writeFileSync(TEST_COUNTER_FILE, JSON.stringify({ counter: 0 }));
         }
-        const data = JSON.parse(fs.readFileSync(TEST_COUNTER_FILE, 'utf8'));
-        const nextId = (data.counter || 0) + 1;
+        let nextId = 1;
+        try {
+            const data = JSON.parse(fs.readFileSync(TEST_COUNTER_FILE, 'utf8'));
+            nextId = (data.counter || 0) + 1;
+        } catch (e) {
+            nextId = 1; // Reset if corrupted
+        }
         fs.writeFileSync(TEST_COUNTER_FILE, JSON.stringify({ counter: nextId }));
         return nextId;
     } catch (e) {
@@ -1341,8 +1351,13 @@ const getNextFailoverTestId = (): string => {
         if (!fs.existsSync(CONVERGENCE_COUNTER_FILE)) {
             fs.writeFileSync(CONVERGENCE_COUNTER_FILE, JSON.stringify({ counter: 0 }));
         }
-        const data = JSON.parse(fs.readFileSync(CONVERGENCE_COUNTER_FILE, 'utf8'));
-        const nextId = ((data.counter || 0) + 1) % 10000;
+        let nextId = 1;
+        try {
+            const data = JSON.parse(fs.readFileSync(CONVERGENCE_COUNTER_FILE, 'utf8'));
+            nextId = ((data.counter || 0) + 1) % 10000;
+        } catch (e) {
+            nextId = 1; // Reset if corrupted
+        }
         fs.writeFileSync(CONVERGENCE_COUNTER_FILE, JSON.stringify({ counter: nextId }));
         return `CONV-${nextId.toString().padStart(4, '0')}`;
     } catch (e) {
@@ -7834,6 +7849,22 @@ app.post('/api/admin/maintenance/restart', authenticateToken, async (req, res) =
     setTimeout(runRestart, 500);
 });
 
+// Helper to prune large files
+async function pruneLogFile(filePath: string, maxLines: number) {
+    if (!fs.existsSync(filePath)) return;
+    try {
+        const stats = await fs.promises.stat(filePath);
+        // Only prune if > 10MB to save disk
+        if (stats.size > 10 * 1024 * 1024) {
+            const execPromise = promisify(exec);
+            await execPromise(`tail -n ${maxLines} "${filePath}" > "${filePath}.tmp" && mv "${filePath}.tmp" "${filePath}"`);
+            log('LOG_CLEANUP', `Pruned ${path.basename(filePath)} to last ${maxLines} lines`);
+        }
+    } catch (e) {
+        log('LOG_CLEANUP', `Failed to prune ${filePath}: ${e}`, 'error');
+    }
+}
+
 // Schedule daily log cleanup (runs at 2 AM)
 const scheduleLogCleanup = () => {
     const now = new Date();
@@ -7846,7 +7877,20 @@ const scheduleLogCleanup = () => {
     setTimeout(async () => {
         console.log('[LOG_CLEANUP] Running daily log cleanup...');
         const deletedCount = await testLogger.cleanup();
-        console.log(`[LOG_CLEANUP] Deleted ${deletedCount} old log files`);
+        console.log(`[LOG_CLEANUP] Deleted ${deletedCount} old test-results log files`);
+
+        const deletedConnCount = await connectivityLogger.cleanup();
+        console.log(`[LOG_CLEANUP] Deleted ${deletedConnCount} old connectivity-results log files`);
+
+        const filesToPrune5k = ['security-history.jsonl', 'traffic-history.jsonl', 'vyos-history.jsonl', 'score-history.jsonl', 'convergence-history.jsonl'];
+        for (const file of filesToPrune5k) {
+            await pruneLogFile(path.join(APP_CONFIG.logDir, file), 5000);
+        }
+
+        const filesToPrune1k = ['traffic.log', 'xfr.log', 'test-execution.log', 'app.log'];
+        for (const file of filesToPrune1k) {
+            await pruneLogFile(path.join(APP_CONFIG.logDir, file), 1000);
+        }
 
         // Schedule next cleanup
         scheduleLogCleanup();
