@@ -386,6 +386,21 @@ def op_simple_unblock(host, api_key, ip_input, verify=False):
         existing = get_blackhole_routes(config)
         
         if prefix not in existing:
+            # Check if the requested IP is covered by any existing blocked subnet
+            try:
+                import ipaddress
+                req_net = ipaddress.ip_network(prefix, strict=False)
+                for blk in existing:
+                    blk_net = ipaddress.ip_network(blk, strict=False)
+                    if req_net.subnet_of(blk_net):
+                        return {
+                            "success": False,
+                            "error": f"Prefix {prefix} is not exactly blocked, but it is covered by the existing blocked subnet {blk}. You must unblock {blk} exactly.",
+                            "data": {"blocked_routes": existing}
+                        }
+            except Exception:
+                pass
+
             return {
                 "success": False,
                 "error": f"Prefix {prefix} is not blocked (tag 999 not found)",
