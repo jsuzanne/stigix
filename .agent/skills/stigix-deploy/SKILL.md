@@ -24,7 +24,7 @@ Read the current version:
 ```bash
 cat /Users/jsuzanne/Github/stigix/VERSION
 ```
-The format is `v1.2.1-patch.NNN`. Increment NNN by 1.
+The format is `vX.Y.Z-patch.NNN`. You MUST strictly increment NNN by exactly +1 (e.g., from 140 to 141). Do not skip numbers or round to tens unless the USER explicitly requests it.
 
 ### 2 — Bump all three VERSION files
 
