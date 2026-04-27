@@ -58,6 +58,30 @@ const DEFAULT_SCENARIOS: TargetScenario[] = [
         subdomain: 'slow'
     },
     {
+        id: 'saas-flap',
+        label: 'Flap (Square Wave)',
+        description: 'Alternates between 0s and 5s delay every 60s.',
+        path: '/saas/flap',
+        category: 'saas',
+        subdomain: 'slow'
+    },
+    {
+        id: 'saas-wave',
+        label: 'Wave (Sine)',
+        description: 'Smoothly oscillates latency up to 5s over 2 minutes.',
+        path: '/saas/wave',
+        category: 'saas',
+        subdomain: 'slow'
+    },
+    {
+        id: 'saas-random',
+        label: 'Random Latency',
+        description: '50% chance of a 5s delay on each request.',
+        path: '/saas/random',
+        category: 'saas',
+        subdomain: 'slow'
+    },
+    {
         id: 'download-large',
         label: 'Large Download',
         description: 'Downloads a 10MB payload to test throughput.',
