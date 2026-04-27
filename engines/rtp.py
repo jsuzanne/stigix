@@ -110,6 +110,7 @@ if __name__ == "__main__":
 #       source_port = random.randrange(10000, 65535)
 
     args = vars(parser.parse_args())
+    is_debug_mode = os.environ.get('DEBUG', 'false').lower() == 'true'
 
     # pull args for count.
     min_count = args['min_count']
@@ -118,37 +119,40 @@ if __name__ == "__main__":
 
     source_port = args['source_port']
     if source_port == 0:
-        # ---------------------------------------------------------
-        #  NEW LOGIC: Deterministic Source Port from CALL ID
-        #  Goal: Map CALL-XXXX -> Port 30000..39999 (modulo 10000)
-        # ---------------------------------------------------------
-        call_id = args.get('call_id', 'NONE')
-        
-        target_port = 0
-        
-        if call_id.startswith("CALL-") and call_id[5:].isdigit():
-            try:
-                raw_num = int(call_id[5:])
-                
-                # Warn if we see huge numbers (unexpected from orchestrator)
-                if raw_num > 9999:
-                    print(f"Warning: CALL ID {call_id} exceeds 4 digits. Modulo will be applied.")
-
-                # 0..9999
-                call_num = raw_num % 10000
-                
-                # Map to 30000..39999
-                target_port = 30000 + call_num
-                
-            except ValueError:
-                target_port = 0
-
-        if target_port > 0:
-            source_port = target_port
+        if is_debug_mode:
+            source_port = random.randrange(10000, 65535)
         else:
-            # Fallback: specific random range 40000-45000
-            # (Distinct from the 3xxxx range to avoid collision/confusion)
-            source_port = random.randrange(40000, 45000)
+            # ---------------------------------------------------------
+            #  NEW LOGIC: Deterministic Source Port from CALL ID
+            #  Goal: Map CALL-XXXX -> Port 30000..39999 (modulo 10000)
+            # ---------------------------------------------------------
+            call_id = args.get('call_id', 'NONE')
+            
+            target_port = 0
+            
+            if call_id.startswith("CALL-") and call_id[5:].isdigit():
+                try:
+                    raw_num = int(call_id[5:])
+                    
+                    # Warn if we see huge numbers (unexpected from orchestrator)
+                    if raw_num > 9999:
+                        print(f"Warning: CALL ID {call_id} exceeds 4 digits. Modulo will be applied.")
+
+                    # 0..9999
+                    call_num = raw_num % 10000
+                    
+                    # Map to 30000..39999
+                    target_port = 30000 + call_num
+                    
+                except ValueError:
+                    target_port = 0
+
+            if target_port > 0:
+                source_port = target_port
+            else:
+                # Fallback: specific random range 40000-45000
+                # (Distinct from the 3xxxx range to avoid collision/confusion)
+                source_port = random.randrange(40000, 45000)
 
 
     # Setup receiving socket to capture echoes
@@ -174,14 +178,12 @@ if __name__ == "__main__":
         udp_payload_parts.append(bytes.fromhex(tmp))
     payload_padding = b"".join(udp_payload_parts)
 
-    is_debug_mode = os.environ.get('DEBUG', 'false').lower() == 'true'
-
     import sys
     if is_debug_mode:
-        print("[DEBUG MODE] Payload: pure random bytes (no CID tag) — media classification mode", file=sys.stderr)
+        print("[DEBUG MODE] tos=0 (no DSCP) | port=RANDOM | payload=pure random bytes — full legacy mode", file=sys.stderr)
         final_payload = payload_padding[:200]
     else:
-        print("[NORMAL MODE] Payload: CID-tagged — call tracking mode", file=sys.stderr)
+        print("[NORMAL MODE] tos=184 (DSCP EF) | port=31000+N | payload=CID-tagged — production mode", file=sys.stderr)
         # Create payload with embedded Call ID
         call_id_tag = f"CID:{args.get('call_id', 'NONE')}:".encode()
         final_payload = (call_id_tag + payload_padding)[:200]
@@ -191,10 +193,16 @@ if __name__ == "__main__":
     print(f"[{timestamp}] [{args['call_id']}] 📞 RTP Engine STARTED: {args['destination_ip']}:{args['destination_port']} | G.711-ulaw | {int(args['min_count'] * 0.03)}s", file=sys.stderr)
 
     # Pre-build packet template for performance
-    if args['source_ip'] is None:
-        base_packet = IP(dst=args['destination_ip'], proto=17, len=240, tos=184)  # DSCP EF (46)
+    if is_debug_mode:
+        if args['source_ip'] is None:
+            base_packet = IP(dst=args['destination_ip'], proto=17, len=240)  # tos=0
+        else:
+            base_packet = IP(dst=args['destination_ip'], src=args['source_ip'], proto=17, len=240)  # tos=0
     else:
-        base_packet = IP(dst=args['destination_ip'], src=args['source_ip'], proto=17, len=240, tos=184)  # DSCP EF (46)
+        if args['source_ip'] is None:
+            base_packet = IP(dst=args['destination_ip'], proto=17, len=240, tos=184)  # DSCP EF (46)
+        else:
+            base_packet = IP(dst=args['destination_ip'], src=args['source_ip'], proto=17, len=240, tos=184)  # DSCP EF (46)
         
     base_packet = base_packet/UDP(sport=source_port, dport=args['destination_port'], len=220)
 
