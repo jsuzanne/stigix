@@ -1263,10 +1263,10 @@ export default function Vyos(props: VyosProps) {
                         <table className="w-full text-left text-xs border-collapse table-fixed">
                             <colgroup>
                                 <col className="w-[130px]" />
+                                <col className="w-[22%]" />
+                                <col className="w-[15%]" />
                                 <col className="w-[28%]" />
-                                <col className="w-[18%]" />
-                                <col className="w-[30%]" />
-                                <col className="w-[90px]" />
+                                <col className="w-[35%]" />
                             </colgroup>
                             <thead className="bg-card-secondary/80 border-b border-border sticky top-0">
                                 <tr>
@@ -1274,7 +1274,7 @@ export default function Vyos(props: VyosProps) {
                                     <th className="px-4 py-3 font-semibold text-text-muted text-[10px] uppercase tracking-wider">Sequence</th>
                                     <th className="px-4 py-3 font-semibold text-text-muted text-[10px] uppercase tracking-wider">Router</th>
                                     <th className="px-4 py-3 font-semibold text-text-muted text-[10px] uppercase tracking-wider">Action</th>
-                                    <th className="px-4 py-3 font-semibold text-text-muted text-[10px] uppercase tracking-wider text-center">Result</th>
+                                    <th className="px-4 py-3 font-semibold text-text-muted text-[10px] uppercase tracking-wider">Result</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border/50">
@@ -1357,12 +1357,17 @@ export default function Vyos(props: VyosProps) {
                                                                 })()}
                                                             </div>
                                                         </td>
-                                                        <td className="px-6 py-4 text-center">
-                                                            <div className="flex justify-center">
-                                                                <div className={`flex items-center gap-2 px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${log.status === 'success' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'}`}>
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className={`flex items-center gap-2 px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest flex-shrink-0 ${log.status === 'success' ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'}`}>
                                                                     {log.status === 'success' ? <CheckCircle size={10} /> : <AlertCircle size={10} />}
                                                                     {log.status}
                                                                 </div>
+                                                                {log.error && (
+                                                                    <div className="text-[10px] text-red-500/80 font-mono truncate" title={log.error}>
+                                                                        {log.error}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -1404,15 +1409,22 @@ export default function Vyos(props: VyosProps) {
                                                     })()}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-2.5 text-center">
-                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[9px] font-semibold ${
-                                                    log.status === 'success'
-                                                        ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                                                        : 'bg-red-500/10 text-red-400 border-red-500/20'
-                                                }`}>
-                                                    {log.status === 'success' ? <CheckCircle size={10} /> : <AlertCircle size={10} />}
-                                                    {log.status === 'success' ? 'OK' : 'Failed'}
-                                                </span>
+                                            <td className="px-4 py-2.5">
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[9px] font-semibold flex-shrink-0 ${
+                                                        log.status === 'success'
+                                                            ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                                                            : 'bg-red-500/10 text-red-400 border-red-500/20'
+                                                    }`}>
+                                                        {log.status === 'success' ? <CheckCircle size={10} /> : <AlertCircle size={10} />}
+                                                        {log.status === 'success' ? 'OK' : 'Failed'}
+                                                    </span>
+                                                    {log.error && (
+                                                        <div className="text-[10px] text-red-500/80 font-mono truncate" title={log.error}>
+                                                            {log.error}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     ));

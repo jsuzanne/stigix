@@ -382,7 +382,17 @@ export class VyosManager extends EventEmitter {
                         resolve({ success: true, output, cliEquivalent });
                     }
                 } else {
-                    reject(new Error(stderrBuf.trim() || `Process exited with code ${code}`));
+                    let extractedError = stderrBuf.trim();
+                    try {
+                        const jsonStart = output.indexOf('{');
+                        if (jsonStart !== -1) {
+                            const parsed = JSON.parse(output.substring(jsonStart));
+                            if (parsed.error) {
+                                extractedError = parsed.error;
+                            }
+                        }
+                    } catch {}
+                    reject(new Error(extractedError || `Process exited with code ${code}`));
                 }
             });
         });
