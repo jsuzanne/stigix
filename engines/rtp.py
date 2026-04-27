@@ -176,18 +176,19 @@ if __name__ == "__main__":
 
     is_debug_mode = os.environ.get('DEBUG', 'false').lower() == 'true'
 
+    import sys
     if is_debug_mode:
-        print("[DEBUG MODE] Payload: pure random bytes (no CID tag) — media classification mode")
+        print("[DEBUG MODE] Payload: pure random bytes (no CID tag) — media classification mode", file=sys.stderr)
         final_payload = payload_padding[:200]
     else:
-        print("[NORMAL MODE] Payload: CID-tagged — call tracking mode")
+        print("[NORMAL MODE] Payload: CID-tagged — call tracking mode", file=sys.stderr)
         # Create payload with embedded Call ID
         call_id_tag = f"CID:{args.get('call_id', 'NONE')}:".encode()
         final_payload = (call_id_tag + payload_padding)[:200]
     
     timestamp = time.strftime('%H:%M:%S')
-    print(f"[{timestamp}] [{args['call_id']}] 🚀 Executing: python3 rtp.py -D {args['destination_ip']} -dport {args['destination_port']} --min-count {args['min_count']} --max-count {args['max_count']} --source-interface {args['source_interface']} --call-id {args['call_id']}")
-    print(f"[{timestamp}] [{args['call_id']}] 📞 CALL STARTED: {args['destination_ip']}:{args['destination_port']} | G.711-ulaw | {int(args['min_count'] * 0.03)}s")
+    print(f"[{timestamp}] [{args['call_id']}] 🚀 Executing: python3 rtp.py -D {args['destination_ip']} -dport {args['destination_port']} --min-count {args['min_count']} --max-count {args['max_count']} --source-interface {args['source_interface']} --call-id {args['call_id']}", file=sys.stderr)
+    print(f"[{timestamp}] [{args['call_id']}] 📞 RTP Engine STARTED: {args['destination_ip']}:{args['destination_port']} | G.711-ulaw | {int(args['min_count'] * 0.03)}s", file=sys.stderr)
 
     # Pre-build packet template for performance
     if args['source_ip'] is None:

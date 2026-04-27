@@ -222,8 +222,8 @@ def start_call(server, interface):
     try:
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
-        # Capture stdout for QoS data
-        proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        # Capture stdout for QoS data, let stderr pass through to console for debug logs
+        proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE)
         call_info = {
             "call_id": call_id,
             "pid": proc.pid,
