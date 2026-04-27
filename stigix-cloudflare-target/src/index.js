@@ -111,6 +111,25 @@ export default {
       if (!searchParams.has("delay")) {
         delay = 5000;
       }
+    } else if (pathname === "/saas/flap") {
+      mode = "info";
+      const peakDelay = parseInt(searchParams.get("delay") || "5000", 10);
+      const periodMs = parseInt(searchParams.get("period") || "120000", 10);
+      const phase = (Date.now() % periodMs) / periodMs;
+      // Square wave: First half of the period is slow, second half is fast (0)
+      delay = phase < 0.5 ? peakDelay : 0;
+    } else if (pathname === "/saas/wave") {
+      mode = "info";
+      const peakDelay = parseInt(searchParams.get("delay") || "5000", 10);
+      const periodMs = parseInt(searchParams.get("period") || "120000", 10);
+      const phase = (Date.now() % periodMs) / periodMs; // 0.0 to 1.0
+      // Sine wave: goes from 0 to peakDelay smoothly
+      delay = Math.floor(((Math.sin(phase * Math.PI * 2 - Math.PI / 2) + 1) / 2) * peakDelay);
+    } else if (pathname === "/saas/random") {
+      mode = "info";
+      const peakDelay = parseInt(searchParams.get("delay") || "5000", 10);
+      const probability = parseFloat(searchParams.get("prob") || "0.5");
+      delay = Math.random() < probability ? peakDelay : 0;
     } else if (pathname === "/download/large") {
       mode = "large";
       // si pas de size, on met 10m par défaut
@@ -134,7 +153,7 @@ export default {
           {
             error: "Not Found",
             path: pathname,
-            hint: "Use /, /saas/info, /saas/slow, /download/large, /security/eicar, /advanced",
+            hint: "Use /, /saas/info, /saas/slow, /saas/flap, /saas/wave, /saas/random, /download/large, /security/eicar, /advanced",
           },
           null,
           2
