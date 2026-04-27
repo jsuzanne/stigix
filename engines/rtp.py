@@ -174,9 +174,16 @@ if __name__ == "__main__":
         udp_payload_parts.append(bytes.fromhex(tmp))
     payload_padding = b"".join(udp_payload_parts)
 
-    # Create payload with embedded Call ID
-    call_id_tag = f"CID:{args.get('call_id', 'NONE')}:".encode()
-    final_payload = (call_id_tag + payload_padding)[:200]
+    is_debug_mode = os.environ.get('DEBUG', 'false').lower() == 'true'
+
+    if is_debug_mode:
+        print("[DEBUG MODE] Payload: pure random bytes (no CID tag) — media classification mode")
+        final_payload = payload_padding[:200]
+    else:
+        print("[NORMAL MODE] Payload: CID-tagged — call tracking mode")
+        # Create payload with embedded Call ID
+        call_id_tag = f"CID:{args.get('call_id', 'NONE')}:".encode()
+        final_payload = (call_id_tag + payload_padding)[:200]
     
     timestamp = time.strftime('%H:%M:%S')
     print(f"[{timestamp}] [{args['call_id']}] 🚀 Executing: python3 rtp.py -D {args['destination_ip']} -dport {args['destination_port']} --min-count {args['min_count']} --max-count {args['max_count']} --source-interface {args['source_interface']} --call-id {args['call_id']}")
