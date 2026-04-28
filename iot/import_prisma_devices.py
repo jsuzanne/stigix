@@ -239,8 +239,6 @@ def make_device_id(vendor, category, counter):
 def convert(
     input_path,
     output_path,
-    base_ip=None,
-    start_ip=50,
     only_iot=False,
     enable_security=False,
     security_percentage=None,
@@ -249,7 +247,6 @@ def convert(
 ):
     devices = []
     counters = {}  # vendor -> count (for unique IDs)
-    ip_counter = start_ip
 
     with open(input_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
@@ -288,13 +285,7 @@ def convert(
         if not mac or mac == "00:00:00:00:00:00":
             mac = ":".join(f"{random.randint(0, 255):02x}" for _ in range(6))
 
-        # IP: use override base_ip if provided, else real IP from CSV
-        if base_ip:
-            ip = f"{base_ip}.{ip_counter}"
-        else:
-            ip = ip_raw or f"192.168.207.{ip_counter}"
-
-        # Gateway
+        # Gateway (kept for internal use but not emitted per device)
         gw = gateway or extract_gateway(subnet)
 
         # Protocols: use apps_str if rich, else fall back to category defaults
@@ -322,7 +313,6 @@ def convert(
             "vendor": vendor,
             "type": category,
             "mac": mac,
-            "ip_start": ip,
             "protocols": sorted(set(protocols)),
             "enabled": True,
             "traffic_interval": random.randint(60, 300),
@@ -354,7 +344,6 @@ def convert(
             }
 
         devices.append(device)
-        ip_counter += 1
 
     if skipped:
         print(f"⚠️  Skipped {skipped} non-IoT devices (use --all to include them)")
@@ -381,12 +370,8 @@ def main():
         epilog="""
 Examples:
 
-  # Basic conversion (keeps original IPs from CSV)
+  # Basic conversion (DHCP — no static IP assigned)
   python import_prisma_devices.py -i "iot device bad sources.csv" -o devices.json
-
-  # Override to a custom IP subnet
-  python import_prisma_devices.py -i "iot device bad sources.csv" -o devices.json \\
-      --base-ip 192.168.207 --start-ip 50
 
   # Only keep IoT devices (filter out PCs, VMs, tablets)
   python import_prisma_devices.py -i "iot device bad sources.csv" -o iot-only.json --only-iot
@@ -397,7 +382,7 @@ Examples:
   # Force bad behavior for ALL devices
   python import_prisma_devices.py -i "iot device bad sources.csv" -o devices.json --enable-security
 
-  # Import only top 30 riskiest devices
+  # Import only top 30 riskiest devices (Critical first)
   python import_prisma_devices.py -i "iot device bad sources.csv" -o devices.json --max-devices 30
 
   # Top 30 riskiest, IoT only
@@ -409,11 +394,6 @@ Examples:
     )
     parser.add_argument("-i", "--input",  required=True, help="Prisma CSV export file")
     parser.add_argument("-o", "--output", required=True, help="Output JSON file")
-    parser.add_argument("--base-ip",  default=None,
-                        help="Override IP subnet (first 3 octets, e.g. 192.168.207). "
-                             "If not set, uses real IPs from CSV.")
-    parser.add_argument("--start-ip", type=int, default=50,
-                        help="Starting last octet when --base-ip is set (default: 50)")
     parser.add_argument("--gateway",  default=None,
                         help="Force a specific gateway IP (default: derived from CSV subnet)")
     parser.add_argument("--only-iot", action="store_true",
@@ -433,8 +413,6 @@ Examples:
     convert(
         input_path=args.input,
         output_path=args.output,
-        base_ip=args.base_ip,
-        start_ip=args.start_ip,
         only_iot=args.only_iot,
         enable_security=args.enable_security,
         security_percentage=args.security_percentage,
