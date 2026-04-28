@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.168] - 2026-04-28
+### Added
+- **IoT DHCP**: In-kernel **BPF filter** (`udp src port 67 dst port 68`) replaces slow Python `lfilter` for DHCP packet capture — runs in the kernel before Python, no more missed ACKs under load. `stop_filter` terminates sniff immediately on XID match. ⚡
+- **IoT DHCP**: **OFFER-without-ACK fallback** — 3-level hierarchy:
+  1. ✅ Full ACK received → IP confirmed from DHCP server (best)
+  2. 🟡 OFFER received but ACK timed out (unicast ACK dropped by kernel, DHCP snooping, etc.) → uses offered IP + detects host gateway from `ip route show default` → sends gratuitous ARP
+  3. ❌ No OFFER at all → device stays silent until renewal loop retries
+- **IoT DHCP**: `_get_host_gateway()` helper reads the host routing table as gateway fallback when no DHCP ACK is available. 🌐
+- **IoT DHCP**: `_sniff_dhcp()` reusable helper shared by OFFER and ACK capture steps.
+- **IoT DHCP**: `_dhcp_attempt()` now returns `'ack_ok' | 'offer_no_ack' | 'no_offer' | 'error'` instead of `bool` for full fallback context. 🔄
+
+## [v1.2.2-patch.167] - 2026-04-28
+### Fixed
+- **IoT DHCP**: `self.ip` was assigned at REQUEST time (from the OFFER) before ACK confirmation. If ACK timed out, the stale offered IP leaked into `self.ip` — `_boot_sequence()` saw a non-null IP and started protocol threads with a ghost IP and no gateway (`HTTP SYN to None:80`). 🐛
+  - Fix: removed premature `self.ip = dhcp_offered_ip` from REQUEST block.
+  - `self.ip` is now exclusively set at line `msg_type == 5` (ACK confirmed).
+  - `do_dhcp_sequence()` explicitly resets `self.ip = None` and `self.gateway = None` after all retries exhaust without success.
+
+## [v1.2.2-patch.166] - 2026-04-28
+### Fixed
+- **IoT Daemon**: `SyntaxError: name 'ENABLE_BAD_BEHAVIOR' is assigned to before global declaration` crashing the daemon on Python 3.12. 🔥
+  - Root cause: two `global ENABLE_BAD_BEHAVIOR` declarations in different `elif` branches of the same `daemon_loop()` function.
+  - Fix: moved the single `global ENABLE_BAD_BEHAVIOR` declaration to the very top of `daemon_loop()`, removing the per-branch declarations.
+
+## [v1.2.2-patch.165] - 2026-04-28
+### Fixed
+- **IoT Bad Behavior**: Added early exit guard inside inner loops for all remaining behavior types — Clean Mode now stops ALL attack traffic within < 0.5s of clicking the button. 🛑
+  - **C2 Beacon**: between DNS send and HTTP send (was waiting 1s)
+  - **Data Exfil**: inside the 5-packet upload burst (was waiting 0.5s per packet)
+  - **PAN Test DNS**: inside the 5-query burst (was waiting 1s per query)
+  - **PAN Test URL**: inside the 3-URL burst (was waiting 2s per URL)
+
+## [v1.2.2-patch.164] - 2026-04-28
+### Fixed
+- **IoT Bad Behavior**: `disable_bad_behavior` daemon command was missing `global ENABLE_BAD_BEHAVIOR` declaration → Python created a local variable that disappeared immediately, leaving the global flag `True`. Clean Mode appeared to activate in the UI but had zero effect — devices stopped then restarted would still launch attacks. 🐛
+- **IoT DNS Flood**: Added early exit inside the 10-query burst loop — thread stops within 0.5s of clean mode toggle instead of finishing the full burst. ⚡
+- **IoT Port Scan**: Same early exit inside the 10-port scan loop — stops within 0.1s. ⚡
+
+## [v1.2.2-patch.163] - 2026-04-28
+### Performance
+- **IoT Daemon**: Staggered device boot — each new device waits `(index × 2s + 0–1s jitter)` before calling `start()`. 30 devices spread over ~62 seconds instead of simultaneously → eliminates DHCP Discover storm on the router. ⏳
+### Fixed
+- **IoT Boot Sequence**: Refactored `start()` into a `_boot_sequence()` inner function:
+  1. DHCP runs **blocking** (no more `time.sleep(2)` hack)
+  2. If no IP after DHCP → abort silently, protocol threads and bad behavior **do NOT start**
+  3. Protocol threads start only after IP is confirmed
+  4. Bad behavior starts only after IP is confirmed — eliminates `💀 RANDOM MIX started` with no IP or gateway
+
 ## [v1.2.2-patch.162] - 2026-04-28
 ### Added
 - **IoT**: Global **Bad Behavior toggle** button (`🗡️ Clean Mode` / `💀 Attack ON`) in the IoT filter bar — enables or disables attack mode across all configured devices in one click without restarting. 🔴
