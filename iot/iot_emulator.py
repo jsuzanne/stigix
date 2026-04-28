@@ -427,6 +427,8 @@ class IoTDevice:
         while self.running and (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
             try:
                 for _ in range(10):  # Burst of 10 queries
+                    if not self.running or not (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
+                        return  # Stop immediately on clean mode
                     domain = random.choice(self.SUSPICIOUS_DOMAINS)
                     dns_server = random.choice(dns_servers)
                     
@@ -466,6 +468,8 @@ class IoTDevice:
                 target = random.choice(targets)
                 
                 for port in common_ports:
+                    if not self.running or not (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
+                        return  # Stop immediately on clean mode
                     pkt = IP(src=self.ip, dst=target) / \
                           TCP(sport=random.randint(1024, 65535), dport=port, flags="S")
                     
@@ -1325,6 +1329,7 @@ def daemon_loop(interface: str, dhcp_mode: str = "auto"):
             logger.info(f"⚠️  Bad behavior ENABLED globally ({count} devices activated)")
 
         elif action == "disable_bad_behavior":
+            global ENABLE_BAD_BEHAVIOR  # required to modify the module-level global
             ENABLE_BAD_BEHAVIOR = False
             for dev in devices.values():
                 dev.stats["bad_behavior_active"] = False
