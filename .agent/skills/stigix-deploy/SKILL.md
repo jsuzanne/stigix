@@ -37,9 +37,34 @@ echo "$NEW_VER" > engines/VERSION
 
 All three files must always stay in sync.
 
+### 2bis — Update CHANGELOG.md
+
+> [!IMPORTANT]
+> **Mandatory step** — `CHANGELOG.md` must be updated before every code commit. Never ship a patch without a changelog entry.
+
+Open `/Users/jsuzanne/Github/stigix/CHANGELOG.md` and **prepend** a new entry at the very top (after the file header), following this exact format:
+
+```markdown
+## [vX.Y.Z-patch.NNN] - YYYY-MM-DD
+### Added / Fixed / Changed / Performance / Refactored
+- **Component**: Description of what changed and why. Use emojis for readability. 🚀
+```
+
+**Rules for the entry:**
+- Use the correct date (`YYYY-MM-DD` in local time).
+- Group bullet points under the appropriate heading(s): `Added`, `Fixed`, `Changed`, `Performance`, `Refactored`, `Removed`, `Documentation`.
+- Be concise but specific — mention the file/component affected and the user-visible impact.
+- If multiple patches were done in the same session and the changelog is behind, catch up **all** missing entries in one go using `git log --oneline` to reconstruct what changed.
+
+**Catch-up check**: Before writing the entry, verify the last documented patch:
+```bash
+grep "## \[v" CHANGELOG.md | head -1
+```
+If it is more than 1 patch behind the new version, add all the missing entries.
+
 ### 3 — Stage, commit, and push
 
-Stage **all** changed files (source + VERSION files together in one commit). 
+Stage **all** changed files (source + VERSION files + CHANGELOG together in one commit). 
 
 > [!IMPORTANT]
 > **Visibility Rule**: Always prefix the commit message with the new version number. This makes it easy to track which version is being built in the GitHub Actions list.
@@ -73,4 +98,5 @@ You should see the run name labeled with `🚀 Release $NEW_VER`.
 - **Prefix**: Never forget the `$NEW_VER:` prefix in the commit message.
 - **Sync**: VERSION files and the git tag must always match exactly.
 - **Timing**: Always bump version **before** the tag push.
+- **Changelog**: Always update `CHANGELOG.md` — it must never be more than 1 patch behind.
 - **Doc-only**: Skip versioning for README/Documentation-only changes.
