@@ -638,6 +638,18 @@ python import_prisma_devices.py \
   -i "iot device bad sources.csv" \
   -o devices.json \
   --security-percentage 30
+
+# Import only the top 30 riskiest devices (Critical first)
+python import_prisma_devices.py \
+  -i "iot device bad sources.csv" \
+  -o devices.json \
+  --max-devices 30
+
+# Top 20 riskiest IoT-only devices on a custom subnet
+python import_prisma_devices.py \
+  -i "iot device bad sources.csv" \
+  -o devices.json \
+  --max-devices 20 --only-iot --base-ip 192.168.207 --start-ip 50
 ```
 
 ### Options
@@ -652,6 +664,7 @@ python import_prisma_devices.py \
 | `--only-iot` | Filter out Non-IoT devices (VMs, PCs, tablets) |
 | `--enable-security` | Enable bad behavior for ALL devices |
 | `--security-percentage N` | Enable bad behavior for N% of devices |
+| `--max-devices N` | Export only the top N devices, sorted by risk level descending (Critical → High → Medium → Low) |
 
 ### What gets auto-imported
 
