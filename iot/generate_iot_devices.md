@@ -599,3 +599,116 @@ LLM Generation Guide - Generate configs using ChatGPT/Claude
 IoT Emulator Documentation - Main emulator documentation
 
 DHCP Fingerprinting Guide - Deep dive into DHCP fingerprints
+
+---
+
+## 🔄 Importing from Prisma Device Security (CSV)
+
+`import_prisma_devices.py` converts a **Prisma Access IoT Security / Device Security** CSV export
+directly into a Stigix-compatible JSON config. No manual editing required.
+
+### How to export from Prisma
+
+1. In **Prisma Access → IoT Security → Device Inventory**, filter and select the devices you want
+2. Click **Export** → CSV
+3. Save the file (e.g. `"iot device bad sources.csv"`)
+
+### Running the import script
+
+```bash
+# Basic: keep real IPs from CSV
+python import_prisma_devices.py \
+  -i "iot device bad sources.csv" \
+  -o prisma-devices.json
+
+# Override IPs to a custom subnet
+python import_prisma_devices.py \
+  -i "iot device bad sources.csv" \
+  -o prisma-devices.json \
+  --base-ip 192.168.207 --start-ip 50
+
+# Only keep actual IoT devices (filter out PCs, VMs, tablets)
+python import_prisma_devices.py \
+  -i "iot device bad sources.csv" \
+  -o iot-only.json \
+  --only-iot
+
+# Enable bad behavior for 30% of devices
+python import_prisma_devices.py \
+  -i "iot device bad sources.csv" \
+  -o devices.json \
+  --security-percentage 30
+```
+
+### Options
+
+| Option | Description |
+|---|---|
+| `-i / --input` | Path to the Prisma CSV export |
+| `-o / --output` | Output JSON file |
+| `--base-ip` | Override subnet (first 3 octets). If omitted, real IPs from CSV are used |
+| `--start-ip N` | Starting last octet when `--base-ip` is set (default: 50) |
+| `--gateway IP` | Force a specific gateway (default: auto-derived from subnet in CSV) |
+| `--only-iot` | Filter out Non-IoT devices (VMs, PCs, tablets) |
+| `--enable-security` | Enable bad behavior for ALL devices |
+| `--security-percentage N` | Enable bad behavior for N% of devices |
+
+### What gets auto-imported
+
+| CSV Field | Stigix Field |
+|---|---|
+| `hostname` | `name`, `fingerprint.dhcp.hostname` |
+| `ip address` | `ip_start` |
+| `mac address` | `mac` |
+| `profile` / display_vendor | `vendor` |
+| display_model | included in `name` |
+| `category` | `type` + protocol selection |
+| `display_apps` | `protocols` (mapped from Prisma app-IDs) |
+| `subnets` | `gateway` (auto-derived as first IP of subnet) |
+| `ml_risk_level` | `security.bad_behavior` (auto-enabled for Critical/High) |
+| `display_profile_confidence` | `description` |
+
+### Then launch the emulator
+
+```bash
+# Run the emulator with the imported config
+sudo python iot_emulator.py -i eth0 -c prisma-devices.json
+
+# With bad behavior enabled (simulates the risky devices from Prisma)
+sudo python iot_emulator.py -i eth0 -c prisma-devices.json --bad-behavior
+```
+
+### Combining with generate_iot_devices.py
+
+You can merge your Prisma real devices with generated synthetic ones:
+
+```bash
+# Generate additional synthetic devices
+python generate_iot_devices.py --preset small --output synthetic.json
+
+# Merge both JSON files manually (jq example)
+jq -s '{network: .[0].network, devices: (.[0].devices + .[1].devices)}' \
+  prisma-devices.json synthetic.json > merged.json
+```
+
+### Running `generate_iot_devices.py` — Quick Reference
+
+```bash
+# List available categories
+python generate_iot_devices.py --list-categories
+
+# Generate a preset
+python generate_iot_devices.py --preset small     # ~30 devices
+python generate_iot_devices.py --preset medium    # ~65 devices
+python generate_iot_devices.py --preset large     # ~110 devices
+python generate_iot_devices.py --preset enterprise # ~170 devices
+
+# Custom device mix
+python generate_iot_devices.py \
+  --custom "Security Cameras:10,Sensors:20,Smart Lighting:15" \
+  --base-ip 192.168.207 --start-ip 50 \
+  --output my-lab.json
+
+# Add bad behavior to 20% of devices
+python generate_iot_devices.py --preset medium --security-percentage 20 -o lab.json
+```
