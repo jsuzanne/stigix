@@ -686,12 +686,19 @@ class IoTDevice:
         except Exception:
             client_id = b"\x01\x00\x00\x00\x00\x00\x00"
 
+        # Clean hostname to ASCII
+        try:
+            hostname_bytes = hostname.encode("ascii", errors="replace")
+        except Exception:
+            hostname_bytes = b"iot-device"
+
         options = [
             ("message-type", msg_type),
-            ("hostname", hostname.encode()),
+            ("max_dhcp_size", 1500),          # Option 57 — realistic stack fingerprint
+            ("hostname", hostname_bytes),
             ("client_id", client_id),
-            ("vendor_class_id", vendor_class_id.encode()),
-            ("param_req_list", param_req_list),
+            ("vendor_class_id", vendor_class_id.encode("ascii", errors="replace")),
+            ("param_req_list", param_req_list),  # Order is preserved — key Prisma fingerprint
             ("end"),
         ]
         return options
@@ -704,10 +711,16 @@ class IoTDevice:
             self.dhcp_xid = random.randint(1, 0xFFFFFFFF)
             discover_options = self.build_dhcp_options("discover")
             
+            # BOOTP broadcast flag (0x8000) = receive reply as broadcast before having an IP
+            # htype=1 (Ethernet), hlen=6 (MAC length) — explicit for credibility
             discover = Ether(dst="ff:ff:ff:ff:ff:ff", src=self.mac) / \
                        IP(src="0.0.0.0", dst="255.255.255.255") / \
                        UDP(sport=68, dport=67) / \
-                       BOOTP(chaddr=bytes.fromhex(self.mac.replace(':', '')), xid=self.dhcp_xid) / \
+                       BOOTP(chaddr=bytes.fromhex(self.mac.replace(':', '')),
+                             xid=self.dhcp_xid,
+                             flags=0x8000,
+                             htype=1,
+                             hlen=6) / \
                        DHCP(options=discover_options)
             
             self.log("info", f"📤 Sending DHCP DISCOVER (xid: {hex(self.dhcp_xid)}, MAC: {self.mac})")
@@ -775,10 +788,15 @@ class IoTDevice:
             
             dhcp_options.append(("end"))
             
+            # DHCP Request — same broadcast flag as Discover
             request = Ether(dst="ff:ff:ff:ff:ff:ff", src=self.mac) / \
                       IP(src="0.0.0.0", dst="255.255.255.255") / \
                       UDP(sport=68, dport=67) / \
-                      BOOTP(chaddr=bytes.fromhex(self.mac.replace(':', '')), xid=self.dhcp_xid) / \
+                      BOOTP(chaddr=bytes.fromhex(self.mac.replace(':', '')),
+                            xid=self.dhcp_xid,
+                            flags=0x8000,
+                            htype=1,
+                            hlen=6) / \
                       DHCP(options=dhcp_options)
             
             sendp(request, iface=self.interface, verbose=0)
@@ -813,6 +831,22 @@ class IoTDevice:
                         self.log("info", f"✅ Received DHCP ACK from {ack_pkt[IP].src} (Assigned IP: {assigned_ip})")
                         if JSON_OUTPUT:
                             emit_json("dhcp_ack", device_id=self.id, assigned_ip=assigned_ip, server_id=ack_pkt[IP].src, gateway=self.gateway)
+
+                        # ── Gratuitous ARP after DHCP ACK ──────────────────────────────
+                        # Real devices announce their new IP via gratuitous ARP.
+                        # Prisma IoT Security uses this to confirm MAC↔IP binding.
+                        try:
+                            time.sleep(0.1)
+                            garp = Ether(dst="ff:ff:ff:ff:ff:ff", src=self.mac) / \
+                                   ARP(op="is-at",
+                                       hwsrc=self.mac,
+                                       psrc=assigned_ip,
+                                       hwdst="ff:ff:ff:ff:ff:ff",
+                                       pdst=assigned_ip)
+                            sendp(garp, iface=self.interface, verbose=0)
+                            self.log("info", f"📣 Gratuitous ARP sent: {assigned_ip} is-at {self.mac}")
+                        except Exception as ge:
+                            self.log("warning", f"⚠️ Gratuitous ARP failed: {ge}")
                     elif msg_type == 6:
                         self.log("error", "❌ Received DHCP NAK - request rejected by server")
                     else:
@@ -872,8 +906,18 @@ class IoTDevice:
             time.sleep(30)
     
     def send_arp(self):
-        """Send ARP requests"""
+        """Send ARP requests (who-has gateway) — key for Prisma IoT MAC fingerprinting"""
         self.log("debug", "🔍 ARP thread started")
+
+        # Wait for IP and gateway from DHCP before sending ARP
+        wait = 0
+        while (not self.ip or not self.gateway) and wait < 30:
+            time.sleep(0.5)
+            wait += 1
+
+        if not self.ip or not self.gateway:
+            self.log("warning", "⚠️ ARP skipped — no IP or gateway available")
+            return
         
         while self.running:
             try:
