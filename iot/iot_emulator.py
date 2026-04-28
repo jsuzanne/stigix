@@ -1230,6 +1230,7 @@ class IoTEmulator:
 
 
 def daemon_loop(interface: str, dhcp_mode: str = "auto"):
+    global ENABLE_BAD_BEHAVIOR  # declared once — modified by enable/disable_bad_behavior commands
     """
     Daemon mode: read JSON commands from stdin, manage IoTDevice threads in-process.
     This is the single-process architecture used by Node.js iot-manager.ts.
@@ -1325,7 +1326,6 @@ def daemon_loop(interface: str, dhcp_mode: str = "auto"):
             emit_json("daemon_status", devices=status)
 
         elif action == "enable_bad_behavior":
-            global ENABLE_BAD_BEHAVIOR
             ENABLE_BAD_BEHAVIOR = True
             count = 0
             for dev in devices.values():
@@ -1337,7 +1337,6 @@ def daemon_loop(interface: str, dhcp_mode: str = "auto"):
             logger.info(f"⚠️  Bad behavior ENABLED globally ({count} devices activated)")
 
         elif action == "disable_bad_behavior":
-            global ENABLE_BAD_BEHAVIOR  # required to modify the module-level global
             ENABLE_BAD_BEHAVIOR = False
             for dev in devices.values():
                 dev.stats["bad_behavior_active"] = False
