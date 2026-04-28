@@ -728,6 +728,8 @@ class IoTDevice:
                 wait = 2 * attempt  # 2s, 4s
                 self.log("warning", f"⏳ DHCP retry {attempt}/{self.DHCP_MAX_RETRIES} in {wait}s...")
                 time.sleep(wait)
+        self.ip = None  # ensure no stale IP from a failed offer leaks through
+        self.gateway = None
         self.log("error", f"❌ DHCP failed after {self.DHCP_MAX_RETRIES} attempts — device will have no IP until renewal")
 
     def _dhcp_attempt(self, attempt: int = 1) -> bool:
@@ -796,7 +798,6 @@ class IoTDevice:
                 self.log("info", f"📤 DHCP REQUEST for static IP {self.ip_static}")
             else:
                 dhcp_options.append(("requested_addr", self.dhcp_offered_ip))
-                self.ip = self.dhcp_offered_ip
                 self.log("info", f"📤 DHCP REQUEST for offered IP {self.dhcp_offered_ip}")
 
             if self.dhcp_server_ip:
