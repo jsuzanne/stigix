@@ -189,7 +189,7 @@ class IoTDevice:
         self.traffic_interval = device_config.get("traffic_interval", 60)
         self.mqtt_topic = device_config.get("mqtt_topic")
         self.interface = interface
-        self.gateway = device_config.get("gateway", "192.168.207.1")
+        self.gateway = device_config.get("gateway", None)  # Will be set from DHCP ACK
         self.running = False
         self.dhcp_xid = random.randint(1, 0xFFFFFFFF)
         self.dhcp_offered_ip = None
@@ -382,6 +382,15 @@ class IoTDevice:
         if not self.ip or self.ip == "0.0.0.0":
             self.log("error", "❌ Cannot start bad behavior without IP")
             return
+
+        # Also wait for gateway from DHCP (up to 15s extra)
+        wait_count = 0
+        while not self.gateway and wait_count < 30:
+            time.sleep(0.5)
+            wait_count += 1
+
+        if not self.gateway:
+            self.log("warning", "⚠️ No gateway from DHCP, bad behavior will skip gateway-targeted traffic")
         
         # Map behavior types to handler functions
         behavior_handlers = {
@@ -411,7 +420,9 @@ class IoTDevice:
     def _bad_dns_flood(self):
         """Flood DNS with suspicious/random domains"""
         self.log("warning", "💀 DNS FLOOD behavior started")
-        dns_servers = self.PUBLIC_SERVICES["dns"] + [self.gateway]
+        dns_servers = self.PUBLIC_SERVICES["dns"]
+        if self.gateway:
+            dns_servers = dns_servers + [self.gateway]
         
         while self.running:
             try:
@@ -438,10 +449,15 @@ class IoTDevice:
         self.log("warning", "💀 PORT SCAN behavior started")
         
         # Scan gateway + random internal IPs
-        targets = [self.gateway]
-        base_ip = ".".join(self.gateway.split(".")[0:3])
-        for _ in range(5):
-            targets.append(f"{base_ip}.{random.randint(1, 254)}")
+        targets = []
+        if self.gateway:
+            targets.append(self.gateway)
+            base_ip = ".".join(self.gateway.split(".")[0:3])
+            for _ in range(5):
+                targets.append(f"{base_ip}.{random.randint(1, 254)}")
+        if not targets:
+            self.log("warning", "⚠️ No gateway available, skipping port scan")
+            return
         
         common_ports = [21, 22, 23, 80, 443, 445, 3389, 8080, 8443, 10000]
         
@@ -528,7 +544,9 @@ class IoTDevice:
     def _bad_pan_test_domains(self):
         """Test with official Palo Alto Networks test domains for GUARANTEED detection"""
         self.log("warning", "💀 PAN TEST DOMAINS behavior started (DNS Security + URL Filtering)")
-        dns_servers = self.PUBLIC_SERVICES["dns"] + [self.gateway]
+        dns_servers = self.PUBLIC_SERVICES["dns"]
+        if self.gateway:
+            dns_servers = dns_servers + [self.gateway]
         
         while self.running:
             try:
@@ -613,6 +631,9 @@ class IoTDevice:
     def _bad_port_scan_single(self):
         """Send one port scan probe"""
         target = self.gateway
+        if not target:
+            self.log("warning", "⚠️ No gateway, skipping beacon HTTP")
+            return
         port = random.choice([22, 23, 445, 3389, 8080])
         
         pkt = IP(src=self.ip, dst=target) / \
@@ -1063,7 +1084,7 @@ class IoTEmulator:
                 logger.info(f"📡 Current Interface: {self.interface}")
             
             network = config.get("network", {})
-            self.gateway = network.get("gateway", "192.168.207.1")
+            self.gateway = network.get("gateway", None)  # None = will be set by DHCP
             
             if "interface" in network:
                 logger.info(f"💡 Note: interface '{network.get('interface')}' was defined in JSON but is ignored in favor of CLI/Auto-detection.")
@@ -1245,7 +1266,7 @@ Examples:
     parser.add_argument("--ip-static", help="Static IP to request in single device mode")
     parser.add_argument("--protocols", help="Comma-separated protocols for single device mode")
     parser.add_argument("--traffic-interval", type=int, default=60, help="Traffic interval in seconds")
-    parser.add_argument("--gateway", default="192.168.207.1", help="Gateway IP")
+    parser.add_argument("--gateway", default=None, help="Gateway IP (default: auto from DHCP)")
     parser.add_argument("--fingerprint", type=str, help="JSON-encoded DHCP fingerprint for single device mode")
     parser.add_argument("--security", type=str, help="JSON-encoded security config for single device mode")
 

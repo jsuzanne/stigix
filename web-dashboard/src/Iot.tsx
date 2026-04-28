@@ -655,20 +655,13 @@ export default function Iot({ token }: IotProps) {
                             <div className="grid grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Vendor</label>
-                                    <select
-                                        className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm text-foreground focus:ring-1 focus:ring-blue-500 outline-none appearance-none"
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Hikvision, Apple Inc., VMware"
+                                        className="w-full bg-card-secondary border border-border rounded-xl px-4 py-3 text-sm text-foreground focus:ring-1 focus:ring-blue-500 outline-none"
                                         value={editingDevice?.vendor || ''}
                                         onChange={e => setEditingDevice(prev => ({ ...prev!, vendor: e.target.value }))}
-                                    >
-                                        <option value="Generic">Generic</option>
-                                        <option value="Hikvision">Hikvision</option>
-                                        <option value="Dahua">Dahua</option>
-                                        <option value="Philips">Philips</option>
-                                        <option value="Xiaomi">Xiaomi</option>
-                                        <option value="Amazon">Amazon</option>
-                                        <option value="Google">Google</option>
-                                        <option value="TP-Link">TP-Link</option>
-                                    </select>
+                                    />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
