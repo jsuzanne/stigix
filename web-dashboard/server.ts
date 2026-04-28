@@ -8153,6 +8153,15 @@ app.get('/api/iot/stats', authenticateToken, (req, res) => {
     res.json(iotManager.getAllStats());
 });
 
+app.post('/api/iot/bad-behavior', authenticateToken, (req, res) => {
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+        return res.status(400).json({ error: 'enabled (boolean) required' });
+    }
+    iotManager.setBadBehavior(enabled);
+    res.json({ success: true, bad_behavior: enabled });
+});
+
 app.get('/api/iot/config/export', authenticateToken, (req, res) => {
     try {
         const config = getIoTConfig();

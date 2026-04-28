@@ -307,6 +307,15 @@ export class IoTManager extends EventEmitter {
         return Array.from(this.runningDevices.keys());
     }
 
+    setBadBehavior(enabled: boolean): void {
+        if (!this.daemonProcess) {
+            log('IOT', 'Cannot set bad behavior — daemon not running', 'warn');
+            return;
+        }
+        this.sendCommand({ cmd: enabled ? 'enable_bad_behavior' : 'disable_bad_behavior' });
+        log('IOT', `Bad behavior ${enabled ? 'ENABLED' : 'DISABLED'} globally`);
+    }
+
     isDaemonHealthy(): boolean {
         return this.daemonProcess !== null && this.daemonReady && !this.gaveUp;
     }

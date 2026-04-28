@@ -424,7 +424,7 @@ class IoTDevice:
         if self.gateway:
             dns_servers = dns_servers + [self.gateway]
         
-        while self.running:
+        while self.running and (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
             try:
                 for _ in range(10):  # Burst of 10 queries
                     domain = random.choice(self.SUSPICIOUS_DOMAINS)
@@ -461,7 +461,7 @@ class IoTDevice:
         
         common_ports = [21, 22, 23, 80, 443, 445, 3389, 8080, 8443, 10000]
         
-        while self.running:
+        while self.running and (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
             try:
                 target = random.choice(targets)
                 
@@ -487,7 +487,7 @@ class IoTDevice:
         beacon_ip = "198.51.100.66"  # TEST-NET-2 (won't respond but that's OK)
         dns_server = self.PUBLIC_SERVICES["dns"][0]
         
-        while self.running:
+        while self.running and (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
             try:
                 # DNS beacon
                 pkt_dns = IP(src=self.ip, dst=dns_server) / \
@@ -520,7 +520,7 @@ class IoTDevice:
             ("203.0.113.50", 8080),  # Fake HTTP proxy
         ]
         
-        while self.running:
+        while self.running and (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
             try:
                 target_ip, target_port = random.choice(exfil_targets)
                 
@@ -548,7 +548,7 @@ class IoTDevice:
         if self.gateway:
             dns_servers = dns_servers + [self.gateway]
         
-        while self.running:
+        while self.running and (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
             try:
                 # DNS Security tests - cycle through PAN test domains
                 for _ in range(5):  # Burst of 5 DNS queries
@@ -606,7 +606,7 @@ class IoTDevice:
             self._bad_beacon_single,
         ]
         
-        while self.running:
+        while self.running and (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
             try:
                 behavior = random.choice(behaviors)
                 behavior()
@@ -703,164 +703,158 @@ class IoTDevice:
         ]
         return options
     
+    DHCP_MAX_RETRIES = 3
+    DHCP_TIMEOUT = 4  # seconds per sniff
+
     def do_dhcp_sequence(self):
-        """Perform complete DHCP sequence: Discover -> Offer -> Request -> ACK"""
+        """Perform DHCP sequence with retries: Discover → Offer → Request → ACK"""
+        for attempt in range(1, self.DHCP_MAX_RETRIES + 1):
+            success = self._dhcp_attempt(attempt)
+            if success:
+                return
+            if attempt < self.DHCP_MAX_RETRIES:
+                wait = 2 * attempt  # 2s, 4s
+                self.log("warning", f"⏳ DHCP retry {attempt}/{self.DHCP_MAX_RETRIES} in {wait}s...")
+                time.sleep(wait)
+        self.log("error", f"❌ DHCP failed after {self.DHCP_MAX_RETRIES} attempts — device will have no IP until renewal")
+
+    def _dhcp_attempt(self, attempt: int = 1) -> bool:
+        """Single DHCP Discover→Offer→Request→ACK attempt. Returns True on success."""
         try:
-            self.log("info", f"🔄 Starting DHCP sequence (mode: {self.dhcp_mode})...")
-            
+            self.log("info", f"🔄 DHCP attempt {attempt} (mode: {self.dhcp_mode})...")
+
             self.dhcp_xid = random.randint(1, 0xFFFFFFFF)
+            # Reset offer state for this attempt
+            self.dhcp_offered_ip = None
+            self.dhcp_server_ip = None
+
             discover_options = self.build_dhcp_options("discover")
-            
+
+            def dhcp_filter(pkt):
+                return DHCP in pkt and BOOTP in pkt and pkt[BOOTP].xid == self.dhcp_xid
+
             # BOOTP broadcast flag (0x8000) = receive reply as broadcast before having an IP
             # htype=1 (Ethernet), hlen=6 (MAC length) — explicit for credibility
             discover = Ether(dst="ff:ff:ff:ff:ff:ff", src=self.mac) / \
                        IP(src="0.0.0.0", dst="255.255.255.255") / \
                        UDP(sport=68, dport=67) / \
                        BOOTP(chaddr=bytes.fromhex(self.mac.replace(':', '')),
-                             xid=self.dhcp_xid,
-                             flags=0x8000,
-                             htype=1,
-                             hlen=6) / \
+                             xid=self.dhcp_xid, flags=0x8000, htype=1, hlen=6) / \
                        DHCP(options=discover_options)
-            
-            self.log("info", f"📤 Sending DHCP DISCOVER (xid: {hex(self.dhcp_xid)}, MAC: {self.mac})")
+
+            self.log("info", f"📤 DHCP DISCOVER (xid: {hex(self.dhcp_xid)}, MAC: {self.mac})")
             if JSON_OUTPUT:
-                emit_json("dhcp_discover", device_id=self.id, xid=hex(self.dhcp_xid), mac=self.mac)
+                emit_json("dhcp_discover", device_id=self.id, xid=hex(self.dhcp_xid), mac=self.mac, attempt=attempt)
             sendp(discover, iface=self.interface, verbose=0)
-            
-            self.log("info", f"⏳ Waiting for DHCP OFFER (timeout: 3s)...")
-            
+
+            # ── Wait for OFFER ────────────────────────────────────────────────
+            self.log("info", f"⏳ Waiting for DHCP OFFER (timeout: {self.DHCP_TIMEOUT}s)...")
             try:
-                def dhcp_filter(pkt):
-                    if DHCP in pkt and BOOTP in pkt:
-                        if pkt[BOOTP].xid == self.dhcp_xid:
-                            return True
-                    return False
-                
-                packets = sniff(
-                    iface=self.interface,
-                    lfilter=dhcp_filter,
-                    timeout=3,
-                    count=1,
-                    store=1
-                )
-                
+                packets = sniff(iface=self.interface, lfilter=dhcp_filter,
+                                timeout=self.DHCP_TIMEOUT, count=1, store=1)
                 if packets:
                     offer_pkt = packets[0]
-                    options = self.parse_dhcp_options(offer_pkt)
-                    msg_type = options.get('message-type')
-                    
-                    if msg_type == 2:
+                    opts = self.parse_dhcp_options(offer_pkt)
+                    if opts.get('message-type') == 2:
                         self.dhcp_offered_ip = offer_pkt[BOOTP].yiaddr
                         self.dhcp_server_ip = offer_pkt[BOOTP].siaddr or offer_pkt[IP].src
-                        
-                        self.log("info", f"✅ Received DHCP OFFER from {self.dhcp_server_ip} (Offered IP: {self.dhcp_offered_ip})")
+                        self.log("info", f"✅ DHCP OFFER from {self.dhcp_server_ip} (offered: {self.dhcp_offered_ip})")
                         if JSON_OUTPUT:
-                            emit_json("dhcp_offer", device_id=self.id, server_id=self.dhcp_server_ip, offered_ip=self.dhcp_offered_ip)
+                            emit_json("dhcp_offer", device_id=self.id,
+                                      server_id=self.dhcp_server_ip, offered_ip=self.dhcp_offered_ip)
                     else:
-                        self.log("warning", f"⚠️ Received DHCP packet but not OFFER (type: {msg_type})")
+                        self.log("warning", f"⚠️ Got DHCP packet type {opts.get('message-type')} (not OFFER)")
+                        return False
                 else:
-                    self.log("warning", "⚠️ No DHCP OFFER received (timeout)")
-                    
+                    self.log("warning", f"⚠️ No DHCP OFFER received (timeout {self.DHCP_TIMEOUT}s)")
+                    return False
             except Exception as e:
-                self.log("warning", f"⚠️ Could not capture DHCP OFFER: {e}")
-            
-            time.sleep(0.5)
-            
+                self.log("warning", f"⚠️ OFFER capture error: {e}")
+                return False
+
+            time.sleep(0.3)
+
+            # ── Send REQUEST ─────────────────────────────────────────────────
             dhcp_options = self.build_dhcp_options("request")
             if dhcp_options and dhcp_options[-1] == ("end"):
                 dhcp_options = dhcp_options[:-1]
-            
+
             if self.dhcp_mode == "static" and self.ip_static:
                 dhcp_options.append(("requested_addr", self.ip_static))
-                self.log("info", f"📤 Sending DHCP REQUEST for static IP {self.ip_static}")
-            elif self.dhcp_offered_ip:
+                self.log("info", f"📤 DHCP REQUEST for static IP {self.ip_static}")
+            else:
                 dhcp_options.append(("requested_addr", self.dhcp_offered_ip))
                 self.ip = self.dhcp_offered_ip
-                self.log("info", f"📤 Sending DHCP REQUEST for offered IP {self.dhcp_offered_ip}")
-            else:
-                self.log("info", "📤 Sending DHCP REQUEST (accepting any IP from server)")
-            
+                self.log("info", f"📤 DHCP REQUEST for offered IP {self.dhcp_offered_ip}")
+
             if self.dhcp_server_ip:
                 dhcp_options.append(("server_id", self.dhcp_server_ip))
-            else:
-                dhcp_options.append(("server_id", self.gateway))
-            
             dhcp_options.append(("end"))
-            
-            # DHCP Request — same broadcast flag as Discover
+
             request = Ether(dst="ff:ff:ff:ff:ff:ff", src=self.mac) / \
                       IP(src="0.0.0.0", dst="255.255.255.255") / \
                       UDP(sport=68, dport=67) / \
                       BOOTP(chaddr=bytes.fromhex(self.mac.replace(':', '')),
-                            xid=self.dhcp_xid,
-                            flags=0x8000,
-                            htype=1,
-                            hlen=6) / \
+                            xid=self.dhcp_xid, flags=0x8000, htype=1, hlen=6) / \
                       DHCP(options=dhcp_options)
-            
             sendp(request, iface=self.interface, verbose=0)
-            
-            self.log("info", f"⏳ Waiting for DHCP ACK (timeout: 3s)...")
-            
+
+            # ── Wait for ACK ──────────────────────────────────────────────────
+            self.log("info", f"⏳ Waiting for DHCP ACK (timeout: {self.DHCP_TIMEOUT}s)...")
             try:
-                packets = sniff(
-                    iface=self.interface,
-                    lfilter=dhcp_filter,
-                    timeout=3,
-                    count=1,
-                    store=1
-                )
-                
+                packets = sniff(iface=self.interface, lfilter=dhcp_filter,
+                                timeout=self.DHCP_TIMEOUT, count=1, store=1)
                 if packets:
                     ack_pkt = packets[0]
-                    options = self.parse_dhcp_options(ack_pkt)
-                    msg_type = options.get('message-type')
-                    
-                    if msg_type == 5:
+                    opts = self.parse_dhcp_options(ack_pkt)
+                    msg_type = opts.get('message-type')
+
+                    if msg_type == 5:  # ACK
                         assigned_ip = ack_pkt[BOOTP].yiaddr
                         self.ip = assigned_ip
-                        
-                        router = options.get('router')
+                        router = opts.get('router')
                         if router:
                             self.gateway = router[0] if isinstance(router, list) else router
                             self.log("info", f"🌐 Gateway from DHCP: {self.gateway}")
                         else:
-                            self.log("warning", f"⚠️ No router option in DHCP ACK, keeping {self.gateway}")
-                        
-                        self.log("info", f"✅ Received DHCP ACK from {ack_pkt[IP].src} (Assigned IP: {assigned_ip})")
-                        if JSON_OUTPUT:
-                            emit_json("dhcp_ack", device_id=self.id, assigned_ip=assigned_ip, server_id=ack_pkt[IP].src, gateway=self.gateway)
+                            self.log("warning", "⚠️ No router option in DHCP ACK")
 
-                        # ── Gratuitous ARP after DHCP ACK ──────────────────────────────
-                        # Real devices announce their new IP via gratuitous ARP.
-                        # Prisma IoT Security uses this to confirm MAC↔IP binding.
+                        self.log("info", f"✅ DHCP ACK: {assigned_ip} from {ack_pkt[IP].src}")
+                        if JSON_OUTPUT:
+                            emit_json("dhcp_ack", device_id=self.id, assigned_ip=assigned_ip,
+                                      server_id=ack_pkt[IP].src, gateway=self.gateway)
+
+                        # ── Gratuitous ARP ────────────────────────────────────
                         try:
                             time.sleep(0.1)
                             garp = Ether(dst="ff:ff:ff:ff:ff:ff", src=self.mac) / \
-                                   ARP(op="is-at",
-                                       hwsrc=self.mac,
-                                       psrc=assigned_ip,
-                                       hwdst="ff:ff:ff:ff:ff:ff",
-                                       pdst=assigned_ip)
+                                   ARP(op="is-at", hwsrc=self.mac, psrc=assigned_ip,
+                                       hwdst="ff:ff:ff:ff:ff:ff", pdst=assigned_ip)
                             sendp(garp, iface=self.interface, verbose=0)
-                            self.log("info", f"📣 Gratuitous ARP sent: {assigned_ip} is-at {self.mac}")
+                            self.log("info", f"📣 Gratuitous ARP: {assigned_ip} is-at {self.mac}")
                         except Exception as ge:
                             self.log("warning", f"⚠️ Gratuitous ARP failed: {ge}")
-                    elif msg_type == 6:
-                        self.log("error", "❌ Received DHCP NAK - request rejected by server")
+
+                        self.log("info", f"✅ DHCP complete (IP: {self.ip}, GW: {self.gateway})")
+                        return True
+
+                    elif msg_type == 6:  # NAK
+                        self.log("error", "❌ DHCP NAK received")
+                        return False
                     else:
-                        self.log("warning", f"⚠️ Received DHCP packet but not ACK (type: {msg_type})")
+                        self.log("warning", f"⚠️ Unexpected DHCP type {msg_type} (expected ACK)")
+                        return False
                 else:
-                    self.log("warning", f"⚠️ No DHCP ACK received (timeout) - using fallback IP {self.ip}")
-                    
+                    self.log("warning", f"⚠️ No DHCP ACK received (timeout {self.DHCP_TIMEOUT}s)")
+                    return False
             except Exception as e:
-                self.log("warning", f"⚠️ Could not capture DHCP ACK: {e}")
-            
-            self.log("info", f"✅ DHCP sequence completed (current IP: {self.ip})")
-            
+                self.log("warning", f"⚠️ ACK capture error: {e}")
+                return False
+
         except Exception as e:
-            self.log("error", f"❌ DHCP sequence error: {e}")
+            self.log("error", f"❌ DHCP attempt {attempt} error: {e}")
+            return False
+
     
     def dhcp_renewal_loop(self):
         """Periodic DHCP renewal"""
@@ -1305,6 +1299,27 @@ def daemon_loop(interface: str, dhcp_mode: str = "auto"):
                 for did, d in devices.items()
             }
             emit_json("daemon_status", devices=status)
+
+        elif action == "enable_bad_behavior":
+            global ENABLE_BAD_BEHAVIOR
+            ENABLE_BAD_BEHAVIOR = True
+            count = 0
+            for dev in devices.values():
+                if dev.bad_behavior and not dev.stats.get("bad_behavior_active"):
+                    dev.stats["bad_behavior_active"] = True
+                    threading.Thread(target=dev._bad_behavior_handler, daemon=True).start()
+                    count += 1
+            emit_json("bad_behavior_enabled", activated_count=count)
+            logger.info(f"⚠️  Bad behavior ENABLED globally ({count} devices activated)")
+
+        elif action == "disable_bad_behavior":
+            ENABLE_BAD_BEHAVIOR = False
+            for dev in devices.values():
+                dev.stats["bad_behavior_active"] = False
+                # bad behavior threads check self.stats["bad_behavior_active"] or ENABLE_BAD_BEHAVIOR
+                # They will stop on next iteration naturally
+            emit_json("bad_behavior_disabled")
+            logger.info("✅ Bad behavior DISABLED globally")
 
         else:
             emit_json("daemon_error", error=f"Unknown command: {action}")

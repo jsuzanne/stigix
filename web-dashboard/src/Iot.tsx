@@ -49,6 +49,7 @@ export default function Iot({ token }: IotProps) {
     const [isCompact, setIsCompact] = useState(() => localStorage.getItem('iot-compact') === 'true');
     const [activeLogDevice, setActiveLogDevice] = useState<IoTDevice | null>(null);
     const [daemonFailed, setDaemonFailed] = useState<string | null>(null);
+    const [badBehaviorEnabled, setBadBehaviorEnabled] = useState(false);
 
     // Listen for daemon crash notification
     useEffect(() => {
@@ -225,12 +226,27 @@ export default function Iot({ token }: IotProps) {
         reader.readAsText(file);
     };
 
+    const toggleBadBehavior = async () => {
+        const next = !badBehaviorEnabled;
+        try {
+            await fetch('/api/iot/bad-behavior', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({ enabled: next })
+            });
+            setBadBehaviorEnabled(next);
+        } catch (e) {
+            console.error('Failed to toggle bad behavior', e);
+        }
+    };
+
     const filteredDevices = Array.isArray(devices) ? devices.filter(d => {
         const query = (searchQuery || '').toLowerCase();
         const name = (d.name || '').toLowerCase();
         const vendor = (d.vendor || '').toLowerCase();
         const id = (d.id || '').toLowerCase();
-        return name.includes(query) || vendor.includes(query) || id.includes(query);
+        const mac = (d.mac || '').toLowerCase();
+        return name.includes(query) || vendor.includes(query) || id.includes(query) || mac.includes(query);
     }) : [];
 
     const getDeviceIcon = (type: string, size: number = 20) => {
@@ -389,13 +405,28 @@ export default function Iot({ token }: IotProps) {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={16} />
                         <input
                             type="text"
-                            placeholder="Filter devices (Name, Vendor, ID)..."
+                            placeholder="Filter by Name, Vendor, ID, MAC..."
                             className="bg-card border-border text-foreground pl-10 pr-4 py-2 rounded-xl text-sm w-full focus:ring-1 focus:ring-blue-500 transition-all border outline-none"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
                     <div className="flex items-center gap-2 w-full md:w-auto">
+                        {/* Global Bad Behavior Toggle */}
+                        <button
+                            id="bad-behavior-toggle"
+                            onClick={toggleBadBehavior}
+                            title={badBehaviorEnabled ? 'Disable Bad Behavior (switch to clean mode)' : 'Enable Bad Behavior for all configured devices'}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                                badBehaviorEnabled
+                                    ? 'bg-red-500/10 border-red-500/40 text-red-400 hover:bg-red-500/20'
+                                    : 'bg-card-secondary border-border text-text-muted hover:text-text-secondary hover:bg-card-hover'
+                            }`}
+                        >
+                            <span>{badBehaviorEnabled ? '💀' : '🗡️'}</span>
+                            <span>{badBehaviorEnabled ? 'Attack ON' : 'Clean Mode'}</span>
+                        </button>
+
                         <button
                             onClick={handleSelectAll}
                             className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary rounded-xl text-xs font-bold transition-all border border-border"
