@@ -74,6 +74,9 @@ VERTICAL_TO_TYPE = {
 # Risk level -> bad behavior
 RISK_TO_BAD_BEHAVIOR = {"Critical", "High"}
 
+# Risk priority order for sorting (highest risk first)
+RISK_ORDER = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Informational": 4, "": 5}
+
 # DHCP fingerprints per vendor keyword
 VENDOR_DHCP_FINGERPRINTS = {
     "Hikvision": {
@@ -242,6 +245,7 @@ def convert(
     enable_security=False,
     security_percentage=None,
     gateway=None,
+    max_devices=None,
 ):
     devices = []
     counters = {}  # vendor -> count (for unique IDs)
@@ -252,6 +256,13 @@ def convert(
         rows = list(reader)
 
     print(f"📂 Read {len(rows)} rows from CSV")
+
+    # Sort by risk level descending (Critical first) before any processing
+    rows.sort(key=lambda r: RISK_ORDER.get(safe(r, "ml_risk_level"), 5))
+
+    if max_devices is not None:
+        print(f"🔢 Limiting to top {max_devices} devices by risk level")
+        rows = rows[:max_devices]
 
     skipped = 0
     for row in rows:
@@ -386,6 +397,12 @@ Examples:
   # Force bad behavior for ALL devices
   python import_prisma_devices.py -i "iot device bad sources.csv" -o devices.json --enable-security
 
+  # Import only top 30 riskiest devices
+  python import_prisma_devices.py -i "iot device bad sources.csv" -o devices.json --max-devices 30
+
+  # Top 30 riskiest, IoT only
+  python import_prisma_devices.py -i "iot device bad sources.csv" -o devices.json --max-devices 30 --only-iot
+
   # Bad behavior for 30%% of devices
   python import_prisma_devices.py -i "iot device bad sources.csv" -o devices.json --security-percentage 30
         """,
@@ -405,6 +422,8 @@ Examples:
                         help="Enable bad behavior for ALL devices")
     parser.add_argument("--security-percentage", type=int, default=None,
                         help="Enable bad behavior for N%% of devices (0-100)")
+    parser.add_argument("--max-devices", type=int, default=None,
+                        help="Max number of devices to export, selected by highest risk first (Critical > High > Medium > Low)")
     args = parser.parse_args()
 
     if not Path(args.input).exists():
@@ -420,6 +439,7 @@ Examples:
         enable_security=args.enable_security,
         security_percentage=args.security_percentage,
         gateway=args.gateway,
+        max_devices=args.max_devices,
     )
 
 
