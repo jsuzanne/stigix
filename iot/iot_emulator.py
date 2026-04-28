@@ -278,21 +278,12 @@ class IoTDevice:
         
         # Standard Interface Diagnostic
         if self.id != "orchestrator":
-            self.log("info", f"📡 [IOT] System Interface: {self.interface} (Source: CLI/Auto)")
-            self.log("info", f"🚀 Starting device simulation: {self.name} ({self.id}) [DHCP: {self.dhcp_mode}]")
+            self.log("info", f"\ud83d\udce1 [IOT] System Interface: {self.interface} (Source: CLI/Auto)")
+            self.log("info", f"\ud83d\ude80 Starting device simulation: {self.name} ({self.id}) [DHCP: {self.dhcp_mode}]")
         
-        self.log("info", f"🆔 MAC addr: {self.mac}")
+        self.log("info", f"\ud83c\udd94 MAC addr: {self.mac}")
         if self.ip_static:
-            self.log("info", f"📌 Fallback/Static IP: {self.ip_static}")
-        
-        # Bad behavior indicator
-        if ENABLE_BAD_BEHAVIOR and self.bad_behavior:
-            self.stats["bad_behavior_active"] = True
-            self.log("warning", f"⚠️  BAD BEHAVIOR ENABLED (types: {', '.join(self.behavior_types)})")
-            if JSON_OUTPUT:
-                emit_json("bad_behavior_enabled", device_id=self.id, behavior_types=self.behavior_types)
-        
-        self.log("info", "============================================================")
+            self.log("info", f"\ud83d\udccc Fallback/Static IP: {self.ip_static}")
         
         if JSON_OUTPUT:
             emit_json("started", device_id=self.id)
@@ -301,35 +292,44 @@ class IoTDevice:
         if JSON_OUTPUT:
             threading.Thread(target=self._stats_reporter_loop, daemon=True).start()
 
-        # Start with DHCP to get IP (if dhcp in protocols)
-        if "dhcp" in self.protocols:
-            threading.Thread(target=self.do_dhcp_sequence, daemon=True).start()
-            time.sleep(2)
-        
-        # Start protocol-specific threads
-        for protocol in self.protocols:
-            if protocol == "snmp":
-                self.log("warning", "⚠️ SNMP protocol is deprecated and will be ignored (incompatible with host mode)")
-                continue
-                
-            if protocol != "dhcp":
-                thread = threading.Thread(
-                    target=self._protocol_handler,
-                    args=(protocol,),
-                    daemon=True
-                )
-                thread.start()
-        
-        # DHCP renewal thread (periodic)
-        if "dhcp" in self.protocols:
-            thread = threading.Thread(target=self.dhcp_renewal_loop, daemon=True)
-            thread.start()
-        
-        # Start BAD BEHAVIOR threads if enabled (one thread per behavior type)
-        if ENABLE_BAD_BEHAVIOR and self.bad_behavior:
-            thread = threading.Thread(target=self._bad_behavior_handler, daemon=True)
-            thread.start()
-    
+        # ── Sequenced boot: DHCP first, then everything else ─────────────────
+        def _boot_sequence():
+            # 1. DHCP (blocks until done or failed)
+            if "dhcp" in self.protocols:
+                self.do_dhcp_sequence()
+
+            if not self.ip:
+                self.log("error", "\u274c No IP obtained after DHCP — protocol threads and bad behavior will NOT start")
+                return
+
+            self.log("info", f"\u2705 IP ready: {self.ip} — starting protocol threads")
+
+            # 2. Protocol threads (non-DHCP)
+            for protocol in self.protocols:
+                if protocol == "snmp":
+                    self.log("warning", "\u26a0\ufe0f SNMP deprecated — skipped")
+                    continue
+                if protocol != "dhcp":
+                    threading.Thread(
+                        target=self._protocol_handler,
+                        args=(protocol,),
+                        daemon=True
+                    ).start()
+
+            # 3. DHCP renewal loop
+            if "dhcp" in self.protocols:
+                threading.Thread(target=self.dhcp_renewal_loop, daemon=True).start()
+
+            # 4. Bad behavior — only if IP is valid
+            if ENABLE_BAD_BEHAVIOR and self.bad_behavior:
+                self.stats["bad_behavior_active"] = True
+                self.log("warning", f"\u26a0\ufe0f  BAD BEHAVIOR ENABLED (types: {', '.join(self.behavior_types)}) — IP: {self.ip}")
+                if JSON_OUTPUT:
+                    emit_json("bad_behavior_enabled", device_id=self.id, behavior_types=self.behavior_types)
+                threading.Thread(target=self._bad_behavior_handler, daemon=True).start()
+
+        threading.Thread(target=_boot_sequence, daemon=True, name=f"boot-{self.id}").start()
+
     def stop(self):
         """Stop device emulation"""
         self.running = False
@@ -1265,10 +1265,22 @@ def daemon_loop(interface: str, dhcp_mode: str = "auto"):
                 emit_json("daemon_error", device_id=device_id, error="Device already running")
                 continue
             try:
+                # ── Stagger: spread DHCP Discovers to avoid hitting the router simultaneously ──
+                # Each new device waits (running_count × 2s + 0–1s jitter) before starting.
+                startup_index = len(devices)
+                stagger_delay = startup_index * 2.0 + random.uniform(0, 1.0)
+
                 dev = IoTDevice(cfg, interface=interface, dhcp_mode=dhcp_mode)
                 devices[device_id] = dev
-                threading.Thread(target=dev.start, daemon=True, name=f"dev-{device_id}").start()
-                logger.info(f"✅ Daemon started device: {device_id}")
+
+                def _staggered_start(d=dev, delay=stagger_delay):
+                    if delay > 0:
+                        logger.info(f"⏳ Stagger: {d.id} queued — starting in {delay:.1f}s")
+                    time.sleep(delay)
+                    d.start()
+
+                threading.Thread(target=_staggered_start, daemon=True, name=f"dev-{device_id}").start()
+                logger.info(f"✅ Daemon queued device: {device_id} (boot in ~{stagger_delay:.1f}s)")
             except Exception as e:
                 emit_json("device:error", device_id=device_id, error=str(e))
 
