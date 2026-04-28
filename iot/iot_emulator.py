@@ -718,37 +718,107 @@ class IoTDevice:
     DHCP_MAX_RETRIES = 3
     DHCP_TIMEOUT = 4  # seconds per sniff
 
+    def _get_host_gateway(self) -> str | None:
+        """Detect the host's default gateway from the routing table as a fallback."""
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["ip", "route", "show", "default"],
+                capture_output=True, text=True, timeout=2
+            )
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if "via" in parts:
+                    gw = parts[parts.index("via") + 1]
+                    return gw
+        except Exception:
+            pass
+        return None
+
+    def _sniff_dhcp(self, timeout: float) -> list:
+        """Sniff DHCP server responses using fast in-kernel BPF filter, then match XID in Python."""
+        xid = self.dhcp_xid
+        try:
+            # BPF filter: only DHCP server→client packets (port 67→68), runs in kernel
+            pkts = sniff(
+                iface=self.interface,
+                filter="udp and src port 67 and dst port 68",
+                timeout=timeout,
+                store=1,
+                stop_filter=lambda p: (BOOTP in p and p[BOOTP].xid == xid)
+            )
+            return [p for p in pkts if BOOTP in p and DHCP in p and p[BOOTP].xid == xid]
+        except Exception as e:
+            self.log("warning", f"⚠️ BPF sniff error: {e}")
+            return []
+
     def do_dhcp_sequence(self):
-        """Perform DHCP sequence with retries: Discover → Offer → Request → ACK"""
+        """Perform DHCP sequence with retries: Discover → Offer → Request → ACK.
+        
+        Fallback strategy:
+          1. Full ACK received → IP confirmed from server (best)
+          2. OFFER received but no ACK (e.g. unicast ACK dropped by kernel) →
+             use offered IP + host gateway as fallback (good enough for emulation)
+          3. No OFFER at all → device stays silent until renewal loop retries
+        """
+        last_offered_ip = None
+        last_offered_server = None
+
         for attempt in range(1, self.DHCP_MAX_RETRIES + 1):
-            success = self._dhcp_attempt(attempt)
-            if success:
-                return
+            result = self._dhcp_attempt(attempt)
+            if result == "ack_ok":
+                return  # Full DHCP success
+            if result == "offer_no_ack" and self.dhcp_offered_ip:
+                last_offered_ip = self.dhcp_offered_ip
+                last_offered_server = self.dhcp_server_ip
             if attempt < self.DHCP_MAX_RETRIES:
                 wait = 2 * attempt  # 2s, 4s
                 self.log("warning", f"⏳ DHCP retry {attempt}/{self.DHCP_MAX_RETRIES} in {wait}s...")
                 time.sleep(wait)
-        self.ip = None  # ensure no stale IP from a failed offer leaks through
-        self.gateway = None
-        self.log("error", f"❌ DHCP failed after {self.DHCP_MAX_RETRIES} attempts — device will have no IP until renewal")
 
-    def _dhcp_attempt(self, attempt: int = 1) -> bool:
-        """Single DHCP Discover→Offer→Request→ACK attempt. Returns True on success."""
+        # ── Fallback: use last OFFER if we got one but never confirmed ACK ────
+        if last_offered_ip:
+            self.ip = last_offered_ip
+            # Try to learn gateway: host routing table fallback
+            gw = self._get_host_gateway()
+            if gw:
+                self.gateway = gw
+                self.log("warning", f"⚠️ DHCP ACK never confirmed — using offered IP {self.ip} "
+                                    f"with host gateway {self.gateway} (fallback mode)")
+            else:
+                self.log("warning", f"⚠️ DHCP ACK never confirmed — using offered IP {self.ip} "
+                                    f"(no gateway detected, traffic may fail)")
+            # Send gratuitous ARP to announce ourselves anyway
+            try:
+                garp = Ether(dst="ff:ff:ff:ff:ff:ff", src=self.mac) / \
+                       ARP(op="is-at", hwsrc=self.mac, psrc=self.ip,
+                           hwdst="ff:ff:ff:ff:ff:ff", pdst=self.ip)
+                sendp(garp, iface=self.interface, verbose=0)
+                self.log("info", f"📣 Gratuitous ARP (fallback): {self.ip} is-at {self.mac}")
+            except Exception as ge:
+                self.log("warning", f"⚠️ Fallback gratuitous ARP failed: {ge}")
+            return
+
+        # No OFFER at all — stay silent
+        self.ip = None
+        self.gateway = None
+        self.log("error", f"❌ DHCP failed after {self.DHCP_MAX_RETRIES} attempts — no OFFER received. "
+                          f"Device will stay silent until renewal.")
+
+    def _dhcp_attempt(self, attempt: int = 1) -> str:
+        """Single DHCP Discover→Offer→Request→ACK attempt.
+        Returns: 'ack_ok' | 'offer_no_ack' | 'no_offer' | 'error'
+        """
         try:
             self.log("info", f"🔄 DHCP attempt {attempt} (mode: {self.dhcp_mode})...")
 
             self.dhcp_xid = random.randint(1, 0xFFFFFFFF)
-            # Reset offer state for this attempt
             self.dhcp_offered_ip = None
             self.dhcp_server_ip = None
 
             discover_options = self.build_dhcp_options("discover")
 
-            def dhcp_filter(pkt):
-                return DHCP in pkt and BOOTP in pkt and pkt[BOOTP].xid == self.dhcp_xid
-
             # BOOTP broadcast flag (0x8000) = receive reply as broadcast before having an IP
-            # htype=1 (Ethernet), hlen=6 (MAC length) — explicit for credibility
             discover = Ether(dst="ff:ff:ff:ff:ff:ff", src=self.mac) / \
                        IP(src="0.0.0.0", dst="255.255.255.255") / \
                        UDP(sport=68, dport=67) / \
@@ -761,30 +831,22 @@ class IoTDevice:
                 emit_json("dhcp_discover", device_id=self.id, xid=hex(self.dhcp_xid), mac=self.mac, attempt=attempt)
             sendp(discover, iface=self.interface, verbose=0)
 
-            # ── Wait for OFFER ────────────────────────────────────────────────
+            # ── Wait for OFFER (BPF-accelerated) ─────────────────────────────
             self.log("info", f"⏳ Waiting for DHCP OFFER (timeout: {self.DHCP_TIMEOUT}s)...")
-            try:
-                packets = sniff(iface=self.interface, lfilter=dhcp_filter,
-                                timeout=self.DHCP_TIMEOUT, count=1, store=1)
-                if packets:
-                    offer_pkt = packets[0]
-                    opts = self.parse_dhcp_options(offer_pkt)
-                    if opts.get('message-type') == 2:
-                        self.dhcp_offered_ip = offer_pkt[BOOTP].yiaddr
-                        self.dhcp_server_ip = offer_pkt[BOOTP].siaddr or offer_pkt[IP].src
-                        self.log("info", f"✅ DHCP OFFER from {self.dhcp_server_ip} (offered: {self.dhcp_offered_ip})")
-                        if JSON_OUTPUT:
-                            emit_json("dhcp_offer", device_id=self.id,
-                                      server_id=self.dhcp_server_ip, offered_ip=self.dhcp_offered_ip)
-                    else:
-                        self.log("warning", f"⚠️ Got DHCP packet type {opts.get('message-type')} (not OFFER)")
-                        return False
-                else:
-                    self.log("warning", f"⚠️ No DHCP OFFER received (timeout {self.DHCP_TIMEOUT}s)")
-                    return False
-            except Exception as e:
-                self.log("warning", f"⚠️ OFFER capture error: {e}")
-                return False
+            offer_pkts = self._sniff_dhcp(self.DHCP_TIMEOUT)
+            offer_pkt = next((p for p in offer_pkts
+                              if self.parse_dhcp_options(p).get('message-type') == 2), None)
+            if not offer_pkt:
+                self.log("warning", f"⚠️ No DHCP OFFER received (timeout {self.DHCP_TIMEOUT}s)")
+                return "no_offer"
+
+            opts = self.parse_dhcp_options(offer_pkt)
+            self.dhcp_offered_ip = offer_pkt[BOOTP].yiaddr
+            self.dhcp_server_ip = offer_pkt[BOOTP].siaddr or offer_pkt[IP].src
+            self.log("info", f"✅ DHCP OFFER from {self.dhcp_server_ip} (offered: {self.dhcp_offered_ip})")
+            if JSON_OUTPUT:
+                emit_json("dhcp_offer", device_id=self.id,
+                          server_id=self.dhcp_server_ip, offered_ip=self.dhcp_offered_ip)
 
             time.sleep(0.3)
 
@@ -793,12 +855,9 @@ class IoTDevice:
             if dhcp_options and dhcp_options[-1] == ("end"):
                 dhcp_options = dhcp_options[:-1]
 
-            if self.dhcp_mode == "static" and self.ip_static:
-                dhcp_options.append(("requested_addr", self.ip_static))
-                self.log("info", f"📤 DHCP REQUEST for static IP {self.ip_static}")
-            else:
-                dhcp_options.append(("requested_addr", self.dhcp_offered_ip))
-                self.log("info", f"📤 DHCP REQUEST for offered IP {self.dhcp_offered_ip}")
+            req_ip = self.ip_static if (self.dhcp_mode == "static" and self.ip_static) else self.dhcp_offered_ip
+            dhcp_options.append(("requested_addr", req_ip))
+            self.log("info", f"📤 DHCP REQUEST for {'static' if self.dhcp_mode == 'static' else 'offered'} IP {req_ip}")
 
             if self.dhcp_server_ip:
                 dhcp_options.append(("server_id", self.dhcp_server_ip))
@@ -812,61 +871,58 @@ class IoTDevice:
                       DHCP(options=dhcp_options)
             sendp(request, iface=self.interface, verbose=0)
 
-            # ── Wait for ACK ──────────────────────────────────────────────────
+            # ── Wait for ACK (BPF-accelerated) ───────────────────────────────
             self.log("info", f"⏳ Waiting for DHCP ACK (timeout: {self.DHCP_TIMEOUT}s)...")
-            try:
-                packets = sniff(iface=self.interface, lfilter=dhcp_filter,
-                                timeout=self.DHCP_TIMEOUT, count=1, store=1)
-                if packets:
-                    ack_pkt = packets[0]
-                    opts = self.parse_dhcp_options(ack_pkt)
-                    msg_type = opts.get('message-type')
+            ack_pkts = self._sniff_dhcp(self.DHCP_TIMEOUT)
+            ack_pkt = next((p for p in ack_pkts
+                            if self.parse_dhcp_options(p).get('message-type') in (5, 6)), None)
 
-                    if msg_type == 5:  # ACK
-                        assigned_ip = ack_pkt[BOOTP].yiaddr
-                        self.ip = assigned_ip
-                        router = opts.get('router')
-                        if router:
-                            self.gateway = router[0] if isinstance(router, list) else router
-                            self.log("info", f"🌐 Gateway from DHCP: {self.gateway}")
-                        else:
-                            self.log("warning", "⚠️ No router option in DHCP ACK")
+            if not ack_pkt:
+                self.log("warning", f"⚠️ No DHCP ACK received (timeout {self.DHCP_TIMEOUT}s) — offer was {self.dhcp_offered_ip}")
+                return "offer_no_ack"  # We got an OFFER but no ACK — fallback will handle it
 
-                        self.log("info", f"✅ DHCP ACK: {assigned_ip} from {ack_pkt[IP].src}")
-                        if JSON_OUTPUT:
-                            emit_json("dhcp_ack", device_id=self.id, assigned_ip=assigned_ip,
-                                      server_id=ack_pkt[IP].src, gateway=self.gateway)
+            opts = self.parse_dhcp_options(ack_pkt)
+            msg_type = opts.get('message-type')
 
-                        # ── Gratuitous ARP ────────────────────────────────────
-                        try:
-                            time.sleep(0.1)
-                            garp = Ether(dst="ff:ff:ff:ff:ff:ff", src=self.mac) / \
-                                   ARP(op="is-at", hwsrc=self.mac, psrc=assigned_ip,
-                                       hwdst="ff:ff:ff:ff:ff:ff", pdst=assigned_ip)
-                            sendp(garp, iface=self.interface, verbose=0)
-                            self.log("info", f"📣 Gratuitous ARP: {assigned_ip} is-at {self.mac}")
-                        except Exception as ge:
-                            self.log("warning", f"⚠️ Gratuitous ARP failed: {ge}")
+            if msg_type == 6:  # NAK
+                self.log("error", "❌ DHCP NAK received")
+                return "error"
 
-                        self.log("info", f"✅ DHCP complete (IP: {self.ip}, GW: {self.gateway})")
-                        return True
-
-                    elif msg_type == 6:  # NAK
-                        self.log("error", "❌ DHCP NAK received")
-                        return False
-                    else:
-                        self.log("warning", f"⚠️ Unexpected DHCP type {msg_type} (expected ACK)")
-                        return False
+            if msg_type == 5:  # ACK
+                assigned_ip = ack_pkt[BOOTP].yiaddr
+                self.ip = assigned_ip
+                router = opts.get('router')
+                if router:
+                    self.gateway = router[0] if isinstance(router, list) else router
+                    self.log("info", f"🌐 Gateway from DHCP: {self.gateway}")
                 else:
-                    self.log("warning", f"⚠️ No DHCP ACK received (timeout {self.DHCP_TIMEOUT}s)")
-                    return False
-            except Exception as e:
-                self.log("warning", f"⚠️ ACK capture error: {e}")
-                return False
+                    self.log("warning", "⚠️ No router option in DHCP ACK")
+
+                self.log("info", f"✅ DHCP ACK: {assigned_ip} from {ack_pkt[IP].src}")
+                if JSON_OUTPUT:
+                    emit_json("dhcp_ack", device_id=self.id, assigned_ip=assigned_ip,
+                              server_id=ack_pkt[IP].src, gateway=self.gateway)
+
+                # Gratuitous ARP — announce MAC↔IP binding
+                try:
+                    time.sleep(0.1)
+                    garp = Ether(dst="ff:ff:ff:ff:ff:ff", src=self.mac) / \
+                           ARP(op="is-at", hwsrc=self.mac, psrc=assigned_ip,
+                               hwdst="ff:ff:ff:ff:ff:ff", pdst=assigned_ip)
+                    sendp(garp, iface=self.interface, verbose=0)
+                    self.log("info", f"📣 Gratuitous ARP: {assigned_ip} is-at {self.mac}")
+                except Exception as ge:
+                    self.log("warning", f"⚠️ Gratuitous ARP failed: {ge}")
+
+                self.log("info", f"✅ DHCP complete (IP: {self.ip}, GW: {self.gateway})")
+                return "ack_ok"
+
+            self.log("warning", f"⚠️ Unexpected DHCP type {msg_type}")
+            return "offer_no_ack"
 
         except Exception as e:
             self.log("error", f"❌ DHCP attempt {attempt} error: {e}")
-            return False
+            return "error"
 
     
     def dhcp_renewal_loop(self):
