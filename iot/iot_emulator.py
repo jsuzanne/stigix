@@ -501,6 +501,8 @@ class IoTDevice:
                 self._send(pkt_dns, protocol="bad_beacon", verbose=0)
                 self.log("warning", f"💀 [beacon] DNS: {beacon_domain}")
                 
+                if not self.running or not (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
+                    return
                 time.sleep(1)
                 
                 # HTTP beacon (SYN to fake C2)
@@ -530,6 +532,8 @@ class IoTDevice:
                 
                 # Send multiple large TCP packets
                 for _ in range(5):
+                    if not self.running or not (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
+                        return
                     payload = Raw(b"X" * 1400)  # Large payload
                     pkt = IP(src=self.ip, dst=target_ip) / \
                           TCP(sport=random.randint(1024, 65535), dport=target_port, flags="PA") / \
@@ -556,6 +560,8 @@ class IoTDevice:
             try:
                 # DNS Security tests - cycle through PAN test domains
                 for _ in range(5):  # Burst of 5 DNS queries
+                    if not self.running or not (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
+                        return
                     domain = random.choice(self.PAN_DNS_TEST_DOMAINS)
                     dns_server = random.choice(dns_servers)
                     
@@ -572,6 +578,8 @@ class IoTDevice:
                 
                 # URL Filtering tests (HTTP/HTTPS SYN to trigger detection)
                 for _ in range(3):
+                    if not self.running or not (ENABLE_BAD_BEHAVIOR and self.stats.get("bad_behavior_active")):
+                        return
                     host, path = random.choice(self.PAN_URL_TEST_TARGETS)
                     
                     # urlfiltering.paloaltonetworks.com IP (one of their test IPs)
