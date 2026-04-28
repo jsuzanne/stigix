@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Cpu, Plus, Play, Square, Trash2, RefreshCcw,
     Wifi, Activity, Shield, Camera, Lightbulb,
@@ -6,8 +6,9 @@ import {
     Search, CheckSquare, Square as SquareIcon,
     ArrowUpRight, Clock, AlertCircle, ChevronRight,
     LayoutGrid, List, Terminal, X, ExternalLink,
-    Power, Edit2
+    Power, Edit2, AlertTriangle
 } from 'lucide-react';
+import { io } from 'socket.io-client';
 import LogViewer from './components/LogViewer';
 import { isValidMacAddress } from './utils/validation';
 
@@ -47,6 +48,16 @@ export default function Iot({ token }: IotProps) {
     const [editingDevice, setEditingDevice] = useState<Partial<IoTDevice> | null>(null);
     const [isCompact, setIsCompact] = useState(() => localStorage.getItem('iot-compact') === 'true');
     const [activeLogDevice, setActiveLogDevice] = useState<IoTDevice | null>(null);
+    const [daemonFailed, setDaemonFailed] = useState<string | null>(null);
+
+    // Listen for daemon crash notification
+    useEffect(() => {
+        const socket = io();
+        socket.on('iot:daemon_failed', (info: any) => {
+            setDaemonFailed(info.message || 'IoT daemon crashed — restart required');
+        });
+        return () => { socket.disconnect(); };
+    }, []);
 
     const authHeaders = () => ({
         'Authorization': `Bearer ${token}`,
@@ -233,6 +244,19 @@ export default function Iot({ token }: IotProps) {
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500 pb-12">
+            {/* Daemon crash alert */}
+            {daemonFailed && (
+                <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/30 rounded-2xl px-5 py-4">
+                    <AlertTriangle className="text-red-400 shrink-0" size={20} />
+                    <div className="flex-1">
+                        <p className="text-red-400 font-semibold text-sm">{daemonFailed}</p>
+                        <p className="text-red-400/70 text-xs mt-0.5">The IoT emulator daemon crashed repeatedly. Restart the Stigix container to recover.</p>
+                    </div>
+                    <button onClick={() => setDaemonFailed(null)} className="text-red-400/60 hover:text-red-400">
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
             {/* Header section */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">

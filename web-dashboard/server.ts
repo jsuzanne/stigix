@@ -1676,6 +1676,15 @@ iotManager.on('device:log', (log) => {
     io.to(`logs:${log.device_id}`).emit('device:log', log);
 });
 
+iotManager.on('daemon:failed', (info) => {
+    log('IOT', `Daemon permanently failed after ${info.attempts} retries — notifying clients`, 'error');
+    io.emit('iot:daemon_failed', info);
+});
+
+iotManager.on('daemon:error', (info) => {
+    log('IOT', `Daemon error: ${info.error}`, 'error');
+});
+
 const PORT = parseInt(process.env.PORT || '8080'); // Unified to 8080
 
 const SECRET_KEY = process.env.JWT_SECRET || 'super-secret-key-change-this';

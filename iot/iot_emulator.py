@@ -1223,6 +1223,93 @@ class IoTEmulator:
             sys.exit(1)
 
 
+def daemon_loop(interface: str, dhcp_mode: str = "auto"):
+    """
+    Daemon mode: read JSON commands from stdin, manage IoTDevice threads in-process.
+    This is the single-process architecture used by Node.js iot-manager.ts.
+
+    Commands (one JSON object per line on stdin):
+      { "cmd": "start",    "device": { ...IoTDeviceConfig... } }
+      { "cmd": "stop",     "device_id": "..." }
+      { "cmd": "stop_all" }
+      { "cmd": "status" }
+    """
+    import signal
+
+    devices: dict = {}  # id -> IoTDevice
+
+    def handle_sigterm(signum, frame):
+        for dev in devices.values():
+            dev.stop()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+
+    # Signal ready
+    emit_json("daemon_ready", interface=interface, dhcp_mode=dhcp_mode)
+    logger.info(f"📡 Daemon ready — interface={interface}, dhcp_mode={dhcp_mode}")
+
+    for raw_line in sys.stdin:
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            cmd = json.loads(line)
+        except json.JSONDecodeError as e:
+            emit_json("daemon_error", error=f"Invalid JSON command: {e}")
+            continue
+
+        action = cmd.get("cmd")
+
+        if action == "start":
+            cfg = cmd.get("device", {})
+            device_id = cfg.get("id")
+            if not device_id:
+                emit_json("daemon_error", error="start command missing device.id")
+                continue
+            if device_id in devices:
+                emit_json("daemon_error", device_id=device_id, error="Device already running")
+                continue
+            try:
+                dev = IoTDevice(cfg, interface=interface, dhcp_mode=dhcp_mode)
+                devices[device_id] = dev
+                threading.Thread(target=dev.start, daemon=True, name=f"dev-{device_id}").start()
+                logger.info(f"✅ Daemon started device: {device_id}")
+            except Exception as e:
+                emit_json("device:error", device_id=device_id, error=str(e))
+
+        elif action == "stop":
+            device_id = cmd.get("device_id")
+            dev = devices.pop(device_id, None)
+            if dev:
+                dev.stop()
+                logger.info(f"⏹️  Daemon stopped device: {device_id}")
+            else:
+                emit_json("daemon_error", device_id=device_id, error="Device not found")
+
+        elif action == "stop_all":
+            for dev in list(devices.values()):
+                dev.stop()
+            devices.clear()
+            emit_json("daemon_stopped_all")
+            logger.info("⏹️  Daemon stopped all devices")
+
+        elif action == "status":
+            status = {
+                did: {
+                    "running": d.running,
+                    "ip": d.ip,
+                    "gateway": d.gateway,
+                    "mac": d.mac
+                }
+                for did, d in devices.items()
+            }
+            emit_json("daemon_status", devices=status)
+
+        else:
+            emit_json("daemon_error", error=f"Unknown command: {action}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="IoT Device Emulator for Palo Alto SD-WAN/IoT Security Lab",
@@ -1314,11 +1401,21 @@ Examples:
     parser.add_argument("--fingerprint", type=str, help="JSON-encoded DHCP fingerprint for single device mode")
     parser.add_argument("--security", type=str, help="JSON-encoded security config for single device mode")
 
+    parser.add_argument(
+        "--daemon",
+        action="store_true",
+        help="Run in daemon mode: read JSON commands from stdin, manage all devices in-process (1 process for N devices)"
+    )
+
     args = parser.parse_args()
     
     global JSON_OUTPUT, ENABLE_BAD_BEHAVIOR
     JSON_OUTPUT = args.json_output
     ENABLE_BAD_BEHAVIOR = args.enable_bad_behavior
+
+    if args.daemon:
+        # Single-process daemon mode — used by iot-manager.ts
+        daemon_loop(interface=args.interface, dhcp_mode=args.dhcp_mode)
 
     if args.device_id:
         # Single device mode
