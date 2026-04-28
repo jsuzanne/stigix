@@ -5,6 +5,238 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.162] - 2026-04-28
+### Added
+- **IoT**: Global **Bad Behavior toggle** button (`🗡️ Clean Mode` / `💀 Attack ON`) in the IoT filter bar — enables or disables attack mode across all configured devices in one click without restarting. 🔴
+- **IoT Filter**: Search field now matches **MAC addresses** — type any OUI prefix or full MAC to filter devices. 🔍
+### Fixed
+- **DHCP**: Retry logic upgraded to **3 full attempts** with exponential backoff (2s, 4s between retries). Each attempt re-runs the full Discover→Offer→Request→ACK cycle. Timeout per phase raised to 4s. Eliminates fallback to hardcoded `192.168.207.x`. 🔄
+- **DHCP**: Bad behavior threads now respect the global `ENABLE_BAD_BEHAVIOR` flag — toggling clean mode stops attack traffic on the next loop iteration without device restart. ✅
+
+## [v1.2.2-patch.161] - 2026-04-28
+### Performance
+- **IoT Architecture**: Migrated from **N processes (1 per device)** to a single persistent Python daemon managing all devices as internal threads. 🚀
+  - RAM: ~600MB (30 devices) → ~50MB. CPU overhead dramatically reduced.
+  - Practical device limit: ~15–20 → **100+ devices** on the same container.
+  - Single process reads JSON commands from stdin: `start`, `stop`, `stop_all`, `status`, `enable_bad_behavior`, `disable_bad_behavior`.
+  - All UI events (`device:log`, `device:stats`, `device:started`, `device:stopped`) unchanged — fully transparent to the frontend.
+- **IoT Daemon**: Exponential backoff restart strategy in `iot-manager.ts` — 5 max retries (2s→4s→8s→16s→30s), re-sends start commands for all tracked devices on recovery. 🔁
+- **IoT UI**: Persistent red banner displayed when daemon gives up after 5 crash-restart cycles. 🔴
+
+## [v1.2.2-patch.160] - 2026-04-28
+### Added
+- **IoT DHCP**: `BOOTP` broadcast flag (`0x8000`), explicit `htype=1` / `hlen=6`, DHCP Option 57 (`max_dhcp_size=1500`) for realistic network stack fingerprinting. 📡
+- **IoT ARP**: Gratuitous ARP (`is-at`) sent immediately after DHCP ACK — critical MAC↔IP binding signal for Prisma IoT Security classification. 📣
+- **IoT DHCP**: ARP thread now waits for valid IP+gateway from DHCP before initiating requests. ⏳
+### Fixed
+- **IoT Bad Behavior**: Bad behavior threads skip gateway-targeted actions when gateway has not been learned yet (no more spurious traffic to unrelated IPs). 🛡️
+
+## [v1.2.2-patch.159] - 2026-04-28
+### Fixed
+- **IoT UI**: Replaced vendor `<select>` dropdown with a free-text `<input>` field — vendor names from imported JSON (e.g., "Apple Inc.", "VMware, Inc.") are now preserved instead of defaulting to "Generic". ✅
+- **IoT Emulator**: Default gateway changed from hardcoded `192.168.207.1` to `None` — emulator now waits for the gateway address from the DHCP ACK dynamically. 🌐
+
+## [v1.2.2-patch.158] - 2026-04-28
+### Changed
+- **IoT Import**: Removed `ip_start` field from `import_prisma_devices.py` JSON export — devices now use the site DHCP server exclusively, no subnet assignment. 🔄
+
+## [v1.2.2-patch.157] - 2026-04-28
+### Added
+- **IoT Import**: `--max-devices N` option on `import_prisma_devices.py` — limits generated output to the top N highest-risk devices (default 30, sorted by risk score descending). 📋
+### Documentation
+- Updated `generate_iot_devices.md` with `--max-devices` option reference. 📚
+
+## [v1.2.2-patch.156] - 2026-04-28
+### Fixed
+- **API**: Increased `express.json()` body limit to `10mb` to support large IoT configuration file imports. 🛠️
+
+## [v1.2.2-patch.155] - 2026-04-27
+### Added
+- **Cloudflare Worker**: Integrated advanced latency scenario controls from the Cloudflare Worker into the Stigix dashboard — selectable patterns (flap, wave, random) directly from the UI. ☁️⏱️
+
+## [v1.2.2-patch.154] - 2026-04-27
+### Added
+- **Voice/RTP**: Full legacy behavior emulation in RTP debug mode — `tos=0`, randomized source port for DPI bypass during media classification testing. 🎙️
+
+## [v1.2.2-patch.153] - 2026-04-27
+### Fixed
+- **Voice/RTP**: Debug logs from `rtp.py` forwarded to `stderr` to prevent orchestrator `stdout` capture from mixing log and data streams. 🛠️
+
+## [v1.2.2-patch.152] - 2026-04-27
+### Added
+- **Voice/RTP**: DEBUG mode in `rtp.py` — strips CID prefix from RTP payload to support DPI media classification by Prisma Access. 🔬
+
+## [v1.2.2-patch.151] - 2026-04-27
+### Fixed
+- **VyOS Control**: Improved unblock error handling when IP is part of a larger subnet — displays actionable error message instead of silent failure. 🛡️
+
+## [v1.2.2-patch.150] - 2026-04-27
+### Added
+- **VyOS Control**: Detailed error messages from the VyOS API are now surfaced directly in the history view for faster troubleshooting. 📋
+
+## [v1.2.2-patch.140] - 2026-04-27
+### Fixed
+- **Target Manager**: Resolved resource leak where temp files were not deleted when `curl` threw an exception during probe execution. 🧹
+
+## [v1.2.2-patch.139] - 2026-04-27
+### Added
+- **System**: Automated rolling backups for all configuration files — prevents data loss on container restart or corruption. 💾
+- **DevOps**: Added Docker logging limits to prevent unbounded log file growth. 🐳
+
+## [v1.2.2-patch.138] - 2026-04-26
+### Changed
+- **System**: Increased JSONL log retention to **10,000 lines** per file for better historical coverage. 📋
+
+## [v1.2.2-patch.137] - 2026-04-26
+### Added
+- **System**: Automated log rotation — growing log files are pruned automatically to prevent disk exhaustion. 🗂️
+### Fixed
+- **System**: Corrupted counter parsing in log rotation logic. 🛠️
+
+## [v1.2.2-patch.136] - 2026-04-26
+### Fixed
+- **Cloud Probes**: Validation now blocks saving Cloud Probe configuration if Master Key or TSG ID is missing — prevents silent misconfiguration. 🔐
+
+## [v1.2.2-patch.135] - 2026-04-26
+### Added
+- **Connectivity UI**: Timing Analysis area chart now available for **CLOUD probes** (DNS, TCP, TLS, TTFB breakdown). 📊
+
+## [v1.2.2-patch.134] - 2026-04-26
+### Added
+- **Connectivity UI**: DNS, TCP, TLS, and TTFB columns added to the **Recent Captures** table for detailed timing visibility. 📋
+
+## [v1.2.2-patch.133] - 2026-04-26
+### Fixed
+- **Connectivity UI**: IP Address and HTTP status code now correctly mapped and displayed for CLOUD probes in the Recent Captures table. 🛠️
+
+## [v1.2.2-patch.132] - 2026-04-26
+### Changed
+- **Cloud Probes**: Replaced `fetch()` with `curl` for CLOUD probe execution — exposes granular DNS/TCP/TLS/TTFB timing metrics unavailable via the Fetch API. ⚡
+
+## [v1.2.2-patch.131] - 2026-04-26
+### Added
+- **Probe Configuration**: TCP/UDP placeholder text and helper hints added to the Probe Configuration modal for better user guidance. ℹ️
+
+## [v1.2.2-patch.130] - 2026-04-26
+### Added
+- **Cloud Targets**: Subdomains added to Cloudflare Target URLs to support granular SD-WAN application steering and traffic classification. 🌐
+
+## [v1.2.2-patch.129] - 2026-04-26
+### Added
+- **Reachability**: Concurrent processing and a **3-retry mechanism** added to all target reachability checks for improved accuracy. ⚡
+
+## [v1.2.2-patch.128] - 2026-04-26
+### Added
+- **Targets UI**: Search bar and scrollable container added to the targets list — supports large numbers of targets without overflow. 🔍
+
+## [v1.2.2-patch.127] - 2026-04-26
+### Changed
+- **Failover UI**: Rearranged failover header layout; improved Play/Stop visual states for clearer mission control UX. ✨
+
+## [v1.2.2-patch.126] - 2026-04-26
+### Fixed
+- **Security Score**: Fixed a React Hook conditional rendering violation in `ScoreDetails` causing a UI crash on mount. 🛠️
+
+## [v1.2.2-patch.125] - 2026-04-26
+### Fixed
+- **Security Score**: Resolved TypeScript and import errors introduced during the UI refactor. 🛠️
+
+## [v1.2.2-patch.124] - 2026-04-26
+### Changed
+- **Security Score**: Reorganized `ScoreDashboard` layout — Gap Analysis integrated directly into Security panels for a unified view. 📊
+
+## [v1.2.2-patch.123] - 2026-04-26
+### Changed
+- **UI**: Refinements for Speedtest and Failover modules — improved visual hierarchy and interactive states. ✨
+
+## [v1.2.2-patch.122] - 2026-04-26
+### Changed
+- **Failover & Security UI**: UX refinements for target management and operational state display. ✨
+
+## [v1.2.2-patch.121] - 2026-04-25
+### Added
+- **Security Score**: **Threat Prevention Score** widget — tracks EICAR test outcomes alongside URL and DNS scores in the Score Dashboard. 🛡️
+
+## [v1.2.2-patch.120] - 2026-04-25
+### Added
+- **Security Score**: **Latest Changes** timestamps now include full date context for cross-day comparisons. 📅
+
+## [v1.2.2-patch.119] - 2026-04-25
+### Added
+- **Failover & Voice**: Individual **Play buttons** on each target card for direct single-target test launch. ▶️
+
+## [v1.2.2-patch.118] - 2026-04-25
+### Fixed
+- **Security**: Scheduled EICAR tests now correctly save and execute against multiple configured targets. 🛠️
+
+## [v1.2.2-patch.117] - 2026-04-25
+### Added
+- **Security**: Multi-target EICAR testing UI — select multiple Stigix targets for simultaneous threat prevention validation. 🎯
+
+## [v1.2.2-patch.116] - 2026-04-25
+### Added
+- **Targets**: **Export and Import** functionality for the Targets Registry — back up and restore all configured targets as JSON. 📤📥
+
+## [v1.2.2-patch.115] - 2026-04-25
+### Added
+- **Speedtest**: Quick launch **Play button** on Speedtest target cards for instant single-click test execution. ▶️
+
+## [v1.2.2-patch.114] - 2026-04-25
+### Changed
+- **Speedtest UI**: Unified target selection with **radar ping animations** — active reachability state displayed per target. 📡
+
+## [v1.2.2-patch.113] - 2026-04-25
+### Changed
+- **Targets UI**: Improved reachability indicator visibility — clearer color coding and animation for online/offline/checking states. ✨
+
+## [v1.2.2-patch.112] - 2026-04-25
+### Fixed
+- **Targets**: Fixed reachability ping payload key mismatch causing incorrect reachability states. 🛠️
+
+## [v1.2.2-patch.111] - 2026-04-25
+### Added
+- **Targets**: Global **target reachability monitoring** — all targets are continuously pinged and status is displayed in real-time across all modules. 📡
+
+## [v1.2.2-patch.110] - 2026-04-25
+### Fixed
+- **CI/CD**: Retried build after GitHub transient 502 error. 🔄
+
+## [v1.2.2-patch.109] - 2026-04-25
+### Fixed
+- **Failover**: Resolved TypeScript syntax error introduced during failover refactor. 🛠️
+
+## [v1.2.2-patch.108] - 2026-04-25
+### Added
+- **Failover**: Auto-populate targets from the Targets Registry; live reachability checks before test execution. 🎯⚡
+
+## [v1.2.2-patch.107] - 2026-04-25
+### Fixed
+- **Speedtest**: Clarified Stigix target host field and documented `xfr` binary dependency in the UI. 📋
+
+## [v1.2.2-patch.106] - 2026-04-25
+### Added
+- **Topology**: Toggle branch gateway nodes between **Hub** and **Branch** roles directly in the topology overlay. 🗺️
+
+## [v1.2.2-patch.105] - 2026-04-25
+### Changed
+- **Registry**: Updated base URLs for registry and target services to `stigix.io` domain. 🌐
+
+## [v1.2.2-patch.104] - 2026-04-25
+### Fixed
+- **Traffic History**: Fixed spike artifacts in traffic history chart; corrected time range filter logic. 📈🛠️
+
+## [v1.2.2-patch.103] - 2026-04-24
+### Added
+- **Security Score**: Score Trend chart **time range selector** (1h / 6h / 24h) + dynamic dot sizing based on data density. 📊
+
+## [v1.2.2-patch.102] - 2026-04-24
+### Added
+- **Security Score**: **Δ CHG toggle** on Score Trend chart — highlights score delta from the previous data point directly on the chart. 📈
+
+## [v1.2.2-patch.101] - 2026-04-24
+### Added
+- **Security Score**: Score Trend chart with configurable time range and improved dot rendering for dense data sets. 📊
+
 ## [v1.2.2-patch.100] - 2026-04-22
 ### Refactored
 - **Target Worker Auth**: Removed `SHARED_KEY` / `STIGIX_TARGET_SHARED_KEY` — `MASTER_SIGNATURE_KEY` is now the only supported authentication method. Derived key per request: `SHA256(TSGID:MASTER_KEY)`. Worker falls through to open-access if no master key is configured. 🔐
