@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.2-patch.169] - 2026-04-30
+### Added
+- **Web Dashboard**: 🔍 Introduced a dynamic search bar in the VyOS sequence manager to instantly filter sequences by name, router focus, or underlying actions.
+- **Web Dashboard**: 🔀 Added intelligent sorting to group sequences by target router, action command type, alphabetical name, or most recently executed.
+- **Web Dashboard**: 🔄 Implemented "Clone to Reverse" functionality to automatically generate inverse automation sequences (e.g., swapping `interface-down` for `interface-up`, `set-qos` for `clear-qos`) with a single click.
+
 ## [v1.2.2-patch.168] - 2026-04-28
 ### Added
 - **IoT DHCP**: In-kernel **BPF filter** (`udp src port 67 dst port 68`) replaces slow Python `lfilter` for DHCP packet capture — runs in the kernel before Python, no more missed ACKs under load. `stop_filter` terminates sniff immediately on XID match. ⚡

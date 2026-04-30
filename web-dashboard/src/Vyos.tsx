@@ -189,6 +189,10 @@ export default function Vyos(props: VyosProps) {
     const [historyNodeFilter, setHistoryNodeFilter] = useState('all');
     const [historyStatusFilter, setHistoryStatusFilter] = useState('all');
     const [isGrouped, setIsGrouped] = useState(false);
+    
+    // Sequence Filter State
+    const [sequenceSearch, setSequenceSearch] = useState('');
+    const [sequenceSort, setSequenceSort] = useState<'name' | 'router' | 'action' | 'recent'>('name');
 
     // Live Monitoring State
     const [activeExecution, setActiveExecution] = useState<{ sequenceId: string, step: string, status: string, error?: string, cliEquivalent?: string[], action?: any } | null>(null);
@@ -754,6 +758,85 @@ export default function Vyos(props: VyosProps) {
         }
     };
 
+    const cloneReverseSequence = async (seq: VyosSequence) => {
+        const reverseCommand = (cmd: string) => {
+            const opposites: Record<string, string> = {
+                'interface-down': 'interface-up',
+                'interface-up': 'interface-down',
+                'set-qos': 'clear-qos',
+                'clear-qos': 'set-qos',
+                'deny-traffic': 'allow-traffic',
+                'allow-traffic': 'deny-traffic',
+            };
+            return opposites[cmd] || cmd;
+        };
+
+        const newSeq = {
+            ...seq,
+            id: `seq-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            name: `[Reverse] ${seq.name}`,
+            enabled: false,
+            actions: seq.actions.map(action => ({
+                ...action,
+                command: reverseCommand(action.command)
+            }))
+        };
+
+        const toastId = toast.loading('Cloning reverse sequence...');
+        try {
+            const res = await fetch('/api/vyos/sequences', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify(newSeq)
+            });
+            if (res.ok) {
+                fetchData();
+                toast.success('✓ Reverse sequence created', { id: toastId });
+            } else {
+                toast.error('❌ Failed to clone sequence', { id: toastId });
+            }
+        } catch (e) {
+            toast.error('❌ Network error', { id: toastId });
+        }
+    };
+
+    // Filter and Sort sequences
+    const processedSequences = [...sequences]
+        .filter(seq => {
+            if (!sequenceSearch) return true;
+            const term = sequenceSearch.toLowerCase();
+            if (seq.name.toLowerCase().includes(term)) return true;
+            
+            for (const action of seq.actions) {
+                if (action.command.toLowerCase().includes(term)) return true;
+                if (getCommandDisplayName(action.command).toLowerCase().includes(term)) return true;
+                if (action.interface?.toLowerCase().includes(term)) return true;
+                
+                const router = routers.find(r => r.id === action.router_id);
+                if (router) {
+                    if (router.name.toLowerCase().includes(term)) return true;
+                    const iface = router.interfaces.find(i => i.name === action.interface);
+                    if (iface?.description?.toLowerCase().includes(term)) return true;
+                }
+            }
+            return false;
+        })
+        .sort((a, b) => {
+            if (sequenceSort === 'name') return a.name.localeCompare(b.name);
+            if (sequenceSort === 'recent') return (b.lastRun || 0) - (a.lastRun || 0);
+            if (sequenceSort === 'router') {
+                const rA = a.actions[0]?.router_id || '';
+                const rB = b.actions[0]?.router_id || '';
+                return rA.localeCompare(rB);
+            }
+            if (sequenceSort === 'action') {
+                const actA = a.actions[0]?.command || '';
+                const actB = b.actions[0]?.command || '';
+                return actA.localeCompare(actB);
+            }
+            return 0;
+        });
+
     return (
         <div className="space-y-6 animate-in fade-in duration-500 pb-20">
             {/* Live Indicator Overlay */}
@@ -1040,8 +1123,36 @@ export default function Vyos(props: VyosProps) {
             )}
 
             {view === 'sequences' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4 animate-in slide-in-from-bottom-4 duration-300">
-                    {sequences.map((seq) => (
+                <div className="space-y-4">
+                    {/* Sequences Toolbar */}
+                    <div className="flex flex-col sm:flex-row gap-4 items-center mb-6 animate-in fade-in duration-300">
+                        <div className="relative flex-1 w-full">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={18} />
+                            <input
+                                type="text"
+                                placeholder="Search sequences by name, action, interface, router..."
+                                value={sequenceSearch}
+                                onChange={(e) => setSequenceSearch(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2.5 bg-card/50 border border-border/50 rounded-xl text-sm focus:outline-none focus:border-purple-500/50 transition-all text-text-primary placeholder:text-text-muted/50"
+                            />
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <label className="text-[10px] font-black tracking-widest text-text-muted uppercase opacity-70">Sort By</label>
+                            <select
+                                value={sequenceSort}
+                                onChange={(e) => setSequenceSort(e.target.value as any)}
+                                className="bg-card/50 border border-border/50 rounded-lg px-3 py-2.5 text-sm font-semibold focus:outline-none focus:border-purple-500/50 text-text-primary cursor-pointer hover:border-purple-500/30 transition-colors"
+                            >
+                                <option value="name">Name (A-Z)</option>
+                                <option value="router">Router Focus</option>
+                                <option value="action">Action Type</option>
+                                <option value="recent">Most Recent</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4 animate-in slide-in-from-bottom-4 duration-300">
+                        {processedSequences.map((seq) => (
                         <div key={seq.id} className="bg-card border border-border rounded-xl p-4 hover:border-purple-500/40 transition-all flex flex-col gap-3 shadow-sm hover:shadow-md group">
                             {/* Header: Title and Tools */}
                             <div className="flex justify-between items-start">
@@ -1081,7 +1192,10 @@ export default function Vyos(props: VyosProps) {
                                             seq.enabled ? "translate-x-5" : "translate-x-0.5"
                                         )} />
                                     </button>
-                                    <button onClick={() => openSeqModal(seq)} className="p-1.5 text-text-muted hover:text-blue-500 hover:bg-blue-500/5 rounded-md transition-all">
+                                    <button onClick={() => cloneReverseSequence(seq)} className="p-1.5 text-text-muted hover:text-green-500 hover:bg-green-500/5 rounded-md transition-all" title="Clone Reverse Sequence">
+                                        <RefreshCw size={14} />
+                                    </button>
+                                    <button onClick={() => openSeqModal(seq)} className="p-1.5 text-text-muted hover:text-blue-500 hover:bg-blue-500/5 rounded-md transition-all" title="Edit Sequence">
                                         <Edit2 size={14} />
                                     </button>
                                     <button onClick={() => deleteSequence(seq.id)} className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-500/5 rounded-md transition-all">
@@ -1205,14 +1319,17 @@ export default function Vyos(props: VyosProps) {
                             </div>
                         </div>
                     ))}
-                    {sequences.length === 0 && (
-                        <div className="col-span-full py-20 flex flex-col items-center justify-center bg-card border border-dashed border-border rounded-3xl text-text-muted text-center shadow-inner">
-                            <Terminal size={64} className="mb-6 opacity-10" />
-                            <p className="text-lg font-bold uppercase tracking-[0.2em] opacity-40">Impairment Engine Standby</p>
-                            <p className="text-sm mt-2 opacity-30 max-w-sm">No action loops programmed. Design a sequence to automate network failure testing.</p>
+                    {processedSequences.length === 0 && (
+                        <div className="col-span-full py-16 flex flex-col items-center justify-center bg-card/30 border border-dashed border-border/50 rounded-2xl">
+                            <Activity size={48} className="text-text-muted opacity-20 mb-4" />
+                            <h3 className="text-sm font-bold text-text-secondary">No sequences found</h3>
+                            <p className="text-xs text-text-muted mt-1 text-center max-w-sm">
+                                {sequenceSearch ? `No results for "${sequenceSearch}"` : 'Create your first VyOS automation sequence by clicking New Sequence.'}
+                            </p>
                         </div>
                     )}
                 </div>
+            </div>
             )}
 
             {view === 'history' && (
