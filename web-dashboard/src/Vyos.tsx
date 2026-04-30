@@ -1397,10 +1397,23 @@ export default function Vyos(props: VyosProps) {
                             <tbody className="divide-y divide-border/50">
                                 {(() => {
                                     let filtered = history.filter(log => {
-                                        const matchesSearch = !historySearch ||
-                                            log.sequence_name.toLowerCase().includes(historySearch.toLowerCase()) ||
-                                            log.router_id.toLowerCase().includes(historySearch.toLowerCase()) ||
-                                            log.command.toLowerCase().includes(historySearch.toLowerCase());
+                                        let matchesSearch = true;
+                                        if (historySearch) {
+                                            const term = historySearch.toLowerCase();
+                                            const routerName = routers.find(r => r.id === log.router_id)?.name || '';
+                                            const commandDisplay = getCommandDisplayName(log.command);
+                                            const paramDisplay = formatActionParameters(log.command, log.parameters || {}) || '';
+                                            
+                                            matchesSearch = log.sequence_name.toLowerCase().includes(term) ||
+                                                log.router_id.toLowerCase().includes(term) ||
+                                                routerName.toLowerCase().includes(term) ||
+                                                log.command.toLowerCase().includes(term) ||
+                                                commandDisplay.toLowerCase().includes(term) ||
+                                                (log.interface || '').toLowerCase().includes(term) ||
+                                                paramDisplay.toLowerCase().includes(term) ||
+                                                log.status.toLowerCase().includes(term) ||
+                                                (log.error || '').toLowerCase().includes(term);
+                                        }
                                         const matchesMission = historyMissionFilter === 'all' || log.sequence_name === historyMissionFilter;
                                         const matchesNode = historyNodeFilter === 'all' || log.router_id === historyNodeFilter;
                                         const matchesStatus = historyStatusFilter === 'all' || log.status === historyStatusFilter;
