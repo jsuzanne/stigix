@@ -98,5 +98,5 @@ You should see the run name labeled with `🚀 Release $NEW_VER`.
 - **Prefix**: Never forget the `$NEW_VER:` prefix in the commit message.
 - **Sync**: VERSION files and the git tag must always match exactly.
 - **Timing**: Always bump version **before** the tag push.
-- **Changelog**: Always update `CHANGELOG.md` — it must never be more than 1 patch behind.
+- **Changelog Verification**: You MUST verify at every deploy that `CHANGELOG.md` is fully up to date. It must never be behind, and all changes from the current session MUST be well-documented before committing.
 - **Doc-only**: Skip versioning for README/Documentation-only changes.
