@@ -896,7 +896,11 @@ export default function Speedtest({ token }: Props) {
                                         </thead>
                                         <tbody className="divide-y divide-border/50">
                                             {filteredHistory.map((job) => (
-                                                <tr key={job.id} className="group hover:bg-card-secondary/30 transition-all">
+                                                <tr
+                                                    key={job.id}
+                                                    onClick={() => viewJobDetails(job)}
+                                                    className="group hover:bg-card-secondary/50 transition-all cursor-pointer"
+                                                >
                                                     <td className="px-4 py-4">
                                                         <div className="text-xs font-black text-text-primary">{job.sequence_id}</div>
                                                         <div className="text-[9px] text-text-muted font-bold opacity-60">
@@ -934,15 +938,13 @@ export default function Speedtest({ token }: Props) {
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-4 text-right">
-                                                        <button
-                                                            onClick={() => viewJobDetails(job)}
-                                                            className="p-2 border border-border bg-card-secondary rounded-lg hover:bg-card transition-all text-blue-500 hover:shadow-lg group"
-                                                        >
-                                                            <ExternalLink size={16} className="group-hover:scale-110 transition-transform" />
-                                                        </button>
+                                                        <div className="p-2 border border-border/50 bg-card-secondary rounded-lg text-blue-500/50 group-hover:text-blue-500 group-hover:border-blue-500/30 group-hover:bg-blue-500/5 transition-all inline-flex">
+                                                            <ExternalLink size={14} className="group-hover:scale-110 transition-transform" />
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}
+
                                             {filteredHistory.length === 0 && (
                                                 <tr>
                                                     <td colSpan={5} className="px-4 py-12 text-center text-text-muted italic text-[10px] font-bold tracking-widest opacity-40">

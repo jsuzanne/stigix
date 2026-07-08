@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.26] - 2026-07-08
+### Changed
+- **web-dashboard** 🖱️ `Speedtest.tsx`: Made each row in the Bandwidth Test History table fully clickable to open the Test Details modal — `onClick` moved to the `<tr>` element with `cursor-pointer`. The `ExternalLink` icon column is now a visual indicator (passive `div`) that highlights on row hover, reinforcing the clickable affordance without requiring a precise click on the button.
+
 ## [v1.4.1-patch.25] - 2026-07-08
 ### Changed
 - **web-dashboard** 🎨 `Speedtest.tsx`: Redesigned Test Details modal for a more compact, information-dense layout. Reduced modal width (`max-w-2xl` → `max-w-lg`), replaced isolated large-text cards with a compact 3×2 inline param grid (Protocol / Duration / Streams / DSCP / Src Port / Jitter|Congestion), refactored Data Transfer and Loss Analysis sections into smaller `text-sm` column grids with section headers and dividers. Integrated close button directly into the header bar instead of absolute positioning. Removed verbose `text-3xl font-black` values that were visually overscaled relative to the modal content.
