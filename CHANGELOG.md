@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.25] - 2026-07-08
+### Changed
+- **web-dashboard** 🎨 `Speedtest.tsx`: Redesigned Test Details modal for a more compact, information-dense layout. Reduced modal width (`max-w-2xl` → `max-w-lg`), replaced isolated large-text cards with a compact 3×2 inline param grid (Protocol / Duration / Streams / DSCP / Src Port / Jitter|Congestion), refactored Data Transfer and Loss Analysis sections into smaller `text-sm` column grids with section headers and dividers. Integrated close button directly into the header bar instead of absolute positioning. Removed verbose `text-3xl font-black` values that were visually overscaled relative to the modal content.
+
+### Documentation
+- **docs** 📖 `docs/VYOS_CONTROL.md`: Added `🔍 Troubleshooting VyOS HTTP-API` section documenting the `service https api unavailable at this proxy address` error — context, symptoms, probable cause (unstable internal state after uptime or partial config change), 5-step resolution (verify config → clean API keys → `sudo systemctl restart vyos-http-api.service` → check logs → retry from Stigix), and lab best practices.
+
 ## [v1.4.1-patch.24] - 2026-06-16
 ### Fixed
 - **web-dashboard** 🎨: Added `whitespace-nowrap` class to the Time column in the probe captures table inside Connectivity Performance view to prevent dates/times from wrapping to two lines.
