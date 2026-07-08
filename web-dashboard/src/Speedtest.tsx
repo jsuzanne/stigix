@@ -963,65 +963,74 @@ export default function Speedtest({ token }: Props) {
             {
                 showDetailModal && selectedJob && (
                     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
-                        <div className="bg-card border border-border rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden relative">
-                            <div className="absolute top-0 right-0 p-6 z-10">
-                                <button
-                                    onClick={() => setShowDetailModal(false)}
-                                    className="p-2 hover:bg-card-secondary rounded-xl transition-all border border-transparent hover:border-border text-text-muted"
-                                >
-                                    <X size={24} />
-                                </button>
-                            </div>
+                        <div className="bg-card border border-border rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden relative">
 
-                            <div className="p-8 border-b border-border bg-card-secondary/50">
-                                <div className="flex items-center gap-4 mb-4">
-                                    <div className="p-3 bg-blue-600 rounded-2xl shadow-xl shadow-blue-900/30">
-                                        <BarChart3 className="text-white" size={24} />
+                            {/* Header */}
+                            <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-card-secondary/40">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-blue-600 rounded-xl shadow-lg shadow-blue-900/30">
+                                        <BarChart3 className="text-white" size={16} />
                                     </div>
                                     <div>
-                                        <h3 className="text-2xl font-black text-text-primary tracking-tight">Test Details</h3>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-black text-text-muted bg-card px-2 py-0.5 rounded border border-border">{selectedJob.sequence_id}</span>
-                                            <span className="text-[10px] font-black text-text-muted tracking-widest opacity-60">
+                                        <h3 className="text-sm font-black text-text-primary tracking-tight">Test Details</h3>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <span className="text-[10px] font-black text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">{selectedJob.sequence_id}</span>
+                                            <span className="text-[10px] text-text-muted opacity-60 font-mono">
                                                 {selectedJob.started_at ? new Date(selectedJob.started_at).toLocaleString() : 'N/A'}
                                             </span>
                                         </div>
                                     </div>
                                 </div>
+                                <button
+                                    onClick={() => setShowDetailModal(false)}
+                                    className="p-1.5 hover:bg-card rounded-lg transition-all border border-transparent hover:border-border text-text-muted"
+                                >
+                                    <X size={16} />
+                                </button>
+                            </div>
 
-                                <div className={cn("grid gap-4", selectedJob.params.protocol === 'tcp' ? "grid-cols-2 lg:grid-cols-5" : "grid-cols-2 lg:grid-cols-4")}>
-                                    <div className="bg-card border border-border rounded-2xl p-4">
-                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Duration</label>
-                                        <div className="text-lg font-bold text-text-primary">{selectedJob.params.duration_sec}s</div>
+                            {/* Body */}
+                            <div className="p-5 space-y-4">
+
+                                {/* Session Params — inline label: value rows */}
+                                <div className="bg-card-secondary/50 rounded-xl border border-border divide-y divide-border/50 overflow-hidden">
+                                    <div className="grid grid-cols-3">
+                                        <div className="px-4 py-3 flex flex-col gap-0.5">
+                                            <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">Protocol</span>
+                                            <span className="text-xs font-black text-text-primary">{selectedJob.params.protocol.toUpperCase()}</span>
+                                        </div>
+                                        <div className="px-4 py-3 flex flex-col gap-0.5 border-l border-border/50">
+                                            <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">Duration</span>
+                                            <span className="text-xs font-black text-text-primary">{selectedJob.params.duration_sec}s</span>
+                                        </div>
+                                        <div className="px-4 py-3 flex flex-col gap-0.5 border-l border-border/50">
+                                            <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">Streams</span>
+                                            <span className="text-xs font-black text-text-primary">{selectedJob.params.parallel_streams}</span>
+                                        </div>
                                     </div>
-                                    {selectedJob.params.protocol === 'tcp' && (
-                                        <div className="bg-card border border-border rounded-2xl p-4">
-                                            <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Avg Rtt</label>
-                                            <div className="text-xl font-black text-cyan-500">{selectedJob.summary?.rtt_ms_avg.toFixed(1) || '0.0'} ms</div>
+                                    <div className="grid grid-cols-3">
+                                        <div className="px-4 py-3 flex flex-col gap-0.5">
+                                            <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">DSCP</span>
+                                            <span className="text-xs font-black text-text-primary">{selectedJob.params.dscp || 'Default'}</span>
                                         </div>
-                                    )}
-                                    {selectedJob.params.protocol === 'udp' && (
-                                        <div className="bg-card border border-border rounded-2xl p-4">
-                                            <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Jitter</label>
-                                            <div className="text-xl font-black text-purple-500">{selectedJob.summary?.jitter_ms_avg.toFixed(2) || '0.00'} ms</div>
+                                        <div className="px-4 py-3 flex flex-col gap-0.5 border-l border-border/50">
+                                            <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">Src Port</span>
+                                            <span className="text-xs font-black text-text-primary font-mono">{selectedJob.params.cport || 'Auto'}</span>
                                         </div>
-                                    )}
-                                    <div className="bg-card border border-border rounded-2xl p-4">
-                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">DSCP</label>
-                                        <div className="text-lg font-bold text-text-primary flex items-center gap-2">{selectedJob.params.dscp || 'Default'}</div>
-                                    </div>
-                                    {selectedJob.params.protocol === 'tcp' && (
-                                        <div className="bg-card border border-border rounded-2xl p-4">
-                                            <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Congestion</label>
-                                            <div className="text-lg font-bold text-text-primary capitalize">{selectedJob.params.congestion || 'Cubic'}</div>
+                                        <div className="px-4 py-3 flex flex-col gap-0.5 border-l border-border/50">
+                                            <span className="text-[9px] font-black text-text-muted tracking-widest opacity-60 uppercase">
+                                                {selectedJob.params.protocol === 'tcp' ? 'Congestion' : 'Jitter'}
+                                            </span>
+                                            <span className={cn("text-xs font-black", selectedJob.params.protocol === 'udp' ? "text-purple-400" : "text-text-primary")}>
+                                                {selectedJob.params.protocol === 'tcp'
+                                                    ? (selectedJob.params.congestion || 'Cubic')
+                                                    : `${selectedJob.summary?.jitter_ms_avg?.toFixed(2) ?? '0.00'} ms`}
+                                            </span>
                                         </div>
-                                    )}
-                                    <div className="bg-card border border-border rounded-2xl p-4">
-                                        <label className="text-[9px] font-black text-text-muted tracking-widest mb-2 block opacity-60 tracking-[0.2em]">Source Port</label>
-                                        <div className="text-lg font-bold text-text-primary">{selectedJob.params.cport || 'Auto'}</div>
                                     </div>
                                 </div>
 
+                                {/* Transfer Stats */}
                                 {(() => {
                                     const isUpload = selectedJob.params.direction === 'client-to-server';
                                     const isDownload = selectedJob.params.direction === 'server-to-client';
@@ -1054,69 +1063,74 @@ export default function Speedtest({ token }: Props) {
                                     };
 
                                     return (
-                                        <div className="bg-card-secondary p-5 rounded-2xl border border-border mt-8 flex flex-col sm:flex-row justify-between gap-4">
-                                            <div>
-                                                <div className="text-[10px] font-black text-text-muted tracking-widest uppercase mb-1">Total Download</div>
-                                                <div className="text-3xl font-black text-[#3b82f6]">{formatBytes(rxBytes)}</div>
+                                        <div className="bg-card-secondary/50 rounded-xl border border-border overflow-hidden">
+                                            <div className="px-4 py-2.5 border-b border-border/50 flex items-center gap-1.5">
+                                                <ArrowUpRight size={11} className="text-blue-500" />
+                                                <span className="text-[9px] font-black text-text-muted tracking-widest opacity-70 uppercase">Data Transfer</span>
                                             </div>
-                                            <div>
-                                                <div className="text-[10px] font-black text-text-muted tracking-widest uppercase mb-1">Total Upload</div>
-                                                <div className="text-3xl font-black text-[#10b981]">{formatBytes(txBytes)}</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-[10px] font-black text-text-muted tracking-widest uppercase mb-1">Total Transferred</div>
-                                                <div className="text-3xl font-black text-text-primary">{formatBytes(rxBytes + txBytes)}</div>
+                                            <div className="grid grid-cols-3 divide-x divide-border/50">
+                                                <div className="px-4 py-3 flex flex-col gap-1">
+                                                    <span className="text-[9px] font-black text-text-muted opacity-60 uppercase tracking-widest">Download</span>
+                                                    <span className="text-sm font-black text-blue-400">{formatBytes(rxBytes)}</span>
+                                                </div>
+                                                <div className="px-4 py-3 flex flex-col gap-1">
+                                                    <span className="text-[9px] font-black text-text-muted opacity-60 uppercase tracking-widest">Upload</span>
+                                                    <span className="text-sm font-black text-emerald-400">{formatBytes(txBytes)}</span>
+                                                </div>
+                                                <div className="px-4 py-3 flex flex-col gap-1">
+                                                    <span className="text-[9px] font-black text-text-muted opacity-60 uppercase tracking-widest">Total</span>
+                                                    <span className="text-sm font-black text-text-primary">{formatBytes(rxBytes + txBytes)}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     );
                                 })()}
 
-                            </div>
-
-                            <div className="p-8 space-y-8">
-                                <div>
-                                    <h4 className="flex items-center gap-2 text-[10px] font-black text-text-muted tracking-widest mb-4">
-                                        <ShieldOff size={14} className={selectedJob.params.protocol === 'udp' ? "text-red-500" : "text-orange-500"} /> 
-                                        {selectedJob.params.protocol === 'udp' ? 'Loss Analysis' : 'Retransmit Analysis'}
-                                    </h4>
-                                    <div className="bg-card-secondary p-5 rounded-2xl border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                        <div className="flex items-center gap-8">
-                                            <div>
-                                                <div className={cn("text-3xl font-black", selectedJob.params.protocol === 'udp' ? "text-red-500" : "text-orange-500")}>
-                                                    {selectedJob.params.protocol === 'udp' ? `${selectedJob.summary?.loss_percent.toFixed(1)}%` : selectedJob.summary?.retransmits || 0}
-                                                </div>
-                                                <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">
-                                                    {selectedJob.params.protocol === 'udp' ? 'Average Packet Loss' : 'Total Retransmitted Packets'}
-                                                </div>
-                                            </div>
-                                            {selectedJob.params.protocol === 'udp' && (
-                                                <>
-                                                    <div>
-                                                        <div className="text-3xl font-black text-text-primary">{selectedJob.summary?.packets_sent?.toLocaleString() ?? 0}</div>
-                                                        <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">Total Packets Sent</div>
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-3xl font-black text-text-primary">{selectedJob.summary?.packets_received?.toLocaleString() ?? 0}</div>
-                                                        <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">Total Packets Received</div>
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-3xl font-black text-text-primary">{selectedJob.summary?.lost?.toLocaleString() ?? 0}</div>
-                                                        <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">Total Packets Dropped</div>
-                                                    </div>
-                                                </>
-                                            )}
-                                            {selectedJob.params.protocol === 'tcp' && selectedJob.summary?.cwnd !== undefined && (
-                                                <div>
-                                                    <div className="text-3xl font-black text-text-primary">{(selectedJob.summary.cwnd / 1024).toFixed(0)} <span className="text-sm">KB</span></div>
-                                                    <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">TCP Window Size</div>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="text-left sm:text-right">
-                                            <div className="text-xl font-black text-text-primary">{selectedJob.params.protocol.toUpperCase()}</div>
-                                            <div className="text-[10px] font-black text-text-muted tracking-widest mt-1">{selectedJob.params.parallel_streams} Parallel Streams</div>
-                                        </div>
+                                {/* Loss / Retransmit Analysis */}
+                                <div className="bg-card-secondary/50 rounded-xl border border-border overflow-hidden">
+                                    <div className="px-4 py-2.5 border-b border-border/50 flex items-center gap-1.5">
+                                        <ShieldOff size={11} className={selectedJob.params.protocol === 'udp' ? "text-red-500" : "text-orange-500"} />
+                                        <span className="text-[9px] font-black text-text-muted tracking-widest opacity-70 uppercase">
+                                            {selectedJob.params.protocol === 'udp' ? 'Loss Analysis' : 'Retransmit Analysis'}
+                                        </span>
                                     </div>
+                                    {selectedJob.params.protocol === 'udp' ? (
+                                        <div className="grid grid-cols-4 divide-x divide-border/50">
+                                            <div className="px-3 py-3 flex flex-col gap-1">
+                                                <span className="text-[8px] font-black text-text-muted opacity-60 uppercase tracking-widest leading-tight">Avg Loss</span>
+                                                <span className="text-sm font-black text-red-400">{selectedJob.summary?.loss_percent?.toFixed(1) ?? '0.0'}%</span>
+                                            </div>
+                                            <div className="px-3 py-3 flex flex-col gap-1">
+                                                <span className="text-[8px] font-black text-text-muted opacity-60 uppercase tracking-widest leading-tight">Sent</span>
+                                                <span className="text-sm font-black text-text-primary">{selectedJob.summary?.packets_sent?.toLocaleString() ?? 0}</span>
+                                            </div>
+                                            <div className="px-3 py-3 flex flex-col gap-1">
+                                                <span className="text-[8px] font-black text-text-muted opacity-60 uppercase tracking-widest leading-tight">Received</span>
+                                                <span className="text-sm font-black text-text-primary">{selectedJob.summary?.packets_received?.toLocaleString() ?? 0}</span>
+                                            </div>
+                                            <div className="px-3 py-3 flex flex-col gap-1">
+                                                <span className="text-[8px] font-black text-text-muted opacity-60 uppercase tracking-widest leading-tight">Dropped</span>
+                                                <span className="text-sm font-black text-orange-400">{selectedJob.summary?.lost?.toLocaleString() ?? 0}</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-3 divide-x divide-border/50">
+                                            <div className="px-4 py-3 flex flex-col gap-1">
+                                                <span className="text-[9px] font-black text-text-muted opacity-60 uppercase tracking-widest">Retransmits</span>
+                                                <span className="text-sm font-black text-orange-400">{selectedJob.summary?.retransmits ?? 0}</span>
+                                            </div>
+                                            <div className="px-4 py-3 flex flex-col gap-1">
+                                                <span className="text-[9px] font-black text-text-muted opacity-60 uppercase tracking-widest">Avg RTT</span>
+                                                <span className="text-sm font-black text-cyan-400">{selectedJob.summary?.rtt_ms_avg?.toFixed(1) ?? '0.0'} ms</span>
+                                            </div>
+                                            {selectedJob.summary?.cwnd !== undefined && (
+                                                <div className="px-4 py-3 flex flex-col gap-1">
+                                                    <span className="text-[9px] font-black text-text-muted opacity-60 uppercase tracking-widest">TCP Window</span>
+                                                    <span className="text-sm font-black text-text-primary">{(selectedJob.summary.cwnd / 1024).toFixed(0)} KB</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {selectedJob.error && (
@@ -1126,19 +1140,20 @@ export default function Speedtest({ token }: Props) {
                                     </div>
                                 )}
 
-                                <div className="pt-4 flex flex-col sm:flex-row gap-3">
+                                {/* Actions */}
+                                <div className="flex gap-2 pt-1">
                                     <button
                                         onClick={() => setShowDetailModal(false)}
-                                        className="flex-1 py-3 bg-card-secondary border border-border hover:bg-card rounded-xl text-[10px] font-black text-text-primary tracking-widest transition-all"
+                                        className="flex-1 py-2.5 bg-card-secondary border border-border hover:bg-card rounded-xl text-[10px] font-black text-text-primary tracking-widest transition-all"
                                     >
-                                        Dismiss Diagnostic
+                                        Dismiss
                                     </button>
                                     <button
                                         onClick={() => {
                                             toast.success("Telemetry report exported to clipboard");
                                             navigator.clipboard.writeText(JSON.stringify(selectedJob, null, 2));
                                         }}
-                                        className="flex-1 py-3 bg-blue-600 text-white rounded-xl text-[10px] font-black tracking-widest transition-all hover:shadow-lg shadow-blue-900/40"
+                                        className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black tracking-widest transition-all hover:bg-blue-500"
                                     >
                                         Export JSON Log
                                     </button>
