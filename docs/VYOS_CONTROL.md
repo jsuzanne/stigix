@@ -115,6 +115,66 @@ The system uses unique **Run IDs** for every execution:
 - **API Rate Limits**: Rapidly triggering many actions (e.g., 50 per minute) may hit VyOS API constraints or cause delayed impairment application.
 - **Persistence**: Sequences and history are persisted locally in `config/vyos-sequences.json` and `logs/vyos-history.jsonl`.
 
+## 🔍 Troubleshooting VyOS HTTP-API
+
+### Error: `service https api unavailable at this proxy address`
+
+#### Context
+- Stigix lab controlling VyOS routers via the HTTP-API.
+- Everything worked initially, then VyOS sequences fail with the Stigix error:
+  `VyOS API error: service https api unavailable at this proxy address: set service https api-restrict virtual-host`
+- The VyOS configuration seems unchanged, but the API becomes unresponsive.
+
+#### Symptoms
+- VyOS actions in Stigix fail with the message above.
+- `show configuration commands | match 'service https'` shows the API keys are configured.
+- `show log | match 'http-api'` no longer displays recent `Configuration success` messages.
+
+#### Probable Cause
+- The VyOS HTTP-API enters an unstable internal state after a period of uptime, an environmental change, or a partial configuration modification.
+- The `vyos-http-api` backend fails to reload the configuration correctly until the service is restarted.
+
+#### Resolution / Workaround
+
+1. **Verify the VyOS HTTP-API configuration**:
+   ```vyos
+   show configuration commands | match 'service https'
+   ```
+
+2. **Validate/clean configuration**:
+   Enter configuration mode and ensure the API configuration is correct (remove any invalid or obsolete entries if needed):
+   ```vyos
+   configure
+   # E.g., delete an obsolete or incorrect API key
+   delete service https api keys id <OLD-ID>
+   commit
+   save
+   exit
+   ```
+
+3. **Restart the HTTP-API service**:
+   Run the following command on the VyOS shell:
+   ```bash
+   sudo systemctl restart vyos-http-api.service
+   ```
+
+4. **Verify the service logs**:
+   Check that the service restarted successfully and is back in a stable state:
+   ```vyos
+   show log | match 'vyos-http-api'
+   ```
+   *Expected output:*
+   - `vyos-http-api[...] Configuration success`
+   - `vyos-http-api[...] Serving on http://localhost:8080`
+
+5. **Retry the action**:
+   Re-trigger the VyOS action from Stigix (e.g., `SET-QOS`) to confirm the error has resolved.
+
+#### Best Practices
+- If the HTTP-API starts returning this error without configuration changes, the first troubleshooting step in a lab environment should be to restart the service:
+  `sudo systemctl restart vyos-http-api.service`
+- Document this sequence as "HTTP-API VyOS reset" in Stigix runbooks to speed up troubleshooting during demos or PoCs.
+
 ---
 
 ## 🤖 MCP Natural Language Control (Claude Desktop)
