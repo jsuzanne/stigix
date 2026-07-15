@@ -17,7 +17,16 @@ class RegistryClient:
     
     def __init__(self):
         self.controller_url = self._discover_controller()
-        self.jwt_secret = os.getenv("JWT_SECRET", "stigix-default-secret-2026")
+        # IMPORTANT: default MUST match the docker-compose default (your-secure-secret-here).
+        # If JWT_SECRET is not set in the MCP container env, it will mismatch with Stigix nodes
+        # that also use the docker-compose default → 403 Forbidden on all remote API calls.
+        self.jwt_secret = os.getenv("JWT_SECRET", "your-secure-secret-here")
+        if self.jwt_secret == "your-secure-secret-here":
+            logger.warning(
+                "JWT_SECRET is using the insecure default value. "
+                "Set JWT_SECRET in the MCP container environment to a strong secret "
+                "that matches all Stigix nodes."
+            )
         self._mock_endpoints = [
             StigixEndpoint(
                 id="branch-paris-1",
@@ -139,13 +148,48 @@ class RegistryClient:
         return endpoints
 
     async def get_endpoint(self, identifier: str) -> Optional[StigixEndpoint]:
-        """Tries to find an endpoint by ID, Name or IP address."""
+        """
+        Find an endpoint by ID, site name, or IP — with fuzzy partial matching.
+
+        Match priority (first hit wins):
+          1. Exact match on id, site_name, test_ip, or public_ip  (case-sensitive)
+          2. Case-insensitive exact match on id or site_name
+          3. Partial/substring match: identifier is contained in site_name or id
+             e.g. "BR5" matches "ubuntubr5", "BR8" matches "BR8-Ubuntu"
+          4. Reverse partial: site_name/id is contained in identifier
+             e.g. "ubuntubr5" matches if user typed "ubuntubr5-extra"
+        """
         endpoints = await self.list_endpoints()
+        needle = identifier.lower()
+
+        # Pass 1 — exact match (original behaviour, fastest)
         for e in endpoints:
-            # Check ID, Site Name (in meta), or Test IP
-            if (e.id == identifier or 
-                e.meta.get("site_name") == identifier or 
-                e.test_ip == identifier or 
-                e.public_ip == identifier):
+            if (e.id == identifier or
+                    e.meta.get("site_name") == identifier or
+                    e.test_ip == identifier or
+                    e.public_ip == identifier):
                 return e
+
+        # Pass 2 — case-insensitive exact
+        for e in endpoints:
+            site = (e.meta.get("site_name") or "").lower()
+            if e.id.lower() == needle or site == needle:
+                logger.debug(f"get_endpoint({identifier!r}): case-insensitive match → {e.id}")
+                return e
+
+        # Pass 3 — partial substring: needle inside id/site_name
+        for e in endpoints:
+            site = (e.meta.get("site_name") or "").lower()
+            if needle in site or needle in e.id.lower():
+                logger.info(f"get_endpoint({identifier!r}): partial match → {e.id} (site={e.meta.get('site_name')})")
+                return e
+
+        # Pass 4 — reverse partial: id/site_name inside needle (handles long user input)
+        for e in endpoints:
+            site = (e.meta.get("site_name") or "").lower()
+            if (site and site in needle) or e.id.lower() in needle:
+                logger.info(f"get_endpoint({identifier!r}): reverse-partial match → {e.id}")
+                return e
+
+        logger.warning(f"get_endpoint({identifier!r}): no match found among {len(endpoints)} endpoints")
         return None

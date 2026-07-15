@@ -289,13 +289,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **web-dashboard** 🔵 `Security.tsx`: Ajout d'un badge violet `MCP` dans la colonne nom pour les tests déclenchés via MCP — distinct et non intégré au nom du test.
 - **web-dashboard** `test-logger.ts`: Ajout des champs `mcp_source` et `mcp_target` dans l'interface `TestResult.details`.
 
-## [v1.4.0-patch.122] - 2026-05-30
+## [v1.4.0-patch.122] - 2026-05-31
 ### Fixed
+- **mcp-server** 🐛 `registry.py`: Fixed JWT_SECRET default mismatch — MCP was signing tokens with `"stigix-default-secret-2026"` while Stigix nodes use `"your-secure-secret-here"` (docker-compose default). This caused `403 Forbidden` on all remote nodes (e.g. BR5) when `JWT_SECRET` env var was not explicitly set. Defaults now aligned. Added a startup warning log when the insecure default is in use.
+- **mcp-server** 🔍 `registry.py`: Improved `get_endpoint()` with 4-pass fuzzy matching. Natural language node references like `"BR5"` now resolve to `"ubuntubr5"`, `"BR8"` to `"BR8-Ubuntu"`, etc. — without requiring Claude to call `list_endpoints()` first. Match priority: exact → case-insensitive exact → partial substring → reverse partial.
 - **mcp-server** 🔖 `orchestrator.py`: MCP security probes now resolve the **friendly category/test name** from the security profile (e.g., `Phishing (MCP)` au lieu de l'URL brute). Ajout des helpers `_get_url_category_name` et `_get_dns_test_name`.
 - **mcp-server** 🔖 `orchestrator.py`: Les tests EICAR via MCP sont désormais labellisés `EICAR Test (MCP)` au lieu de `EICAR Test (Cloud: STIGIX-EICAR-01)`.
 - **mcp-server** 🔢 `orchestrator.py`: Le `test_id` séquentiel est maintenant exposé dans la réponse MCP (`data["test_id"]`) pour permettre à Claude de référencer le numéro exact du test.
 - **web-dashboard** 🔄 `Security.tsx`: L'auto-refresh inclut désormais `fetchResults()` dans le poll de 30s — les tests lancés via MCP ou planifiés apparaissent automatiquement.
 - **web-dashboard** 🏷️ `server.ts`: L'endpoint `threat-test` accepte un champ `testName` optionnel pour stocker un label lisible sur les tests EICAR MCP.
+
 
 ## [v1.4.0-patch.121] - 2026-05-30
 ### Added
