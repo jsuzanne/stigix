@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.27] - 2026-07-28
+### Fixed
+- **web-dashboard** 🛡️ Awaited asynchronous `addTestResult` calls in security test loops and endpoints (URL, DNS, and Threat tests) to resolve a race condition that caused `generateRunScore` to calculate scores before the results were fully saved. This fixes the "NO DNS DATA" display issue.
+
 ## [v1.4.1-patch.26] - 2026-07-08
 ### Changed
 - **web-dashboard** 🖱️ `Speedtest.tsx`: Made each row in the Bandwidth Test History table fully clickable to open the Test Details modal — `onClick` moved to the `<tr>` element with `cursor-pointer`. The `ExternalLink` icon column is now a visual indicator (passive `div`) that highlights on row hover, reinforcing the clickable affordance without requiring a precise click on the button.

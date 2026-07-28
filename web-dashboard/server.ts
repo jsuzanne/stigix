@@ -6272,7 +6272,7 @@ const runScheduledUrlTests = async () => {
 
             updateStatistics('url_filtering', status);
             const testId = getNextTestId();
-            addTestResult('url_filtering', category.name, {
+            await addTestResult('url_filtering', category.name, {
                 success: status === 'allowed',
                 httpCode,
                 status,
@@ -6285,7 +6285,7 @@ const runScheduledUrlTests = async () => {
             console.log(`[SECURITY-URL] [${testId}] ${status.toUpperCase()} - Category: ${category.name} | Code: ${httpCode}${isBlockPage ? ' (Block Page Detected)' : ''}`);
         } catch (e) {
             updateStatistics('url_filtering', 'blocked');
-            addTestResult('url_filtering', category.name, { success: false, status: 'blocked', url: category.url, category: category.name }, getNextTestId(), undefined, runId);
+            await addTestResult('url_filtering', category.name, { success: false, status: 'blocked', url: category.url, category: category.name }, getNextTestId(), undefined, runId);
         }
     }
 
@@ -6336,7 +6336,7 @@ const runScheduledDnsTests = async () => {
             else if (isBlocked) status = 'blocked';
 
             updateStatistics('dns_security', status);
-            addTestResult('dns_security', test.name, {
+            await addTestResult('dns_security', test.name, {
                 success: true,
                 resolved: status === 'resolved',
                 status,
@@ -6349,7 +6349,7 @@ const runScheduledDnsTests = async () => {
             const errorOutput = e.stdout + e.stderr;
             if (errorOutput && errorOutput.toLowerCase().includes('sinkhole')) {
                 updateStatistics('dns_security', 'sinkholed');
-                addTestResult('dns_security', test.name, {
+                await addTestResult('dns_security', test.name, {
                     success: true,
                     status: 'sinkholed',
                     domain: test.domain,
@@ -6357,7 +6357,7 @@ const runScheduledDnsTests = async () => {
                 }, getNextTestId(), undefined, runId);
             } else {
                 updateStatistics('dns_security', 'blocked');
-                addTestResult('dns_security', test.name, {
+                await addTestResult('dns_security', test.name, {
                     success: false,
                     status: 'blocked',
                     domain: test.domain,
@@ -6400,7 +6400,7 @@ const runScheduledThreatTests = async () => {
             const httpCode = parseInt(metaLine.match(/HTTP_CODE:(\d+)/)?.[1] || '0') || 200;
             const sizeBytes = parseInt(metaLine.match(/SIZE:(\d+)/)?.[1] || '0') || 0;
             updateStatistics('threat_prevention', 'allowed');
-            addTestResult('threat_prevention', `EICAR Test (${endpoint})`, {
+            await addTestResult('threat_prevention', `EICAR Test (${endpoint})`, {
                 success: true,
                 status: 'allowed',
                 endpoint,
@@ -6413,7 +6413,7 @@ const runScheduledThreatTests = async () => {
         } catch (e: any) {
             updateStatistics('threat_prevention', 'blocked');
             const errMsg: string = (e?.stderr || e?.message || '').toString();
-            addTestResult('threat_prevention', `EICAR Test (${endpoint})`, {
+            await addTestResult('threat_prevention', `EICAR Test (${endpoint})`, {
                 success: false,
                 status: 'blocked',
                 endpoint,
@@ -7569,7 +7569,7 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
                 };
 
                 results.push(result);
-                addTestResult('dns_security', test.testName, result, testId, undefined, runId);
+                await addTestResult('dns_security', test.testName, result, testId, undefined, runId);
             } catch (dnsError: any) {
                 // Check if it's actually a sinkhole response masked as an error (e.g., nslookup SERVFAIL)
                 const combinedErrorOutput = ((dnsError.stdout || '') + (dnsError.stderr || '')).toLowerCase();
@@ -7584,7 +7584,7 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
                         reason: 'Sinkhole keyword detected in error output'
                     };
                     results.push(result);
-                    addTestResult('dns_security', test.testName, result, testId, undefined, runId);
+                    await addTestResult('dns_security', test.testName, result, testId, undefined, runId);
                 } else {
                     const isCommandError = dnsError.message.includes('command not found') || dnsError.message.includes('not found');
                     const result = {
@@ -7596,7 +7596,7 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
                         error: dnsError.message
                     };
                     results.push(result);
-                    addTestResult('dns_security', test.testName, result, testId, undefined, runId);
+                    await addTestResult('dns_security', test.testName, result, testId, undefined, runId);
                 }
             }
         } catch (e: any) {
@@ -7608,7 +7608,7 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
                 error: e.message
             };
             results.push(result);
-            addTestResult('dns_security', test.testName, result, testId, undefined, runId);
+            await addTestResult('dns_security', test.testName, result, testId, undefined, runId);
         }
 
         // Add a small delay between tests to avoid triggering firewall flood protection
@@ -8704,7 +8704,7 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
             // Use custom testName if provided (e.g., "EICAR Test (MCP)"), else default
             const storedName = testName || `EICAR Test (Cloud: ${scenarioId})`;
             logTest(`[THREAT-TEST-${testId}] Cloud scenario ${scenarioId} result: ${status.toUpperCase()} (stored as: ${storedName})`);
-            addTestResult('threat_prevention', storedName, result, testId, undefined, runId);
+            await addTestResult('threat_prevention', storedName, result, testId, undefined, runId);
             await generateRunScore(runId, 'threat', 'manual');
             return res.json({ success: true, results: [result], testId });
         } catch (error: any) {
@@ -8777,7 +8777,7 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
 
                 logTest(`[THREAT-TEST-${testId}] EICAR test result: ALLOWED`, { endpoint: ep });
                 const epLabel = testName || `EICAR Test (${ep})`;
-                addTestResult('threat_prevention', epLabel, result, testId, undefined, runId);
+                await addTestResult('threat_prevention', epLabel, result, testId, undefined, runId);
                 results.push(result);
             } catch (curlError: any) {
                 const exitCode = curlError.code;
@@ -8806,7 +8806,7 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
 
                 logTest(`[THREAT-TEST-${testId}] EICAR test result: ${status.toUpperCase()}`, { endpoint: ep, error: curlError.message });
                 const epLabelErr = testName || `EICAR Test (${ep})`;
-                addTestResult('threat_prevention', epLabelErr, result, testId, undefined, runId);
+                await addTestResult('threat_prevention', epLabelErr, result, testId, undefined, runId);
                 results.push(result);
             }
         }
