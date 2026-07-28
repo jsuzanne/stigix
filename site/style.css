@@ -179,10 +179,16 @@ a:hover { color: #fff; }
   color: var(--white);
   max-width: 1050px;
   margin-bottom: 28px;
+  text-wrap: balance;
 }
 .hero__headline em {
   font-style: normal;
   color: var(--teal);
+}
+@media (max-width: 1200px) {
+  .hero__headline br {
+    display: none;
+  }
 }
 
 /* Two-col below headline: description left, screenshot right */
