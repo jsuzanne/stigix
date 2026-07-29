@@ -1029,8 +1029,9 @@
       </ul>
     </div>
     <p class="footer__note" id="footer-last-updated" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke);font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
-      Site last updated: <strong style="color:var(--mid)">2026-07-28</strong> &nbsp;·&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v1.4.1-patch.26</a> &nbsp;·&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View changelog →</a>
+      Site last updated: <strong id="footer-date" style="color:var(--mid)">2026-07-29</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v1.4.1-patch.26</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View changelog &rarr;</a>
     </p>
+    <script>var d=new Date(document.lastModified);if(d.getFullYear()>2000){document.getElementById('footer-date').textContent=d.toISOString().slice(0,10);}</script>
     <p class="footer__note" id="footer-disclaimer">
       <strong>Disclaimer:</strong> This is a personal, community-driven open-source project maintained by the author independently.
       It is <strong>not</strong> an official Palo Alto Networks product, feature, or tool, and it is not supported or endorsed by Palo Alto Networks in any way.
