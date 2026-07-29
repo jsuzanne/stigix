@@ -374,6 +374,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const [selectedEicarTargets, setSelectedEicarTargets] = useState<string[]>([]);
     const [securityTargets, setSecurityTargets] = useState<any[]>([]);
     const [targetReachability, setTargetReachability] = useState<Record<string, boolean | 'loading'>>({});
+    const [runningEicarTarget, setRunningEicarTarget] = useState<string | null>(null);
+
 
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
@@ -1077,7 +1079,30 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         }
     };
 
+    const runSingleEicarTest = async (endpoint: string, e: React.MouseEvent) => {
+        e.stopPropagation(); // prevent row selection toggle
+        if (runningEicarTarget || loading) return;
+        setRunningEicarTarget(endpoint);
+        showToast(`Running EICAR test on ${endpoint}...`, 'info');
+        try {
+            await fetch('/api/security/threat-test', {
+                method: 'POST',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ endpoint: [endpoint] })
+            });
+            await fetchResults();
+            await fetchConfig();
+            showToast('EICAR test completed!', 'success');
+        } catch (err) {
+            console.error('Single EICAR test failed:', err);
+            showToast('EICAR test failed', 'error');
+        } finally {
+            setRunningEicarTarget(null);
+        }
+    };
+
     const syncEdl = async (type: 'ip' | 'url' | 'dns') => {
+
         setEdlSyncing(prev => ({ ...prev, [type]: true }));
         try {
             const res = await fetch('/api/security/edl-sync', {
@@ -2122,7 +2147,23 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                             </p>
                                                         )}
                                                     </div>
-                                                    <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
+                                                    <div className="flex items-center gap-2 ml-2 border-l border-border/50 pl-3">
+                                                        {/* Individual play button */}
+                                                        {!disabled && (
+                                                            <button
+                                                                onClick={(e) => runSingleEicarTest(cloudEicarUrl, e)}
+                                                                disabled={!!runningEicarTarget || loading}
+                                                                title="Run EICAR test on this target"
+                                                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 w-6 h-6 flex items-center justify-center rounded-full bg-red-600/10 hover:bg-red-600/25 text-red-500 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                                                            >
+                                                                {runningEicarTarget === cloudEicarUrl ? (
+                                                                    <span className="w-3 h-3 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                                                                ) : (
+                                                                    <Play size={10} fill="currentColor" />
+                                                                )}
+                                                            </button>
+                                                        )}
+                                                        {/* Status dot */}
                                                         {disabled ? (
                                                             <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Key not configured" />
                                                         ) : status === 'loading' || status === undefined ? (
@@ -2161,7 +2202,21 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-red-500' : 'text-text-primary'}`}>{t.name}</h4>
                                                         <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{url}</p>
                                                     </div>
-                                                    <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
+                                                    <div className="flex items-center gap-2 ml-2 border-l border-border/50 pl-3">
+                                                        {/* Individual play button */}
+                                                        <button
+                                                            onClick={(e) => runSingleEicarTest(url, e)}
+                                                            disabled={!!runningEicarTarget || loading}
+                                                            title="Run EICAR test on this target"
+                                                            className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 w-6 h-6 flex items-center justify-center rounded-full bg-red-600/10 hover:bg-red-600/25 text-red-500 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                                                        >
+                                                            {runningEicarTarget === url ? (
+                                                                <span className="w-3 h-3 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                                                            ) : (
+                                                                <Play size={10} fill="currentColor" />
+                                                            )}
+                                                        </button>
+                                                        {/* Status dot */}
                                                         {status === 'loading' || status === undefined ? (
                                                             <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
                                                         ) : status ? (

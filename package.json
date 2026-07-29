@@ -1,0 +1,26 @@
+{
+  "name": "stigix",
+  "version": "1.0.0",
+  "description": "Stigix — Advanced Networking & Security Simulation Environment",
+  "main": "test_probe.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jsuzanne/stigix.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/jsuzanne/stigix/issues"
+  },
+  "homepage": "https://github.com/jsuzanne/stigix#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^25.9.3"
+  }
+}
