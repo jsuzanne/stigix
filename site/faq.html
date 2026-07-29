@@ -631,6 +631,11 @@ stigix-cli profile import --file my-profile.json</pre>
               <li><strong>Client Flow Port</strong> &mdash; pin the source port for deterministic flow identification in Prisma SD-WAN / firewall logs</li>
               <li><strong>DSCP / TOS marking</strong> &mdash; stamp QoS marking (e.g. EF, CS1, decimal, hex) on the test flow to validate SD-WAN path prioritization</li>
             </ul>
+            <p><strong>&#128273; Deterministic source port &mdash; automatic flow traceability:</strong></p>
+            <p>For UDP and QUIC tests, Stigix automatically derives a <strong>deterministic source port</strong> from the test sequence number so every run is identifiable in SD-WAN flow logs without any manual configuration:</p>
+            <pre>XFR-0007 (UDP/QUIC) → source port 40007  (range 40000–49999)
+XFR-0123 (UDP/QUIC) → source port 40123</pre>
+            <p>For TCP tests the source port is ephemeral by default &mdash; use the <strong>Client Flow Port</strong> field to pin it manually if you want to track a TCP speedtest in Prisma flow logs. For UDP/QUIC you can also override the auto-derived port by setting a custom Client Flow Port.</p>
             <p>Tests can be launched from the <strong>Speedtest</strong> tab in the dashboard, via the <strong>CLI</strong> (<code>speedtest start --target &lt;name&gt;</code>), or via the <strong>MCP Server</strong> (<em>"Run a 30-second TCP speedtest between BR8 and DC1"</em>).</p>
           </div></div></div>
         </div>
@@ -752,6 +757,10 @@ stigix-cli profile import --file my-profile.json</pre>
               <li><strong>MOS</strong> — Mean Opinion Score (1–5), the industry standard for perceived voice quality</li>
             </ul>
             <p>Results are shown per call session and plotted over time in the Voice dashboard.</p>
+            <p><strong>&#128273; Deterministic source port &mdash; built-in flow traceability:</strong> Each RTP call uses a source port derived from its internal CALL-ID. This is embedded in the UDP payload and mapped deterministically:</p>
+            <pre>CALL-0001 → UDP source port 31001
+CALL-0015 → UDP source port 31015  (range 31000–31999)</pre>
+            <p>This means you can filter your SD-WAN Orchestrator or Prisma SD-WAN flow browser by <code>src-port 31015</code> to instantly isolate which tunnels and circuits a specific call traversed. The CALL-ID is also embedded in the RTP payload itself, so the echo server on the remote side can decode and log which call it is echoing back.</p>
           </div></div></div>
         </div>
 
@@ -765,6 +774,10 @@ stigix-cli profile import --file my-profile.json</pre>
               <li><strong>Recovery profile</strong> — How quickly each direction returns to baseline after the path change</li>
             </ul>
             <p>Each test receives a unique ID (e.g. <code>CONV-0042</code>) and is logged to <code>logs/convergence-history.jsonl</code> for audit and comparison. If Prisma SD-WAN API credentials are configured, the active egress path (e.g. <code>BR8-INET2 → DC2-INET</code>) is automatically enriched 60 seconds after the test completes.</p>
+            <p><strong>&#128273; Deterministic source port &mdash; exact flow correlation:</strong> Each convergence probe uses a UDP source port derived from its test number. The sequence number and a high-resolution timestamp are embedded in the UDP payload itself:</p>
+            <pre>CONV-0001 → UDP source port 30001
+CONV-0042 → UDP source port 30042  (range 30000–39999)</pre>
+            <p>You can filter your SD-WAN Orchestrator flow browser by <code>udp src-port 30042</code> to see exactly which WAN tunnel carried each probe packet during the failover window. This makes it possible to prove, with flow-level evidence, which circuit was active when the blackout occurred.</p>
           </div></div></div>
         </div>
 
