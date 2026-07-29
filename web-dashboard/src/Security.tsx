@@ -2122,7 +2122,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                     </div>
                                                     <div className="flex flex-col min-w-0 flex-1">
                                                         <div className="flex items-center gap-2">
-                                                            <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected && !disabled ? 'text-blue-500' : 'text-text-primary'}`}>Stigix Cloud (Public Worker)</h4>
+                                                            <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected && !disabled ? 'text-blue-500' : 'text-text-secondary'}`}>Stigix Cloud (Public Worker)</h4>
                                                             {disabled && (
                                                                 <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 tracking-wide whitespace-nowrap shrink-0">
                                                                     ⚠ Requires STIGIX_TARGET_MASTER_KEY
@@ -2209,7 +2209,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         {isSelected && <Check size={11} className="text-white" strokeWidth={3} />}
                                                     </div>
                                                     <div className="flex flex-col min-w-0 flex-1">
-                                                        <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{t.name}</h4>
+                                                        <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-secondary'}`}>{t.name}</h4>
                                                         <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{url}</p>
                                                     </div>
                                                     <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
