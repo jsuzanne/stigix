@@ -1481,7 +1481,7 @@ def cmd_security(args):
                 endpoints = [target]
 
         info(f"Running EICAR threat prevention test ({len(endpoints)} endpoint(s))...")
-        r = api_post("/api/security/threat-test", {"endpoints": endpoints}, timeout=30)
+        r = api_post("/api/security/threat-test", {"endpoint": endpoints}, timeout=30)
         if r:
             rows = []
             for res in r.get("results", []):
@@ -1657,7 +1657,7 @@ def cmd_security(args):
         eicar_url = (r_cloud.get("url") if r_cloud and r_cloud.get("url")
                      else "https://secure.eicar.org/eicar.com.txt")
         info(f"EICAR target: {eicar_url}")
-        r = api_post("/api/security/threat-test", {"endpoints": [eicar_url]}, timeout=30)
+        r = api_post("/api/security/threat-test", {"endpoint": [eicar_url]}, timeout=30)
         if r:
             rows = []
             for res in r.get("results", []):

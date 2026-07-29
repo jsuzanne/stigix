@@ -8677,7 +8677,8 @@ app.get('/api/security/eicar-targets', authenticateToken, (req, res) => {
 
 // API: Threat Prevention Test (EICAR)
 app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
-    const { endpoint, scenarioId, testName, mcp_source } = req.body;
+    const { endpoint, endpoints, scenarioId, testName, mcp_source } = req.body;
+    const rawEndpoint = endpoint || endpoints;
 
     const runId = `manual-threat-${Date.now()}`;
 
@@ -8713,12 +8714,12 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
         }
     }
 
-    if (!endpoint) {
+    if (!rawEndpoint) {
         return res.status(400).json({ error: 'Endpoint URL is required or provide a scenarioId' });
     }
 
     // Support single endpoint or array
-    const endpointsArray = Array.isArray(endpoint) ? endpoint : [endpoint];
+    const endpointsArray = Array.isArray(rawEndpoint) ? rawEndpoint : [rawEndpoint];
 
     // Validate URL format
     for (const ep of endpointsArray) {
@@ -8736,9 +8737,6 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
         // exec already imported at top
         // util.promisify already imported as promisify
         const execPromise = promisify(exec);
-
-        // Support single endpoint or array
-        const endpointsArray = Array.isArray(endpoint) ? endpoint : [endpoint];
 
         for (const ep of endpointsArray) {
             const testId = getNextTestId();
