@@ -98,14 +98,15 @@
   <div class="wrap">
     <span class="label">Let's answer some questions</span>
     <h1>Frequently Asked <span>Questions</span></h1>
-    <p>Detailed technical answers about Stigix — from initial configuration and traffic profiling to VyOS impairment scripting, multivendor security profiles, and Prisma SD-WAN API integration.</p>
+    <p>Installation takes under 2 minutes and requires only Docker. Find detailed answers about requirements, first-login setup, platform differences, and common blockers — as well as deep dives into traffic profiling, VyOS impairment scripting, multivendor security profiles, and Prisma SD-WAN API integration.</p>
   </div>
 </section>
 
 <section class="faq-tabs" id="faq">
   <div class="wrap">
     <div class="faq-tabs__strip" role="tablist" aria-label="FAQ categories">
-      <button class="faq-tab-btn is-active" data-tab="traffic"  role="tab" aria-selected="true"  aria-controls="panel-traffic">Traffic Generation</button>
+      <button class="faq-tab-btn is-active" data-tab="install"  role="tab" aria-selected="true"  aria-controls="panel-install">Installation</button>
+      <button class="faq-tab-btn"           data-tab="traffic"  role="tab" aria-selected="false" aria-controls="panel-traffic">Traffic Generation</button>
       <button class="faq-tab-btn"           data-tab="digexp"   role="tab" aria-selected="false" aria-controls="panel-digexp">Digital Experience</button>
       <button class="faq-tab-btn"           data-tab="security" role="tab" aria-selected="false" aria-controls="panel-security">Security Testing</button>
       <button class="faq-tab-btn"           data-tab="iot"      role="tab" aria-selected="false" aria-controls="panel-iot">IoT Simulation</button>
@@ -118,9 +119,115 @@
     <div class="faq-panels">
 
       <!-- ═══════════════════════════════════════════════════
+           INSTALLATION & REQUIREMENTS
+      ═══════════════════════════════════════════════════ -->
+      <div class="faq-panel is-active" id="panel-install" role="tabpanel">
+
+        <div class="faq-item is-open">
+          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">How do I install Stigix? Is it really just one command?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Yes — one command. Copy the <code>docker-compose.yml</code> from the repository and run:</p>
+            <pre>curl -O https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.yml
+docker compose up -d</pre>
+            <p>That's it. Docker pulls the image automatically (~500 MB on first run), starts the container, and the dashboard is live at <strong>http://localhost:8080</strong> within about 30 seconds.</p>
+            <p>Default login: <code>admin</code> / <code>admin</code> — change the password immediately after first login.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the only hard requirements?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Only two things are strictly required:</p>
+            <ul>
+              <li><strong>Docker Engine 20.10+</strong> (or Docker Desktop on macOS/Windows)</li>
+              <li><strong>2 GB free RAM</strong> minimum — 4 GB recommended for IoT simulation and voice testing</li>
+            </ul>
+            <p>No Python, Node.js, or any other runtime needs to be installed on the host. Everything runs inside the container. The only prerequisite is Docker itself.</p>
+            <p>Supported platforms: <strong>Linux</strong> (bare metal, VM, Raspberry Pi 5, Intel NUC), <strong>macOS</strong> (Apple Silicon and Intel), <strong>Windows</strong> (via WSL2 + Docker Desktop), <strong>AWS EC2 / Azure VM</strong>.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I install Docker if I don't have it?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Linux (Ubuntu / Debian):</strong></p>
+            <pre>curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER   # then log out and back in
+docker --version                # verify</pre>
+            <p><strong>macOS:</strong> Download <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer">Docker Desktop</a> — includes Docker Compose. Open it, wait for the whale icon to turn green.</p>
+            <p><strong>Windows:</strong> Install <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer">Docker Desktop</a> with WSL2 backend enabled. This is the recommended path — no manual WSL2 setup needed in recent versions.</p>
+            <p>Once <code>docker --version</code> returns a version number, you're ready to run Stigix.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Does it work on a Raspberry Pi or low-power device?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Yes. The Stigix image is published for both <strong>AMD64</strong> and <strong>ARM64</strong>. A Raspberry Pi 5 (4 GB RAM) with Ubuntu Server 24.04 is a common and well-tested deployment target for branch lab environments.</p>
+            <p>A Raspberry Pi 4 (2 GB) works for basic traffic generation and security testing but may run tight if you enable IoT simulation simultaneously. Pi 5 with 4–8 GB is the sweet spot for full-feature lab use.</p>
+            <p>Docker pulls the correct architecture automatically — no flag needed.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the difference between Host Mode and Bridge Mode?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>This affects IoT simulation and advanced traffic generation only — for everything else (dashboard, security tests, digital experience probes, convergence tests) both modes work identically.</p>
+            <ul>
+              <li><strong>Host Mode (Linux only)</strong> — The container shares the host network stack directly. Enables full IoT simulation: real DHCP requests, ARP announcements, MAC address spoofing. Required for DHCP fingerprinting demos.</li>
+              <li><strong>Bridge Mode (macOS, Windows, WSL2)</strong> — Docker uses NAT networking. IoT simulation is limited — devices generate traffic but don't appear as distinct DHCP clients on the physical LAN.</li>
+            </ul>
+            <p>The install script auto-detects your platform and selects the right compose file. On macOS/Windows you can still demo everything except Layer 2 IoT behavior.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">I opened localhost:8080 but got a connection refused. What's wrong?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Check these three things in order:</p>
+            <pre># 1. Is the container running at all?
+docker ps
+# Look for a container named "stigix" with status "Up"
+
+# 2. Check the startup logs
+docker compose logs stigix --tail=30
+# Look for "Server listening on port 8080"
+
+# 3. Is something else already on port 8080?
+sudo lsof -i :8080        # macOS / Linux
+netstat -ano | find "8080" # Windows</pre>
+            <p>If port 8080 is taken, add a <code>.env</code> file with <code>PORT=8081</code> and update the port mapping in <code>docker-compose.yml</code> from <code>"8080:8080"</code> to <code>"8081:8080"</code>, then restart.</p>
+            <p>If <code>docker ps</code> shows the container as <strong>Exited</strong>, the logs will explain why — most common causes are a missing <code>.env</code> variable or a permissions issue on the config directory.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the first three things to do after login?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <ol>
+              <li><strong>Change the password</strong> — Go to Settings and update the default <code>admin/admin</code> credentials immediately.</li>
+              <li><strong>Set the network interface</strong> — In Settings → Network, select the interface the traffic generator should use (e.g. <code>eth0</code>, <code>enp0s3</code>). Run <code>ip addr show</code> on the host if you're unsure which one. Traffic generation won't start without this.</li>
+              <li><strong>Enable traffic generation</strong> — Go to the Dashboard tab and toggle the generator on. The status turns green and the request counter starts climbing within a few seconds.</li>
+            </ol>
+            <p>Everything else (probes, security tests, VyOS routers, API keys) can be configured incrementally as you need each feature.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Does Stigix need to be on the same subnet as the SD-WAN router?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>For most features — no. As long as the host running Stigix has internet connectivity through the SD-WAN path you want to test, traffic generation, security tests, digital experience probes, and convergence tests all work fine.</p>
+            <p>For <strong>IoT simulation</strong> in host mode (DHCP fingerprinting), Stigix must be on the same L2 broadcast domain as the SD-WAN router's LAN interface — so the simulated DHCP requests are seen by the router and its IoT classification engine.</p>
+            <p>A simple and common setup: Stigix runs on a laptop or SBC plugged into the branch LAN behind the SD-WAN router, with a default gateway pointing to the router. That's all you need for a complete lab.</p>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-install -->
+
+      <!-- ═══════════════════════════════════════════════════
            TRAFFIC GENERATION
       ═══════════════════════════════════════════════════ -->
-      <div class="faq-panel is-active" id="panel-traffic" role="tabpanel">
+      <div class="faq-panel" id="panel-traffic" role="tabpanel">
 
         <div class="faq-item is-open">
           <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">What is the Traffic Generator and how does it differ from Security Testing?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
