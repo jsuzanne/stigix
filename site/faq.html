@@ -267,17 +267,20 @@ curl -sSL .../install.sh | bash -s -- --dry-run</pre>
         </div>
 
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the difference between Source, Target, and Both deployment modes?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Is a Stigix instance a sender, a responder, or both?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>Every Stigix instance is designed to run in a unified Source + Target architecture:</p>
+            <p><strong>Always both, always simultaneously.</strong> Every Stigix instance — branch, DC, cloud — is a sender and a responder at the same time. This is not a mode you configure; it is the fundamental architecture of the platform.</p>
+            <p>Concretely, every running instance:</p>
             <ul>
-              <li><strong>Both (Source + Target) — default</strong> — Runs the full dashboard, traffic generator, and echo/bandwidth/SLA target services simultaneously. Use this for branch lab nodes and laptops. Any other Stigix instance can test against it.</li>
-              <li><strong>Source Only</strong> — Runs the dashboard and traffic generator, but no echo target services. Useful if you want a controller-only node without exposing target ports.</li>
-              <li><strong>Target Only</strong> — Deploys only the HTTP echo, XFR speedtest, voice echo, and convergence probe services. No UI. Ideal for DC/hub nodes in distributed multi-site topologies where you just need a destination for tests from branch nodes.</li>
+              <li><strong>Sends</strong> — generates SaaS traffic, runs security tests, fires DEM probes, measures convergence, sends voice streams</li>
+              <li><strong>Responds</strong> — listens for incoming voice echo, convergence probes, XFR speedtest, and HTTP health requests from any other Stigix node</li>
             </ul>
-            <p>For a basic single-node lab, always use <strong>Both</strong>. For a distributed multi-site setup, deploy "Both" at the branch and "Target Only" at the DC for the cleanest architecture.</p>
+            <p>This means you can point any branch node at a DC node and run tests immediately — without touching any configuration on the DC side. The responder services start automatically.</p>
+            <p>In practice, a node deployed centrally (DC or cloud) will be used <strong>mostly as a responder</strong> because branch nodes send their tests toward it. But it is still fully capable of generating traffic outbound if needed. There is no "responder-only" mode to configure — that's just how you use it.</p>
+            <p>The install script's <code>--mode both/source/target</code> flag simply controls which ancillary services are included in the Docker compose file — it does not change the core sender+responder behaviour of the container itself.</p>
           </div></div></div>
         </div>
+
 
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Do my settings survive a container restart or Docker update?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
