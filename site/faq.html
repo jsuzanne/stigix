@@ -222,6 +222,89 @@ netstat -ano | find "8080" # Windows</pre>
           </div></div></div>
         </div>
 
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Is there an even simpler one-liner that does everything automatically?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Yes. The install script handles everything — Docker check, platform detection, compose file download, and startup:</p>
+            <pre>curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash</pre>
+            <p>It auto-detects your platform (native Linux → Host Mode, macOS/WSL2 → Bridge Mode), asks you to choose a deployment mode, pulls the image, and starts the container. Dashboard is live at <strong>http://localhost:8080</strong> in under 30 seconds.</p>
+            <p>You can also bypass the interactive prompt with a flag:</p>
+            <pre># Source + Target mode (recommended for labs)
+curl -sSL .../install.sh | bash -s -- --mode both
+
+# Target only (for DC/hub nodes)
+curl -sSL .../install.sh | bash -s -- --mode target
+
+# Dry run (preview without executing)
+curl -sSL .../install.sh | bash -s -- --dry-run</pre>
+            <p><strong>Windows users:</strong> The install script doesn't run in PowerShell — follow the <a href="https://github.com/jsuzanne/stigix/blob/main/docs/WINDOWS_INSTALL.md" target="_blank" rel="noopener noreferrer">Windows Installation Guide</a> instead.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the difference between Source, Target, and Both deployment modes?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Every Stigix instance is designed to run in a unified Source + Target architecture:</p>
+            <ul>
+              <li><strong>Both (Source + Target) — default</strong> — Runs the full dashboard, traffic generator, and echo/bandwidth/SLA target services simultaneously. Use this for branch lab nodes and laptops. Any other Stigix instance can test against it.</li>
+              <li><strong>Source Only</strong> — Runs the dashboard and traffic generator, but no echo target services. Useful if you want a controller-only node without exposing target ports.</li>
+              <li><strong>Target Only</strong> — Deploys only the HTTP echo, XFR speedtest, voice echo, and convergence probe services. No UI. Ideal for DC/hub nodes in distributed multi-site topologies where you just need a destination for tests from branch nodes.</li>
+            </ul>
+            <p>For a basic single-node lab, always use <strong>Both</strong>. For a distributed multi-site setup, deploy "Both" at the branch and "Target Only" at the DC for the cleanest architecture.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Do my settings survive a container restart or Docker update?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Yes — all configuration and logs live in Docker named volumes (<code>stigix_config</code> and <code>stigix_logs</code>), which persist independently of the container lifecycle. Pulling a new image and restarting does not touch your data.</p>
+            <p>Stigix also supports <strong>State Persistence</strong> for running services. In <strong>Settings → System Info</strong>, each service (Traffic, Probes, IoT, Voice) has a toggle. When enabled, the service resumes exactly its pre-restart state automatically — so if traffic generation was running before a restart, it comes back running without manual intervention.</p>
+            <p>Default states: Traffic ON, Probes ON, IoT OFF (requires config), Voice OFF (requires server).</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">I'm running on Proxmox / LXC and IoT or Voice simulation fails. Why?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Proxmox LXC containers restrict low-level network operations by default. Stigix needs <code>NET_ADMIN</code> and <code>NET_RAW</code> Linux capabilities for Scapy-based IoT/Voice simulation (raw socket access for DHCP, ARP, and RTP injection).</p>
+            <p>Add these capabilities to your <code>docker-compose.yml</code>:</p>
+            <pre>services:
+  stigix:
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW</pre>
+            <p>For a trusted lab environment where isolation is less of a concern, you can also use:</p>
+            <pre>    privileged: true</pre>
+            <p><strong>Warning:</strong> <code>privileged: true</code> gives the container full host access — only use it in isolated lab setups, never in production or shared environments.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I verify the installation is healthy?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Three quick checks in order:</p>
+            <pre># 1. Container status — look for (healthy)
+docker compose ps
+# Expected: stigix ... Up N minutes (healthy) ... 0.0.0.0:8080->8080/tcp
+
+# 2. Health API endpoint
+curl http://localhost:8080/api/health
+# Expected: {"status":"healthy","version":"1.x.x"}
+
+# 3. Interactive CLI (optional deeper check)
+docker exec -it stigix stigix-cli
+# Then run: auth login → admin/admin → status</pre>
+            <p>You can also confirm auto-generated config was created:</p>
+            <pre># 67 applications should be listed
+jq '.applications | length' config/applications-config.json
+# Expected output: 67
+
+# Auto-detected network interface
+cat config/interfaces.txt</pre>
+            <p>If the health endpoint returns 200 and the container is marked <strong>(healthy)</strong>, everything is running correctly.</p>
+          </div></div></div>
+        </div>
+
       </div><!-- /panel-install -->
 
       <!-- ═══════════════════════════════════════════════════
