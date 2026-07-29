@@ -2147,22 +2147,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                             </p>
                                                         )}
                                                     </div>
-                                                    <div className="flex items-center gap-2 ml-2 border-l border-border/50 pl-3">
-                                                        {/* Individual play button */}
-                                                        {!disabled && (
-                                                            <button
-                                                                onClick={(e) => runSingleEicarTest(cloudEicarUrl, e)}
-                                                                disabled={!!runningEicarTarget || loading}
-                                                                title="Run EICAR test on this target"
-                                                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 w-6 h-6 flex items-center justify-center rounded-full bg-red-600/10 hover:bg-red-600/25 text-red-500 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-                                                            >
-                                                                {runningEicarTarget === cloudEicarUrl ? (
-                                                                    <span className="w-3 h-3 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                                                                ) : (
-                                                                    <Play size={10} fill="currentColor" />
-                                                                )}
-                                                            </button>
-                                                        )}
+                                                    <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
                                                         {/* Status dot */}
                                                         {disabled ? (
                                                             <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Key not configured" />
@@ -2175,6 +2160,31 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                             </div>
                                                         ) : (
                                                             <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
+                                                        )}
+                                                        {/* Copy curl command button */}
+                                                        {!disabled && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); copyToClipboard(`curl -fsS --max-time 20 "${cloudEicarUrl}" -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`); }}
+                                                                title="Copy curl command"
+                                                                className="w-6 h-6 flex items-center justify-center rounded bg-card-hover hover:bg-card-secondary text-text-muted hover:text-text-primary transition-colors shrink-0"
+                                                            >
+                                                                <Copy size={10} />
+                                                            </button>
+                                                        )}
+                                                        {/* Individual play button */}
+                                                        {!disabled && (
+                                                            <button
+                                                                onClick={(e) => runSingleEicarTest(cloudEicarUrl, e)}
+                                                                disabled={!!runningEicarTarget || loading}
+                                                                title="Run EICAR test on this target"
+                                                                className="w-6 h-6 flex items-center justify-center rounded bg-red-600/10 hover:bg-red-600/25 text-red-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
+                                                            >
+                                                                {runningEicarTarget === cloudEicarUrl ? (
+                                                                    <span className="w-3 h-3 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                                                                ) : (
+                                                                    <Play size={10} fill="currentColor" />
+                                                                )}
+                                                            </button>
                                                         )}
                                                     </div>
                                                 </div>
@@ -2202,20 +2212,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-red-500' : 'text-text-primary'}`}>{t.name}</h4>
                                                         <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{url}</p>
                                                     </div>
-                                                    <div className="flex items-center gap-2 ml-2 border-l border-border/50 pl-3">
-                                                        {/* Individual play button */}
-                                                        <button
-                                                            onClick={(e) => runSingleEicarTest(url, e)}
-                                                            disabled={!!runningEicarTarget || loading}
-                                                            title="Run EICAR test on this target"
-                                                            className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 w-6 h-6 flex items-center justify-center rounded-full bg-red-600/10 hover:bg-red-600/25 text-red-500 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-                                                        >
-                                                            {runningEicarTarget === url ? (
-                                                                <span className="w-3 h-3 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                                                            ) : (
-                                                                <Play size={10} fill="currentColor" />
-                                                            )}
-                                                        </button>
+                                                    <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
                                                         {/* Status dot */}
                                                         {status === 'loading' || status === undefined ? (
                                                             <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
@@ -2227,6 +2224,27 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         ) : (
                                                             <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
                                                         )}
+                                                        {/* Copy curl command button */}
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); copyToClipboard(`curl -fsS --max-time 20 "${url}" -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`); }}
+                                                            title="Copy curl command"
+                                                            className="w-6 h-6 flex items-center justify-center rounded bg-card-hover hover:bg-card-secondary text-text-muted hover:text-text-primary transition-colors shrink-0"
+                                                        >
+                                                            <Copy size={10} />
+                                                        </button>
+                                                        {/* Individual play button */}
+                                                        <button
+                                                            onClick={(e) => runSingleEicarTest(url, e)}
+                                                            disabled={!!runningEicarTarget || loading}
+                                                            title="Run EICAR test on this target"
+                                                            className="w-6 h-6 flex items-center justify-center rounded bg-red-600/10 hover:bg-red-600/25 text-red-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
+                                                        >
+                                                            {runningEicarTarget === url ? (
+                                                                <span className="w-3 h-3 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                                                            ) : (
+                                                                <Play size={10} fill="currentColor" />
+                                                            )}
+                                                        </button>
                                                     </div>
                                                 </div>
                                             );

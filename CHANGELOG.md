@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.29] - 2026-07-29
+### Fixed
+- **web-dashboard** 🔧 `Security.tsx`: Fixed EICAR target row buttons not being visible — removed `opacity-0 group-hover:opacity-100` and made Copy 📋 and Play ▶ buttons always visible, consistent with the URL Filtering section. Also moved the status dot before the action buttons and added a per-row Copy button to copy the `curl` EICAR command for each target.
+
 ## [v1.4.1-patch.28] - 2026-07-29
 ### Added
 - **web-dashboard** ▶️ `Security.tsx`: Added an individual **play button** on each EICAR target row (Stigix Cloud Worker and dynamic targets). The button appears on hover and launches the EICAR test for that single target without affecting the multi-target selection. A spinner replaces the play icon while the test is running, and all other play buttons are disabled during a run to prevent concurrent tests.
