@@ -627,6 +627,32 @@ stigix-cli profile import --file my-profile.json</pre>
           </div></div></div>
         </div>
 
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is EDL Testing and how does it work?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>EDL (External Dynamic List)</strong> testing lets you validate that your firewall or SD-WAN gateway correctly blocks traffic matching bulk threat intelligence lists &mdash; IPs, URLs, and domains &mdash; at scale, without manually crafting individual test cases.</p>
+            <p><strong>Three list types supported:</strong></p>
+            <ul>
+              <li><strong>IP EDL</strong> &mdash; validates blocking of malicious IPv4, IPv6, and CIDR ranges. Each entry is tested via <code>ping</code> toward the target IP. A blocked response (timeout or ICMP unreachable from the firewall) = policy working.</li>
+              <li><strong>URL EDL</strong> &mdash; validates blocking of fully-qualified URLs. Each entry is tested via <code>curl</code>. A redirect to a block page or HTTP 403 = URL filtering enforced.</li>
+              <li><strong>DNS EDL</strong> &mdash; validates blocking of domains (FQDNs). Each entry is resolved via <code>nslookup</code> / <code>dig</code>. An <code>NXDOMAIN</code> or sinkhole IP response = DNS Security enforced.</li>
+            </ul>
+            <p><strong>Loading your lists:</strong></p>
+            <ul>
+              <li><strong>Remote Sync</strong> &mdash; paste a public URL (e.g. a GitHub raw file, a Palo Alto EDL feed, or any plain-text threat intel list) and click <strong>Sync</strong>. Stigix downloads and parses the file automatically, stripping comments and blank lines, and deduplicates entries.</li>
+              <li><strong>Manual Upload</strong> &mdash; upload a local <code>.txt</code> or <code>.csv</code> file with one entry per line.</li>
+            </ul>
+            <p><strong>Test modes:</strong></p>
+            <ul>
+              <li><strong>Sequential</strong> &mdash; tests entries from the top of the list up to the configured limit. Useful for ordered lists where priority entries come first.</li>
+              <li><strong>Random</strong> &mdash; picks a random sample from the entire list. Useful for large lists (thousands of IPs) where full sequential testing would take too long.</li>
+            </ul>
+            <p>A <strong>Max Elements / Run</strong> cap prevents overloading the firewall or saturating the network during bulk tests. Each element test has a strict timeout (2&ndash;10s depending on type).</p>
+            <p><strong>Results:</strong> A mini summary table shows the last 5 results inline per list type. Full results (pass/fail per entry, latency, timestamp) are stored in the <strong>Test Results</strong> history tab and are queryable via the CLI or MCP Server.</p>
+          </div></div></div>
+        </div>
+
       </div><!-- /panel-security -->
 
       <!-- ═══════════════════════════════════════════════════
