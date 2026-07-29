@@ -202,6 +202,31 @@ netstat -ano | find "8080" # Windows</pre>
         </div>
 
         <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What works out of the box, right after installation?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>A lot. On first start, Stigix auto-generates everything it needs with zero manual intervention:</p>
+            <ul>
+              <li><strong>67 pre-configured SaaS applications</strong> — <code>config/applications-config.json</code> is created automatically with a realistic enterprise mix: Microsoft 365 (Outlook, Teams, SharePoint, OneDrive), Google Workspace, Salesforce, Zoom, Slack, Workday, and more.</li>
+              <li><strong>Auto-detected network interface</strong> — <code>config/interfaces.txt</code> is populated with your primary interface (<code>eth0</code>, <code>en0</code>, <code>ens4</code>, etc.) detected from the host.</li>
+              <li><strong>Default admin user</strong> — <code>config/users.json</code> is created with a bcrypt-hashed <code>admin/admin</code> credential.</li>
+            </ul>
+            <p>Services that start <strong>active by default</strong>:</p>
+            <ul>
+              <li>✅ <strong>Traffic Generation</strong> — begins generating SaaS-like HTTP/HTTPS requests immediately through the detected interface</li>
+              <li>✅ <strong>Synthetic Probes (DEM)</strong> — starts monitoring a set of default endpoints (Google, Cloudflare, etc.) every 60 seconds</li>
+              <li>✅ <strong>Target services</strong> — HTTP echo, XFR speedtest, Voice echo, and Convergence SLA probe server are all listening and ready to accept tests from other Stigix nodes</li>
+            </ul>
+            <p>Services that require configuration before starting:</p>
+            <ul>
+              <li>⚙️ <strong>IoT Simulation</strong> — needs a device profile to be loaded first</li>
+              <li>⚙️ <strong>Voice Testing</strong> — needs a target Stigix node configured</li>
+              <li>⚙️ <strong>VyOS Control</strong> — needs at least one VyOS router added</li>
+            </ul>
+            <p>In short: open the dashboard and you'll see traffic flowing and probes running within the first minute, with no configuration required.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the first three things to do after login?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <ol>
