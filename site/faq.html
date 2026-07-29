@@ -4,15 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FAQ – Stigix SASE / SD-WAN Validation Platform</title>
-  <meta name="description" content="Frequently asked questions about Stigix — traffic generation, security testing, digital experience monitoring, IoT simulation, voice testing, convergence lab, and operations.">
-  <meta name="keywords" content="Stigix FAQ, SD-WAN, SASE, traffic generator, security testing, IoT simulation, convergence lab, Prisma SD-WAN, frequently asked questions">
+  <meta name="description" content="Frequently asked questions about Stigix — traffic generation, security testing, digital experience monitoring, IoT simulation, VyOS control, settings, and operations.">
+  <meta name="keywords" content="Stigix FAQ, SD-WAN, SASE, traffic generator, security testing, IoT simulation, VyOS, Prisma SDWAN, convergence lab, frequently asked questions">
   <meta name="author" content="jsuzanne">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://stigix.io/faq.html">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://stigix.io/faq.html">
   <meta property="og:title" content="FAQ – Stigix SASE / SD-WAN Validation Platform">
-  <meta property="og:description" content="Answers to the most common questions about Stigix — from traffic generation and security testing to IoT simulation and operations.">
+  <meta property="og:description" content="Detailed answers about Stigix — traffic generation, security testing, IoT simulation, VyOS impairments, Prisma SD-WAN API integration and more.">
   <meta property="og:image" content="https://stigix.io/assets/screenshots/dashboard.png">
   <meta property="og:site_name" content="Stigix">
   <link rel="icon" type="image/png" href="assets/logo/stigix-favicon.png">
@@ -23,13 +23,13 @@
     .faq-hero .label{margin-bottom:18px}
     .faq-hero h1{font-size:clamp(2rem,5vw,3.4rem);font-weight:700;color:var(--white);letter-spacing:-.03em;line-height:1.15;margin-bottom:16px}
     .faq-hero h1 span{color:var(--teal)}
-    .faq-hero p{font-size:1.05rem;color:var(--muted);max-width:540px;margin:0 auto}
+    .faq-hero p{font-size:1.05rem;color:var(--muted);max-width:580px;margin:0 auto}
     .faq-tabs{padding:40px 0 0}
     .faq-tabs__strip{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:48px}
     .faq-tab-btn{position:relative;overflow:hidden;font-family:var(--sans);font-size:.82rem;font-weight:500;padding:8px 20px;border-radius:99px;border:1px solid var(--stroke-hi);background:transparent;color:var(--muted);cursor:pointer;transition:color .25s,border-color .25s;white-space:nowrap}
     .faq-tab-btn:hover{color:var(--white);border-color:var(--teal-dim)}
     .faq-tab-btn.is-active{color:#0b0d10;border-color:var(--teal);background:var(--teal)}
-    .faq-panels{max-width:760px;margin:0 auto;padding-bottom:80px}
+    .faq-panels{max-width:800px;margin:0 auto;padding-bottom:80px}
     .faq-panel{display:none}
     .faq-panel.is-active{display:block;animation:panelIn .32s ease both}
     @keyframes panelIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
@@ -44,8 +44,16 @@
     .faq-item__body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .3s ease}
     .faq-item.is-open .faq-item__body{grid-template-rows:1fr}
     .faq-item__inner{overflow:hidden}
-    .faq-item__answer{padding:0 20px 20px;font-size:.9rem;color:var(--muted);line-height:1.7}
-    .faq-item__answer code{font-family:var(--mono);font-size:.82em;color:var(--teal)}
+    .faq-item__answer{padding:0 20px 20px;font-size:.9rem;color:var(--muted);line-height:1.75}
+    .faq-item__answer code{font-family:var(--mono);font-size:.8em;color:var(--teal);background:rgba(24,201,174,.07);padding:1px 5px;border-radius:3px;border:1px solid rgba(24,201,174,.15)}
+    .faq-item__answer pre{font-family:var(--mono);font-size:.78em;color:var(--mid);background:var(--bg-raised);border:1px solid var(--stroke);border-radius:var(--r);padding:12px 14px;margin:12px 0;overflow-x:auto;line-height:1.55}
+    .faq-item__answer ul,.faq-item__answer ol{padding-left:18px;margin:8px 0}
+    .faq-item__answer li{margin-bottom:4px}
+    .faq-item__answer strong{color:var(--mid)}
+    .faq-item__answer a{color:var(--teal)}
+    .faq-item__answer a:hover{color:var(--white)}
+    .faq-badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:.65rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle}
+    .faq-badge--new{background:rgba(24,201,174,.12);color:var(--teal);border:1px solid rgba(24,201,174,.25)}
     @media print{.nav,.faq-tabs__strip{display:none}.faq-panel{display:block!important;animation:none!important}.faq-item__body{grid-template-rows:1fr!important}.faq-hero{padding:20px 0}}
     @media(max-width:640px){.faq-tab-btn{padding:7px 14px;font-size:.78rem}.faq-item__btn{padding:14px 16px}.faq-item__answer{padding:0 16px 16px}}
   </style>
@@ -90,7 +98,7 @@
   <div class="wrap">
     <span class="label">Let's answer some questions</span>
     <h1>Frequently Asked <span>Questions</span></h1>
-    <p>Everything you need to know about Stigix — from traffic generation and security testing to IoT simulation and operations.</p>
+    <p>Detailed technical answers about Stigix — from initial configuration and traffic profiling to VyOS impairment scripting, multivendor security profiles, and Prisma SD-WAN API integration.</p>
   </div>
 </section>
 
@@ -102,218 +110,664 @@
       <button class="faq-tab-btn"           data-tab="security" role="tab" aria-selected="false" aria-controls="panel-security">Security Testing</button>
       <button class="faq-tab-btn"           data-tab="iot"      role="tab" aria-selected="false" aria-controls="panel-iot">IoT Simulation</button>
       <button class="faq-tab-btn"           data-tab="voice"    role="tab" aria-selected="false" aria-controls="panel-voice">Voice &amp; Convergence</button>
+      <button class="faq-tab-btn"           data-tab="vyos"     role="tab" aria-selected="false" aria-controls="panel-vyos">VyOS Control</button>
+      <button class="faq-tab-btn"           data-tab="settings" role="tab" aria-selected="false" aria-controls="panel-settings">Settings &amp; API</button>
       <button class="faq-tab-btn"           data-tab="ops"      role="tab" aria-selected="false" aria-controls="panel-ops">Operations</button>
     </div>
 
     <div class="faq-panels">
 
-      <!-- TRAFFIC GENERATION -->
+      <!-- ═══════════════════════════════════════════════════
+           TRAFFIC GENERATION
+      ═══════════════════════════════════════════════════ -->
       <div class="faq-panel is-active" id="panel-traffic" role="tabpanel">
+
         <div class="faq-item is-open">
-          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">What is the Traffic Generator?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">The Traffic Generator creates continuous background HTTP/HTTPS traffic to simulate realistic enterprise user activity across many SaaS applications such as Microsoft 365, Google Workspace, Zoom, and Salesforce.</p></div></div>
+          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">What is the Traffic Generator and how does it differ from Security Testing?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The Traffic Generator creates <strong>continuous background HTTP/HTTPS traffic</strong> simulating realistic enterprise user activity — Microsoft 365, Google Workspace, Zoom, Salesforce, Slack, etc. It is designed to populate SD-WAN flow tables and trigger application-aware routing decisions.</p>
+            <p>Security Testing is entirely separate: it fires <strong>on-demand or scheduled one-shot requests</strong> to known malicious or policy-test URLs to validate that your security policies enforce correctly. The two engines use different config files, ports, and log files and run independently.</p>
+            <pre>Feature          Traffic Generator     Security Tests
+Purpose          Simulate user load    Validate security policy
+Source config    applications-config   security-profile.json
+Execution        Continuous loop       On-demand / scheduled
+Log file         traffic.log           test-results.jsonl
+Stats            stats.json            Dashboard history</pre>
+          </div></div></div>
         </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How is Traffic Generation different from Security Testing?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Traffic Generation is meant to simulate user demand and application mix, while Security Testing is meant to validate whether security policies block or allow known test destinations.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do application weights work?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Each application has a weight that defines its relative probability of being selected during traffic generation, so a higher-weight app appears more often over time.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I create a realistic business profile?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Start with core productivity and collaboration apps such as Outlook, Teams, Google Workspace, Zoom, Slack, and Salesforce, then tune weights so business-critical apps dominate while secondary apps still appear naturally.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can I simulate non-business traffic like streaming or gaming?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Yes. The Traffic Generator supports consumer-style profiles with social media, streaming, and gaming applications using heavier weights for those categories.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I add internal applications or IP-based services?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">You can define targets by domain name or IP address. If you need plain HTTP instead of HTTPS you can specify the protocol explicitly in the application definition.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I verify that the generator is really working?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Use the dashboard statistics, <code>traffic.log</code>, and <code>stats.json</code> to compare the configured weights with the observed request distribution and success rates.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why is no traffic being generated?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">First check whether traffic generation is enabled, whether the correct network interface is configured, and whether the traffic generator container is running without errors.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Where does Traffic Generation fit in a demo?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Traffic Generation is ideal when you want to show realistic SaaS behavior, SD-WAN path steering, application visibility, and policy decisions under user-like load rather than just one-off probes.</p></div></div>
-        </div>
-      </div>
 
-      <!-- DIGITAL EXPERIENCE -->
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does the weight system work exactly?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Weights are <strong>relative, not absolute percentages</strong>. The probability of an app being selected is <code>app_weight / total_weight_of_all_apps</code>.</p>
+            <pre>{ "domain": "google.com",    "weight": 100 }  → 50% (100/200)
+{ "domain": "microsoft.com", "weight":  50 }  → 25%
+{ "domain": "zoom.us",       "weight":  50 }  → 25%</pre>
+            <p>The dashboard UI automatically recalculates and displays percentages as you edit weights. Useful ranges: <strong>1–25</strong> for background apps, <strong>51–100</strong> for regular business apps, <strong>100–200</strong> for dominant/demo apps (e.g. video streaming).</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I add an internal application or IP-based target?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Prefix the domain with <code>http://</code> to force plain HTTP (useful for internal servers). The engine uses HTTPS by default for all other entries.</p>
+            <pre>{ "domain": "http://192.168.203.100", "weight": 50,
+  "endpoint": "/cgi-bin/hw.sh", "category": "Internal" }</pre>
+            <p>You can also use raw IP addresses with HTTPS as long as the target serves a valid certificate. Multiple entries for the same domain with different endpoints are fully supported to distribute load across API paths.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I export or import a traffic profile to reuse it across deployments?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Traffic profiles are stored in <code>config/applications-config.json</code>. You can export the current config directly from the Settings tab using the <strong>Download Config</strong> button, which saves the full JSON file. To import it on another Stigix instance, upload it via the <strong>Import Config</strong> button in the same section — no restart required.</p>
+            <p>For CLI-based workflows, the Stigix CLI supports profile management:</p>
+            <pre>stigix-cli profile export --output my-profile.json
+stigix-cli profile import --file my-profile.json</pre>
+            <p>Profiles are self-contained JSON files that travel easily between lab, PoC, and demo environments.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I verify the generator is actually producing traffic?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Three methods to confirm live traffic:</p>
+            <ul>
+              <li><strong>Dashboard counters</strong> — the Traffic tab shows total requests sent, success rate, and per-app breakdown in real time.</li>
+              <li><strong>Log file</strong> — <code>cat logs/traffic.log | tail -f</code> streams live request outcomes.</li>
+              <li><strong>Stats JSON</strong> — <code>cat logs/stats.json | jq '.requests_by_app'</code> shows actual distribution vs configured weights.</li>
+            </ul>
+            <p>If the counters are frozen, verify that traffic generation is <strong>toggled on</strong> in the dashboard, the correct network interface is selected, and the container is running (<code>docker ps</code>).</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I build a realistic enterprise demo profile?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Start with the pre-built <strong>Enterprise Profile</strong> template available in Settings. It includes Microsoft 365 (Outlook, Teams, SharePoint, OneDrive), Google Workspace, Zoom, Salesforce, Slack, and Workday with realistic weights.</p>
+            <p>Recommended weight tiers for enterprise demos:</p>
+            <ul>
+              <li><strong>100–150</strong> — Primary apps: Outlook, Teams, Zoom</li>
+              <li><strong>60–90</strong> — Regular apps: Salesforce, Google Workspace</li>
+              <li><strong>20–50</strong> — Secondary: Slack, Dropbox, ServiceNow</li>
+              <li><strong>5–15</strong> — Background: update servers, telemetry endpoints</li>
+            </ul>
+            <p>Consumer or shadow IT profiles (streaming, gaming, social media) use weights of 150–200 to dominate the mix and clearly show QoS and policy impact on the SD-WAN flow table.</p>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-traffic -->
+
+
+      <!-- ═══════════════════════════════════════════════════
+           DIGITAL EXPERIENCE
+      ═══════════════════════════════════════════════════ -->
       <div class="faq-panel" id="panel-digexp" role="tabpanel">
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are connectivity probes?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Connectivity probes are lightweight tests that continuously check service reachability and responsiveness using methods such as HTTP, ICMP, DNS, and related synthetic checks.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the goal of Digital Experience monitoring?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">The goal is to show whether critical services are actually healthy and responsive from the branch point of view — not just whether a path is technically up.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Which targets can I monitor?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">You can monitor internal applications, SaaS services, collaboration platforms, DNS resolution targets, and other endpoints defined in the connectivity configuration.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How is Digital Experience different from Traffic Generation?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Traffic Generation creates ongoing application load, while Digital Experience monitoring measures health, reachability, and responsiveness of selected services.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why is this useful in customer demos?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">It helps explain that "reachable" does not always mean "usable," especially when latency, instability, or intermittent degradation affects user experience.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can it detect unstable or flaky behavior?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Yes. Because the probes run continuously, they can expose intermittent problems and inconsistent service behavior that a single manual test may miss.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How should I choose endpoints for a demo?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Pick a small set of business-relevant services — usually one or two SaaS apps, one internal dependency, and one generic internet target for comparison.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What if the probes always look healthy?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">That usually means the chosen targets are too simple or too stable. It is often better to include at least one app or service that is meaningful to the customer's real workflow.</p></div></div>
-        </div>
-      </div>
 
-      <!-- SECURITY TESTING -->
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What probe types are available and what does each measure?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix supports 7 probe types, each using the native OS binary for accuracy:</p>
+            <ul>
+              <li><strong>HTTP / HTTPS</strong> — Uses <code>curl</code> to measure DNS lookup, TCP handshake, TLS handshake, and TTFB separately. Best for SaaS app health.</li>
+              <li><strong>PING (ICMP)</strong> — Uses native <code>ping</code> for round-trip time. Score 100 if &lt;100ms, reaches 0 at 500ms.</li>
+              <li><strong>DNS</strong> — Uses <code>dig</code> (bypasses OS cache) to measure raw nameserver resolution. Score 100 if &lt;80ms, reaches 0 at 400ms.</li>
+              <li><strong>TCP</strong> — Uses <code>nc</code> (netcat) to test port reachability and handshake timing.</li>
+              <li><strong>UDP</strong> — Uses <code>iperf3 -u</code> to measure jitter and packet loss. Score = <code>100 - (loss% × 10) - jitter_penalty</code>. 10% loss = score 0.</li>
+              <li><strong>CLOUD</strong> — Hits the Stigix Cloudflare Worker with full <code>curl</code> telemetry (DNS/TCP/TLS/TTFB). Timeout 15s.</li>
+            </ul>
+            <p>Default polling frequency is <strong>60 seconds</strong> for all types, configurable from 30s to 3600s per probe.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I add a new custom probe?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Navigate to <strong>Settings → Synthetic Probes → Add Custom Probe</strong>. Fill in:</p>
+            <ul>
+              <li><strong>Name</strong> — Uppercase label, e.g. <code>HQ-GATEWAY</code> or <code>OFFICE365-UDP</code></li>
+              <li><strong>Protocol</strong> — HTTP, HTTPS, PING, TCP, DNS, UDP, or CLOUD</li>
+              <li><strong>Target</strong> — FQDN (<code>google.com</code>), socket (<code>1.1.1.1:53</code>), or IP</li>
+              <li><strong>Timeout</strong> — 1000ms to 60000ms (default 5000ms)</li>
+              <li><strong>Frequency</strong> — 30s to 3600s (default 60s)</li>
+            </ul>
+            <p>Probes start running immediately after saving — no restart needed. The probe appears in the Digital Experience dashboard within one polling cycle.</p>
+            <p>To monitor an internal server with plain HTTP: set type to <code>HTTP</code> and target to <code>http://192.168.1.10</code> (with explicit protocol prefix).</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does the scoring system work?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>All probes return a score from <strong>0 to 100</strong>. The dashboard stores minimum, maximum, and average over time.</p>
+            <pre>Score    Rating     Meaning
+80–100   Excellent  No user impact
+50–79    Fair       Noticeable latency / jitter
+1–49     Poor       Severe degradation
+0        Critical   Unreachable or HTTP 5xx</pre>
+            <p>HTTP/HTTPS scoring: <code>100 - (30% × latency_penalty + 35% × TTFB_penalty + 25% × TLS_penalty)</code>. Heavily penalised if latency &gt;2s, TTFB &gt;1s, or TLS &gt;800ms.</p>
+            <p>An endpoint transitions to <strong>FLAKY</strong> when it fails but recently succeeded, and to <strong>DOWN</strong> after multiple consecutive failures — helping distinguish transient blips from hard outages.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are Stigix Cloud probes and how do they differ from custom probes?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Cloud probes target the <strong>Stigix Cloudflare Worker</strong> infrastructure and are available to all deployments without configuration. They simulate specific scenarios:</p>
+            <ul>
+              <li><strong>Info / Egress</strong> (<code>/saas/info</code>) — Returns your public IP, country, and Cloudflare POP. Useful to show which SASE egress point is being used.</li>
+              <li><strong>Slow SaaS</strong> (<code>/saas/slow</code>) — 5-second backend delay. Score 100 if &lt;200ms, 0 at 5s. Ideal for demonstrating latency impact.</li>
+              <li><strong>Large Download</strong> (<code>/download/large</code>) — 10MB payload. Score 100 if &lt;1s, 0 at 10s.</li>
+              <li><strong>Security EICAR</strong> (<code>/security/eicar</code>) — Delivers the EICAR test string for IPS validation.</li>
+            </ul>
+            <p>Cloud probes use the same <code>curl</code>-based engine as HTTPS probes, providing a full 4-layer timing breakdown (DNS, TCP, TLS, TTFB) visible in the Timing Analysis modal.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I export and import probe configurations across deployments?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Probe configurations are stored in <code>config/connectivity-config.json</code>. Export the file from <strong>Settings → Synthetic Probes → Download</strong>, or copy it directly from the config volume.</p>
+            <p>To import on a new instance: upload via the <strong>Import</strong> button in Settings, or replace the file directly and the backend picks it up on the next polling cycle — no restart needed.</p>
+            <p>For multisite PoCs, keeping a library of probe config files (one per customer vertical — retail, hospital, manufacturing) makes it trivial to load the right set of probes before a demo.</p>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-digexp -->
+
+
+      <!-- ═══════════════════════════════════════════════════
+           SECURITY TESTING
+      ═══════════════════════════════════════════════════ -->
       <div class="faq-panel" id="panel-security" role="tabpanel">
+
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What does Security Testing validate?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Security Testing validates URL filtering, DNS security, threat prevention behavior, and related policy enforcement using known test destinations and files.</p></div></div>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What does the Security Testing module actually validate?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Four distinct policy enforcement areas:</p>
+            <ul>
+              <li><strong>URL Filtering</strong> — Sends HTTP GET requests to test URLs (e.g. <code>urlfiltering.paloaltonetworks.com/test-malware-domains</code>). A blocked response (redirect to block page, HTTP 403, or connection reset) = policy working.</li>
+              <li><strong>DNS Security</strong> — Resolves malicious test domains via <code>dig</code>. NXDOMAIN or a sinkhole IP = policy working. Live resolution = bypassed.</li>
+              <li><strong>Threat Prevention / EICAR</strong> — Attempts to download the EICAR test file from configurable targets. Download blocked = IPS working.</li>
+              <li><strong>C2 / AI Security</strong> — Advanced scenarios testing C2 beaconing patterns and AI application policy enforcement.</li>
+            </ul>
+          </div></div></div>
         </div>
+
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does the system decide whether a result is Allowed or Blocked?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">For URL tests it evaluates HTTP outcomes; for DNS tests it checks whether malicious domains resolve or return NXDOMAIN; for threat tests it checks whether EICAR-style downloads succeed or fail.</p></div></div>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Stigix support multivendor security testing (Fortinet, Check Point, Cisco)?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Security tests are driven by a <strong>vendor-agnostic profile JSON</strong> (<code>config/security-profile.json</code>). You can swap the entire test set by loading a different profile, each targeting the correct test infrastructure for that vendor.</p>
+            <p>Three ways to switch profiles:</p>
+            <ul>
+              <li><strong>UI Import</strong> — Security tab → Security Profile → Import Profile → upload your JSON</li>
+              <li><strong>API</strong> — <code>POST /api/security/profile</code> with a JWT and the JSON body</li>
+              <li><strong>Direct file edit</strong> — replace <code>config/security-profile.json</code>; read on every request, no restart needed</li>
+            </ul>
+            <p>Example Fortinet profile structure:</p>
+            <pre>{ "vendor": "fortinet",
+  "url_filtering": { "items": [
+    { "id": "malicious", "name": "Malicious",
+      "url": "https://www.eicar.org/download/eicar.com.txt" }
+  ]},
+  "dns_security": { "items": [
+    { "id": "botnet", "name": "Botnet C2",
+      "domain": "botnet.test.fortiguard.com", "category": "basic" }
+  ]}
+}</pre>
+          </div></div></div>
         </div>
+
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why are all my tests showing Allowed?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">This usually means the test traffic is not passing through Prisma Access or the required security policies are not configured in the active path.</p></div></div>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The most common causes in order of frequency:</p>
+            <ul>
+              <li><strong>Traffic not routed through Prisma Access</strong> — The Stigix container is sending directly to the internet without going through a GlobalProtect tunnel or IPsec connection. Check your network path.</li>
+              <li><strong>Security policies not applied to the right zone</strong> — The test traffic may be hitting a rule that allows everything. Verify the source zone matches your SASE policy.</li>
+              <li><strong>Wrong vendor profile</strong> — If you loaded a Palo Alto profile but are testing a Fortinet deployment, the test URLs will not match FortiGuard's category database and may be allowed by default.</li>
+              <li><strong>Local DNS resolution</strong> — For DNS tests, your stub resolver may bypass the SASE DNS security enforcement. Ensure the container uses the SASE-provided DNS server.</li>
+            </ul>
+          </div></div></div>
         </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Do I need to click "Run All" if scheduled execution is active?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">No. Scheduled tests run automatically in the background after the configured interval. "Run All Enabled" is only for manual on-demand execution.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How often should I schedule security tests?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Manual execution works best for demos. For PoCs, 30–60 minute intervals are recommended. For lighter continuous monitoring, 60–120 minutes is appropriate.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I know if the policies are working correctly?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Look for Blocked results in the results table and confirm that the statistics dashboard reflects enforcement over time.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What if scheduled tests are not running?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Check that scheduling is enabled, the interval is valid, at least one test type is selected, and then inspect backend logs if the UI looks correct.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Where does Security Testing fit in a demo?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Security Testing is best when you want a clear proof point that policy enforcement is happening — especially for URL filtering, DNS security, and Threat Prevention validation.</p></div></div>
-        </div>
-      </div>
 
-      <!-- IOT SIMULATION -->
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do scheduled tests work and what intervals should I use?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Each test type (URL, DNS, Threat, C2, AI) has its own independent scheduler. When enabled, tests run automatically in the background after the configured interval — no need to click "Run All".</p>
+            <p>Recommended intervals by use case:</p>
+            <ul>
+              <li><strong>Live demo</strong> — Manual run only (click "Run All Enabled"). Avoid scheduled runs during demos to control timing.</li>
+              <li><strong>PoC</strong> — 30–60 minutes. Provides fresh results without hammering the network.</li>
+              <li><strong>Continuous monitoring</strong> — 60–120 minutes. Lightweight background validation.</li>
+            </ul>
+            <p>The scheduler persists across container restarts. Results accumulate in <code>logs/test-results.jsonl</code> and are displayed in the results table with timestamps.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can I run individual tests per target instead of all at once?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Yes. Every URL, DNS, and EICAR target row has an individual <strong>Play ▶</strong> button that runs just that single test in isolation — without affecting other targets or the scheduler. This is useful for:</p>
+            <ul>
+              <li>Demonstrating a single blocked category live during a meeting</li>
+              <li>Troubleshooting why one specific domain behaves differently</li>
+              <li>Testing a freshly-added custom URL before running the full suite</li>
+            </ul>
+            <p>There is also a <strong>Copy 📋</strong> button on each EICAR target row that copies the equivalent <code>curl</code> command so you can run the test manually from any terminal.</p>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-security -->
+
+
+      <!-- ═══════════════════════════════════════════════════
+           IOT SIMULATION
+      ═══════════════════════════════════════════════════ -->
       <div class="faq-panel" id="panel-iot" role="tabpanel">
+
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is IoT Simulation in Stigix?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">IoT Simulation creates realistic device behavior on the wire using Scapy, including DHCP, ARP, and device-specific traffic patterns, so simulated devices look more like real endpoints to the network.</p></div></div>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is IoT Simulation in Stigix and how does it work technically?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The IoT engine uses <strong>Scapy</strong> to craft and inject raw network frames at Layer 2/3. It simulates full device lifecycle: DHCP discovery/request/ACK (with vendor-specific option 55 fingerprints), ARP announcements, and application-level traffic — making simulated devices indistinguishable from real hardware to the network.</p>
+            <p>This is important for Palo Alto IoT Security demos: the DHCP fingerprint triggers the classification engine, which correlates MAC OUI, DHCP option strings, and traffic patterns to identify device type and assign a trust score.</p>
+          </div></div></div>
         </div>
+
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why use IoT Simulation instead of only app traffic?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">It is useful when the demo needs device visibility, segmentation, identification, or OT/IoT-specific behavior rather than only browser or SaaS application flows.</p></div></div>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why use IoT Simulation instead of just generating app traffic?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>App traffic (the Traffic Generator) produces standard HTTP flows from the Stigix container itself. IoT Simulation creates <strong>distinct virtual MAC addresses</strong> for each simulated device, making each appear as a separate endpoint on the network. This enables:</p>
+            <ul>
+              <li>IoT device visibility and classification in NGFW/IoT Security dashboards</li>
+              <li>Segmentation policy validation (can a simulated camera reach the internet?)</li>
+              <li>OT/IoT-specific behavior like Modbus, MQTT, BACNET patterns</li>
+              <li>Bad-behavior scenarios: beaconing, DNS floods, port scans, data exfiltration</li>
+            </ul>
+          </div></div></div>
         </div>
+
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What kinds of devices can be simulated?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Multiple device families are supported: cameras, sensors, smart plugs, smart lighting, printers, HVAC-related devices, and industrial or medical profiles depending on the configuration.</p></div></div>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Should I use the Python generator or the LLM method to create device profiles?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <ul>
+              <li><strong>Python generator</strong> — Fast, deterministic, offline. Use it when you need a standard set of devices quickly (cameras, printers, HVAC, smart plugs) and reproducibility matters.</li>
+              <li><strong>LLM-based generation</strong> — Use it when you need a <em>customer-specific</em> or <em>industry-specific</em> device set. You provide a natural-language prompt (e.g. "generate 20 devices for a hospital: patient monitors, infusion pumps, smart beds, radiology scanners") and the output is a ready-to-use JSON device profile.</li>
+            </ul>
+            <p>Pre-built vertical examples are available for: healthcare, manufacturing, utilities/SCADA, retail, and smart office. These can be loaded directly without any LLM call.</p>
+          </div></div></div>
         </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the role of DHCP fingerprints?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">DHCP fingerprints make the simulated devices more believable and help with identification workflows, including Palo Alto IoT Security classification scenarios.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Should I use the Python generator or the LLM-based method?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Use the Python generator for fast, deterministic, offline output. Use the LLM-based method when you want a customer-specific or industry-specific device set for a tailored demo.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can I build vertical demos like hospital, factory, or smart building?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Yes. The LLM generation guide already includes example prompts for healthcare, manufacturing, utilities, retail, and smart office environments.</p></div></div>
-        </div>
+
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Does IoT Simulation work the same on Linux, macOS, and Windows?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">No. Full host-mode IoT simulation with DHCP and ARP behavior is Linux-only. macOS, Windows, and WSL2 run with reduced bridge-mode capabilities.</p></div></div>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>No</strong> — the host OS matters significantly:</p>
+            <ul>
+              <li><strong>Linux (bare metal or VM)</strong> — Full host-mode simulation with real DHCP, ARP, and virtual MAC addresses. Recommended for lab environments and PoCs.</li>
+              <li><strong>macOS / Windows / WSL2</strong> — Bridge-mode only. DHCP fingerprinting and ARP are limited by Docker networking restrictions. The devices will generate traffic but won't appear as distinct DHCP clients on the physical network.</li>
+            </ul>
+            <p>For maximum realism in a DHCP fingerprinting demo, a Linux host is required. A lightweight Alpine or Ubuntu VM on the same physical segment works well.</p>
+          </div></div></div>
         </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can simulated devices generate malicious behavior for validation?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Yes. The IoT engine supports bad-behavior modes such as beaconing, DNS flood, port scan, data exfiltration, and Palo Alto test domain generation for security validation use cases.</p></div></div>
-        </div>
-      </div>
 
-      <!-- VOICE & CONVERGENCE -->
+      </div><!-- /panel-iot -->
+
+
+      <!-- ═══════════════════════════════════════════════════
+           VOICE & CONVERGENCE
+      ═══════════════════════════════════════════════════ -->
       <div class="faq-panel" id="panel-voice" role="tabpanel">
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is Voice Testing used for?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Voice Testing generates RTP-style traffic and measures metrics such as jitter, loss, latency, R-value, and MOS to assess voice quality under network conditions.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the Convergence Lab used for?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">The Convergence Lab is used to measure failover behavior precisely, including blackout windows and directional loss during path changes or impairments.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why is Convergence different from basic failover observation?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">It is designed as a measurement tool, not just a visual indicator, so it can quantify how long failover actually impacts traffic and how recovery behaves in each direction.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why does directional loss matter?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Because failover impact is not always symmetric, and one direction may recover differently from the other — which is especially relevant for voice and real-time traffic.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">When should I use Voice Testing in a demo?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Use it when you want to show the practical user impact of latency, jitter, and packet loss rather than only bandwidth or reachability.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">When should I use the Convergence Lab in a demo?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Use it when the customer wants proof of failover quality, precise recovery timing, or visibility into how path changes affect application continuity.</p></div></div>
-        </div>
-      </div>
 
-      <!-- OPERATIONS -->
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What does the Voice Testing module measure exactly?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Voice Testing generates <strong>bidirectional RTP-style UDP streams</strong> between the Stigix instance and a configured target (usually another Stigix node or any iperf3 server). It measures:</p>
+            <ul>
+              <li><strong>Jitter</strong> — Variation in packet arrival timing (ms)</li>
+              <li><strong>Packet Loss</strong> — Percentage of UDP packets lost in each direction</li>
+              <li><strong>Latency</strong> — Round-trip time (ms)</li>
+              <li><strong>R-Value</strong> — ITU-T E-model call quality score (0–93)</li>
+              <li><strong>MOS</strong> — Mean Opinion Score (1–5), the industry standard for perceived voice quality</li>
+            </ul>
+            <p>Results are shown per call session and plotted over time in the Voice dashboard.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the Convergence Lab and how is it different from basic failover observation?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Basic failover observation (e.g. watching ping stop and resume) tells you <em>that</em> a failover happened. The Convergence Lab tells you <em>how bad it was</em>:</p>
+            <ul>
+              <li><strong>Blackout window</strong> — Exact number of milliseconds of zero traffic in each direction</li>
+              <li><strong>Directional loss</strong> — Uplink and downlink packet loss measured independently (failover is rarely symmetric)</li>
+              <li><strong>Recovery profile</strong> — How quickly each direction returns to baseline after the path change</li>
+            </ul>
+            <p>Each test receives a unique ID (e.g. <code>CONV-0042</code>) and is logged to <code>logs/convergence-history.jsonl</code> for audit and comparison. If Prisma SD-WAN API credentials are configured, the active egress path (e.g. <code>BR8-INET2 → DC2-INET</code>) is automatically enriched 60 seconds after the test completes.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">When should I use each module in a customer demo?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <ul>
+              <li><strong>Voice Testing</strong> — When the customer wants to see the practical impact of latency and jitter on call quality. MOS numbers are immediately understandable to non-technical stakeholders ("MOS dropped from 4.2 to 2.1 during the outage").</li>
+              <li><strong>Convergence Lab</strong> — When the customer wants a precise, quantified proof of failover speed. Useful for SLA discussions and SD-WAN competitive evaluations ("failover completed in 380ms, zero uplink loss, 2% downlink loss during the switchover").</li>
+            </ul>
+            <p>For maximum impact, combine both: run a voice session continuously, trigger a failover (manually or via VyOS impairment), and show how the Convergence Lab captures the exact outage window that correlates with the MOS dip in the Voice dashboard.</p>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-voice -->
+
+
+      <!-- ═══════════════════════════════════════════════════
+           VYOS CONTROL
+      ═══════════════════════════════════════════════════ -->
+      <div class="faq-panel" id="panel-vyos" role="tabpanel">
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is VyOS Control and what can it do?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>VyOS Control is a subsystem that automates <strong>network-level impairment injection</strong> on VyOS routers via the VyOS HTTP API. It allows you to programmatically simulate real-world network degradation scenarios without touching router configs manually.</p>
+            <p>Capabilities:</p>
+            <ul>
+              <li><strong>SET-QOS</strong> — Apply latency (ms), packet loss (%), and rate-limiting (Mbps) on any interface</li>
+              <li><strong>CLEAR-QOS</strong> — Remove all impairments and restore clean forwarding</li>
+              <li><strong>Sequences</strong> — Chain multiple actions with time offsets (T+0, T+10, T+30 minutes) to simulate realistic link degradation and recovery scenarios</li>
+              <li><strong>Cyclic loops</strong> — Repeat a sequence automatically every N minutes (e.g. every 60 minutes for persistent demo environments)</li>
+              <li><strong>Audit trail</strong> — Every action is logged with a unique Run ID (<code>SEQ-xxxx</code> or <code>MAN-xxxx</code>), timestamp, duration, and parameters</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the requirements to connect a VyOS router to Stigix?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Requirements:</p>
+            <ul>
+              <li><strong>VyOS 1.3+</strong> with the HTTPS API service enabled</li>
+              <li>An API key configured on the router</li>
+              <li>Network reachability from the Stigix container to the router management IP</li>
+            </ul>
+            <p>Minimal VyOS configuration:</p>
+            <pre>set service https api keys id MY-KEY key 'YOUR-API-KEY-HERE'
+set service https api-restrict virtual-host vyos.lab
+commit
+save</pre>
+            <p>Then add the router in <strong>VyOS Control → Routers → Add Router</strong> with the management IP and API key. Stigix will automatically discover all interfaces and their descriptions (e.g. "Paris to NYC MPLS"), which are promoted throughout the UI for easy identification.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I build a realistic impairment sequence?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Go to <strong>VyOS Control → Sequences → New Sequence</strong>. A sequence is a list of timestamped actions:</p>
+            <pre>T+0  min  →  SET-QOS  eth1  latency=50ms  loss=0%   (degradation starts)
+T+5  min  →  SET-QOS  eth1  latency=200ms loss=5%   (brownout)
+T+10 min  →  CLEAR-QOS eth1                          (recovery)
+T+15 min  →  SET-QOS  eth0  latency=30ms  loss=2%   (failover path now degraded)
+T+20 min  →  CLEAR-QOS eth0                          (full recovery)</pre>
+            <p>Key rules:</p>
+            <ul>
+              <li>Offsets are clamped to the cycle duration — if you reduce a 60-minute cycle to 30 minutes, any offset &gt;30 is automatically clamped to 30.</li>
+              <li>Run IDs are unique per execution: <code>SEQ-0042</code> for automatic cyclic runs, <code>MAN-0007</code> for manual triggers. This allows you to correlate impairment events with convergence test results and voice MOS dips.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">The VyOS API is returning "service https api unavailable" — what should I do?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>This error means the <code>vyos-http-api</code> service has entered an unstable state — usually after a period of uptime or a partial configuration change. The config on the router is fine; the API daemon needs a restart.</p>
+            <p><strong>Resolution steps:</strong></p>
+            <pre># 1. Verify the API config is still correct
+show configuration commands | match 'service https'
+
+# 2. Restart the HTTP-API service (fastest fix)
+sudo systemctl restart vyos-http-api.service
+
+# 3. Verify it came back up
+show log | match 'vyos-http-api'
+# Expected: "Configuration success" + "Serving on http://localhost:8080"</pre>
+            <p>If the API config itself has stale entries (e.g. an old key ID), clean them up in configuration mode before restarting:</p>
+            <pre>configure
+delete service https api keys id OLD-KEY-ID
+commit
+save
+exit</pre>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can I trigger VyOS impairments from Claude / natural language?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Yes. When the <strong>Stigix MCP Server</strong> is configured with Claude Desktop, you can issue plain-English commands like:</p>
+            <ul>
+              <li>"Add 200ms latency and 3% packet loss on the MPLS link of BR8"</li>
+              <li>"Simulate a brownout on eth1 of router Paris-R1 for 5 minutes then clear"</li>
+              <li>"Run the failover demo sequence on loop every 30 minutes"</li>
+            </ul>
+            <p>The MCP server translates these into the VyOS API sequence lifecycle automatically: creates a temporary ad-hoc sequence, executes it immediately (<code>MAN-xxxx</code> run ID), retrieves the CLI equivalent for confirmation, and cleans up the temp sequence. See <a href="https://github.com/jsuzanne/stigix/blob/main/docs/MCP_SERVER.md" target="_blank" rel="noopener noreferrer">MCP_SERVER.md</a> for setup instructions.</p>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-vyos -->
+
+
+      <!-- ═══════════════════════════════════════════════════
+           SETTINGS & API
+      ═══════════════════════════════════════════════════ -->
+      <div class="faq-panel" id="panel-settings" role="tabpanel">
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I configure Prisma SD-WAN API credentials?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Step 1 — Create a Service Account in Strata Cloud Manager:</strong></p>
+            <ol>
+              <li>Log in to Prisma Access / Strata Cloud Manager</li>
+              <li>Navigate to <strong>Settings → Service Accounts</strong></li>
+              <li>Create a Service Account and note the <strong>Client ID</strong>, <strong>Client Secret</strong>, and <strong>TSG ID</strong></li>
+              <li>Assign minimum permissions: <code>prisma-sdwan-config.read</code> and <code>prisma-sdwan-monitor.read</code></li>
+            </ol>
+            <p><strong>Step 2 — Add to your .env or docker-compose.yml:</strong></p>
+            <pre>PRISMA_SDWAN_CLIENT_ID="abc@123.iam.panserviceaccount.com"
+PRISMA_SDWAN_CLIENT_SECRET="your-client-secret"
+PRISMA_SDWAN_TSG_ID="1234567890"
+
+# Optional
+PRISMA_SDWAN_REGION="de"     # de, us, uk, etc.
+PRISMA_SDWAN_CACHE_TTL=600   # Cache in seconds (default 10 min)
+DEBUG=true                   # Verbose API logs in docker compose logs</pre>
+            <p><strong>Features unlocked once configured:</strong></p>
+            <ul>
+              <li>Site auto-detection badge in the dashboard header</li>
+              <li>Smart Target Selector — convergence targets auto-populated from DC LAN interfaces</li>
+              <li>Egress Path Enrichment — active SD-WAN path shown in convergence history (e.g. <code>BR8-INET2 → DC2-INET</code>)</li>
+              <li>VPN Topology Overlay — real-time tunnel health visualization</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What other environment variables can I configure?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Key environment variables for the all-in-one container:</p>
+            <pre>JWT_SECRET="change-me-in-production"   # Auth token secret (required)
+ADMIN_PASSWORD="your-password"         # Dashboard login password
+PORT=8080                              # Web UI port (default 8080)
+
+# Stigix Cloud / Registry
+STIGIX_TARGET_BASE_URL=https://...     # Override Cloud Worker URL
+STIGIX_TARGET_MASTER_KEY="..."        # Key for advanced Cloud Worker features
+STIGIX_TARGET_SHARED_KEY="..."        # Signing key for authenticated Cloud probes
+
+# Network
+NETWORK_INTERFACE=eth0                 # Interface for traffic generation
+</pre>
+            <p>All variables can be set in <code>.env</code> at the project root or directly in <code>docker-compose.yml</code> under the <code>environment:</code> section. Changes take effect after container restart.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I add Stigix targets (remote probe endpoints)?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix Targets are remote endpoints that host the Stigix agent services (voice, convergence, XFR, security, connectivity). Add them in <strong>Settings → Targets → Add Target</strong>:</p>
+            <ul>
+              <li><strong>Name</strong> — Friendly label (e.g. "DC1-Paris", "Hetzner-DE")</li>
+              <li><strong>Host</strong> — IP or FQDN of the remote agent</li>
+              <li><strong>Capabilities</strong> — Select which tests this target supports: Voice, Convergence, XFR, Security, Connectivity</li>
+              <li><strong>Ports</strong> — Override default ports if needed (voice: 6100, convergence: 6101, HTTP: 8082)</li>
+            </ul>
+            <p>Targets can also be auto-discovered via the <strong>Stigix Registry</strong> (Hybrid Registry feature) — remote agents register themselves automatically, and the dashboard shows them as "Discovered" with their last-seen timestamp. This simplifies multi-site deployments significantly.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I use the Stigix REST API directly?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The backend exposes a full REST API on the same port as the UI (default 8080). All protected endpoints require a JWT token.</p>
+            <p><strong>Authenticate:</strong></p>
+            <pre>curl -X POST http://&lt;HOST&gt;:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"password": "your-password"}'
+# Returns: { "token": "eyJ..." }</pre>
+            <p><strong>Common API calls:</strong></p>
+            <pre># Get current status
+curl http://&lt;HOST&gt;:8080/api/status \
+  -H "Authorization: Bearer &lt;TOKEN&gt;"
+
+# Run all enabled security tests
+curl -X POST http://&lt;HOST&gt;:8080/api/security/run \
+  -H "Authorization: Bearer &lt;TOKEN&gt;"
+
+# Import a security profile
+curl -X POST http://&lt;HOST&gt;:8080/api/security/profile \
+  -H "Authorization: Bearer &lt;TOKEN&gt;" \
+  -H "Content-Type: application/json" \
+  -d @my-profile.json</pre>
+            <p>Full API reference is available in <a href="https://github.com/jsuzanne/stigix/blob/main/docs/API_REFERENCE.md" target="_blank" rel="noopener noreferrer">docs/API_REFERENCE.md</a>. The Stigix CLI wraps all common API calls for convenience.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I configure the MCP Server for Claude Desktop?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The MCP (Model Context Protocol) server lets Claude Desktop control Stigix via natural language. Setup in <code>claude_desktop_config.json</code>:</p>
+            <pre>{
+  "mcpServers": {
+    "stigix": {
+      "command": "python3",
+      "args": ["/path/to/stigix/mcp-server/src/server.py"],
+      "env": {
+        "STIGIX_URL": "http://&lt;HOST&gt;:8080",
+        "STIGIX_TOKEN": "your-jwt-token"
+      }
+    }
+  }
+}</pre>
+            <p>Once configured, you can control Stigix entirely from Claude Desktop: run security tests, trigger VyOS impairments, query probe status, manage traffic profiles, and more — all in plain English. See <a href="https://github.com/jsuzanne/stigix/blob/main/docs/MCP_SERVER.md" target="_blank" rel="noopener noreferrer">MCP_SERVER.md</a> for the full tool catalog.</p>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-settings -->
+
+
+      <!-- ═══════════════════════════════════════════════════
+           OPERATIONS
+      ═══════════════════════════════════════════════════ -->
       <div class="faq-panel" id="panel-ops" role="tabpanel">
+
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Which deployment model should I use?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">The all-in-one Stigix image is the recommended default deployment model. Legacy separated images remain available for advanced scenarios.</p></div></div>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The <strong>all-in-one image</strong> (<code>jsuzanne/stigix:latest</code>) is the recommended default. It bundles the web UI, backend API, traffic generator, and all engines into a single container.</p>
+            <pre>docker run -d \
+  --name stigix \
+  --network host \
+  -v stigix_config:/app/config \
+  -v stigix_logs:/app/logs \
+  --env-file .env \
+  jsuzanne/stigix:latest</pre>
+            <p>Legacy separate images (traffic-gen, web-dashboard, voice-server) remain available for advanced scenarios where you need to run components on different hosts. The <code>docker-compose.yml</code> at the project root covers both modes.</p>
+          </div></div></div>
         </div>
+
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the first checks if the dashboard is unreachable?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Check whether Docker is running, whether containers are up, whether port 8080 is available, and whether the web UI logs show startup or connectivity errors.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the first checks if traffic is not generating?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Verify that interfaces are configured correctly, confirm traffic generation is active in the dashboard, and inspect the traffic generator logs.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I update safely?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Use the documented maintenance flow: preserve configuration, pull the latest images, and restart cleanly so that settings and logs are not lost unnecessarily.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What should be included in a production-readiness checklist?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">A strong JWT secret, changed admin credentials, HTTPS through a reverse proxy, firewall restrictions, resource limits, and log retention settings are all recommended controls.</p></div></div>
-        </div>
-        <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Where can I find the main logs and stats?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
-          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">The platform uses shared configuration and log volumes, including traffic logs, test results, and rolling statistics files that are read by the dashboard and backend.</p></div></div>
-        </div>
-      </div>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <pre># 1. Is the container running?
+docker ps | grep stigix
 
-    </div>
-  </div>
+# 2. Check container logs for startup errors
+docker logs stigix --tail=50
+
+# 3. Is port 8080 bound?
+ss -tlnp | grep 8080  # Linux
+netstat -an | grep 8080  # macOS
+
+# 4. Check for port conflict
+# If another service is on 8080, change via PORT env var or -p flag</pre>
+            <p>Common causes: Docker daemon not running, port 8080 already in use by another service, firewall blocking inbound connections, or a startup crash visible in <code>docker logs</code>.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I update Stigix safely without losing configuration?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Configuration and logs are stored in named Docker volumes (<code>stigix_config</code>, <code>stigix_logs</code>), which persist across container updates.</p>
+            <pre># 1. Pull the latest image
+docker pull jsuzanne/stigix:latest
+
+# 2. Stop and remove the old container (volumes are preserved)
+docker stop stigix && docker rm stigix
+
+# 3. Start with the same volume mounts
+docker run -d --name stigix --network host \
+  -v stigix_config:/app/config \
+  -v stigix_logs:/app/logs \
+  --env-file .env jsuzanne/stigix:latest</pre>
+            <p>Or with docker-compose: <code>docker compose pull && docker compose up -d</code>. Your profiles, probe configs, history, and credentials are preserved in the volumes.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What should a production-readiness checklist include?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <ul>
+              <li>✅ <strong>Strong JWT secret</strong> — set <code>JWT_SECRET</code> to a 32+ character random string</li>
+              <li>✅ <strong>Changed admin password</strong> — set <code>ADMIN_PASSWORD</code> in .env</li>
+              <li>✅ <strong>HTTPS via reverse proxy</strong> — put nginx or Caddy in front; Stigix itself only serves HTTP</li>
+              <li>✅ <strong>Firewall restrictions</strong> — restrict port 8080 to trusted IPs; expose only 443 publicly</li>
+              <li>✅ <strong>Resource limits</strong> — set <code>--memory</code> and <code>--cpus</code> limits on the container to prevent resource exhaustion</li>
+              <li>✅ <strong>Log retention</strong> — configure Docker log rotation or mount logs to a monitored volume with retention policy</li>
+              <li>✅ <strong>Volume backups</strong> — back up <code>stigix_config</code> volume before updates</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Where are all the important log files and what do they contain?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <pre>logs/traffic.log          → Live traffic generator requests (one per line)
+logs/stats.json           → Aggregated per-app request distribution
+logs/test-results.jsonl   → Security test history (one JSON object per run)
+logs/voice-stats.jsonl    → Voice session results (MOS, jitter, loss)
+logs/convergence-history.jsonl  → Convergence test records + egress path
+logs/vyos-history.jsonl   → VyOS impairment execution audit trail
+config/applications-config.json  → Traffic generator profile
+config/security-profile.json     → Security test profile (multivendor)
+config/connectivity-config.json  → Probe definitions
+config/vyos-sequences.json       → VyOS impairment sequences</pre>
+            <p>All log files are in newline-delimited JSON format (JSONL), making them easy to parse with <code>jq</code>, import into Elastic/Splunk, or analyze with Python/pandas.</p>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-ops -->
+
+    </div><!-- /faq-panels -->
+  </div><!-- /wrap -->
 </section>
+
 
 <footer class="footer">
   <div class="wrap">
