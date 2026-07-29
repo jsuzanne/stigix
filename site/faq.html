@@ -56,6 +56,19 @@
     .faq-badge--new{background:rgba(24,201,174,.12);color:var(--teal);border:1px solid rgba(24,201,174,.25)}
     @media print{.nav,.faq-tabs__strip{display:none}.faq-panel{display:block!important;animation:none!important}.faq-item__body{grid-template-rows:1fr!important}.faq-hero{padding:20px 0}}
     @media(max-width:640px){.faq-tab-btn{padding:7px 14px;font-size:.78rem}.faq-item__btn{padding:14px 16px}.faq-item__answer{padding:0 16px 16px}}
+    /* ── Search ─────────────────────────────────────────── */
+    .faq-search{position:relative;margin:0 auto 36px;max-width:560px}
+    .faq-search__input{width:100%;box-sizing:border-box;padding:13px 44px 13px 46px;border-radius:12px;border:1px solid var(--stroke-hi);background:var(--bg-card);color:var(--white);font-family:var(--sans);font-size:.95rem;outline:none;transition:border-color .2s,box-shadow .2s}
+    .faq-search__input::placeholder{color:var(--muted)}
+    .faq-search__input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(24,201,174,.12)}
+    .faq-search__icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;width:18px;height:18px}
+    .faq-search__clear{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:1.1rem;line-height:1;padding:4px;display:none}
+    .faq-search__clear.visible{display:block}
+    .faq-search__meta{text-align:center;font-size:.82rem;color:var(--muted);margin-top:-20px;margin-bottom:24px;min-height:20px;transition:opacity .2s}
+    .faq-search-results{max-width:800px;margin:0 auto;padding-bottom:80px}
+    .faq-search-noresults{text-align:center;padding:60px 20px;color:var(--muted);font-size:.95rem}
+    .faq-search-noresults span{display:block;font-size:2rem;margin-bottom:12px}
+    mark.faq-hl{background:rgba(24,201,174,.22);color:var(--white);border-radius:2px;padding:0 1px}
   </style>
 </head>
 <body>
@@ -104,6 +117,14 @@
 
 <section class="faq-tabs" id="faq">
   <div class="wrap">
+    <!-- FAQ Search -->
+    <div class="faq-search" role="search" aria-label="Search FAQ">
+      <svg class="faq-search__icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="9" r="6"/><line x1="14" y1="14" x2="19" y2="19"/></svg>
+      <input id="faq-search-input" class="faq-search__input" type="search" placeholder="Search all FAQ topics…" autocomplete="off" spellcheck="false" aria-label="Search FAQ topics">
+      <button class="faq-search__clear" id="faq-search-clear" aria-label="Clear search">&times;</button>
+    </div>
+    <p class="faq-search__meta" id="faq-search-meta" aria-live="polite"></p>
+
     <div class="faq-tabs__strip" role="tablist" aria-label="FAQ categories">
       <button class="faq-tab-btn is-active" data-tab="install"  role="tab" aria-selected="true"  aria-controls="panel-install">Installation</button>
       <button class="faq-tab-btn"           data-tab="traffic"  role="tab" aria-selected="false" aria-controls="panel-traffic">Traffic Generation</button>
@@ -114,6 +135,7 @@
       <button class="faq-tab-btn"           data-tab="voice"    role="tab" aria-selected="false" aria-controls="panel-voice">Voice &amp; Convergence</button>
       <button class="faq-tab-btn"           data-tab="vyos"     role="tab" aria-selected="false" aria-controls="panel-vyos">VyOS Control</button>
       <button class="faq-tab-btn"           data-tab="settings" role="tab" aria-selected="false" aria-controls="panel-settings">Settings &amp; API</button>
+      <button class="faq-tab-btn"           data-tab="topology" role="tab" aria-selected="false" aria-controls="panel-topology">Topology</button>
       <button class="faq-tab-btn"           data-tab="ops"      role="tab" aria-selected="false" aria-controls="panel-ops">Operations</button>
       <button class="faq-tab-btn"           data-tab="cli"      role="tab" aria-selected="false" aria-controls="panel-cli">Stigix CLI</button>
       <button class="faq-tab-btn"           data-tab="mcp"      role="tab" aria-selected="false" aria-controls="panel-mcp">MCP Server</button>
@@ -163,11 +185,29 @@
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p><strong>Linux (Ubuntu / Debian):</strong></p>
             <pre>curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER   # then log out and back in
-docker --version                # verify</pre>
-            <p><strong>macOS:</strong> Download <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer">Docker Desktop</a> — includes Docker Compose. Open it, wait for the whale icon to turn green.</p>
-            <p><strong>Windows:</strong> Install <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer">Docker Desktop</a> with WSL2 backend enabled. This is the recommended path — no manual WSL2 setup needed in recent versions.</p>
-            <p>Once <code>docker --version</code> returns a version number, you're ready to run Stigix.</p>
+sudo usermod -aG docker $USER   # then log out and back in</pre>
+            <p><strong>macOS:</strong> Download <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer">Docker Desktop</a> &mdash; includes Docker Compose. Open it, wait for the whale icon to turn green.</p>
+            <p><strong>Windows:</strong> Install <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer">Docker Desktop</a> with WSL2 backend enabled. This is the recommended path &mdash; no manual WSL2 setup needed in recent versions.</p>
+            <p><strong>Verify Docker is fully operational before installing Stigix:</strong></p>
+            <pre># 1. Check Docker Engine version (must be 20.10+)
+docker --version
+# Expected: Docker version 24.x.x, build ...
+
+# 2. Check Docker is running (daemon reachable)
+docker info | grep "Server Version"
+# Expected: Server Version: 24.x.x
+# Error here = Docker daemon not started (open Docker Desktop or: sudo systemctl start docker)
+
+# 3. Check Docker Compose is available (critical for Stigix)
+docker compose version
+# Expected: Docker Compose version v2.x.x
+# If this fails, try the legacy command:
+docker-compose version
+
+# 4. Quick smoke test (pull and run a minimal image)
+docker run --rm hello-world
+# Expected: "Hello from Docker!" message</pre>
+            <p>If all four commands succeed, Docker is ready and you can proceed with the Stigix install command.</p>
           </div></div></div>
         </div>
 
@@ -1006,6 +1046,69 @@ curl -X POST http://&lt;HOST&gt;:8080/api/security/profile \
 
       </div><!-- /panel-settings -->
 
+      <!-- ═══════════════════════════════════════════════════
+           TOPOLOGY
+      ═══════════════════════════════════════════════════ -->
+      <div class="faq-panel" id="panel-topology" role="tabpanel">
+
+        <div class="faq-item is-open">
+          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">What does the Topology view show and what can I do with it?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>&#9888;&#65039; Beta feature &mdash; under active development.</strong> The Topology view is already useful but will gain new capabilities in upcoming releases.</p>
+            <p>The Topology tab provides a <strong>live visual map of your Prisma SD-WAN fabric</strong> directly in the Stigix dashboard &mdash; without having to navigate the Prisma Orchestrator UI. It shows:</p>
+            <ul>
+              <li><strong>VPN Overlay view</strong> &mdash; logical SD-WAN paths between sites, with tunnel health status: <code>ACTIVE</code> (routing traffic), <code>BACKUP</code> (usable but idle), or <code>DOWN</code> (link failure)</li>
+              <li><strong>Physical view</strong> &mdash; underlay connectivity showing local WAN interfaces, their termination points, and resolved peer device names (e.g. <code>DC1-R1</code>)</li>
+              <li><strong>HUB filter</strong> &mdash; toggle to isolate tunnels connected to Data Centers or Branch Gateways, hiding standard branch-to-branch mesh links for clarity</li>
+            </ul>
+            <p>This is particularly powerful during failover demos: as you trigger a VyOS impairment or physically disconnect a link, the Topology view updates in real time to reflect which tunnels went <code>DOWN</code> and which <code>BACKUP</code> path became <code>ACTIVE</code>.</p>
+            <p><strong>Current scope:</strong> The Topology view currently covers <strong>Prisma SD-WAN only</strong> (ION devices, VPN links, WAN circuits). A Prisma Access / ZTNA overlay is not yet implemented.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What credentials do I need and how do I configure them?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The Topology view queries the Prisma SD-WAN API directly. It requires <strong>Prisma SD-WAN service account credentials</strong>:</p>
+            <ul>
+              <li><code>PRISMA_SDWAN_CLIENT_ID</code> &mdash; your service account Client ID</li>
+              <li><code>PRISMA_SDWAN_CLIENT_SECRET</code> &mdash; the corresponding secret</li>
+              <li><code>PRISMA_SDWAN_TSGID</code> &mdash; your Tenant Service Group ID (TSG ID)</li>
+              <li><code>PRISMA_SDWAN_REGION</code> &mdash; your tenant region (e.g. <code>Germany</code>, <code>US</code>)</li>
+            </ul>
+            <p><strong>The easiest way to enter credentials is via the UI &mdash; no file editing needed:</strong></p>
+            <ol>
+              <li>Go to <strong>Settings &rarr; Prisma SASE API</strong></li>
+              <li>Fill in the Client ID, Client Secret, TSG ID, and Region fields</li>
+              <li>Click <strong>Save &amp; Test</strong> &mdash; a green checkmark confirms the API connection is working</li>
+            </ol>
+            <p>Once credentials are saved, the Topology tab becomes active and data is fetched automatically. The system also uses these credentials for Flow Search (getflow), Convergence path enrichment, and Cloud Autodiscovery.</p>
+            <p><strong>Important:</strong> These are <em>Prisma SD-WAN</em> credentials (service account from the Prisma SD-WAN Orchestrator). A regular Prisma Access admin account will not work &mdash; the API uses OAuth2 client credentials with SD-WAN-specific scopes.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the roadmap for Topology and what is not yet supported?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Currently supported (SD-WAN):</strong></p>
+            <ul>
+              <li>VPN Overlay view &mdash; logical tunnel health per site pair</li>
+              <li>Physical view &mdash; WAN interface status and termination points</li>
+              <li>Real-time refresh during failover events</li>
+              <li>HUB/DC filtering to simplify large fabric views</li>
+            </ul>
+            <p><strong>Not yet supported / in development:</strong></p>
+            <ul>
+              <li>&#128683; <strong>Prisma Access / ZTNA overlay</strong> &mdash; GlobalProtect gateway status, mobile user connections, and service connections are not yet visualized. This is on the roadmap but has no confirmed release date.</li>
+              <li>&#128683; <strong>Traffic flow overlay</strong> &mdash; showing active application flows on top of the topology map (planned)</li>
+              <li>&#128683; <strong>Historical playback</strong> &mdash; replaying a topology snapshot from a specific point in time (e.g. during a recorded failover)</li>
+            </ul>
+            <p>If you have a feature request or encounter a bug, open a <a href="https://github.com/jsuzanne/stigix/issues" target="_blank" rel="noopener noreferrer">GitHub Issue</a> or contact <a href="mailto:contact@stigix.io">contact@stigix.io</a>.</p>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-topology -->
+
 
       <!-- ═══════════════════════════════════════════════════
            OPERATIONS
@@ -1535,5 +1638,111 @@ if (burger) burger.addEventListener('click', () => mNav.classList.add('is-open')
 if (mClose) mClose.addEventListener('click', () => mNav.classList.remove('is-open'));
 </script>
 <script src="script.js"></script>
+<script>
+/* ── FAQ Search Engine ─────────────────────────────────────────────── */
+(function () {
+  const input   = document.getElementById('faq-search-input');
+  const clearBtn= document.getElementById('faq-search-clear');
+  const meta    = document.getElementById('faq-search-meta');
+  const panels  = document.querySelectorAll('.faq-panel');
+  const tabBtns = document.querySelectorAll('.faq-tab-btn');
+  if (!input) return;
+
+  const items = [];
+  document.querySelectorAll('.faq-item').forEach(item => {
+    const q = item.querySelector('.faq-item__question');
+    const a = item.querySelector('.faq-item__answer');
+    items.push({ el:item, q, qOrig:q?q.innerHTML:'', a, aOrig:a?a.innerHTML:'', panel:item.closest('.faq-panel') });
+  });
+
+  function esc(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+
+  function walkText(node, re){
+    if (node.nodeType===3){
+      if(re.test(node.textContent)){
+        re.lastIndex=0;
+        const sp=document.createElement('span');
+        sp.innerHTML=node.textContent.replace(re,'<mark class="faq-hl">$&</mark>');
+        node.parentNode.replaceChild(sp,node);
+      } else { re.lastIndex=0; }
+    } else if(node.nodeType===1 && !['MARK','SCRIPT','STYLE'].includes(node.tagName)){
+      Array.from(node.childNodes).forEach(c=>walkText(c,re));
+    }
+  }
+
+  function highlight(el, orig, re){
+    el.innerHTML = orig;
+    walkText(el, re);
+  }
+
+  function restoreAll(){
+    items.forEach(({q,qOrig,a,aOrig,el})=>{
+      if(q) q.innerHTML=qOrig;
+      if(a) a.innerHTML=aOrig;
+      el.classList.remove('is-open');
+      el.style.display='';
+      const body=el.querySelector('.faq-item__body');
+      if(body) body.style.gridTemplateRows='';
+    });
+    panels.forEach(p=>{ p.style.display=''; p.classList.remove('is-active'); });
+    const activeTab=document.querySelector('.faq-tab-btn[data-active-restore]')||document.querySelector('.faq-tab-btn[data-tab="install"]');
+    if(activeTab){ const id='panel-'+activeTab.dataset.tab; panels.forEach(p=>p.classList.toggle('is-active',p.id===id)); }
+    tabBtns.forEach(b=>b.classList.toggle('is-active', b===activeTab));
+    meta.textContent='';
+  }
+
+  let lastActiveTab = document.querySelector('.faq-tab-btn.is-active');
+
+  function doSearch(q){
+    if(!q){ restoreAll(); clearBtn.classList.remove('visible'); return; }
+    clearBtn.classList.add('visible');
+    const re = new RegExp(esc(q),'gi');
+    let total=0;
+    const matchedPanels=new Set();
+
+    items.forEach(({el,q:qEl,qOrig,a,aOrig,panel})=>{
+      const qText=qEl?qEl.textContent:'';
+      const aText=a?a.textContent:'';
+      re.lastIndex=0; const mq=re.test(qText);
+      re.lastIndex=0; const ma=re.test(aText);
+      re.lastIndex=0;
+      const matches=mq||ma;
+      el.style.display=matches?'':'none';
+      if(matches){
+        total++;
+        matchedPanels.add(panel);
+        if(qEl) highlight(qEl,qOrig,new RegExp(esc(q),'gi'));
+        if(a)   highlight(a,aOrig,new RegExp(esc(q),'gi'));
+        el.classList.add('is-open');
+        const body=el.querySelector('.faq-item__body');
+        if(body) body.style.gridTemplateRows='1fr';
+      } else {
+        if(qEl) qEl.innerHTML=qOrig;
+        if(a)   a.innerHTML=aOrig;
+        el.classList.remove('is-open');
+        const body=el.querySelector('.faq-item__body');
+        if(body) body.style.gridTemplateRows='';
+      }
+    });
+
+    panels.forEach(p=>{ const has=matchedPanels.has(p); p.style.display=has?'':'none'; p.classList.toggle('is-active',has); });
+    tabBtns.forEach(b=>b.classList.remove('is-active'));
+
+    if(total===0) meta.textContent='No results for "'+q+'"';
+    else meta.textContent=total+' result'+(total>1?'s':'')+' across '+matchedPanels.size+' topic'+(matchedPanels.size>1?'s':'');
+  }
+
+  let debounce;
+  input.addEventListener('input',()=>{ clearTimeout(debounce); debounce=setTimeout(()=>doSearch(input.value.trim()),150); });
+  clearBtn.addEventListener('click',()=>{ input.value=''; input.focus(); doSearch(''); });
+
+  tabBtns.forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      lastActiveTab=btn;
+      if(input.value){ input.value=''; doSearch(''); }
+    });
+  });
+})();
+</script>
 </body>
 </html>
