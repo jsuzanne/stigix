@@ -808,6 +808,165 @@ XFR-0123 (UDP/QUIC) → source port 40123</pre>
           </div></div></div>
         </div>
 
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the three import types and when should I use each?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The <strong>Import</strong> button in the IoT Simulation toolbar offers three different import paths, each suited to a different situation:</p>
+
+            <p><strong>&#128274; Stigix JSON Config</strong> &mdash; Restores a full IoT simulation environment from a previously exported <code>.json</code> file.</p>
+            <ul>
+              <li><strong>Use when:</strong> moving a lab between sites, sharing a ready-made device scenario with a colleague, or restoring a known-good configuration after testing.</li>
+              <li>The file must have been exported from Stigix&apos;s own <strong>Export JSON</strong> button &mdash; it contains the full device list with all fields (MAC, hostname, protocols, bad behavior, intervals, etc.).</li>
+              <li>Supports <strong>Merge</strong> mode (append to existing devices) or <strong>Replace</strong> mode (overwrite everything).</li>
+            </ul>
+
+            <p><strong>&#128196; Device Security Assets</strong> &mdash; Imports devices from a <strong>Palo Alto IoT Security / Prisma Access inventory CSV</strong> (one row per device).</p>
+            <ul>
+              <li><strong>Use when:</strong> the customer already has Palo Alto IoT Security deployed and you want to simulate their exact real-world device population &mdash; real MACs, hostnames, vendor profiles, and observed protocols.</li>
+              <li>Stigix extracts OS-aware DHCP fingerprints (Windows, iOS, Linux, medical devices, FortiOS, macOS), uses the <code>display_apps</code> / <code>Applications</code> column for realistic protocol mix, and applies <code>ml_risk_level</code> (Critical/High) to automatically enable bad behavior on risky devices.</li>
+              <li>Options: <strong>Max Devices</strong> (top N by risk), <strong>IoT-only filter</strong> (<code>profile_vertical == IoT</code>, excludes PCs/VMs/tablets), <strong>Security percentage</strong> (force bad behavior on a fixed % of devices).</li>
+            </ul>
+            <p><strong>How to export from Prisma Access:</strong></p>
+            <ol>
+              <li>Log into <strong>Prisma Access &rarr; IoT Security &rarr; Devices</strong></li>
+              <li>Optionally filter by Risk Level (Critical / High) or Profile Vertical (IoT)</li>
+              <li>Click <strong>Export &rarr; CSV</strong> and save locally</li>
+              <li>In Stigix: <strong>IoT Simulation &rarr; Import &rarr; Device Security Assets</strong> &rarr; drop the CSV</li>
+            </ol>
+            <p>Key CSV columns used: <code>hostname</code>, <code>mac address</code>, <code>profile</code>, <code>profile_vertical</code>, <code>ml_risk_level</code>, <code>display_apps</code>, <code>vendor</code>. The output uses <strong>real MAC addresses</strong> from the CSV, so PAN IoT Security will recognise the same DHCP fingerprints it originally classified.</p>
+
+            <p><strong>&#9888;&#65039; Vulnerability Report</strong> &mdash; Imports from a <strong>Palo Alto CVE/Vulnerability export</strong> (one row per CVE per device) &mdash; the richest threat intelligence source.</p>
+            <ul>
+              <li><strong>Use when:</strong> you want to demonstrate how real CVEs, APT group attributions, and ICS-CERT alerts translate directly into simulated attack behaviors on specific devices.</li>
+              <li>Stigix aggregates all CVE rows per device (grouped by MAC), computes a <strong>Danger Score</strong>, and maps threat signals to specific attack behaviors.</li>
+            </ul>
+            <p><strong>How to export from Prisma Access:</strong></p>
+            <ol>
+              <li>Log into <strong>Prisma Access &rarr; IoT Security &rarr; Vulnerabilities</strong></li>
+              <li>Optionally filter by Severity (Critical / High), Site, or Vertical</li>
+              <li>Click <strong>Export &rarr; CSV</strong> and save locally</li>
+              <li>In Stigix: <strong>IoT Simulation &rarr; Import &rarr; Vulnerability Report</strong> (orange icon) &rarr; drop the CSV</li>
+            </ol>
+            <p>Key CSV columns used: <code>Device Name</code>, <code>MAC Address</code>, <code>CVE</code>, <code>CVSS</code>, <code>Severity</code>, <code>ICS-Cert</code>, <code>APT Names</code>, <code>Risk Score</code>, <code>Site Name</code>, <code>OS</code>.</p>
+            <pre>Danger Score = Risk Score (0-100)
+             + Critical CVEs &times; 15  +  High CVEs &times; 8  +  Medium CVEs &times; 3
+             + APT Groups    &times;  5  +  ICS-CERT  &times; 10  +  Max CVSS  &times; 2</pre>
+            <p><strong>Threat-aware bad behavior (Auto mode):</strong> APT groups &rarr; <code>beacon</code> &nbsp;|&nbsp; ICS-CERT &rarr; <code>port_scan</code> &nbsp;|&nbsp; Critical/High CVEs &rarr; <code>pan_test_domains</code></p>
+            <p>You can also override Auto mode with: <em>All devices</em>, <em>Percentage</em> (random N%), or <em>None</em> (import clean, no attack simulation).</p>
+            <p><strong>Which export to use?</strong> Use <em>Device Inventory</em> for a broad realistic device population. Use <em>Vulnerability Report</em> for executive-level security demos that show specific CVEs, APT attribution, and risk scoring &mdash; far more impactful.</p>
+          </div></div></div>
+        </div>
+
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What bad behavior / attack patterns can simulated IoT devices generate?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>When <strong>Bad Behavior</strong> is enabled on a device, it generates traffic matching known attack profiles &mdash; designed to be detected by Palo Alto IoT Security, DNS Security, and URL Filtering. Multiple behaviors can run simultaneously as parallel threads on the same device.</p>
+            <p><strong>Available attack patterns:</strong></p>
+            <ul>
+              <li><strong>PAN Test Domains</strong> (<code>pan_test_domains</code>) &mdash; 2 DNS queries to official Palo Alto test domains + 1 HTTPS/HTTP SYN, every 90s. <em>Guaranteed detection by PAN-OS</em> &mdash; ideal for policy validation demos.</li>
+              <li><strong>C2 Beacon</strong> (<code>beacon</code>) &mdash; 1 DNS + 1 TCP SYN to a fake Command &amp; Control domain, every 45s. Simulates realistic APT heartbeat traffic.</li>
+              <li><strong>DNS Flood</strong> (<code>dns_flood</code>) &mdash; Burst of 3 DNS queries to suspicious domains, every 60s. Simulates compromised device calling home repeatedly.</li>
+              <li><strong>Port Scan</strong> (<code>port_scan</code>) &mdash; TCP SYN to 10 common ports on a random target, every 120s. Simulates OT lateral movement (common in ICS-CERT scenarios).</li>
+              <li><strong>Data Exfiltration</strong> (<code>data_exfil</code>) &mdash; 2 large TCP uploads (1400-byte payloads) to external IPs, every 90s. Simulates bulk data theft.</li>
+              <li><strong>Random</strong> (<code>random</code>) &mdash; Picks one of the above at random per cycle (every 20&ndash;60s). Useful for background noise simulation.</li>
+            </ul>
+            <p>All attack traffic is generated using <strong>Scapy raw sockets</strong> (Layer 2/3), so it appears as genuine network traffic to firewalls, NGFW flow analyzers, and IoT Security classifiers &mdash; not as application-layer HTTP from the container itself.</p>
+            <p>The intervals were tuned to avoid Python D-state accumulation under concurrent device load while still producing detectable attack patterns. You can combine multiple behaviors on the same device (e.g. <code>["beacon", "port_scan"]</code>) to simulate a fully compromised APT device.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why is there a concurrency limit (throttle) and how do I tune it?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Each simulated IoT device runs via Scapy raw sockets inside a single Python process. Running too many concurrently causes threads to enter <strong>Python D-state</strong> (uninterruptible I/O wait), which starves the CPU scheduler and breaks latency-sensitive services like VoIP:</p>
+            <pre>163 devices active:  CPU ~100%, 5+ D-state threads, VoIP loss 37-73% ❌
+ 30 devices active:  CPU ~18%,  0  D-state threads, VoIP loss 0%     ✅</pre>
+            <p>Stigix uses a <strong>semaphore queue</strong>: only <code>maxConcurrentDevices</code> devices run Scapy at any time. The rest rotate through a queue. Each device has four states:</p>
+            <ul>
+              <li>🟢 <strong>ACTIVE</strong> &mdash; Scapy running, consuming a concurrency slot</li>
+              <li>🟡 <strong>QUEUED</strong> &mdash; Waiting for a free slot, will activate automatically</li>
+              <li>🔵 <strong>IDLE</strong> &mdash; Cycle complete, sleeping <code>traffic_interval</code> seconds before re-queuing</li>
+              <li>⚫ <strong>Stopped</strong> &mdash; Manually removed from rotation</li>
+            </ul>
+            <p><strong>Tuning from the UI:</strong> The <em>IoT Concurrency Control</em> slider at the top of the IoT tab lets you set the limit live &mdash; no restart needed. Raising it promotes QUEUED devices to ACTIVE immediately; lowering it lets ACTIVE devices finish their current cycle gracefully before releasing slots.</p>
+            <p>The <strong>System Health mini-panel</strong> shows CPU%, UDP errors/s, and Python D-state count in real time. When D-state &ge; 3 or CPU &gt; 80%, lower the concurrency slider to protect VoIP simulation quality.</p>
+            <p>The default (30 devices) is a good starting point for most lab machines. On a Raspberry Pi 5 (4 GB RAM), 20&ndash;25 is safer. On a server-class Intel NUC or VM with 4+ vCPUs, 40&ndash;50 is usually fine.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the traffic_interval and how does the duty cycle work?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The <code>traffic_interval</code> field controls the full duty cycle of a device. It sets both how long the device is <strong>ACTIVE</strong> (sending Scapy traffic) and how long it is <strong>IDLE</strong> (sleeping) between cycles:</p>
+            <pre>Phase    Duration              What happens
+ACTIVE   traffic_interval (s)  Scapy runs: DHCP, ARP, protocols, bad behavior
+IDLE     traffic_interval (s)  Device sleeps &mdash; no packets sent
+Full cycle  2 &times; traffic_interval   Before the device can run again</pre>
+            <p><strong>Example with interval = 180s:</strong> the device is active for 3 minutes, then idle for 3 minutes (total 6-minute cycle). This is deliberately realistic &mdash; real IoT devices (cameras, sensors, HVAC) operate in bursts then sleep, not continuously.</p>
+            <p><strong>Queue wait time with many devices:</strong></p>
+            <pre>Avg cycle  &asymp; 2 &times; 180s = 360s
+Slot rate  = 30 slots / 360s &asymp; 1 slot every 12s
+Queue wait &asymp; (N &minus; 30) &times; 12s  (e.g. 100 devices &rarr; 14 min)</pre>
+            <p>The interval is set per-device in the Edit modal, in the JSON (<code>traffic_interval</code> field), or assigned randomly between 60&ndash;300s at import time. A value of 60s gives high-frequency traffic; 300s gives sparse, realistic background traffic.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does DHCP Lease Persistence work? Will simulated devices keep the same IP after a restart?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Yes &mdash; by default, simulated devices reclaim the same IP after a container restart. Stigix implements <strong>RFC 2131 INIT-REBOOT</strong>: when a device wakes up, it sends a single DHCP REQUEST for its last known IP (stored in <code>config/dhcp_leases.json</code>) instead of starting a full Discover cycle:</p>
+            <pre>First boot:   DISCOVER &rarr; OFFER &rarr; REQUEST &rarr; ACK  (full cycle, ~4s)
+Restart:      REQUEST (INIT-REBOOT, requested_addr = last IP) &rarr; ACK  (&lt;1s)
+              &mdash; no DISCOVER, no OFFER needed</pre>
+            <p>The lease file maps each MAC to its last IP and gateway. It lives in the persistent Docker volume (<code>./config/</code>), so it survives container restarts and image upgrades.</p>
+            <p><strong>Fallback scenarios:</strong></p>
+            <ul>
+              <li><strong>Server NAKs</strong> (IP taken or subnet changed) &rarr; automatic fallback to full DISCOVER</li>
+              <li><strong>No response to INIT-REBOOT</strong> (server timeout) &rarr; automatic fallback to full DISCOVER</li>
+              <li><strong>First boot, no saved lease</strong> &rarr; normal DISCOVER flow</li>
+              <li><strong>DHCP fails completely</strong> &rarr; device stays silent, lease not erased (retried on next boot)</li>
+            </ul>
+            <p>This is exactly how real IoT devices behave when waking from sleep. It also means your SD-WAN policy and IoT Security visibility rules don't need to be re-applied after a lab restart &mdash; the same IP/MAC pair reappears immediately.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What device categories and protocols does the Python generator support?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The Python generator (<code>generate_iot_devices.py</code>) includes <strong>13 device categories</strong>, <strong>50+ vendors</strong>, and <strong>200+ device models</strong> with pre-built realistic DHCP fingerprints. It runs offline in under 1 second and requires no API key.</p>
+            <p><strong>Device categories:</strong></p>
+            <ul>
+              <li>Security Cameras (Hikvision, Axis, Dahua, Bosch, Hanwha)</li>
+              <li>Smart Lighting (Philips Hue, LIFX, Lutron, Legrand)</li>
+              <li>Environmental Sensors (temperature, humidity, CO2 &mdash; Honeywell, Bosch, Siemens)</li>
+              <li>Smart Plugs &amp; Power (TP-Link Kasa, Belkin WeMo, Shelly)</li>
+              <li>HVAC / Building Automation (Carrier, Trane, Daikin, Ecobee)</li>
+              <li>Medical Devices (Philips infusion pumps, Baxter, Fresenius &mdash; with Enea OSE DHCP fingerprints)</li>
+              <li>Industrial / SCADA (Rockwell Allen-Bradley, Siemens S7, ABB)</li>
+              <li>Retail / POS (Ingenico, Verifone, NCR terminals)</li>
+              <li>Network Infrastructure (Cisco AP, Aruba, Meraki)</li>
+              <li>Printers (HP, Xerox, Brother, Ricoh)</li>
+              <li>Smart TVs &amp; AV (Samsung, LG, Sony, Crestron)</li>
+              <li>Voice Assistants (Amazon Echo, Google Nest)</li>
+              <li>Wearables &amp; Tracking (GPS trackers, badge readers)</li>
+            </ul>
+            <p><strong>Supported protocols per device:</strong> <code>dhcp</code>, <code>arp</code>, <code>lldp</code>, <code>http</code>, <code>https</code>, <code>rtsp</code> (cameras), <code>cloud</code> (heartbeat to vendor FQDN), <code>mqtt</code> (telemetry), <code>dns</code>, <code>ntp</code>, <code>modbus</code> (SCADA), <code>bacnet</code> (building automation).</p>
+            <p><strong>Pre-built presets:</strong></p>
+            <pre>python iot/generate_iot_devices.py --preset small      # 30 devices
+python iot/generate_iot_devices.py --preset medium     # 65 devices
+python iot/generate_iot_devices.py --preset large      # 110 devices
+python iot/generate_iot_devices.py --preset enterprise # 170 devices
+
+# Custom mix for a hospital scenario:
+python iot/generate_iot_devices.py --custom "Medical Devices:15,Security Cameras:10,HVAC:5"</pre>
+            <p>For industry-specific device mixes with customer context (realistic names, descriptions, narratives), use the <strong>LLM-based generation</strong> method instead &mdash; pre-built vertical examples are available for healthcare, manufacturing, utilities/SCADA, retail, and smart office.</p>
+          </div></div></div>
+        </div>
+
+
+
       </div><!-- /panel-iot -->
 
 
