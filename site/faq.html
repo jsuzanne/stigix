@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAQ – Stigix SASE / SD-WAN Validation Platform</title>
+  <meta name="description" content="Frequently asked questions about Stigix — traffic generation, security testing, digital experience monitoring, IoT simulation, voice testing, convergence lab, and operations.">
+  <meta name="keywords" content="Stigix FAQ, SD-WAN, SASE, traffic generator, security testing, IoT simulation, convergence lab, Prisma SD-WAN, frequently asked questions">
+  <meta name="author" content="jsuzanne">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://stigix.io/faq.html">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://stigix.io/faq.html">
+  <meta property="og:title" content="FAQ – Stigix SASE / SD-WAN Validation Platform">
+  <meta property="og:description" content="Answers to the most common questions about Stigix — from traffic generation and security testing to IoT simulation and operations.">
+  <meta property="og:image" content="https://stigix.io/assets/screenshots/dashboard.png">
+  <meta property="og:site_name" content="Stigix">
+  <link rel="icon" type="image/png" href="assets/logo/stigix-favicon.png">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .faq-hero{padding:72px 0 56px;text-align:center;border-bottom:1px solid var(--stroke);position:relative;overflow:hidden}
+    .faq-hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 70% 60% at 50% 0%,rgba(24,201,174,.07) 0%,transparent 70%);pointer-events:none}
+    .faq-hero .label{margin-bottom:18px}
+    .faq-hero h1{font-size:clamp(2rem,5vw,3.4rem);font-weight:700;color:var(--white);letter-spacing:-.03em;line-height:1.15;margin-bottom:16px}
+    .faq-hero h1 span{color:var(--teal)}
+    .faq-hero p{font-size:1.05rem;color:var(--muted);max-width:540px;margin:0 auto}
+    .faq-tabs{padding:40px 0 0}
+    .faq-tabs__strip{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:48px}
+    .faq-tab-btn{position:relative;overflow:hidden;font-family:var(--sans);font-size:.82rem;font-weight:500;padding:8px 20px;border-radius:99px;border:1px solid var(--stroke-hi);background:transparent;color:var(--muted);cursor:pointer;transition:color .25s,border-color .25s;white-space:nowrap}
+    .faq-tab-btn:hover{color:var(--white);border-color:var(--teal-dim)}
+    .faq-tab-btn.is-active{color:#0b0d10;border-color:var(--teal);background:var(--teal)}
+    .faq-panels{max-width:760px;margin:0 auto;padding-bottom:80px}
+    .faq-panel{display:none}
+    .faq-panel.is-active{display:block;animation:panelIn .32s ease both}
+    @keyframes panelIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+    .faq-item{border:1px solid var(--stroke);border-radius:var(--rl);background:var(--bg-card);margin-bottom:10px;overflow:hidden;transition:border-color .2s,box-shadow .2s}
+    .faq-item.is-open{border-color:var(--stroke-hi);box-shadow:0 0 0 1px var(--stroke-hi),0 4px 24px rgba(0,0,0,.35)}
+    .faq-item__btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px;background:none;border:none;text-align:left;cursor:pointer;font-family:var(--sans)}
+    .faq-item__question{font-size:.97rem;font-weight:500;color:var(--mid);transition:color .2s;line-height:1.45}
+    .faq-item.is-open .faq-item__question{color:var(--white)}
+    .faq-item__icon{flex-shrink:0;width:22px;height:22px;border:1px solid var(--stroke-hi);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--muted);transition:transform .28s,border-color .2s,color .2s,background .2s}
+    .faq-item.is-open .faq-item__icon{transform:rotate(45deg);border-color:var(--teal);color:var(--teal);background:var(--teal-bg)}
+    .faq-item__icon svg{width:11px;height:11px;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;fill:none}
+    .faq-item__body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .3s ease}
+    .faq-item.is-open .faq-item__body{grid-template-rows:1fr}
+    .faq-item__inner{overflow:hidden}
+    .faq-item__answer{padding:0 20px 20px;font-size:.9rem;color:var(--muted);line-height:1.7}
+    .faq-item__answer code{font-family:var(--mono);font-size:.82em;color:var(--teal)}
+    @media print{.nav,.faq-tabs__strip{display:none}.faq-panel{display:block!important;animation:none!important}.faq-item__body{grid-template-rows:1fr!important}.faq-hero{padding:20px 0}}
+    @media(max-width:640px){.faq-tab-btn{padding:7px 14px;font-size:.78rem}.faq-item__btn{padding:14px 16px}.faq-item__answer{padding:0 16px 16px}}
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap nav__inner">
+    <a href="index.html" class="nav__logo" aria-label="Stigix"><img src="assets/logo/stigix-dark.png" alt="Stigix"></a>
+    <ul class="nav__links">
+      <li><a href="index.html#why">Origin</a></li>
+      <li><a href="index.html#capabilities">Capabilities</a></li>
+      <li><a href="index.html#use-cases">Use Cases</a></li>
+      <li><a href="index.html#gallery">Screenshots</a></li>
+      <li><a href="index.html#quickstart">Quick Start</a></li>
+      <li><a href="index.html#stigix-cli">CLI</a></li>
+      <li><a href="index.html#docs">Docs</a></li>
+      <li><a href="faq.html" style="color:var(--teal)">FAQ</a></li>
+    </ul>
+    <a href="https://github.com/jsuzanne/stigix" target="_blank" rel="noopener noreferrer" class="nav__gh" id="nav-github-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+      GitHub
+    </a>
+    <button class="nav__burger" id="nav-burger" aria-label="Open menu"><span></span><span></span><span></span></button>
+  </div>
+</nav>
+
+<div class="mnav" id="mobile-nav">
+  <button class="mnav__close" id="mobile-close">✕</button>
+  <a href="index.html#why">Origin</a>
+  <a href="index.html#capabilities">Capabilities</a>
+  <a href="index.html#use-cases">Use Cases</a>
+  <a href="index.html#gallery">Screenshots</a>
+  <a href="index.html#quickstart">Quick Start</a>
+  <a href="index.html#stigix-cli">CLI</a>
+  <a href="index.html#docs">Docs</a>
+  <a href="faq.html" style="color:var(--teal)">FAQ</a>
+  <a href="https://github.com/jsuzanne/stigix" target="_blank" rel="noopener noreferrer">View on GitHub →</a>
+</div>
+
+<section class="faq-hero">
+  <div class="wrap">
+    <span class="label">Let's answer some questions</span>
+    <h1>Frequently Asked <span>Questions</span></h1>
+    <p>Everything you need to know about Stigix — from traffic generation and security testing to IoT simulation and operations.</p>
+  </div>
+</section>
+
+<section class="faq-tabs" id="faq">
+  <div class="wrap">
+    <div class="faq-tabs__strip" role="tablist" aria-label="FAQ categories">
+      <button class="faq-tab-btn is-active" data-tab="traffic"  role="tab" aria-selected="true"  aria-controls="panel-traffic">Traffic Generation</button>
+      <button class="faq-tab-btn"           data-tab="digexp"   role="tab" aria-selected="false" aria-controls="panel-digexp">Digital Experience</button>
+      <button class="faq-tab-btn"           data-tab="security" role="tab" aria-selected="false" aria-controls="panel-security">Security Testing</button>
+      <button class="faq-tab-btn"           data-tab="iot"      role="tab" aria-selected="false" aria-controls="panel-iot">IoT Simulation</button>
+      <button class="faq-tab-btn"           data-tab="voice"    role="tab" aria-selected="false" aria-controls="panel-voice">Voice &amp; Convergence</button>
+      <button class="faq-tab-btn"           data-tab="ops"      role="tab" aria-selected="false" aria-controls="panel-ops">Operations</button>
+    </div>
+
+    <div class="faq-panels">
+
+      <!-- TRAFFIC GENERATION -->
+      <div class="faq-panel is-active" id="panel-traffic" role="tabpanel">
+        <div class="faq-item is-open">
+          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">What is the Traffic Generator?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">The Traffic Generator creates continuous background HTTP/HTTPS traffic to simulate realistic enterprise user activity across many SaaS applications such as Microsoft 365, Google Workspace, Zoom, and Salesforce.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How is Traffic Generation different from Security Testing?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Traffic Generation is meant to simulate user demand and application mix, while Security Testing is meant to validate whether security policies block or allow known test destinations.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do application weights work?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Each application has a weight that defines its relative probability of being selected during traffic generation, so a higher-weight app appears more often over time.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I create a realistic business profile?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Start with core productivity and collaboration apps such as Outlook, Teams, Google Workspace, Zoom, Slack, and Salesforce, then tune weights so business-critical apps dominate while secondary apps still appear naturally.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can I simulate non-business traffic like streaming or gaming?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Yes. The Traffic Generator supports consumer-style profiles with social media, streaming, and gaming applications using heavier weights for those categories.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I add internal applications or IP-based services?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">You can define targets by domain name or IP address. If you need plain HTTP instead of HTTPS you can specify the protocol explicitly in the application definition.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I verify that the generator is really working?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Use the dashboard statistics, <code>traffic.log</code>, and <code>stats.json</code> to compare the configured weights with the observed request distribution and success rates.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why is no traffic being generated?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">First check whether traffic generation is enabled, whether the correct network interface is configured, and whether the traffic generator container is running without errors.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Where does Traffic Generation fit in a demo?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Traffic Generation is ideal when you want to show realistic SaaS behavior, SD-WAN path steering, application visibility, and policy decisions under user-like load rather than just one-off probes.</p></div></div>
+        </div>
+      </div>
+
+      <!-- DIGITAL EXPERIENCE -->
+      <div class="faq-panel" id="panel-digexp" role="tabpanel">
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are connectivity probes?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Connectivity probes are lightweight tests that continuously check service reachability and responsiveness using methods such as HTTP, ICMP, DNS, and related synthetic checks.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the goal of Digital Experience monitoring?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">The goal is to show whether critical services are actually healthy and responsive from the branch point of view — not just whether a path is technically up.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Which targets can I monitor?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">You can monitor internal applications, SaaS services, collaboration platforms, DNS resolution targets, and other endpoints defined in the connectivity configuration.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How is Digital Experience different from Traffic Generation?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Traffic Generation creates ongoing application load, while Digital Experience monitoring measures health, reachability, and responsiveness of selected services.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why is this useful in customer demos?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">It helps explain that "reachable" does not always mean "usable," especially when latency, instability, or intermittent degradation affects user experience.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can it detect unstable or flaky behavior?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Yes. Because the probes run continuously, they can expose intermittent problems and inconsistent service behavior that a single manual test may miss.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How should I choose endpoints for a demo?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Pick a small set of business-relevant services — usually one or two SaaS apps, one internal dependency, and one generic internet target for comparison.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What if the probes always look healthy?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">That usually means the chosen targets are too simple or too stable. It is often better to include at least one app or service that is meaningful to the customer's real workflow.</p></div></div>
+        </div>
+      </div>
+
+      <!-- SECURITY TESTING -->
+      <div class="faq-panel" id="panel-security" role="tabpanel">
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What does Security Testing validate?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Security Testing validates URL filtering, DNS security, threat prevention behavior, and related policy enforcement using known test destinations and files.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does the system decide whether a result is Allowed or Blocked?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">For URL tests it evaluates HTTP outcomes; for DNS tests it checks whether malicious domains resolve or return NXDOMAIN; for threat tests it checks whether EICAR-style downloads succeed or fail.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why are all my tests showing Allowed?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">This usually means the test traffic is not passing through Prisma Access or the required security policies are not configured in the active path.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Do I need to click "Run All" if scheduled execution is active?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">No. Scheduled tests run automatically in the background after the configured interval. "Run All Enabled" is only for manual on-demand execution.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How often should I schedule security tests?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Manual execution works best for demos. For PoCs, 30–60 minute intervals are recommended. For lighter continuous monitoring, 60–120 minutes is appropriate.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I know if the policies are working correctly?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Look for Blocked results in the results table and confirm that the statistics dashboard reflects enforcement over time.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What if scheduled tests are not running?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Check that scheduling is enabled, the interval is valid, at least one test type is selected, and then inspect backend logs if the UI looks correct.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Where does Security Testing fit in a demo?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Security Testing is best when you want a clear proof point that policy enforcement is happening — especially for URL filtering, DNS security, and Threat Prevention validation.</p></div></div>
+        </div>
+      </div>
+
+      <!-- IOT SIMULATION -->
+      <div class="faq-panel" id="panel-iot" role="tabpanel">
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is IoT Simulation in Stigix?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">IoT Simulation creates realistic device behavior on the wire using Scapy, including DHCP, ARP, and device-specific traffic patterns, so simulated devices look more like real endpoints to the network.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why use IoT Simulation instead of only app traffic?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">It is useful when the demo needs device visibility, segmentation, identification, or OT/IoT-specific behavior rather than only browser or SaaS application flows.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What kinds of devices can be simulated?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Multiple device families are supported: cameras, sensors, smart plugs, smart lighting, printers, HVAC-related devices, and industrial or medical profiles depending on the configuration.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the role of DHCP fingerprints?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">DHCP fingerprints make the simulated devices more believable and help with identification workflows, including Palo Alto IoT Security classification scenarios.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Should I use the Python generator or the LLM-based method?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Use the Python generator for fast, deterministic, offline output. Use the LLM-based method when you want a customer-specific or industry-specific device set for a tailored demo.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can I build vertical demos like hospital, factory, or smart building?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Yes. The LLM generation guide already includes example prompts for healthcare, manufacturing, utilities, retail, and smart office environments.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Does IoT Simulation work the same on Linux, macOS, and Windows?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">No. Full host-mode IoT simulation with DHCP and ARP behavior is Linux-only. macOS, Windows, and WSL2 run with reduced bridge-mode capabilities.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can simulated devices generate malicious behavior for validation?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Yes. The IoT engine supports bad-behavior modes such as beaconing, DNS flood, port scan, data exfiltration, and Palo Alto test domain generation for security validation use cases.</p></div></div>
+        </div>
+      </div>
+
+      <!-- VOICE & CONVERGENCE -->
+      <div class="faq-panel" id="panel-voice" role="tabpanel">
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is Voice Testing used for?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Voice Testing generates RTP-style traffic and measures metrics such as jitter, loss, latency, R-value, and MOS to assess voice quality under network conditions.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the Convergence Lab used for?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">The Convergence Lab is used to measure failover behavior precisely, including blackout windows and directional loss during path changes or impairments.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why is Convergence different from basic failover observation?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">It is designed as a measurement tool, not just a visual indicator, so it can quantify how long failover actually impacts traffic and how recovery behaves in each direction.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why does directional loss matter?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Because failover impact is not always symmetric, and one direction may recover differently from the other — which is especially relevant for voice and real-time traffic.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">When should I use Voice Testing in a demo?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Use it when you want to show the practical user impact of latency, jitter, and packet loss rather than only bandwidth or reachability.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">When should I use the Convergence Lab in a demo?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Use it when the customer wants proof of failover quality, precise recovery timing, or visibility into how path changes affect application continuity.</p></div></div>
+        </div>
+      </div>
+
+      <!-- OPERATIONS -->
+      <div class="faq-panel" id="panel-ops" role="tabpanel">
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Which deployment model should I use?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">The all-in-one Stigix image is the recommended default deployment model. Legacy separated images remain available for advanced scenarios.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the first checks if the dashboard is unreachable?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Check whether Docker is running, whether containers are up, whether port 8080 is available, and whether the web UI logs show startup or connectivity errors.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the first checks if traffic is not generating?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Verify that interfaces are configured correctly, confirm traffic generation is active in the dashboard, and inspect the traffic generator logs.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I update safely?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">Use the documented maintenance flow: preserve configuration, pull the latest images, and restart cleanly so that settings and logs are not lost unnecessarily.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What should be included in a production-readiness checklist?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">A strong JWT secret, changed admin credentials, HTTPS through a reverse proxy, firewall restrictions, resource limits, and log retention settings are all recommended controls.</p></div></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Where can I find the main logs and stats?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><p class="faq-item__answer">The platform uses shared configuration and log volumes, including traffic logs, test results, and rolling statistics files that are read by the dashboard and backend.</p></div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer__row">
+      <div class="footer__brand"><img src="assets/logo/stigix-dark.png" alt="Stigix"></div>
+      <ul class="footer__links">
+        <li><a href="https://github.com/jsuzanne/stigix" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+        <li><a href="https://github.com/jsuzanne/stigix/blob/main/docs/QUICK_START.md" target="_blank" rel="noopener noreferrer">Quick Start</a></li>
+        <li><a href="https://github.com/jsuzanne/stigix/issues" target="_blank" rel="noopener noreferrer">Issues</a></li>
+        <li><a href="mailto:contact@stigix.io">Contact</a></li>
+        <li><a href="faq.html" style="color:var(--teal)">FAQ</a></li>
+        <li><a href="https://github.com/jsuzanne/stigix/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a></li>
+      </ul>
+    </div>
+    <p class="footer__note" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke);font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
+      <strong style="color:var(--mid)">Disclaimer:</strong> This is a personal, community-driven open-source project maintained by the author independently.
+      It is <strong>not</strong> an official Palo Alto Networks product, feature, or tool, and it is not supported or endorsed by Palo Alto Networks in any way.
+    </p>
+  </div>
+</footer>
+
+<script>
+const tabBtns = document.querySelectorAll('.faq-tab-btn');
+const panels  = document.querySelectorAll('.faq-panel');
+tabBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const t = btn.dataset.tab;
+    tabBtns.forEach(b => { b.classList.remove('is-active'); b.setAttribute('aria-selected','false'); });
+    panels.forEach(p  => p.classList.remove('is-active'));
+    btn.classList.add('is-active'); btn.setAttribute('aria-selected','true');
+    document.getElementById('panel-'+t).classList.add('is-active');
+  });
+});
+document.querySelectorAll('.faq-item__btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const item   = btn.closest('.faq-item');
+    const isOpen = item.classList.contains('is-open');
+    item.closest('.faq-panel').querySelectorAll('.faq-item').forEach(i => {
+      i.classList.remove('is-open');
+      i.querySelector('.faq-item__btn').setAttribute('aria-expanded','false');
+    });
+    if (!isOpen) { item.classList.add('is-open'); btn.setAttribute('aria-expanded','true'); }
+  });
+});
+const burger = document.getElementById('nav-burger');
+const mNav   = document.getElementById('mobile-nav');
+const mClose = document.getElementById('mobile-close');
+if (burger) burger.addEventListener('click', () => mNav.classList.add('is-open'));
+if (mClose) mClose.addEventListener('click', () => mNav.classList.remove('is-open'));
+</script>
+<script src="script.js"></script>
+</body>
+</html>
