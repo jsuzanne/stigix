@@ -114,6 +114,7 @@
       <button class="faq-tab-btn"           data-tab="vyos"     role="tab" aria-selected="false" aria-controls="panel-vyos">VyOS Control</button>
       <button class="faq-tab-btn"           data-tab="settings" role="tab" aria-selected="false" aria-controls="panel-settings">Settings &amp; API</button>
       <button class="faq-tab-btn"           data-tab="ops"      role="tab" aria-selected="false" aria-controls="panel-ops">Operations</button>
+      <button class="faq-tab-btn"           data-tab="cli"      role="tab" aria-selected="false" aria-controls="panel-cli">Stigix CLI</button>
     </div>
 
     <div class="faq-panels">
@@ -126,11 +127,18 @@
         <div class="faq-item is-open">
           <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">How do I install Stigix? Is it really just one command?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>Yes — one command. Copy the <code>docker-compose.yml</code> from the repository and run:</p>
-            <pre>curl -O https://raw.githubusercontent.com/jsuzanne/stigix/main/docker-compose.yml
-docker compose up -d</pre>
-            <p>That's it. Docker pulls the image automatically (~500 MB on first run), starts the container, and the dashboard is live at <strong>http://localhost:8080</strong> within about 30 seconds.</p>
-            <p>Default login: <code>admin</code> / <code>admin</code> — change the password immediately after first login.</p>
+            <p>Yes — truly one command. The recommended way is the install script documented in the <a href="index.html#quickstart">Quick Start</a> section:</p>
+            <pre>curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash</pre>
+            <p>That's it. The script automatically:</p>
+            <ul>
+              <li>Checks that Docker is installed and running</li>
+              <li>Detects your platform (Linux → Host Mode, macOS/Windows → Bridge Mode)</li>
+              <li>Asks you to choose a deployment mode (Branch, DC, or both)</li>
+              <li>Pulls the <code>jsuzanne/stigix:stable</code> image (~500 MB on first run)</li>
+              <li>Starts all services and auto-generates the default configuration</li>
+            </ul>
+            <p>Dashboard is live at <strong>http://localhost:8080</strong> within 30 seconds. Default login: <code>admin</code> / <code>admin</code> — change it immediately after first login.</p>
+            <p><strong>Windows:</strong> The script doesn't run in PowerShell — follow the <a href="https://github.com/jsuzanne/stigix/blob/main/docs/WINDOWS_INSTALL.md" target="_blank" rel="noopener noreferrer">Windows Installation Guide</a>.</p>
           </div></div></div>
         </div>
 
@@ -981,6 +989,134 @@ config/vyos-sequences.json       → VyOS impairment sequences</pre>
         </div>
 
       </div><!-- /panel-ops -->
+
+      <!-- ═══════════════════════════════════════════════════
+           STIGIX CLI
+      ═══════════════════════════════════════════════════ -->
+      <div class="faq-panel" id="panel-cli" role="tabpanel">
+
+        <div class="faq-item is-open">
+          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">What is the Stigix CLI and how do I launch it?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><code>stigix-cli</code> is an interactive console and automation tool that connects to the Stigix backend API. It lets you trigger tests, view real-time stats, run security audits, control IoT devices, manage VyOS sequences, and monitor convergence — all from the terminal without touching the UI.</p>
+            <p>It is pre-installed inside the container. Launch it with:</p>
+            <pre># Interactive console (with autocomplete, history, status toolbar)
+docker exec -it stigix stigix-cli
+
+# Run a single command headless and exit
+docker exec -it stigix stigix-cli --exec "status"
+
+# Connect to a remote Stigix instance
+docker exec -it stigix stigix-cli --url http://192.168.1.100:8080
+
+# Execute a script file (one command per line)
+docker exec -it stigix stigix-cli --script my-test-plan.txt</pre>
+            <p>The interactive console supports <strong>F1</strong> (help), <strong>F5</strong> (refresh toolbar), <strong>Ctrl+L</strong> (clear screen), and tab autocomplete. Session tokens are saved in <code>~/.stigix-cli.json</code> for seamless reconnection.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What can I do with the traffic and security commands?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Traffic generator (<code>traffic</code>):</strong></p>
+            <pre>traffic start / stop / status
+traffic speed [turbo|fast|normal|slow|0.5]  # set request rate
+traffic density [1-20]                      # parallel workers
+traffic stats                               # real-time counters
+traffic export [file]                       # backup profile to JSON
+traffic import &lt;file&gt;                       # restore profile from JSON</pre>
+            <p><strong>Security audits (<code>security</code>):</strong></p>
+            <pre>security suite                              # full automated audit (URL + DNS + Threat)
+security url &lt;url&gt;                         # single URL test
+security url-batch                          # all enabled URL categories
+security dns &lt;domain&gt;                      # single DNS test
+security dns-batch                          # all enabled DNS domains
+security eicar [endpoint]                   # EICAR threat prevention test
+security results [n]                        # last N results
+security schedule url on 30                 # schedule URL tests every 30 min
+security select-all url on                  # enable all URL categories at once</pre>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I run convergence tests, speedtests, and VoIP from the CLI?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Convergence &amp; failover (<code>convergence</code>):</strong></p>
+            <pre>convergence start --target 192.168.203.100 --pps 1000 --label DC1
+convergence stop
+convergence watch          # real-time loss + latency display
+convergence history [n]    # past test results with blackout times</pre>
+            <p><strong>Bandwidth speedtest (<code>speedtest</code>):</strong></p>
+            <pre>speedtest run 192.168.203.100                             # default TCP test
+speedtest run 192.168.203.100 --duration 30 --protocol udp # custom test
+speedtest run 192.168.203.100 --direction bidirectional    # bidir
+speedtest history                                          # past results</pre>
+            <p>Speedtest streams real-time Tx/Rx throughput, RTT, and loss directly in the console as the test runs.</p>
+            <p><strong>VoIP simulation (<code>voice</code>):</strong></p>
+            <pre>voice start                # interactive: choose target from list
+voice start --target all   # start to all voice-capable nodes
+voice stop
+voice stats                # MOS, jitter, packet loss, RTT</pre>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I manage probes, targets, IoT devices, and VyOS sequences from the CLI?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>DEM Probes (<code>probes</code>):</strong></p>
+            <pre>probes list
+probes add --name HQ-GW --host 10.0.0.1 --type ping
+probes remove &lt;id&gt;
+probes stats               # global scores + latency averages
+probes export / import     # backup and restore probe configs</pre>
+            <p><strong>Stigix Targets (<code>target</code>):</strong></p>
+            <pre>target list                # all nodes with capabilities and status
+target add                 # interactive (prompts name + host)
+target add --name DC1 --host 192.168.203.100
+target enable / disable &lt;name&gt;
+target export / import     # portable JSON backup</pre>
+            <p><strong>IoT Simulation (<code>iot</code>):</strong></p>
+            <pre>iot list
+iot start / stop [device-id]   # one device or all
+iot stats                      # packets sent, bandwidth
+iot vulns [n]                  # CVE findings per device
+iot import &lt;file&gt; --max-devices 20 --enable-security  # Prisma CSV or JSON
+iot export</pre>
+            <p><strong>VyOS Control (<code>vyos</code>):</strong></p>
+            <pre>vyos list                  # connected routers
+vyos sequences             # available sequences
+vyos run &lt;sequence-id&gt;    # trigger a sequence
+vyos stop &lt;sequence-id&gt;
+vyos history [n]
+vyos export / import       # router + sequence config backup</pre>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can the CLI query Prisma SD-WAN flows and manage the system?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Prisma SD-WAN Flow Browser (<code>flows</code>):</strong> Requires Prisma API credentials configured in your <code>.env</code>.</p>
+            <pre>flows query --site BR8
+flows query --site BR8 --protocol tcp --dst-port 8082 --dst-ip 192.168.203.100 --minutes 15</pre>
+            <p>Returns matching flows with source/destination, protocol, bytes, packet counts, and the <strong>SD-WAN path used</strong> (e.g. <code>BR8-INET1 to DC1-INET</code>).</p>
+            <p><strong>System administration (<code>system</code>):</strong></p>
+            <pre>system info        # CPU, RAM, disk, uptime
+system interfaces  # host network interfaces
+system logs        # last 30 lines of backend logs
+system restart     # restart the container services
+system upgrade     # pull latest image and upgrade</pre>
+            <p><strong>Automation with script files:</strong> The CLI can run a plain text file with one command per line, making it easy to build repeatable test plans:</p>
+            <pre># test-plan.txt
+auth login
+traffic start
+security suite
+convergence start --target 192.168.203.100 --pps 500 --label PoC
+voice start --target all</pre>
+            <pre>docker exec -it stigix stigix-cli --script test-plan.txt</pre>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-cli -->
 
     </div><!-- /faq-panels -->
   </div><!-- /wrap -->
