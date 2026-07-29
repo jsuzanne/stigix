@@ -25,7 +25,7 @@
     .faq-hero h1 span{color:var(--teal)}
     .faq-hero p{font-size:1.05rem;color:var(--muted);max-width:580px;margin:0 auto}
     .faq-tabs{padding:40px 0 0}
-    .faq-tabs__strip{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:48px}
+    .faq-tabs__strip{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-start;margin-bottom:48px}
     .faq-tab-btn{position:relative;overflow:hidden;font-family:var(--sans);font-size:.82rem;font-weight:500;padding:8px 20px;border-radius:99px;border:1px solid var(--stroke-hi);background:transparent;color:var(--muted);cursor:pointer;transition:color .25s,border-color .25s;white-space:nowrap}
     .faq-tab-btn:hover{color:var(--white);border-color:var(--teal-dim)}
     .faq-tab-btn.is-active{color:#0b0d10;border-color:var(--teal);background:var(--teal)}
@@ -938,9 +938,54 @@ netstat -an | grep 8080  # macOS
         </div>
 
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I update Stigix safely without losing configuration?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I upgrade Stigix to the latest version?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>Configuration and logs are stored in named Docker volumes (<code>stigix_config</code>, <code>stigix_logs</code>), which persist across container updates.</p>
+            <p>Your configuration and logs are always preserved &mdash; they live in Docker named volumes that are never touched by an upgrade.</p>
+            <p><strong>Method 1 &mdash; Simple (works on all Docker versions):</strong></p>
+            <pre>docker pull jsuzanne/stigix:stable
+docker compose down
+docker compose up -d</pre>
+            <p>Pull the new image, stop the container, start fresh. Safe and universal &mdash; works with every Docker version including older ones.</p>
+            <p><strong>Method 2 &mdash; Force-recreate (recommended after several upgrades):</strong></p>
+            <pre>docker compose down
+docker pull jsuzanne/stigix:stable
+docker compose up -d --force-recreate</pre>
+            <p>The <code>--force-recreate</code> flag creates a brand new container even if nothing in the compose file changed. Useful when the container appears stale or behaves unexpectedly after an update.</p>
+            <p><strong>Method 3 &mdash; One-liner (modern Docker only &mdash; Compose v2, Engine 23+):</strong></p>
+            <pre>docker compose up -d --pull always --force-recreate</pre>
+            <p><strong>Note:</strong> <code>--pull always</code> is only available in recent Docker versions. If you see an unknown flag error, fall back to Method 1 &mdash; it is fully equivalent and works everywhere.</p>
+            <p><strong>docker-compose vs docker compose:</strong> Older systems may only have the legacy <code>docker-compose</code> binary (with a hyphen). Replace <code>docker compose</code> with <code>docker-compose</code> in any command if needed:</p>
+            <pre># Check which you have
+docker compose version    # Compose v2 (built into Docker Engine)
+docker-compose version    # Compose v1 (legacy separate binary)</pre>
+            <p>After upgrading, confirm the new version in <strong>Settings &rarr; System Info</strong> or via the CLI: <code>docker exec -it stigix stigix-cli --exec "status"</code></p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">My disk is filling up after several upgrades. How do I clean up?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Every time you pull a new image, Docker keeps old image layers on disk unless you explicitly remove them. After several upgrades this commonly reaches 2&ndash;5 GB of wasted space.</p>
+            <p><strong>First, check how much Docker is using:</strong></p>
+            <pre>docker system df</pre>
+            <p>This shows image size, container size, volume size, and build cache. The <strong>Images</strong> and <strong>Build Cache</strong> rows grow with every upgrade.</p>
+            <p><strong>Remove unused images only (safe, run regularly):</strong></p>
+            <pre>docker image prune -a</pre>
+            <p>This removes all images not currently used by a running container. Your active Stigix image is kept, old versions are removed.</p>
+            <p><strong>Full cleanup &mdash; removes everything unused (images, stopped containers, networks, build cache):</strong></p>
+            <pre>docker system prune -a -f</pre>
+            <p><strong>Important:</strong> <code>docker system prune -a -f</code> does <em>not</em> remove named volumes by default. Your Stigix configuration (<code>stigix_config</code>) and logs (<code>stigix_logs</code>) are stored in named volumes and are completely safe. Only unused images and stopped containers are deleted.</p>
+            <p>After pruning, simply restart Stigix:</p>
+            <pre>docker pull jsuzanne/stigix:stable
+docker compose up -d</pre>
+            <p><strong>When to clean up:</strong></p>
+            <ul>
+              <li>After every 3&ndash;5 upgrades, or when <code>docker system df</code> shows more than 2 GB in images</li>
+              <li>On Raspberry Pi, Intel NUC, or any host with limited storage: prune after <em>every</em> upgrade</li>
+              <li>If the host disk is above 80% full: run <code>docker system prune -a -f</code> immediately before your next upgrade</li>
+            </ul>
+          </div></div></div>
+        </div>
             <pre># 1. Pull the latest image
 docker pull jsuzanne/stigix:latest
 
