@@ -86,3 +86,4 @@ docker-compose.yml
 __pycache__/
 .venv/
 venv/
+package-lock.json
