@@ -109,6 +109,7 @@
       <button class="faq-tab-btn"           data-tab="traffic"  role="tab" aria-selected="false" aria-controls="panel-traffic">Traffic Generation</button>
       <button class="faq-tab-btn"           data-tab="digexp"   role="tab" aria-selected="false" aria-controls="panel-digexp">Digital Experience</button>
       <button class="faq-tab-btn"           data-tab="security" role="tab" aria-selected="false" aria-controls="panel-security">Security Testing</button>
+      <button class="faq-tab-btn"           data-tab="xfr"     role="tab" aria-selected="false" aria-controls="panel-xfr">Bandwidth Testing</button>
       <button class="faq-tab-btn"           data-tab="iot"      role="tab" aria-selected="false" aria-controls="panel-iot">IoT Simulation</button>
       <button class="faq-tab-btn"           data-tab="voice"    role="tab" aria-selected="false" aria-controls="panel-voice">Voice &amp; Convergence</button>
       <button class="faq-tab-btn"           data-tab="vyos"     role="tab" aria-selected="false" aria-controls="panel-vyos">VyOS Control</button>
@@ -587,6 +588,99 @@ stigix-cli profile import --file my-profile.json</pre>
         </div>
 
       </div><!-- /panel-security -->
+
+      <!-- ═══════════════════════════════════════════════════
+           BANDWIDTH TESTING (XFR)
+      ═══════════════════════════════════════════════════ -->
+      <div class="faq-panel" id="panel-xfr" role="tabpanel">
+
+        <div class="faq-item is-open">
+          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">Why does Stigix use XFR instead of iperf3?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix uses <strong>XFR</strong> (eXpress Flow Reporter) as its bandwidth testing engine instead of the commonly used iperf3. This was a deliberate choice driven by three key limitations of iperf3 in SD-WAN validation contexts:</p>
+            <ul>
+              <li><strong>Fixed source port support:</strong> XFR lets you explicitly bind to a specific source port (called the <em>Client Flow Port</em>) before the test starts. This is essential in SD-WAN environments &mdash; you can filter Prisma SD-WAN or firewall flow logs by that exact port and instantly correlate the test traffic to a specific path, queue, and policy. iperf3 uses ephemeral ports by default, making flow traceability unreliable.</li>
+              <li><strong>Real-time JSON streaming telemetry:</strong> XFR streams results as a <strong>continuous JSON feed</strong> during the test &mdash; not just a summary at the end. Stigix reads this live stream and plots throughput (Mbps), RTT (ms), TCP retransmits, and UDP packet loss in real time on the dashboard graph. With iperf3 you get a text report at the end, not a live display.</li>
+              <li><strong>Richer interval metrics:</strong> XFR reports TCP window fluctuations, retransmit counts, and dropped packet percentage at every interval. iperf3 in server mode provides only aggregate data, making it harder to spot micro-congestion events during the test.</li>
+            </ul>
+            <p>The result is a speedtest that feels more like a live network monitoring tool: you see the throughput curve evolve in real time, can spot congestion spikes as they happen, and can immediately cross-reference the traffic in your SD-WAN analytics portal using the pinned source port.</p>
+            <p>XFR is open-source: <a href="https://github.com/lance0/xfr" target="_blank" rel="noopener noreferrer">github.com/lance0/xfr</a></p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What protocols, directions, and options does the XFR speedtest support?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The XFR test panel in Stigix exposes the full engine capability set:</p>
+            <p><strong>Protocols:</strong></p>
+            <ul>
+              <li><strong>TCP</strong> &mdash; with congestion control algorithm selection (Cubic, BBR, Reno). Useful for comparing SD-WAN path behavior under TCP-sensitive traffic like file transfers or backup.</li>
+              <li><strong>UDP</strong> &mdash; fixed bitrate UDP flood. Shows packet loss and jitter, relevant for media and real-time traffic simulation.</li>
+              <li><strong>QUIC</strong> &mdash; tests HTTP/3 style transport, increasingly relevant for SaaS and cloud application paths.</li>
+            </ul>
+            <p><strong>Directions:</strong></p>
+            <ul>
+              <li><strong>Upload</strong> (client &rarr; server) &mdash; tests outbound path from source node</li>
+              <li><strong>Download / Reverse</strong> (server &rarr; client) &mdash; tests inbound path</li>
+              <li><strong>Bidirectional</strong> &mdash; simultaneous upload + download, stresses full-duplex path</li>
+            </ul>
+            <p><strong>Advanced options:</strong></p>
+            <ul>
+              <li><strong>Bitrate cap</strong> &mdash; set a target Mbps limit, or leave at <code>0</code> to detect peak throughput</li>
+              <li><strong>Duration</strong> &mdash; test duration in seconds (server enforces a maximum via <code>XFR_MAX_DURATION</code>)</li>
+              <li><strong>Client Flow Port</strong> &mdash; pin the source port for deterministic flow identification in Prisma SD-WAN / firewall logs</li>
+              <li><strong>DSCP / TOS marking</strong> &mdash; stamp QoS marking (e.g. EF, CS1, decimal, hex) on the test flow to validate SD-WAN path prioritization</li>
+            </ul>
+            <p>Tests can be launched from the <strong>Speedtest</strong> tab in the dashboard, via the <strong>CLI</strong> (<code>speedtest start --target &lt;name&gt;</code>), or via the <strong>MCP Server</strong> (<em>"Run a 30-second TCP speedtest between BR8 and DC1"</em>).</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What does the live dashboard show during a test?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>As soon as the test starts, Stigix connects to the XFR JSON stream endpoint (<code>/api/tests/xfr/:id/stream</code>) and renders a live graph. The metrics displayed depend on the protocol:</p>
+            <p><strong>TCP tests:</strong></p>
+            <ul>
+              <li><strong>Throughput (Mbps)</strong> &mdash; plotted every interval as a real-time curve</li>
+              <li><strong>RTT (ms)</strong> &mdash; round-trip time measured at each interval</li>
+              <li><strong>TCP Retransmits</strong> &mdash; overlaid on the throughput graph; spikes indicate congestion or path instability</li>
+              <li><strong>TCP Window</strong> &mdash; send window fluctuation, shows receiver buffer pressure</li>
+            </ul>
+            <p><strong>UDP / QUIC tests:</strong></p>
+            <ul>
+              <li><strong>Throughput (Mbps)</strong></li>
+              <li><strong>Packet loss (%)</strong> &mdash; per-interval loss rate, critical for voice/video path validation</li>
+              <li><strong>Jitter (ms)</strong></li>
+            </ul>
+            <p>All data is streamed in real time &mdash; there is no waiting until the end of the test to see results. When the test completes, the final summary (total bytes transferred, average throughput, peak RTT, total retransmits) is stored in the history and is queryable via CLI or MCP.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What port does XFR use and what do I need to open on firewalls?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>XFR uses a dedicated port separate from the Stigix management port. The default configuration:</p>
+            <ul>
+              <li><strong>Port:</strong> <code>9000</code> TCP/UDP (configurable via <code>XFR_PORT</code> in <code>.env</code> or docker-compose)</li>
+              <li><strong>Direction:</strong> the <em>source</em> node initiates the test connection to the <em>target</em> node on this port</li>
+              <li><strong>Inbound rule required:</strong> the <strong>target</strong> node must accept inbound TCP/UDP on port <code>9000</code> from the source node's IP</li>
+            </ul>
+            <p><strong>Firewall checklist:</strong></p>
+            <ul>
+              <li>Target node: allow inbound <code>TCP 9000</code> and <code>UDP 9000</code> from all Stigix source IPs</li>
+              <li>Source node: allow outbound to target's <code>TCP/UDP 9000</code> (usually open by default)</li>
+              <li>For bidirectional tests: both nodes act as source and target simultaneously &mdash; open port 9000 inbound on both</li>
+            </ul>
+            <p><strong>Rate limiting and abuse protection:</strong> The server side enforces hard limits via environment variables:</p>
+            <ul>
+              <li><code>XFR_MAX_DURATION</code> &mdash; maximum test duration in seconds the server will accept (default: 3600). The server severs the connection if the client requests longer.</li>
+              <li><code>XFR_RATE_LIMIT</code> &mdash; max number of concurrent active tests (default: 2). Additional requests are queued.</li>
+              <li><code>XFR_ALLOW_CIDR</code> &mdash; IP whitelist for incoming test connections (default: <code>0.0.0.0/0</code> = all). Restrict to your lab CIDR for tighter security.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-xfr -->
 
 
       <!-- ═══════════════════════════════════════════════════

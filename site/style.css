@@ -578,6 +578,27 @@ a:hover { color: #fff; }
 .quickstart__sub {
   font-size: 0.9rem; color: var(--mid); margin-top: 8px;
 }
+.quickstart__prereq {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 16px; padding: 10px 16px;
+  background: rgba(0,229,190,0.06);
+  border: 1px solid rgba(0,229,190,0.25);
+  border-left: 3px solid var(--teal);
+  border-radius: 8px;
+}
+.quickstart__prereq-badge {
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--teal);
+  white-space: nowrap;
+}
+.quickstart__prereq-text {
+  font-size: 0.88rem; color: var(--mid);
+}
+.quickstart__prereq-text strong { color: var(--white); }
+.quickstart__prereq-link {
+  color: var(--teal); text-decoration: none; font-weight: 600;
+}
+.quickstart__prereq-link:hover { text-decoration: underline; }
 
 /* Full-width terminal */
 .terminal {
