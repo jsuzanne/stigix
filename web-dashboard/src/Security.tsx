@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Play, AlertTriangle, CheckCircle, XCircle, Clock, Download, Trash2, ChevronDown, ChevronUp, Copy, Filter, Link, Upload, RefreshCcw, ShieldAlert, Globe, ListTree, RefreshCw, MoreVertical, Settings, Database, Server, Info, Search, History as HistoryIcon, Zap, ChevronRight, Activity, FileJson } from 'lucide-react';
+import { Shield, Play, AlertTriangle, Check, CheckCircle, XCircle, Clock, Download, Trash2, ChevronDown, ChevronUp, Copy, Filter, Link, Upload, RefreshCcw, ShieldAlert, Globe, ListTree, RefreshCw, MoreVertical, Settings, Database, Server, Info, Search, History as HistoryIcon, Zap, ChevronRight, Activity, FileJson } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
 // Types only — runtime data is loaded from /api/security/profile (config/security-profile.json)
@@ -2118,7 +2118,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                     }`}
                                                 >
                                                     <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${isSelected && !disabled ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
-                                                        {isSelected && !disabled && <CheckCircle size={10} className="text-white" fill="currentColor" />}
+                                                        {isSelected && !disabled && <Check size={11} className="text-white" strokeWidth={3} />}
                                                     </div>
                                                     <div className="flex flex-col min-w-0 flex-1">
                                                         <div className="flex items-center gap-2">
@@ -2206,7 +2206,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                     className={`bg-card border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-blue-500/50 bg-blue-500/5' : 'border-border'}`}
                                                 >
                                                     <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
-                                                        {isSelected && <CheckCircle size={10} className="text-white" fill="currentColor" />}
+                                                        {isSelected && <Check size={11} className="text-white" strokeWidth={3} />}
                                                     </div>
                                                     <div className="flex flex-col min-w-0 flex-1">
                                                         <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{t.name}</h4>
