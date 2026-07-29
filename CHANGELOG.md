@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.30] - 2026-07-29
+### Changed
+- **web-dashboard** 🎨 `Security.tsx`: Redesigned EICAR section for visual consistency with URL Filtering and DNS Security sections — replaced red background (`bg-red-500/10`) with neutral `bg-card-secondary`, changed checkboxes from red to blue, removed red tint on selected row titles. Warning icon updated to amber (like other alert icons). Selection state now uses a subtle blue highlight matching the rest of the UI.
+
 ## [v1.4.1-patch.29] - 2026-07-29
 ### Fixed
 - **web-dashboard** 🔧 `Security.tsx`: Fixed EICAR target row buttons not being visible — removed `opacity-0 group-hover:opacity-100` and made Copy 📋 and Play ▶ buttons always visible, consistent with the URL Filtering section. Also moved the status dot before the action buttons and added a per-row Copy button to copy the `curl` EICAR command for each target.

@@ -2078,12 +2078,12 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                             <SchedulerSettings type="threat" title="Threat" config={config} onUpdate={updateSchedule} />
                         </div>
 
-                        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+                        <div className="bg-card-secondary border border-border rounded-lg p-4">
                             <div className="flex items-start gap-2 mb-3">
-                                <AlertTriangle size={18} className="text-red-400 mt-0.5 flex-shrink-0" />
+                                <AlertTriangle size={18} className="text-amber-500 mt-0.5 flex-shrink-0" />
                                 <div>
-                                    <p className="text-red-300 text-sm font-semibold">EICAR Test File</p>
-                                    <p className="text-red-300/80 text-xs mt-1">
+                                    <p className="text-text-primary text-sm font-semibold">EICAR Test File</p>
+                                    <p className="text-text-muted text-xs mt-1">
                                         This test downloads a harmless EICAR test file to trigger IPS alerts. The file is automatically deleted after the test.
                                     </p>
                                 </div>
@@ -2114,15 +2114,15 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                     className={`bg-card border px-4 py-3 rounded-xl group transition-all flex items-center gap-3 shadow-sm ${
                                                         disabled
                                                             ? 'opacity-50 cursor-not-allowed border-amber-500/30 bg-amber-500/5'
-                                                            : `cursor-pointer hover:shadow-md ${isSelected ? 'border-red-500 bg-red-600/5 shadow-red-500/10' : 'border-border'}`
+                                                            : `cursor-pointer hover:shadow-md ${isSelected ? 'border-blue-500/50 bg-blue-500/5' : 'border-border'}`
                                                     }`}
                                                 >
-                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${isSelected && !disabled ? 'bg-red-600 border-red-500' : 'bg-card-secondary border-border'}`}>
+                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${isSelected && !disabled ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
                                                         {isSelected && !disabled && <CheckCircle size={10} className="text-white" fill="currentColor" />}
                                                     </div>
                                                     <div className="flex flex-col min-w-0 flex-1">
                                                         <div className="flex items-center gap-2">
-                                                            <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected && !disabled ? 'text-red-500' : 'text-text-primary'}`}>Stigix Cloud (Public Worker)</h4>
+                                                            <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected && !disabled ? 'text-blue-500' : 'text-text-primary'}`}>Stigix Cloud (Public Worker)</h4>
                                                             {disabled && (
                                                                 <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 tracking-wide whitespace-nowrap shrink-0">
                                                                     ⚠ Requires STIGIX_TARGET_MASTER_KEY
@@ -2203,13 +2203,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                     onClick={() => {
                                                         setSelectedEicarTargets(prev => isSelected ? prev.filter(u => u !== url) : [...prev, url]);
                                                     }}
-                                                    className={`bg-card border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-red-500 bg-red-600/5 shadow-red-500/10' : 'border-border'}`}
+                                                    className={`bg-card border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-blue-500/50 bg-blue-500/5' : 'border-border'}`}
                                                 >
-                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-red-600 border-red-500' : 'bg-card-secondary border-border'}`}>
+                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
                                                         {isSelected && <CheckCircle size={10} className="text-white" fill="currentColor" />}
                                                     </div>
                                                     <div className="flex flex-col min-w-0 flex-1">
-                                                        <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-red-500' : 'text-text-primary'}`}>{t.name}</h4>
+                                                        <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{t.name}</h4>
                                                         <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{url}</p>
                                                     </div>
                                                     <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
