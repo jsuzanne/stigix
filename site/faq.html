@@ -116,6 +116,7 @@
       <button class="faq-tab-btn"           data-tab="ops"      role="tab" aria-selected="false" aria-controls="panel-ops">Operations</button>
       <button class="faq-tab-btn"           data-tab="cli"      role="tab" aria-selected="false" aria-controls="panel-cli">Stigix CLI</button>
       <button class="faq-tab-btn"           data-tab="mcp"      role="tab" aria-selected="false" aria-controls="panel-mcp">MCP Server</button>
+      <button class="faq-tab-btn"           data-tab="registry" role="tab" aria-selected="false" aria-controls="panel-registry">Targets &amp; Registry</button>
     </div>
 
     <div class="faq-panels">
@@ -1267,6 +1268,111 @@ docker compose restart</pre>
         </div>
 
       </div><!-- /panel-mcp -->
+
+      <!-- ═══════════════════════════════════════════════════
+           TARGETS &amp; REGISTRY
+      ═══════════════════════════════════════════════════ -->
+      <div class="faq-panel" id="panel-registry" role="tabpanel">
+
+        <div class="faq-item is-open">
+          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">What is the Stigix Registry and why does it matter?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In a multi-node Stigix deployment, every node needs to know the IP address of every other node to run speedtests, convergence tests, and voice sessions. Without a registry, you would have to manually enter the IP of every peer in every node's Settings &mdash; and repeat the process every time an IP changes.</p>
+            <p>The <strong>Stigix Registry</strong> solves this completely. It is a lightweight Cloudflare Worker running at <code>registry.stigix.io</code> that acts as a shared discovery board. Each Stigix instance:</p>
+            <ul>
+              <li>Registers itself (IP, capabilities, site name) every <strong>60 seconds</strong> via a heartbeat</li>
+              <li>Pulls the full peer list every <strong>30 seconds</strong> via discovery polling</li>
+              <li>Automatically removes nodes that stop heartbeating after <strong>5 minutes</strong> (TTL)</li>
+            </ul>
+            <p>Result: when a new Stigix node starts up, it finds all its peers within 30&ndash;90 seconds &mdash; with zero manual configuration. Peers appear in the dashboard with an <strong>Auto</strong> badge and a <em>Registry Provided</em> tooltip, distinguishing them from manually added targets.</p>
+            <p>The registry is also used by the <strong>MCP Server</strong> to maintain mesh-wide visibility &mdash; so Claude Desktop can see and control all nodes from any single entry point.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the Stigix Key and how do I get one?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>To use the global Cloudflare Registry, your Stigix deployment needs a <strong>Stigix Key</strong> (also called a PoC Key). This key is a cryptographic token that:</p>
+            <ul>
+              <li><strong>Identifies your PoC</strong> &mdash; all your nodes use the same key, so they recognize each other as belonging to the same deployment</li>
+              <li><strong>Isolates your nodes</strong> &mdash; nodes from different organizations never see each other in the registry, even though they share the same Cloudflare Worker</li>
+              <li><strong>Authenticates heartbeats</strong> &mdash; the registry refuses any node that doesn't present a valid key, preventing unauthorized registration</li>
+            </ul>
+            <p><strong>How to get your Stigix Key:</strong></p>
+            <ol>
+              <li>Send an email to <a href="mailto:contact@stigix.io">contact@stigix.io</a> with the subject <em>"Stigix Registry Key Request"</em></li>
+              <li>Include your organization name and a brief description of your deployment (number of nodes, locations)</li>
+              <li>You will receive a <code>STIGIX_TARGET_MASTER_KEY</code> value to add to your <code>.env</code> file</li>
+            </ol>
+            <p><strong>Alternative &mdash; Prisma SD-WAN credentials:</strong> If you already have Palo Alto Networks Prisma Access / SD-WAN credentials configured (<code>PRISMA_SDWAN_TSGID</code>, <code>PRISMA_SDWAN_CLIENT_ID</code>, <code>PRISMA_SDWAN_CLIENT_SECRET</code>), Stigix can derive the PoC Key automatically from your TSG ID. In this case, no manual key is needed &mdash; all nodes in the same Prisma tenant automatically share the same derived key.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Step-by-step: how do I enable autodiscovery on a single node?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Getting a single node to register itself to the global registry takes 3 steps:</p>
+            <p><strong>Step 1 &mdash; Enable the registry in your <code>.env</code> file:</strong></p>
+            <pre>STIGIX_REGISTRY_ENABLED=true
+STIGIX_REGISTRY_URL=https://registry.stigix.io
+STIGIX_SITE_NAME=BR8-Paris   # human-readable label shown in other nodes' dashboards</pre>
+            <p><strong>Step 2 &mdash; If using a Stigix Key (no Prisma credentials), add it:</strong></p>
+            <pre>STIGIX_TARGET_MASTER_KEY=your-key-from-contact@stigix.io</pre>
+            <p><strong>Step 3 &mdash; Restart the container to apply:</strong></p>
+            <pre>docker compose down &amp;&amp; docker compose up -d</pre>
+            <p>After restart, go to <strong>Settings &rarr; System Info</strong>. You should see a <strong>Registry</strong> section showing <em>Registered: Yes</em> and a peer count. If it shows <em>Registered: No</em>, check the troubleshooting Q&amp;A below.</p>
+            <p>Within 30&ndash;90 seconds, any other node already registered in the same PoC will automatically appear in your <strong>Targets</strong> list with an <strong>Auto</strong> badge &mdash; no manual IP entry needed.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Step-by-step: how does target distribution work across many nodes (Leader/Peer model)?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>For large multi-site deployments, Stigix adds a <strong>Leader/Peer</strong> layer on top of the global registry. One node (typically the DC or a central hub) acts as a <strong>Leader</strong> &mdash; it hosts a local registry service and pushes a centralized target list to all other nodes (Peers). This gives you sub-minute synchronization without depending on Cloudflare for every heartbeat.</p>
+            <p><strong>Step 1 &mdash; Designate the Leader node:</strong></p>
+            <p>On your central/DC node, go to <strong>Settings &rarr; Target Controller Dashboard</strong>. Under <em>"Registry Role Override"</em>, select <strong>Force Leader</strong>. No restart needed &mdash; the role switch is instant.</p>
+            <p>Alternatively, set in <code>.env</code> before starting:</p>
+            <pre>STIGIX_REGISTRY_MODE=leader</pre>
+            <p><strong>Step 2 &mdash; Add your shared targets on the Leader:</strong></p>
+            <p>In <strong>Settings &rarr; Targets</strong> on the Leader node, add any custom targets you want all Peers to see (internal servers, specific probe endpoints, other Stigix nodes). These are the targets that will be propagated.</p>
+            <p><strong>Step 3 &mdash; Leave Peers on Auto-Detect:</strong></p>
+            <p>All other nodes should stay on the default <strong>Auto-Detect</strong> mode (or set <code>STIGIX_REGISTRY_MODE=auto</code> in <code>.env</code>). They will automatically discover the Leader via Cloudflare within 60&ndash;90 seconds and switch to the local Leader for high-frequency updates.</p>
+            <p><strong>What happens automatically:</strong></p>
+            <ul>
+              <li>Every 30 seconds, Peers pull the full target list from the Leader &mdash; targets appear with an <strong>Auto</strong> + <em>Leader Provided</em> badge</li>
+              <li>New nodes joining the PoC discover the Leader and receive all targets immediately</li>
+              <li>If the Leader goes offline, Peers fall back to the Cloudflare registry automatically within 60 seconds (self-healing)</li>
+              <li>If a Peer uses a Leader-provided target in a test, it gets a <strong>Static</strong> badge too &mdash; meaning it's now saved locally and survives a Leader outage</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Nodes are not discovering each other. How do I troubleshoot?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Step 1 &mdash; Check registration status:</strong></p>
+            <pre>curl -s http://localhost:8080/api/registry/status | python3 -m json.tool</pre>
+            <p>Look for:</p>
+            <ul>
+              <li><code>"is_registered": true</code> &mdash; the node is registered with the global registry</li>
+              <li><code>"poc_id"</code> &mdash; should match your TSG ID (or your PoC identifier)</li>
+              <li><code>"peer_count"</code> &mdash; number of peers currently discovered</li>
+            </ul>
+            <p><strong>Step 2 &mdash; Test connectivity to the registry:</strong></p>
+            <pre>curl -I https://registry.stigix.io/instances</pre>
+            <p>A <code>403 Forbidden</code> is normal (authentication required). A <code>521</code> or <code>timeout</code> means the host cannot reach Cloudflare &mdash; check your outbound firewall rules for HTTPS on port 443.</p>
+            <p><strong>Common causes and fixes:</strong></p>
+            <ul>
+              <li><strong>Registry not enabled</strong> &mdash; verify <code>STIGIX_REGISTRY_ENABLED=true</code> in <code>.env</code> and restart</li>
+              <li><strong>Wrong key / hash mismatch</strong> &mdash; if one node registered first with a different key, the registry rejects all subsequent nodes. Contact <a href="mailto:contact@stigix.io">contact@stigix.io</a> to flush the PoC entry, or wait 48h for automatic expiration</li>
+              <li><strong>Peers not appearing</strong> &mdash; wait 30&ndash;90 seconds after registration. If still not showing, verify all nodes share the same <code>STIGIX_TARGET_MASTER_KEY</code> (or the same Prisma TSG ID)</li>
+              <li><strong>Leader unreachable by Peers</strong> &mdash; if Peers show "Falling back to Cloudflare", check that port <code>8080</code> on the Leader is reachable from the Peer hosts (firewall / security group)</li>
+              <li><strong>No leader elected</strong> &mdash; in a pure-Peer setup with no designated Leader, nodes will work but only with Cloudflare-frequency updates (5-min heartbeat). For sub-minute sync, always designate one Leader</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-registry -->
 
     </div><!-- /faq-panels -->
   </div><!-- /wrap -->
