@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.33] - 2026-07-29
+### Fixed
+- **CLI & Security API** 🐛 `stigix-cli.py` & `server.ts`: Fixed HTTP 400 error in `security eicar` CLI command. Updated `/api/security/threat-test` to accept both `endpoint` and `endpoints` parameters, and aligned CLI payload key. 🛡️
+
 ## [v1.4.1-patch.32] - 2026-07-29
 ### Fixed
 - **web-dashboard** 🎨 `Security.tsx`: Fixed unselected EICAR row title color — changed from `text-text-primary` (white) to `text-text-secondary` (grayed) to match URL Filtering and DNS Security unselected row styling.

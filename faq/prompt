@@ -1,0 +1,311 @@
+You are given a task to integrate an existing React component in the codebase
+
+The codebase should support:
+- shadcn project structure  
+- Tailwind CSS
+- Typescript
+
+If it doesn't, provide instructions on how to setup project via shadcn CLI, install Tailwind or Typescript.
+
+Determine the default path for components and styles. 
+If default path for components is not /components/ui, provide instructions on why it's important to create this folder
+Copy-paste this component to /components/ui folder:
+```tsx
+faq-tabs.tsx
+import React, { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Plus } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+// Main reusable FAQ component
+export const FAQ = ({ 
+  title = "FAQs",
+  subtitle = "Frequently Asked Questions",
+  categories,
+  faqData,
+  className,
+  ...props 
+}) => {
+  const categoryKeys = Object.keys(categories);
+  const [selectedCategory, setSelectedCategory] = useState(categoryKeys[0]);
+
+  return (
+    <section 
+      className={cn(
+        "relative overflow-hidden bg-background px-4 py-12 text-foreground",
+        className
+      )}
+      {...props}
+    >
+      <FAQHeader title={title} subtitle={subtitle} />
+      <FAQTabs 
+        categories={categories}
+        selected={selectedCategory} 
+        setSelected={setSelectedCategory} 
+      />
+      <FAQList 
+        faqData={faqData}
+        selected={selectedCategory} 
+      />
+    </section>
+  );
+};
+
+const FAQHeader = ({ title, subtitle }) => (
+  <div className="relative z-10 flex flex-col items-center justify-center">
+    <span className="mb-8 bg-gradient-to-r from-primary to-primary/60 bg-clip-text font-medium text-transparent">
+      {subtitle}
+    </span>
+    <h2 className="mb-8 text-5xl font-bold">{title}</h2>
+    <span className="absolute -top-[350px] left-[50%] z-0 h-[500px] w-[600px] -translate-x-[50%] rounded-full bg-gradient-to-r from-primary/10 to-primary/5 blur-3xl" />
+  </div>
+);
+
+const FAQTabs = ({ categories, selected, setSelected }) => (
+  <div className="relative z-10 flex flex-wrap items-center justify-center gap-4">
+    {Object.entries(categories).map(([key, label]) => (
+      <button
+        key={key}
+        onClick={() => setSelected(key)}
+        className={cn(
+          "relative overflow-hidden whitespace-nowrap rounded-md border px-3 py-1.5 text-sm font-medium transition-colors duration-500",
+          selected === key
+            ? "border-primary text-background"
+            : "border-border bg-transparent text-muted-foreground hover:text-foreground"
+        )}
+      >
+        <span className="relative z-10">{label}</span>
+        <AnimatePresence>
+          {selected === key && (
+            <motion.span
+              initial={{ y: "100%" }}
+              animate={{ y: "0%" }}
+              exit={{ y: "100%" }}
+              transition={{ duration: 0.5, ease: "backIn" }}
+              className="absolute inset-0 z-0 bg-gradient-to-r from-primary to-primary/80"
+            />
+          )}
+        </AnimatePresence>
+      </button>
+    ))}
+  </div>
+);
+
+const FAQList = ({ faqData, selected }) => (
+  <div className="mx-auto mt-12 max-w-3xl">
+    <AnimatePresence mode="wait">
+      {Object.entries(faqData).map(([category, questions]) => {
+        if (selected === category) {
+          return (
+            <motion.div
+              key={category}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: 0.5, ease: "backIn" }}
+              className="space-y-4"
+            >
+              {questions.map((faq, index) => (
+                <FAQItem key={index} {...faq} />
+              ))}
+            </motion.div>
+          );
+        }
+        return null;
+      })}
+    </AnimatePresence>
+  </div>
+);
+
+const FAQItem = ({ question, answer }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <motion.div
+      animate={isOpen ? "open" : "closed"}
+      className={cn(
+        "rounded-xl border transition-colors",
+        isOpen ? "bg-muted/50" : "bg-card"
+      )}
+    >
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex w-full items-center justify-between gap-4 p-4 text-left"
+      >
+        <span
+          className={cn(
+            "text-lg font-medium transition-colors",
+            isOpen ? "text-foreground" : "text-muted-foreground"
+          )}
+        >
+          {question}
+        </span>
+        <motion.span
+          variants={{
+            open: { rotate: "45deg" },
+            closed: { rotate: "0deg" },
+          }}
+          transition={{ duration: 0.2 }}
+        >
+          <Plus
+            className={cn(
+              "h-5 w-5 transition-colors",
+              isOpen ? "text-foreground" : "text-muted-foreground"
+            )}
+          />
+        </motion.span>
+      </button>
+      <motion.div
+        initial={false}
+        animate={{ 
+          height: isOpen ? "auto" : "0px", 
+          marginBottom: isOpen ? "16px" : "0px" 
+        }}
+        transition={{ duration: 0.3, ease: "easeInOut" }}
+        className="overflow-hidden px-4"
+      >
+        <p className="text-muted-foreground">{answer}</p>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+demo.tsx
+import {FAQ} from '@/components/ui/faq-tabs'
+
+const FAQDemo = () => {
+  const categories = {
+    "web-dev": "Web Development",
+    "mobile-dev": "Mobile Development", 
+    "ui-ux": "UI/UX Design",
+    "copywriting": "Copywriting"
+  };
+
+  const faqData = {
+    "web-dev": [
+      {
+        question: "What is web development?",
+        answer: "Web development is the process of building and maintaining websites. It involves a combination of client-side and server-side programming, database management, and other web-related technologies."
+      },
+      {
+        question: "What programming languages are essential for web development?",
+        answer: "Essential languages for web development include HTML, CSS, and JavaScript for front-end development. For back-end development, popular languages include Python, Ruby, PHP, Java, and Node.js."
+      },
+      {
+        question: "What's the difference between front-end and back-end development?",
+        answer: "Front-end development focuses on the user interface and user experience of a website, while back-end development deals with server-side logic, databases, and application integration."
+      },
+      {
+        question: "How long does it typically take to develop a website?",
+        answer: "The time to develop a website can vary greatly depending on its complexity. A simple static website might take a few days, while a complex web application could take several months or even years."
+      },
+      {
+        question: "What is responsive web design?",
+        answer: "Responsive web design is an approach to web design that makes web pages render well on a variety of devices and window or screen sizes. It ensures that websites are accessible and visually appealing across different platforms."
+      }
+    ],
+    "mobile-dev": [
+      {
+        question: "What is mobile development?",
+        answer: "Mobile development is the process of creating software applications that run on mobile devices such as smartphones and tablets. It involves designing, coding, and testing applications for mobile operating systems like iOS and Android."
+      },
+      {
+        question: "What's the difference between native and cross-platform mobile development?",
+        answer: "Native development involves building separate apps for each platform using platform-specific languages (Swift for iOS, Java/Kotlin for Android). Cross-platform development uses frameworks like React Native or Flutter to build a single codebase that works on multiple platforms."
+      },
+      {
+        question: "What are some popular mobile app development frameworks?",
+        answer: "Popular mobile app development frameworks include React Native, Flutter, Xamarin, Ionic, and NativeScript. Each has its own strengths and is suited for different types of projects."
+      },
+      {
+        question: "How do you ensure mobile app security?",
+        answer: "Mobile app security involves practices such as secure coding, data encryption, secure authentication methods, regular security audits, and staying up-to-date with the latest security patches and best practices."
+      },
+      {
+        question: "What is the typical mobile app development lifecycle?",
+        answer: "The typical mobile app development lifecycle includes stages such as planning, design, development, testing, deployment, and maintenance. It often follows an iterative process with continuous updates and improvements."
+      }
+    ],
+    "ui-ux": [
+      {
+        question: "What is UI/UX design?",
+        answer: "UI (User Interface) design focuses on the visual elements of a digital product, while UX (User Experience) design deals with the overall feel and functionality of the product. Together, they aim to create products that are both visually appealing and easy to use."
+      },
+      {
+        question: "What's the difference between UI and UX design?",
+        answer: "UI design focuses on the look and layout of a product's interface, including colors, typography, and visual elements. UX design is broader, encompassing the entire user journey and how users interact with the product."
+      },
+      {
+        question: "What tools do UI/UX designers commonly use?",
+        answer: "Common tools for UI/UX design include Sketch, Figma, Adobe XD, InVision, and Protopie for design and prototyping. Research and testing tools might include UserTesting, Hotjar, and Optimal Workshop."
+      },
+      {
+        question: "What is a user persona?",
+        answer: "A user persona is a fictional representation of your ideal user or customer. It's based on user research and includes details about the persona's background, goals, challenges, and behaviors. Personas help guide design decisions by keeping the focus on the end-user."
+      },
+      {
+        question: "What is the importance of user testing in UI/UX design?",
+        answer: "User testing is crucial in UI/UX design as it provides direct feedback from actual users. It helps identify usability issues, validate design decisions, and ensure that the product meets user needs and expectations."
+      }
+    ],
+    "copywriting": [
+      {
+        question: "What is copywriting?",
+        answer: "Copywriting is the act of writing text for the purpose of advertising or other forms of marketing. The product, called copy, is written content that aims to increase brand awareness and ultimately persuade a person or group to take a particular action."
+      },
+      {
+        question: "What's the difference between copywriting and content writing?",
+        answer: "While both involve writing, copywriting is specifically aimed at persuasion and driving action (like making a purchase), while content writing is more focused on informing, educating, or entertaining the reader."
+      },
+      {
+        question: "What are some key elements of effective copywriting?",
+        answer: "Key elements of effective copywriting include understanding the target audience, crafting compelling headlines, focusing on benefits rather than features, using persuasive language, and including a clear call-to-action."
+      },
+      {
+        question: "How important is SEO in copywriting?",
+        answer: "SEO (Search Engine Optimization) is very important in copywriting, especially for digital content. It helps ensure that your copy reaches your target audience by making it more visible in search engine results. This involves using relevant keywords, creating quality content, and following SEO best practices."
+      },
+      {
+        question: "What is a call-to-action (CTA) in copywriting?",
+        answer: "A call-to-action (CTA) is a prompt in your copy that tells the reader what to do next. It's usually a command verb like 'Buy Now,' 'Sign Up,' or 'Learn More.' An effective CTA is clear, compelling, and creates a sense of urgency."
+      }
+    ]
+  };
+
+  return (
+    <div className="min-h-screen">
+      <FAQ 
+        title="Frequently Asked Questions"
+        subtitle="Let's answer some questions"
+        categories={categories}
+        faqData={faqData}
+      />
+    </div>
+  );
+};
+
+export default FAQDemo;
+```
+
+Install NPM dependencies:
+```bash
+lucide-react, framer-motion
+```
+
+Implementation Guidelines
+ 1. Analyze the component structure and identify all required dependencies
+ 2. Review the component's argumens and state
+ 3. Identify any required context providers or hooks and install them
+ 4. Questions to Ask
+ - What data/props will be passed to this component?
+ - Are there any specific state management requirements?
+ - Are there any required assets (images, icons, etc.)?
+ - What is the expected responsive behavior?
+ - What is the best place to use this component in the app?
+
+Steps to integrate
+ 0. Copy paste all the code above in the correct directories
+ 1. Install external dependencies
+ 2. Fill image assets with Unsplash stock images you know exist
+ 3. Use lucide-react icons for svgs or logos if component requires them
+
