@@ -1,4 +1,11 @@
 # Logs
+# Node dependencies (root-level, from playwright/testing tools)
+node_modules/
+package-lock.json
+playwright.config.ts
+tests/
+.github/workflows/playwright.yml
+
 *.pdf
 *.log
 *.log.*
