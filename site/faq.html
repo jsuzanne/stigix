@@ -115,6 +115,7 @@
       <button class="faq-tab-btn"           data-tab="settings" role="tab" aria-selected="false" aria-controls="panel-settings">Settings &amp; API</button>
       <button class="faq-tab-btn"           data-tab="ops"      role="tab" aria-selected="false" aria-controls="panel-ops">Operations</button>
       <button class="faq-tab-btn"           data-tab="cli"      role="tab" aria-selected="false" aria-controls="panel-cli">Stigix CLI</button>
+      <button class="faq-tab-btn"           data-tab="mcp"      role="tab" aria-selected="false" aria-controls="panel-mcp">MCP Server</button>
     </div>
 
     <div class="faq-panels">
@@ -958,10 +959,6 @@ docker compose up -d --force-recreate</pre>
             <pre># Check which you have
 docker compose version    # Compose v2 (built into Docker Engine)
 docker-compose version    # Compose v1 (legacy separate binary)</pre>
-            <p>After upgrading, confirm the new version in <strong>Settings &rarr; System Info</strong> or via the CLI: <code>docker exec -it stigix stigix-cli --exec "status"</code></p>
-          </div></div></div>
-        </div>
-
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">My disk is filling up after several upgrades. How do I clean up?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
@@ -984,20 +981,6 @@ docker compose up -d</pre>
               <li>On Raspberry Pi, Intel NUC, or any host with limited storage: prune after <em>every</em> upgrade</li>
               <li>If the host disk is above 80% full: run <code>docker system prune -a -f</code> immediately before your next upgrade</li>
             </ul>
-          </div></div></div>
-        </div>
-            <pre># 1. Pull the latest image
-docker pull jsuzanne/stigix:latest
-
-# 2. Stop and remove the old container (volumes are preserved)
-docker stop stigix && docker rm stigix
-
-# 3. Start with the same volume mounts
-docker run -d --name stigix --network host \
-  -v stigix_config:/app/config \
-  -v stigix_logs:/app/logs \
-  --env-file .env jsuzanne/stigix:latest</pre>
-            <p>Or with docker-compose: <code>docker compose pull && docker compose up -d</code>. Your profiles, probe configs, history, and credentials are preserved in the volumes.</p>
           </div></div></div>
         </div>
 
@@ -1162,6 +1145,124 @@ voice start --target all</pre>
         </div>
 
       </div><!-- /panel-cli -->
+
+      <!-- ═══════════════════════════════════════════════════
+           MCP SERVER
+      ═══════════════════════════════════════════════════ -->
+      <div class="faq-panel" id="panel-mcp" role="tabpanel">
+
+        <div class="faq-item is-open">
+          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">What is the MCP Server and how do I connect Claude Desktop to Stigix?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The Stigix MCP Server provides a <strong>natural language interface</strong> to your entire SD-WAN validation mesh. Using Claude Desktop, you can manage traffic, run security audits, trigger speedtests, inject network impairments on VyOS, and monitor any node &mdash; all by typing plain English (or French).</p>
+            <p>The MCP server runs automatically on every Stigix instance on <strong>port 3100</strong> &mdash; no extra setup needed. To connect Claude Desktop, add this to your <code>claude_desktop_config.json</code> (replace with your node IP):</p>
+            <pre>{
+  "mcpServers": {
+    "stigix": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/inspector",
+               "http://&lt;STIGIX_NODE_IP&gt;:3100/sse"]
+    }
+  }
+}</pre>
+            <p>Config file locations: <strong>macOS</strong> &rarr; <code>~/Library/Application Support/Claude/claude_desktop_config.json</code> &nbsp; <strong>Windows</strong> &rarr; <code>%APPDATA%\Claude\claude_desktop_config.json</code></p>
+            <p>After saving, <strong>fully restart Claude Desktop</strong> (Cmd+Q, reopen). Click the hammer icon &mdash; you should see Stigix with a green status and 53 tools available.</p>
+            <p>No Node.js? Use the Python bridge instead: clone the repo, run <code>./mcp-server/setup-bridge.sh</code>, then point the config to the local Python bridge script. See <a href="https://github.com/jsuzanne/stigix/blob/main/docs/MCP_SERVER.md" target="_blank" rel="noopener noreferrer">MCP_SERVER.md</a> for the full setup.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What can I ask Claude to do? Give me real examples.</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Just type naturally &mdash; Claude resolves your intent to the right API call automatically. Here are real prompts you can copy-paste into Claude Desktop:</p>
+            <p><strong>Discovery &amp; Status:</strong></p>
+            <pre>"Show me all available Stigix endpoints."
+"Give me the full status of BR8."
+"Generate a full report across all Stigix nodes."
+"Compare BR8 and Hetzner side by side."</pre>
+            <p><strong>Traffic &amp; Tests:</strong></p>
+            <pre>"Start application traffic generation on BR8."
+"Set 10 parallel clients on Paris."
+"Run a 30-second TCP speedtest between BR8 and DC1."
+"Start a convergence test between BR8 and DC1 at 500 pps."
+"Start voice simulation on BR8."
+"What is the success rate of Teams on BR8?"</pre>
+            <p><strong>Security:</strong></p>
+            <pre>"What is the current security score for BR8?"
+"Run a full security audit on BR8."
+"Test URL filtering for the Hacking category on BR8."
+"Run a DNS security test for the malware domain on BR8."
+"Run an EICAR threat prevention test against DC1 from BR8."</pre>
+            <p><strong>DEM Probes:</strong></p>
+            <pre>"Give me the DEM summary for BR8."
+"Trigger an immediate run of all DEM probes on BR8."
+"Add a PING probe to 8.8.8.8 named Google-Test on BR8."
+"Show me historical DEM stats for BR8 over the last hour."</pre>
+            <p><strong>Config Cloning:</strong></p>
+            <pre>"Clone the full configuration from BR8 to BR5: apps, probes, security profile, and VyOS scenarios."
+"Copy only the DEM probes from BR8 to BR5."
+"Export BR8's app config, then import it to Paris."</pre>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does VyOS chaos engineering work via Claude?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>This is one of the most powerful MCP features. Claude can inject latency, loss, rate-limits, and IP blocks on VyOS routers using natural language &mdash; with a mandatory confirmation step before any destructive action.</p>
+            <p><strong>Example prompts:</strong></p>
+            <pre>"Add 150ms of latency on the MPLS link of BR8."
+"Add 5% packet loss on the WAN interface of the router on BR8."
+"Block traffic to 192.168.1.50 on the router managed by BR8."
+"Shut the MPLS interface on BR8's router."
+"Clear all active QoS on the router managed by BR8."
+"Do a full reset of BR8's router &mdash; QoS, IP blocks, and downed interfaces."
+"What is the current state of the router managed by BR8?"</pre>
+            <p><strong>How it works:</strong> Claude first calls <code>get_vyos_interfaces</code> to discover the router interfaces and their descriptions (e.g. <em>BR1-MPLS-197</em>). It then resolves your intent to the right interface, presents the proposed action with the exact interface name, and waits for your <strong>yes/no confirmation</strong> before executing. Destructive actions (shut, block, deny) are never applied without explicit user confirmation.</p>
+            <p><strong>Prerequisite:</strong> VyOS interface descriptions must be set for natural language resolution to work. Example: <code>set interfaces ethernet eth1 description "MPLS-Link-DC1"</code></p>
+            <p>You can also check the live router state anytime:</p>
+            <pre>"What is the current state of vyosrouter managed by BR8?"</pre>
+            <p>Returns: per-interface admin status (up/down), active QoS parameters (delay, loss, rate), and all active IP blocks &mdash; in a single call.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I connect Claude to multiple nodes? What is the JWT_SECRET requirement?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>You only need to connect Claude Desktop to <strong>one node</strong>. Thanks to the distributed architecture, that node automatically has visibility over the entire mesh via the autodiscovery registry &mdash; and can orchestrate any other node from there.</p>
+            <p>However, for cross-node operations (e.g. launching a speedtest from BR5 <em>via</em> the MCP connected to BR8), <strong>all nodes must share the same <code>JWT_SECRET</code></strong>. The install script generates a unique random secret per node, so in a multi-node setup you need to manually synchronize it:</p>
+            <pre># Check current secret on each node
+docker exec stigix printenv JWT_SECRET
+
+# Set the same shared secret on every node
+echo "JWT_SECRET=&lt;your-shared-secret&gt;" &gt;&gt; ~/stigix/.env
+docker compose restart</pre>
+            <p>If cross-node tests return empty results (<code>tests: []</code>), a mismatched <code>JWT_SECRET</code> is almost always the cause. Verifying this is the first debug step.</p>
+            <p>After upgrading Stigix (container restart), Claude Desktop loses the SSE connection. Simply <strong>quit and reopen Claude Desktop</strong> &mdash; the connection re-establishes automatically. You do not need to change <code>claude_desktop_config.json</code>.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Does Stigix see my prompts? What gets logged?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>No. Stigix never sees your natural language prompts.</strong> The translation happens entirely on Anthropic's servers:</p>
+            <pre>You type:  "What is the security score for BR8?"
+               &darr; sent to Anthropic (Claude LLM)
+          Claude reasons &rarr; selects tool + arguments
+               &darr; structured JSON-RPC call
+          {"name": "get_security_results_stats", "arguments": {"agent_id": "BR8"}}
+               &darr; SSE &rarr; port 3100
+          Stigix MCP Server receives only the structured call</pre>
+            <p>Stigix logs only the <strong>tool call metadata</strong> to <code>mcp-history.jsonl</code>: tool name, target node, duration in ms, and status. Your conversational text is never logged by Stigix.</p>
+            <p>This means:</p>
+            <ul>
+              <li><strong>Privacy:</strong> your prompts stay between you and Anthropic's API</li>
+              <li><strong>Debugging:</strong> if a tool is called with wrong arguments, the issue is in Claude's reasoning (tool docstring quality), not in Stigix itself</li>
+              <li><strong>Audit trail:</strong> <code>Settings &rarr; MCP Server</code> shows a real-time color-coded feed of every tool call with category icon, duration bar, node badge, and timestamp</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-mcp -->
 
     </div><!-- /faq-panels -->
   </div><!-- /wrap -->
