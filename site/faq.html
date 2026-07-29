@@ -1713,15 +1713,10 @@ if (mClose) mClose.addEventListener('click', () => mNav.classList.remove('is-ope
         matchedPanels.add(panel);
         if(qEl) highlight(qEl,qOrig,new RegExp(esc(q),'gi'));
         if(a)   highlight(a,aOrig,new RegExp(esc(q),'gi'));
-        el.classList.add('is-open');
-        const body=el.querySelector('.faq-item__body');
-        if(body) body.style.gridTemplateRows='1fr';
+        /* keep collapsed — user clicks to expand */
       } else {
         if(qEl) qEl.innerHTML=qOrig;
         if(a)   a.innerHTML=aOrig;
-        el.classList.remove('is-open');
-        const body=el.querySelector('.faq-item__body');
-        if(body) body.style.gridTemplateRows='';
       }
     });
 
