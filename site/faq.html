@@ -1290,49 +1290,47 @@ docker compose restart</pre>
         </div>
 
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the Stigix Key and how do I get one?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the Stigix Key and how do I enter it?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>To use the global Cloudflare Registry, your Stigix deployment needs a <strong>Stigix Key</strong> (also called a PoC Key). This key is a cryptographic token that:</p>
-            <ul>
-              <li><strong>Identifies your PoC</strong> &mdash; all your nodes use the same key, so they recognize each other as belonging to the same deployment</li>
-              <li><strong>Isolates your nodes</strong> &mdash; nodes from different organizations never see each other in the registry, even though they share the same Cloudflare Worker</li>
-              <li><strong>Authenticates heartbeats</strong> &mdash; the registry refuses any node that doesn't present a valid key, preventing unauthorized registration</li>
-            </ul>
-            <p><strong>How to get your Stigix Key:</strong></p>
+            <p>The <strong>Stigix Key</strong> (called <em>Stigix Master Key</em> in the UI) is a token that groups your nodes together in the shared Cloudflare registry and signs cloud probe requests so only your infrastructure can use them.</p>
+            <p><strong>Step 1 &mdash; Request your key:</strong> Send an email to <a href="mailto:contact@stigix.io">contact@stigix.io</a> with subject <em>"Stigix Registry Key Request"</em>. Include your organization name and number of nodes. You'll receive a key value by return.</p>
+            <p><strong>Step 2 &mdash; Enter it directly in the dashboard (no restart required):</strong></p>
             <ol>
-              <li>Send an email to <a href="mailto:contact@stigix.io">contact@stigix.io</a> with the subject <em>"Stigix Registry Key Request"</em></li>
-              <li>Include your organization name and a brief description of your deployment (number of nodes, locations)</li>
-              <li>You will receive a <code>STIGIX_TARGET_MASTER_KEY</code> value to add to your <code>.env</code> file</li>
+              <li>Go to <strong>Settings &rarr; Target Controller</strong></li>
+              <li>Scroll down to <strong>Cloud Target Security</strong> (<em>"Probe Signing &amp; Master Credentials"</em>)</li>
+              <li>Paste your key in the <strong>Stigix Master Key</strong> field</li>
+              <li>Click <strong>Update Security</strong></li>
             </ol>
-            <p><strong>Alternative &mdash; Prisma SD-WAN credentials:</strong> If you already have Palo Alto Networks Prisma Access / SD-WAN credentials configured (<code>PRISMA_SDWAN_TSGID</code>, <code>PRISMA_SDWAN_CLIENT_ID</code>, <code>PRISMA_SDWAN_CLIENT_SECRET</code>), Stigix can derive the PoC Key automatically from your TSG ID. In this case, no manual key is needed &mdash; all nodes in the same Prisma tenant automatically share the same derived key.</p>
+            <p>The badge next to the field instantly shows <strong>+ MASTER KEY ACTIVE</strong>. Repeat on every node in your deployment &mdash; all nodes must share the same key to recognize each other.</p>
+            <p><strong>Already using Prisma SD-WAN?</strong> If <code>PRISMA_SDWAN_TSGID</code> + credentials are configured, the key is derived automatically from your TSG ID. No manual entry needed &mdash; nodes in the same Prisma tenant are automatically grouped.</p>
           </div></div></div>
         </div>
 
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Step-by-step: how do I enable autodiscovery on a single node?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>Getting a single node to register itself to the global registry takes 3 steps:</p>
-            <p><strong>Step 1 &mdash; Enable the registry in your <code>.env</code> file:</strong></p>
-            <pre>STIGIX_REGISTRY_ENABLED=true
-STIGIX_REGISTRY_URL=https://registry.stigix.io
-STIGIX_SITE_NAME=BR8-Paris   # human-readable label shown in other nodes' dashboards</pre>
-            <p><strong>Step 2 &mdash; If using a Stigix Key (no Prisma credentials), add it:</strong></p>
-            <pre>STIGIX_TARGET_MASTER_KEY=your-key-from-contact@stigix.io</pre>
-            <p><strong>Step 3 &mdash; Restart the container to apply:</strong></p>
-            <pre>docker compose down &amp;&amp; docker compose up -d</pre>
-            <p>After restart, go to <strong>Settings &rarr; System Info</strong>. You should see a <strong>Registry</strong> section showing <em>Registered: Yes</em> and a peer count. If it shows <em>Registered: No</em>, check the troubleshooting Q&amp;A below.</p>
-            <p>Within 30&ndash;90 seconds, any other node already registered in the same PoC will automatically appear in your <strong>Targets</strong> list with an <strong>Auto</strong> badge &mdash; no manual IP entry needed.</p>
+            <p>Getting a node to register itself and discover its peers is a 2-step process &mdash; no command line needed after the initial install.</p>
+            <p><strong>Step 1 &mdash; Enter your Stigix Key in the dashboard:</strong></p>
+            <p>Go to <strong>Settings &rarr; Target Controller &rarr; Cloud Target Security</strong>. Paste the key you received from <a href="mailto:contact@stigix.io">contact@stigix.io</a> into the <strong>Stigix Master Key</strong> field and click <strong>Update Security</strong>. The badge shows <strong>+ MASTER KEY ACTIVE</strong> immediately &mdash; no restart needed.</p>
+            <p><em>No key yet?</em> If you have Prisma SD-WAN credentials already configured, skip this step &mdash; the key is derived automatically from your TSG ID.</p>
+            <p><strong>Step 2 &mdash; Verify registry status:</strong></p>
+            <p>Go to <strong>Settings &rarr; Target Controller</strong>. The <strong>Configuration State</strong> panel should show:</p>
+            <ul>
+              <li><strong>Bootstrap URL:</strong> <code>https://registry.stigix.io</code></li>
+              <li><strong>PoC Registry Key:</strong> shown as dots (key active)</li>
+              <li><strong>Cloudflare Online</strong> badge in the top-right of the Target Controller Dashboard</li>
+            </ul>
+            <p>Within 30&ndash;90 seconds, other nodes registered with the same key will appear in your <strong>Targets</strong> list with an <strong>Auto</strong> badge &mdash; no manual IP entry needed.</p>
           </div></div></div>
         </div>
+
 
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Step-by-step: how does target distribution work across many nodes (Leader/Peer model)?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p>For large multi-site deployments, Stigix adds a <strong>Leader/Peer</strong> layer on top of the global registry. One node (typically the DC or a central hub) acts as a <strong>Leader</strong> &mdash; it hosts a local registry service and pushes a centralized target list to all other nodes (Peers). This gives you sub-minute synchronization without depending on Cloudflare for every heartbeat.</p>
             <p><strong>Step 1 &mdash; Designate the Leader node:</strong></p>
-            <p>On your central/DC node, go to <strong>Settings &rarr; Target Controller Dashboard</strong>. Under <em>"Registry Role Override"</em>, select <strong>Force Leader</strong>. No restart needed &mdash; the role switch is instant.</p>
-            <p>Alternatively, set in <code>.env</code> before starting:</p>
-            <pre>STIGIX_REGISTRY_MODE=leader</pre>
+            <p>On your central/DC node, go to <strong>Settings &rarr; Target Controller</strong>. Under <strong>Registry Role Override</strong>, click <strong>Force Leader</strong>. No restart needed &mdash; the role switch is instant and the node immediately announces itself to the Cloudflare registry.</p>
             <p><strong>Step 2 &mdash; Add your shared targets on the Leader:</strong></p>
             <p>In <strong>Settings &rarr; Targets</strong> on the Leader node, add any custom targets you want all Peers to see (internal servers, specific probe endpoints, other Stigix nodes). These are the targets that will be propagated.</p>
             <p><strong>Step 3 &mdash; Leave Peers on Auto-Detect:</strong></p>
