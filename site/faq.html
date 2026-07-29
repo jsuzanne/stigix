@@ -522,16 +522,21 @@ stigix-cli profile import --file my-profile.json</pre>
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are Stigix Cloud probes and how do they differ from custom probes?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>Cloud probes target the <strong>Stigix Cloudflare Worker</strong> infrastructure and are available to all deployments without configuration. They simulate specific scenarios:</p>
+            <p>Cloud probes target the <strong>Stigix Cloudflare Worker</strong> infrastructure and are available to all deployments without any configuration. Unlike custom probes (which you define against your own endpoints), Cloud probes hit Stigix-managed infrastructure on shared global POPs. They simulate specific scenarios useful for SD-WAN and SASE validation:</p>
             <ul>
-              <li><strong>Info / Egress</strong> (<code>/saas/info</code>) — Returns your public IP, country, and Cloudflare POP. Useful to show which SASE egress point is being used.</li>
-              <li><strong>Slow SaaS</strong> (<code>/saas/slow</code>) — 5-second backend delay. Score 100 if &lt;200ms, 0 at 5s. Ideal for demonstrating latency impact.</li>
-              <li><strong>Large Download</strong> (<code>/download/large</code>) — 10MB payload. Score 100 if &lt;1s, 0 at 10s.</li>
-              <li><strong>Security EICAR</strong> (<code>/security/eicar</code>) — Delivers the EICAR test string for IPS validation.</li>
+              <li><strong>Info / Egress</strong> (<code>/saas/info</code>) &mdash; Returns your public IP, country, and Cloudflare POP. Essential to prove which SASE egress point is in use and that traffic is flowing through the expected tunnel.</li>
+              <li><strong>Slow SaaS</strong> (<code>/saas/slow</code>) &mdash; Simulates a 5-second backend delay. Score 100 if &lt;200ms, 0 at 5s. Ideal for demonstrating latency impact of sub-optimal path selection.</li>
+              <li><strong>Flap (Square Wave)</strong> (<code>/saas/flap</code>) &mdash; Alternates between 0s and 5s delay every 60 seconds. Creates a square-wave pattern in your probe graph &mdash; useful for validating alerting thresholds and showing the dashboard reacting to periodic SaaS degradation.</li>
+              <li><strong>Wave (Sine)</strong> (<code>/saas/wave</code>) &mdash; Smoothly oscillates latency up to 5s over a 2-minute sine cycle. Produces a characteristic wave curve in the timing graph, useful for validating gradual path quality detection.</li>
+              <li><strong>Random Latency</strong> (<code>/saas/random</code>) &mdash; 50% chance of a 5-second delay on each request. Simulates unpredictable SaaS degradation to validate that your SD-WAN path selection reacts to intermittent rather than sustained issues.</li>
+              <li><strong>Large Download</strong> (<code>/download/large</code>) &mdash; Downloads a 10 MB payload and scores on throughput. Score 100 if completed in &lt;1s, 0 at 10s. Validates that the active WAN path delivers adequate bandwidth for bulk transfers.</li>
+              <li><strong>Security EICAR</strong> (<code>/security/eicar</code>) &mdash; Delivers the EICAR test string to check that IPS / Threat Prevention is blocking malware signatures on the active path.</li>
             </ul>
-            <p>Cloud probes use the same <code>curl</code>-based engine as HTTPS probes, providing a full 4-layer timing breakdown (DNS, TCP, TLS, TTFB) visible in the Timing Analysis modal.</p>
+            <p><strong>Advanced Stigix Probe</strong> &mdash; A builder option at the bottom of the dropdown lets you configure a fully custom cloud probe with granular parameters (mode, delay value, custom headers). Useful for scripting specific latency thresholds for a particular customer scenario.</p>
+            <p>All Cloud probes use the same <code>curl</code>-based engine as HTTPS probes, providing a full 4-layer timing breakdown (DNS, TCP, TLS, TTFB) visible in the Timing Analysis modal. They require a valid <strong>Stigix Key</strong> to authenticate against the Cloudflare Worker.</p>
           </div></div></div>
         </div>
+
 
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I export and import probe configurations across deployments?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
