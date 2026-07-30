@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.37] - 2026-07-30
+### Fixed
+- **ConnectivityPerformance.tsx** 🐛 **Root cause fix**: `content_match` from probe config was never added to the `endpoint` object built by the `useMemo`. As a result `selectedEndpoint.content_match` was always `undefined`, making the banner, Match column and HTTP Code annotation invisible. Fixed by adding `content_match: config?.content_match` to the endpoint object. No new data fetching required — `endpointConfigs` already loaded full probe config including `content_match`.
+- **Settings.tsx** 🐛 2 remaining `setNewProbe({ frequency: 60 })` occurrences corrected to `frequency: 300` (patch.36 only fixed the `useState` initial value but missed the reset-after-save and the "Add New" card click handlers).
+
 ## [v1.4.1-patch.36] - 2026-07-30
 ### Fixed / Changed
 - **Settings.tsx** 🔧: Changed default probe frequency from 60s to **300s** (5 min) to match the realistic effective polling interval. Added "default 300" label hint in the form. Fallbacks in onChange also updated.

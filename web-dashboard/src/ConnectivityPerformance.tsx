@@ -502,6 +502,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 enabled,
                 source: config?.source,
                 stale: config?.stale,
+                content_match: config?.content_match, // ← pass full content_match config to modal
                 // Sparkline data arrays (chronological)
                 scoreHistory: histSlice.map(r => r.score),
                 latencyHistory: reachableSlice.map(r => Math.round(r.metrics.total_ms)),

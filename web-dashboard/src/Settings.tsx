@@ -998,7 +998,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         }
         await saveProbes(updatedProbes);
         setCustomProbes(updatedProbes);
-        setNewProbe({ name: '', type: 'HTTP', target: '', timeout: 5000, frequency: 60 });
+        setNewProbe({ name: '', type: 'HTTP', target: '', timeout: 5000, frequency: 300 });
     };
 
     const saveProbes = async (probes: CustomProbe[]) => {
@@ -1649,7 +1649,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                     {/* Action Card: Add New */}
                                     <div 
                                         onClick={() => {
-                                            setNewProbe({ name: '', type: 'HTTP', target: '', timeout: 5000, frequency: 60 });
+                                            setNewProbe({ name: '', type: 'HTTP', target: '', timeout: 5000, frequency: 300 });
                                             setEditingIndex(null);
                                             setIsProbeModalOpen(true);
                                         }}
@@ -1979,7 +1979,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                 <select
                                                     className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
                                                     value={newProbe.type}
-                                                    onChange={e => setNewProbe({ ...newProbe, type: e.target.value as any, timeout: e.target.value === 'PING' ? 2000 : 5000 })}
+                                                    onChange={e => {
+                                                        const t = e.target.value as any;
+                                                        const isHttp = t === 'HTTP' || t === 'HTTPS';
+                                                        const defaultFreq = isHttp ? 300 : 60;
+                                                        setNewProbe({ ...newProbe, type: t, timeout: t === 'PING' ? 2000 : 5000, frequency: defaultFreq });
+                                                    }}
                                                 >
                                                     <option value="HTTP">HTTP</option>
                                                     <option value="HTTPS">HTTPS</option>
@@ -2011,7 +2016,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                             <div className="space-y-2">
                                                 <div className="flex items-center justify-between ml-1 leading-none">
                                                     <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Freq (s)</label>
-                                                    <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 30 — MAX 3600 — default 300</span>
+                                                    <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 30 — MAX 3600 — default: HTTP/S=300 · other=60</span>
                                                 </div>
                                                 <input
                                                     type="number"
