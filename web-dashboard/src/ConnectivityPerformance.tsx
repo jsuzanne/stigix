@@ -1177,10 +1177,9 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                                 <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-center">Total</th>
                                                 <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-center hidden sm:table-cell">IP Address</th>
                                                 {(selectedEndpoint.type.includes('HTTP') || selectedEndpoint.type === 'CLOUD') && (
-                                                    <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-right">HTTP Code</th>
-                                                )}
-                                                {(selectedEndpoint as any).content_match?.enabled && (
-                                                    <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-right">Match</th>
+                                                    <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-right whitespace-nowrap">
+                                                        {(selectedEndpoint as any).content_match?.enabled ? 'HTTP · Match' : 'HTTP Code'}
+                                                    </th>
                                                 )}
                                             </tr>
                                         </thead>
@@ -1205,35 +1204,28 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                                     <td className="px-4 py-3 text-center text-text-muted font-mono truncate max-w-[120px] hidden sm:table-cell">{r.remoteIp || '-'}</td>
                                                     {(selectedEndpoint.type.includes('HTTP') || selectedEndpoint.type === 'CLOUD') && (
                                                         <td className="px-4 py-3 text-right">
-                                                            <div className="flex flex-col items-end gap-0.5">
+                                                            <div className="flex items-center justify-end gap-1.5 flex-nowrap">
+                                                                {/* HTTP Code badge */}
                                                                 <span className={cn(
-                                                                    "px-2 py-0.5 rounded font-black text-[11px]",
+                                                                    "px-2 py-0.5 rounded font-black text-[11px] shrink-0",
                                                                     r.httpCode === 200 ? "text-green-600 dark:text-green-400 bg-green-500/10" : "text-orange-500 bg-orange-500/10"
                                                                 )}>
                                                                     {r.httpCode || 'N/A'}
                                                                 </span>
-                                                                {/* Show match annotation only when HTTP OK but match failed */}
-                                                                {(selectedEndpoint as any).content_match?.enabled && r.httpCode === 200 && (r as any).content_match_ok === false && (
-                                                                    <span className="text-[9px] font-bold text-red-400 uppercase tracking-tight whitespace-nowrap">match fail</span>
-                                                                )}
-                                                                {(selectedEndpoint as any).content_match?.enabled && r.httpCode === 200 && (r as any).content_match_ok === true && (
-                                                                    <span className="text-[9px] font-bold text-green-400 uppercase tracking-tight whitespace-nowrap">match ok</span>
+                                                                {/* Inline match result — only when content_match enabled */}
+                                                                {(selectedEndpoint as any).content_match?.enabled && (
+                                                                    (r as any).content_match_result ? (
+                                                                        <span className={cn(
+                                                                            "text-[10px] font-bold whitespace-nowrap shrink-0",
+                                                                            (r as any).content_match_ok ? "text-green-400" : "text-red-400"
+                                                                        )}>
+                                                                            {(r as any).content_match_ok ? '✓' : '✗'} {(r as any).content_match_result}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-text-muted text-[10px] shrink-0">—</span>
+                                                                    )
                                                                 )}
                                                             </div>
-                                                        </td>
-                                                    )}
-                                                    {(selectedEndpoint as any).content_match?.enabled && (
-                                                        <td className="px-4 py-3 text-right">
-                                                            {(r as any).content_match_result ? (
-                                                                <span className={cn(
-                                                                    "px-2 py-0.5 rounded font-black text-[10px] whitespace-nowrap",
-                                                                    (r as any).content_match_ok ? "text-green-600 dark:text-green-400 bg-green-500/10" : "text-red-500 bg-red-500/10"
-                                                                )}>
-                                                                    {(r as any).content_match_ok ? '✓' : '✗'} {(r as any).content_match_result}
-                                                                </span>
-                                                            ) : (
-                                                                <span className="text-text-muted text-[10px]">—</span>
-                                                            )}
                                                         </td>
                                                     )}
                                                 </tr>

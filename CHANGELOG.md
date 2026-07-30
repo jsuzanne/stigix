@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.38] - 2026-07-30
+### Fixed / Cosmetic
+- **ConnectivityPerformance.tsx** 🎨 Merged HTTP Code and Match columns into a single inline column.
+  - Header: `HTTP Code` when no content_match, `HTTP · Match` when enabled.
+  - Cell: `200 ✓ matched` / `200 ✗ text not found` on a **single line** using `flex items-center gap-1.5 flex-nowrap`.
+  - Removed the separate Match column that caused horizontal overflow and cut-off text.
+  - HTTP Code badge uses `shrink-0` to never compress; match text uses `whitespace-nowrap shrink-0`.
+  - Header is now `whitespace-nowrap` so "HTTP · Match" never wraps to 2 lines.
+
 ## [v1.4.1-patch.37] - 2026-07-30
 ### Fixed
 - **ConnectivityPerformance.tsx** 🐛 **Root cause fix**: `content_match` from probe config was never added to the `endpoint` object built by the `useMemo`. As a result `selectedEndpoint.content_match` was always `undefined`, making the banner, Match column and HTTP Code annotation invisible. Fixed by adding `content_match: config?.content_match` to the endpoint object. No new data fetching required — `endpointConfigs` already loaded full probe config including `content_match`.
