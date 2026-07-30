@@ -548,7 +548,55 @@ stigix-cli profile import --file my-profile.json</pre>
           </div></div></div>
         </div>
 
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What do the Digital Experience dashboard panels show?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The top banner of the Digital Experience view contains three key sections:</p>
+            <ul>
+              <li><strong>Global Experience</strong> — A single score (0–100) averaged across <em>all active probes</em>. This is the headline KPI to show on a dashboard during a PoC. It reflects the overall quality of reachability as seen from the Stigix machine through the SASE/SD-WAN path.</li>
+              <li><strong>Score Trend</strong> — A time-series chart of the global score over the selected window (16M, 1H, 6H, 24H, 7D). The dashed green line marks the maximum observed score and the dashed red line the minimum, giving a quick visual of score stability. Use this to show a "before/after" when switching WAN paths or enabling a policy.</li>
+              <li><strong>Flaky Probes</strong> — Lists probes whose recent results oscillate between success and failure. A probe becomes <strong>Flaky</strong> when it fails after previously succeeding, and moves to <strong>Down</strong> after multiple consecutive failures. This panel surfaces intermittent issues that would be invisible in simple up/down monitoring.</li>
+            </ul>
+            <p>Below the banner, <strong>Performance Trends by Type</strong> shows one mini-chart per probe protocol (HTTP/HTTPS, PING, DNS, UDP, STIGIX CLOUD). Each card displays the aggregate score, average latency, and success rate for that protocol family — useful to identify whether a degradation is protocol-specific (e.g. only UDP/voice paths are affected) or global.</p>
+            <p>The main <strong>Active Monitoring Probes</strong> table lists every probe with its last score, sparkline history, average latency range, and a reliability badge (percentage of successful polls). Click any probe row to open its detailed modal with timing breakdown and recent captures.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What do DNS, TCP, TLS, and TTFB mean in the probe performance chart?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>HTTP, HTTPS, and STIGIX CLOUD probes use <code>curl</code> to decompose each request into four distinct timing phases, shown as a stacked area chart in the <strong>Probe Performance</strong> modal:</p>
+            <ul>
+              <li><strong>DNS</strong> — Time to resolve the hostname into an IP address. Should be &lt;15ms on a healthy path. High DNS times indicate the SD-WAN DNS proxy or the upstream resolver is slow — common when SASE inspection intercepts DNS before forwarding to the resolver.</li>
+              <li><strong>TCP</strong> — Time to complete the TCP three-way handshake after DNS. Reflects raw network RTT to the server. Ideally &lt;10ms for LAN targets, &lt;50ms for cloud SaaS via a well-placed PoP. A sudden increase signals WAN congestion or a route change.</li>
+              <li><strong>TLS</strong> — Time to complete the TLS handshake (certificate exchange, cipher negotiation) on top of the TCP connection. This is the most sensitive indicator of <strong>SASE inspection overhead</strong>: deep TLS inspection (SSL decryption) adds 10–80ms depending on policy complexity. A consistently high TLS value with a normal TCP value is a strong indicator that TLS inspection is active on that path.</li>
+              <li><strong>TTFB</strong> — <em>Time to First Byte</em>: the delay between the end of the TLS handshake and receiving the first byte of the HTTP response. This reflects <strong>backend application response time</strong>. A high TTFB with normal DNS/TCP/TLS means the application server is slow, not the network path — useful for isolating whether a degradation is network-side or application-side.</li>
+            </ul>
+            <pre>Total latency = DNS + TCP + TLS + TTFB
+Example (Google Search, healthy path):
+  DNS  7.7ms  TCP  4.5ms  TLS 24ms  TTFB 35ms  → Total 76ms</pre>
+            <p>The <strong>Score Trend</strong> sub-chart within the probe modal shows score (solid line) and total latency (dashed orange line) on the same axis, making it easy to correlate score drops with latency spikes. The <strong>Recent Captures</strong> table gives the raw numbers for every poll cycle, including the IP address served — which changes when Anycast CDN load-balances or when a failover switches the egress PoP.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are Prisma SD-WAN probes and how do they work?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Prisma SD-WAN probes</strong> are a special probe category automatically discovered from the Prisma SD-WAN / Strata Cloud Manager API. Unlike custom probes that you create manually, these are synthesised directly from Prisma's own Application Probe Kit (APK) monitoring data — meaning the probe endpoints and types mirror what your SD-WAN already measures natively.</p>
+            <p><strong>How auto-discovery works:</strong></p>
+            <ol>
+              <li>Stigix calls the Prisma SD-WAN API (using the credentials in <code>PRISMA_SDWAN_CLIENT_ID</code> / <code>CLIENT_SECRET</code> / <code>TSGID</code>) to pull the list of monitored application probes from all branch sites.</li>
+              <li>Each discovered probe is imported with <code>source: "discovery"</code> and displayed with a <strong>shield icon</strong> badge in the probe table, distinguishing it from user-created probes.</li>
+              <li>Results are polled on the same schedule as other probes and stored in the same history database — enabling side-by-side comparison between Stigix-measured experience and Prisma-measured experience for the same endpoints.</li>
+            </ol>
+            <p><strong>Filtering Prisma SD-WAN probes:</strong> In the Digital Experience tab, use the <strong>PRISMA SDWAN</strong> filter button in the top toolbar to isolate only auto-discovered probes. This is useful in multi-site deployments where you have dozens of probes and want to focus on the Prisma-native view.</p>
+            <p><strong>Stale badge:</strong> If the Prisma API has not returned updated data for a probe within the expected refresh window, the badge turns orange and displays <strong>STALE</strong> — signalling that the API sync may have a problem (expired token, region mismatch, or network issue between Stigix and the Prisma cloud).</p>
+            <p><strong>Requirements:</strong> Prisma SD-WAN probe discovery requires valid API credentials and the Prisma SASE API feature to be enabled in <strong>Settings → Prisma SASE API</strong>. The API uses OAuth2 client credentials — refer to the <strong>Settings &amp; API</strong> FAQ for the exact setup steps.</p>
+          </div></div></div>
+        </div>
+
       </div><!-- /panel-digexp -->
+
 
 
       <!-- ═══════════════════════════════════════════════════
