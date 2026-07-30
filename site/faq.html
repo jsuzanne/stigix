@@ -595,6 +595,43 @@ Example (Google Search, healthy path):
           </div></div></div>
         </div>
 
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is HTTP/HTTPS probe content matching and how do I use it?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Content matching</strong> is an optional feature for HTTP and HTTPS probes that verifies the response body contains (or does not contain) a specific text string. It is disabled by default — all existing probes continue to work exactly as before unless you explicitly enable it.</p>
+            <p><strong>How to configure it:</strong></p>
+            <ol>
+              <li>Open <strong>Settings → Synthetic Probes</strong> and click <strong>Add New Probe</strong> (or the edit icon on an existing HTTP/HTTPS probe).</li>
+              <li>At the bottom of the form, check <strong>Enable content matching</strong>.</li>
+              <li>Choose the <strong>Match mode</strong>:
+                <ul>
+                  <li><code>contains</code> — probe succeeds only if the response body includes the expected text.</li>
+                  <li><code>not_contains</code> — probe succeeds only if the expected text is <em>absent</em> from the body (useful to detect error pages, maintenance banners, or deprecated API responses).</li>
+                </ul>
+              </li>
+              <li>Enter the <strong>Expected text</strong> (plain text, max 80 characters). Optionally enable <strong>Case sensitive</strong>.</li>
+            </ol>
+            <p><strong>How it works under the hood:</strong> After the normal HTTP request (which measures DNS/TCP/TLS/TTFB), a second bounded request fetches the body (capped at 50 KB, 5 s timeout). The normal timing metrics are <strong>never affected</strong> — they come from the first curl call. The body fetch only adds ~50–200 ms per polling cycle, only for probes where it is enabled.</p>
+            <p><strong>Result fields added to each probe capture:</strong></p>
+            <pre>content_match_enabled  true / false
+content_match_mode     contains | not_contains
+content_match_value    expected text (truncated to 80 chars in logs)
+content_match_result   "matched" | "text not found" | "text unexpectedly found"
+                       | "body empty" | "fetch error"
+content_match_ok       true | false</pre>
+            <p>When <code>content_match_ok</code> is <code>false</code>, the probe score is forced to <strong>0</strong> and the status becomes unreachable — it will appear in the <strong>Flaky / Down</strong> panels and the <strong>Match</strong> column in Recent Captures will show ✗ with the failure reason.</p>
+            <p><strong>Backward compatibility:</strong> Probes without a <code>content_match</code> block behave exactly as today — the feature is completely opt-in. Existing JSON configs and API responses are not changed.</p>
+            <p><strong>Typical use cases:</strong></p>
+            <ul>
+              <li>Verify a corporate portal returns <code>"Welcome"</code> instead of a redirect to a login page.</li>
+              <li>Confirm an internal health API returns <code>"healthy"</code> or <code>"ok"</code>.</li>
+              <li>Detect a maintenance page using <code>not_contains</code> on <code>"Under maintenance"</code>.</li>
+              <li>Check that a Prisma-inspected SaaS endpoint still returns expected content after an SSL decryption policy change.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
       </div><!-- /panel-digexp -->
 
 

@@ -973,6 +973,11 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                         )}>
                                             {selectedEndpoint.type === 'CLOUD' ? 'STIGIX CLOUD' : selectedEndpoint.type}
                                         </span>
+                                        {(selectedEndpoint as any).content_match?.enabled && (
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-tighter align-middle bg-violet-500/10 border-violet-500/30 text-violet-400">
+                                                ✦ Content Match
+                                            </span>
+                                        )}
                                     </h3>
                                     <p className="text-[10px] text-text-muted font-mono font-bold break-all max-w-[700px] mt-1">{formatDisplayUrl(selectedEndpoint)}</p>
                                 </div>
@@ -1139,6 +1144,9 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                                 {(selectedEndpoint.type.includes('HTTP') || selectedEndpoint.type === 'CLOUD') && (
                                                     <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-right">HTTP Code</th>
                                                 )}
+                                                {(selectedEndpoint as any).content_match?.enabled && (
+                                                    <th className="px-4 py-3 text-text-muted font-bold tracking-tight text-right">Match</th>
+                                                )}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border">
@@ -1168,6 +1176,20 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                                             )}>
                                                                 {r.httpCode || 'N/A'}
                                                             </span>
+                                                        </td>
+                                                    )}
+                                                    {(selectedEndpoint as any).content_match?.enabled && (
+                                                        <td className="px-4 py-3 text-right">
+                                                            {(r as any).content_match_result ? (
+                                                                <span className={cn(
+                                                                    "px-2 py-0.5 rounded font-black text-[10px] whitespace-nowrap",
+                                                                    (r as any).content_match_ok ? "text-green-600 dark:text-green-400 bg-green-500/10" : "text-red-500 bg-red-500/10"
+                                                                )}>
+                                                                    {(r as any).content_match_ok ? '✓' : '✗'} {(r as any).content_match_result}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-text-muted text-[10px]">—</span>
+                                                            )}
                                                         </td>
                                                     )}
                                                 </tr>

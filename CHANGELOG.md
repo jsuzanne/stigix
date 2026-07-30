@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.34] - 2026-07-30
+### Added
+- **Digital Experience / Synthetic Probes** ✨ `server.ts` + `Settings.tsx` + `ConnectivityPerformance.tsx`: Added optional **HTTP/HTTPS content matching** feature. When enabled on a probe, a bounded body fetch (50 KB cap, 5 s timeout) verifies the response contains or does not contain a specified text string. Timing metrics (DNS/TCP/TLS/TTFB) are completely unaffected — the body fetch uses a separate curl call. Score is forced to 0 on match failure. New observability fields: `content_match_enabled`, `content_match_mode`, `content_match_value`, `content_match_result`, `content_match_ok`. Backward-compatible — probes without `content_match` block are unchanged. 🔍
+- **Digital Experience UI** 🎨 Probe detail modal now shows a **✦ Content Match** badge next to the probe type badge when matching is active. Recent Captures table gains a **Match** column (✓/✗ + reason) for content-match probes.
+- **FAQ** 📖 `site/faq.html`: Added Digital Experience content matching Q&A covering setup steps, modes, observability fields, backward compatibility, and typical use cases.
+- **FAQ** 📖 `site/faq.html`: Added 3 new Digital Experience Q&As: dashboard panels overview (Global Experience / Score Trend / Flaky Probes), DNS/TCP/TLS/TTFB timing breakdown with SASE-specific interpretation tips, and Prisma SD-WAN probe auto-discovery.
+- **FAQ** 📖 Fixed 3 UI label mismatches across Settings tabs: `Download Config → Export`, `Settings → Network → Settings → System Info → Network Interfaces`, `Add Target → Add Stigix Target`.
+
 ## [v1.4.1-patch.33] - 2026-07-29
 ### Fixed
 - **CLI & Security API** 🐛 `stigix-cli.py` & `server.ts`: Fixed HTTP 400 error in `security eicar` CLI command. Updated `/api/security/threat-test` to accept both `endpoint` and `endpoints` parameters, and aligned CLI payload key. 🛡️

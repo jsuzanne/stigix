@@ -31,6 +31,13 @@ interface Category {
     expanded?: boolean;
 }
 
+interface ContentMatch {
+    enabled: boolean;
+    mode: 'contains' | 'not_contains';
+    value: string;
+    case_sensitive: boolean;
+}
+
 interface CustomProbe {
     name: string;
     type: 'HTTP' | 'HTTPS' | 'TCP' | 'PING' | 'DNS' | 'UDP' | 'CLOUD';
@@ -39,6 +46,7 @@ interface CustomProbe {
     frequency?: number;
     enabled?: boolean;
     source?: 'discovery' | 'manual' | 'cloud';
+    content_match?: ContentMatch;
 }
 
 interface MaintenanceStatus {
@@ -2224,6 +2232,64 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                 </div>
                                             )}
                                         </div>
+
+                                        {/* ── Content Matching (HTTP/HTTPS only) ───────────────────── */}
+                                        {(newProbe.type === 'HTTP' || newProbe.type === 'HTTPS') && (
+                                            <div className="border border-border rounded-xl p-4 space-y-3 bg-card-secondary/30">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            id="cm-enabled"
+                                                            checked={newProbe.content_match?.enabled ?? false}
+                                                            onChange={e => setNewProbe({ ...newProbe, content_match: { enabled: e.target.checked, mode: newProbe.content_match?.mode ?? 'contains', value: newProbe.content_match?.value ?? '', case_sensitive: newProbe.content_match?.case_sensitive ?? false } })}
+                                                            className="accent-blue-500 w-3.5 h-3.5 cursor-pointer"
+                                                        />
+                                                        <label htmlFor="cm-enabled" className="text-[10px] font-black uppercase tracking-widest text-text-primary cursor-pointer select-none">Enable content matching</label>
+                                                    </div>
+                                                    <span className="text-[9px] text-text-muted opacity-50 font-bold uppercase tracking-widest">HTTP / HTTPS only</span>
+                                                </div>
+                                                {newProbe.content_match?.enabled && (
+                                                    <div className="space-y-3 pt-1">
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label className="block text-[9px] font-black text-text-muted uppercase tracking-widest mb-1.5">Match mode</label>
+                                                                <select
+                                                                    value={newProbe.content_match?.mode ?? 'contains'}
+                                                                    onChange={e => setNewProbe({ ...newProbe, content_match: { ...newProbe.content_match!, mode: e.target.value as 'contains' | 'not_contains' } })}
+                                                                    className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[10px] font-bold"
+                                                                >
+                                                                    <option value="contains">contains</option>
+                                                                    <option value="not_contains">not_contains</option>
+                                                                </select>
+                                                            </div>
+                                                            <div className="flex items-end">
+                                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={newProbe.content_match?.case_sensitive ?? false}
+                                                                        onChange={e => setNewProbe({ ...newProbe, content_match: { ...newProbe.content_match!, case_sensitive: e.target.checked } })}
+                                                                        className="accent-blue-500 w-3.5 h-3.5 cursor-pointer"
+                                                                    />
+                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted select-none">Case sensitive</span>
+                                                                </label>
+                                                            </div>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[9px] font-black text-text-muted uppercase tracking-widest mb-1.5">Expected text</label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="e.g. Welcome, 200 OK, healthy"
+                                                                value={newProbe.content_match?.value ?? ''}
+                                                                onChange={e => setNewProbe({ ...newProbe, content_match: { ...newProbe.content_match!, value: e.target.value } })}
+                                                                className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-mono shadow-inner transition-all"
+                                                            />
+                                                            <p className="text-[9px] text-text-muted opacity-60 px-1 mt-1 font-bold">Plain text search — max 80 chars. Body read is capped at 50 KB.</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
 
                                         <div className="flex justify-end gap-3 pt-4">
                                             <button

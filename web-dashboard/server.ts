@@ -3793,6 +3793,51 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                     };
                     const baseScore = calculateDEMScore(result.endpointType, result.reachable, result.httpCode, result.metrics);
                     result.score = Math.max(0, baseScore - httpRetries * 20);
+
+                    // ── Optional content match (separate bounded curl, timings unaffected) ──
+                    const cm = (endpoint as any).content_match;
+                    if (cm?.enabled && cm.value) {
+                        let cmResult = 'matching disabled';
+                        let cmOk = true;
+                        try {
+                            const bodyCmd = `${getTimeoutCmd(8)}curl -sSL --max-filesize 51200 --output - --max-time 5 --connect-timeout 5 -H 'Cache-Control: no-cache' ${ifaceFlag} "${endpoint.target}"`;
+                            let body = '';
+                            try {
+                                const bodyRes = await execPromise(bodyCmd);
+                                body = bodyRes.stdout || '';
+                            } catch (bodyErr: any) {
+                                body = bodyErr.stdout || '';
+                                if (!body) { cmResult = 'fetch error'; cmOk = false; }
+                            }
+                            if (cmOk) {
+                                if (!body.trim()) {
+                                    cmResult = 'body empty';
+                                    cmOk = false;
+                                } else {
+                                    const haystack = cm.case_sensitive ? body : body.toLowerCase();
+                                    const needle   = cm.case_sensitive ? cm.value : cm.value.toLowerCase();
+                                    const found    = haystack.includes(needle);
+                                    if ((cm.mode || 'contains') === 'contains') {
+                                        cmOk     = found;
+                                        cmResult = found ? 'matched' : 'text not found';
+                                    } else {
+                                        cmOk     = !found;
+                                        cmResult = !found ? 'matched' : 'text unexpectedly found';
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            cmResult = 'fetch error';
+                            cmOk = false;
+                        }
+                        (result as any).content_match_enabled = true;
+                        (result as any).content_match_mode    = cm.mode || 'contains';
+                        (result as any).content_match_value   = String(cm.value).substring(0, 80);
+                        (result as any).content_match_result  = cmResult;
+                        (result as any).content_match_ok      = cmOk;
+                        if (!cmOk) { result.score = 0; result.reachable = false; }
+                        if (DEBUG) log('CONNECTIVITY', `[DEBUG] content_match for ${endpoint.name}: ${cmResult} (ok=${cmOk})`, 'debug');
+                    }
                 }
             }
         } else if (endpoint.type.toLowerCase() === 'ping') {
