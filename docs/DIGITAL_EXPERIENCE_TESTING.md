@@ -16,13 +16,13 @@ The platform supports various probe types, each measuring different aspects of t
 
 | Probe Type | Protocol | Default Polling Frequency | Default Timeout | Max Retries | Retry Delay (Dynamic) | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **HTTP** | HTTP/HTTPS | 60 seconds | 5,000 ms | 2 (3 attempts total) | 1s to 5s (`timeout / 10`) | Web application response & metrics (`curl`) |
-| **HTTPS** | HTTPS | 60 seconds | 5,000 ms | 2 (3 attempts total) | 1s to 5s (`timeout / 10`) | Secure web application response & TLS metrics (`curl`) |
+| **HTTP** | HTTP/HTTPS | **300 seconds** | 5,000 ms | 2 (3 attempts total) | 1s to 5s (`timeout / 10`) | Web application response & metrics (`curl`) |
+| **HTTPS** | HTTPS | **300 seconds** | 5,000 ms | 2 (3 attempts total) | 1s to 5s (`timeout / 10`) | Secure web application response & TLS metrics (`curl`) |
 | **PING** | ICMP Echo | 60 seconds | 2,000 ms | 2 (3 attempts total) | 1s to 5s (`timeout / 10`) | Network reachability & RTT (`ping`) |
 | **DNS** | DNS Query | 60 seconds | 3,000 ms | 2 (3 attempts total) | 1s to 5s (`timeout / 10`) | Domain resolution speed (`dig` to server) |
 | **TCP** | TCP Handshake | 60 seconds | 3,000 ms | 2 (3 attempts total) | 1s to 5s (`timeout / 10`) | Port reachability & handshake (`nc`) |
 | **UDP** | UDP Traffic | 60 seconds | 3,000 ms | 2 (3 attempts total) | 1s to 5s (`timeout / 10`) | Voice/real-time quality (`iperf3` client) |
-| **CLOUD** | HTTP/HTTPS | 60 seconds | 15,000 ms | 2 (3 attempts total) | 1s to 5s (`timeout / 10`) | Cloudflare POP egress & SaaS emulation (`curl`) |
+| **CLOUD** | HTTP/HTTPS | **300 seconds** | 15,000 ms | 2 (3 attempts total) | 1s to 5s (`timeout / 10`) | Cloudflare POP egress & SaaS emulation (`curl`) |
 
 > [!NOTE]
 > **Dynamic Retry Delay**: The delay between retries is automatically scaled according to the probe's timeout setting:
@@ -82,7 +82,9 @@ All probes return a score from **0 to 100**. The system stores the **Minimum**, 
 ### 1. Background Execution
 Probes are managed by the **Background Monitor** inside the Node.js backend (`server.ts`).
 - **Orchestration Engine**: Since `v1.2.2-patch.41`, the backend operates an asynchronous concurrent ticker loop checking state every 10 seconds. This ensures probes don't block one another if they timeout.
-- **Interval (Frequency)**: Can be strictly tuned per-probe natively in the UI dashboard (Min: `30s`, Max: `3600s`). Defaults to **60 seconds**.
+- **Interval (Frequency)**: Tunable per-probe in the UI (Min: `30s`, Max: `3600s`). Default values are **type-aware**:
+  - **HTTP / HTTPS / CLOUD**: default **300 seconds** (5 min). HTTP/HTTPS probes execute up to 2 sequential `curl` calls (metrics + optional content match body), so a longer default avoids queue congestion when many probes are active.
+  - **PING / TCP / UDP / DNS**: default **60 seconds**. These probes are lightweight and benefit from higher polling frequency.
 - **Lifecycle**: The monitor independently checks each endpoint timestamp against its configured frequency threshold and fires off the specialized connectivity probe autonomously.
 
 ### 2. Flaky Detection
@@ -115,9 +117,10 @@ You can manage monitoring probes via the **Settings > Synthetic Probes** UI:
 **Fields:**
 - **Probe Name**: A short, uppercase tracking label (e.g., "HQ-GATEWAY", "OFFICE365-UDP").
 - **Protocol**: Select from HTTP, HTTPS, ICMP (Ping), TCP, DNS, UDP Stream, or Stigix Cloud.
-- **Timeout (ms)**: Max execution ceiling before the probe is marked failed. Tunable between `1000ms` (1s) and `60000ms` (60s). Default is typically `5000`.
-- **Freq (s)**: The polling cycle loop time for the background engine. Tunable between `30s` and `3600s`.
+- **Timeout (ms)**: Max execution ceiling before the probe is marked failed. Tunable between `1000ms` (1s) and `60000ms` (60s). Default is `5000ms` for HTTP/HTTPS, `2000ms` for PING.
+- **Freq (s)**: The polling cycle loop time for the background engine. Tunable between `30s` and `3600s`. Defaults: **HTTP/HTTPS/CLOUD = 300s**, PING/TCP/UDP/DNS = 60s.
 - **Target**: The FQDN (google.com), socket (1.1.1.1:53), or IP address.
+- **Enable Content Matching** *(HTTP/HTTPS only)*: Optional body verification — see [Content Matching](#-content-matching-httphttps-only) below.
 
 *Real-time view of active monitoring probes and their current polling status:*
 ![Active Monitoring Probes List](screenshots/01-Configuration/02-active-monitoring-probes.png)
@@ -125,6 +128,58 @@ You can manage monitoring probes via the **Settings > Synthetic Probes** UI:
 
 > [!TIP]
 > Use the **HTTP (Scoring)** type for public SaaS applications to get a realistic measure of application-level latency.
+
+---
+
+## 🔍 Content Matching (HTTP/HTTPS only)
+
+Since `v1.4.1-patch.34`, HTTP and HTTPS probes support optional **response body verification**.
+
+When enabled, after the normal timing measurement (DNS/TCP/TLS/TTFB), a second bounded body fetch (capped at **10 KB**, **3 s timeout**) checks whether the response body contains or does not contain a specified text string.
+
+> [!IMPORTANT]
+> The normal timing metrics (DNS, TCP, TLS, TTFB) are **never affected** by content matching — they come from the first curl call. The body fetch only adds overhead for probes that have content matching explicitly enabled.
+
+### Configuration
+
+| Field | Description |
+|---|---|
+| **Match mode** | `contains` — pass only if text found. `not_contains` — pass only if text absent. |
+| **Expected text** | Plain text, max 80 characters. |
+| **Case sensitive** | Optional. Default: off. |
+
+### Result Fields
+
+Each probe capture with content matching enabled includes:
+
+```
+content_match_enabled  true / false
+content_match_mode     contains | not_contains
+content_match_value    expected text (max 80 chars)
+content_match_result   "matched" | "text not found" | "text unexpectedly found"
+                       | "body empty" | "fetch error"
+content_match_ok       true | false
+```
+
+When `content_match_ok` is `false`, the probe **score is forced to 0** — regardless of HTTP status code. The probe detail modal shows:
+- A color-coded banner (🟢 green = matched, 🔴 red = failed, 🟣 violet = waiting for first result)
+- A `match ok` / `match fail` annotation below the HTTP Code in Recent Captures
+
+### Recommended Frequency
+
+HTTP/HTTPS probes with content matching enabled should use a polling frequency of **≥ 300s** (the default). Content matching adds a second sequential curl call which, combined with other probes in the queue, can extend effective poll intervals if frequency is set too low.
+
+### CLI
+
+When adding an HTTP/HTTPS probe interactively with `stigix-cli.py probes add`, the CLI will prompt:
+```
+Enable content matching? [y/N]: y
+Match mode — (1) contains / (2) not_contains [1]: 1
+Expected text (max 80 chars): Welcome
+Case sensitive? [y/N]: N
+```
+
+Or pass directly via the probe JSON config.
 
 ---
 

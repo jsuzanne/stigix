@@ -486,7 +486,7 @@ stigix-cli profile import --file my-profile.json</pre>
               <li><strong>UDP</strong> — Uses <code>iperf3 -u</code> to measure jitter and packet loss. Score = <code>100 - (loss% × 10) - jitter_penalty</code>. 10% loss = score 0.</li>
               <li><strong>CLOUD</strong> — Hits the Stigix Cloudflare Worker with full <code>curl</code> telemetry (DNS/TCP/TLS/TTFB). Timeout 15s.</li>
             </ul>
-            <p>Default polling frequency is <strong>60 seconds</strong> for all types, configurable from 30s to 3600s per probe.</p>
+            <p>Default polling frequency depends on the probe type: <strong>HTTP, HTTPS, and Cloud probes default to 300 seconds</strong> (5 min); <strong>PING, TCP, UDP, and DNS probes default to 60 seconds</strong>. All are configurable from 30s to 3600s per probe. HTTP/HTTPS probes use a longer default because they run up to two sequential <code>curl</code> calls (timing metrics + optional content match body), and a shorter frequency can cause queue congestion when many probes are active simultaneously.</p>
           </div></div></div>
         </div>
 
@@ -612,7 +612,7 @@ Example (Google Search, healthy path):
               </li>
               <li>Enter the <strong>Expected text</strong> (plain text, max 80 characters). Optionally enable <strong>Case sensitive</strong>.</li>
             </ol>
-            <p><strong>How it works under the hood:</strong> After the normal HTTP request (which measures DNS/TCP/TLS/TTFB), a second bounded request fetches the body (capped at 50 KB, 5 s timeout). The normal timing metrics are <strong>never affected</strong> — they come from the first curl call. The body fetch only adds ~50–200 ms per polling cycle, only for probes where it is enabled.</p>
+            <p><strong>How it works under the hood:</strong> After the normal HTTP request (which measures DNS/TCP/TLS/TTFB), a second bounded request fetches the body (capped at <strong>10 KB</strong>, <strong>3 s timeout</strong>). The normal timing metrics are <strong>never affected</strong> — they come from the first curl call. The body fetch only adds ~50–200 ms per polling cycle, only for probes where it is enabled.</p>
             <p><strong>Result fields added to each probe capture:</strong></p>
             <pre>content_match_enabled  true / false
 content_match_mode     contains | not_contains
