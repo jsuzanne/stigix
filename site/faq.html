@@ -542,8 +542,8 @@ stigix-cli profile import --file my-profile.json</pre>
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I export and import probe configurations across deployments?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>Probe configurations are stored in <code>config/connectivity-config.json</code>. Export the file from <strong>Settings → Synthetic Probes → Download</strong>, or copy it directly from the config volume.</p>
-            <p>To import on a new instance: upload via the <strong>Import</strong> button in Settings, or replace the file directly and the backend picks it up on the next polling cycle — no restart needed.</p>
+            <p>Probe configurations are stored in <code>config/connectivity-config.json</code>. Export the file using the <strong>Export</strong> button in the top-right toolbar of the <strong>Active Monitoring Probes</strong> section, or copy it directly from the config volume.</p>
+            <p>To import on a new instance: click the <strong>Import</strong> button (also in the top-right toolbar, next to Export) and upload the JSON file. The backend picks it up immediately — no restart needed.</p>
             <p>For multisite PoCs, keeping a library of probe config files (one per customer vertical — retail, hospital, manufacturing) makes it trivial to load the right set of probes before a demo.</p>
           </div></div></div>
         </div>
