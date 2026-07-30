@@ -33,6 +33,12 @@ export interface ConnectivityResult {
     };
     score: number;
     data?: any; // Rich scenario info (e.g. for Egress Info)
+    // Optional content matching result fields (HTTP/HTTPS probes only)
+    content_match_enabled?: boolean;
+    content_match_mode?: 'contains' | 'not_contains';
+    content_match_value?: string;
+    content_match_result?: string;
+    content_match_ok?: boolean;
 }
 
 export class ConnectivityLogger {

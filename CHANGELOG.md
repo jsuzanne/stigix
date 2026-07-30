@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.35] - 2026-07-30
+### Fixed / Improved
+- **Digital Experience / Content Match visibility** 🎨 `ConnectivityPerformance.tsx`: Added a prominent info banner below the probe modal header showing mode, expected text, case sensitivity, and last match result (✓/✗ + reason). Banner color: green when matched, red when failed, violet when waiting for first result.
+- **Digital Experience / HTTP Code disambiguation** 🎨 `ConnectivityPerformance.tsx`: HTTP Code column now shows `match ok` / `match fail` annotation below the HTTP code when content matching is active — makes it unambiguous that `200 / match fail` means HTTP succeeded but content check failed (score forced to 0).
+- **CLI / probes add** ✨ `stigix-cli.py`: Added interactive content_match prompts for HTTP/HTTPS probes: "Enable content matching?", mode (contains/not_contains), expected text, case sensitive. Stored in probe JSON.
+- **CLI / probes list** 👁 `stigix-cli.py`: Added "Content Match" column showing mode + expected text (truncated) when content_match is enabled.
+- **CLI / probes stats** 👁 `stigix-cli.py`: Added "Content Match" column with last result (✓ matched / ✗ reason / ? no data) per probe.
+- **connectivity-logger.ts** 🔧: Added `content_match_enabled`, `content_match_mode`, `content_match_value`, `content_match_result`, `content_match_ok` to `ConnectivityResult` interface so these fields are properly persisted and returned in results history. This was the root cause of the Match column not appearing in Recent Captures.
+
 ## [v1.4.1-patch.34] - 2026-07-30
 ### Added
 - **Digital Experience / Synthetic Probes** ✨ `server.ts` + `Settings.tsx` + `ConnectivityPerformance.tsx`: Added optional **HTTP/HTTPS content matching** feature. When enabled on a probe, a bounded body fetch (50 KB cap, 5 s timeout) verifies the response contains or does not contain a specified text string. Timing metrics (DNS/TCP/TLS/TTFB) are completely unaffected — the body fetch uses a separate curl call. Score is forced to 0 on match failure. New observability fields: `content_match_enabled`, `content_match_mode`, `content_match_value`, `content_match_result`, `content_match_ok`. Backward-compatible — probes without `content_match` block are unchanged. 🔍

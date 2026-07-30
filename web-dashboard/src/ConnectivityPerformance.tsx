@@ -987,6 +987,40 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                             </button>
                         </div>
 
+                        {/* ── Content Match Info Banner (visible when enabled) ── */}
+                        {(selectedEndpoint as any).content_match?.enabled && (() => {
+                            const cm = (selectedEndpoint as any).content_match;
+                            const lastResult = selectedEndpointResults[0];
+                            const cmOk  = (lastResult as any)?.content_match_ok;
+                            const cmRes = (lastResult as any)?.content_match_result;
+                            const hasResult = cmRes !== undefined;
+                            return (
+                                <div className={cn(
+                                    "mx-6 mt-0 mb-0 px-4 py-3 rounded-xl border flex items-start gap-3 text-[11px] font-bold",
+                                    hasResult
+                                        ? (cmOk ? "bg-green-500/10 border-green-500/30 text-green-400" : "bg-red-500/10 border-red-500/30 text-red-400")
+                                        : "bg-violet-500/10 border-violet-500/30 text-violet-400"
+                                )}>
+                                    <span className="text-lg leading-none mt-0.5">{hasResult ? (cmOk ? '✓' : '✗') : '◆'}</span>
+                                    <div className="flex flex-col gap-0.5">
+                                        <span>
+                                            <span className="opacity-60 font-bold uppercase tracking-widest text-[9px] mr-2">Content Match</span>
+                                            <span className="font-mono">{cm.mode === 'not_contains' ? 'not_contains' : 'contains'}</span>
+                                            <span className="opacity-50 mx-2">›</span>
+                                            <span className="font-mono bg-black/20 px-2 py-0.5 rounded">&ldquo;{cm.value}&rdquo;</span>
+                                            {cm.case_sensitive && <span className="ml-2 opacity-60 text-[9px] uppercase tracking-widest">case sensitive</span>}
+                                        </span>
+                                        {hasResult && (
+                                            <span className="text-[10px] opacity-80">
+                                                Last result: <strong>{cmRes}</strong>
+                                                {!cmOk && <span className="ml-2 opacity-60">(score forced to 0)</span>}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
                         <div className="p-8 space-y-8">
                             {/* ── Synchronized charts wrapper (relative for connecting line) ── */}
                             <div ref={chartsRegionRef} style={{ position: 'relative' }}>
@@ -1170,12 +1204,21 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                                     <td className="px-4 py-3 text-center text-text-muted font-mono truncate max-w-[120px] hidden sm:table-cell">{r.remoteIp || '-'}</td>
                                                     {(selectedEndpoint.type.includes('HTTP') || selectedEndpoint.type === 'CLOUD') && (
                                                         <td className="px-4 py-3 text-right">
-                                                            <span className={cn(
-                                                                "px-2 py-0.5 rounded font-black text-[11px]",
-                                                                r.httpCode === 200 ? "text-green-600 dark:text-green-400 bg-green-500/10" : "text-orange-500 bg-orange-500/10"
-                                                            )}>
-                                                                {r.httpCode || 'N/A'}
-                                                            </span>
+                                                            <div className="flex flex-col items-end gap-0.5">
+                                                                <span className={cn(
+                                                                    "px-2 py-0.5 rounded font-black text-[11px]",
+                                                                    r.httpCode === 200 ? "text-green-600 dark:text-green-400 bg-green-500/10" : "text-orange-500 bg-orange-500/10"
+                                                                )}>
+                                                                    {r.httpCode || 'N/A'}
+                                                                </span>
+                                                                {/* Show match annotation only when HTTP OK but match failed */}
+                                                                {(selectedEndpoint as any).content_match?.enabled && r.httpCode === 200 && (r as any).content_match_ok === false && (
+                                                                    <span className="text-[9px] font-bold text-red-400 uppercase tracking-tight whitespace-nowrap">match fail</span>
+                                                                )}
+                                                                {(selectedEndpoint as any).content_match?.enabled && r.httpCode === 200 && (r as any).content_match_ok === true && (
+                                                                    <span className="text-[9px] font-bold text-green-400 uppercase tracking-tight whitespace-nowrap">match ok</span>
+                                                                )}
+                                                            </div>
                                                         </td>
                                                     )}
                                                     {(selectedEndpoint as any).content_match?.enabled && (

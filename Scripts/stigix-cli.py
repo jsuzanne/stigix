@@ -1830,6 +1830,32 @@ def cmd_experience(args):
                 err("Timeout must be an integer.")
                 return
 
+        # 5b. Content matching (HTTP/HTTPS only)
+        content_match = None
+        if ttype in ["HTTP", "HTTPS"] and sys.stdin.isatty():
+            try:
+                cm_choice = input("Enable content matching? [y/N]: ").strip().lower()
+            except (KeyboardInterrupt, EOFError):
+                print()
+                cm_choice = "n"
+            if cm_choice == "y":
+                try:
+                    cm_mode_input = input("Match mode — (1) contains / (2) not_contains [1]: ").strip()
+                    cm_mode = "not_contains" if cm_mode_input == "2" else "contains"
+                    cm_value = input("Expected text (max 80 chars): ").strip()[:80]
+                    cm_cs_input = input("Case sensitive? [y/N]: ").strip().lower()
+                    cm_cs = (cm_cs_input == "y")
+                except (KeyboardInterrupt, EOFError):
+                    print()
+                    cm_mode, cm_value, cm_cs = "contains", "", False
+                if cm_value:
+                    content_match = {
+                        "enabled": True,
+                        "mode": cm_mode,
+                        "value": cm_value,
+                        "case_sensitive": cm_cs
+                    }
+
         # Fetch existing probes list so we don't wipe it out!
         r_get = api_get("/api/connectivity/custom")
         if r_get is None:
@@ -1846,6 +1872,8 @@ def cmd_experience(args):
             "timeout": timeout,
             "enabled": True
         }
+        if content_match:
+            new_probe["content_match"] = content_match
         
         # Append and POST back
         probes_list.append(new_probe)
@@ -2048,7 +2076,22 @@ def cmd_experience(args):
             return
             
         rows.sort(key=lambda x: x[0].lower())
-        table(["Probe Name", "Target/URL", "Type", "Status", "Score", "Latency (avg)", "Reliability"], rows)
+        for row in rows:
+            pname_raw = row[0]
+            pcfg = next((p for p in probes_config if p.get("name","")[:20] == pname_raw), {})
+            cm = pcfg.get("content_match", {})
+            if cm.get("enabled"):
+                # Find last content_match result for this probe
+                pid = re.sub(r'\s+', '-', pcfg.get("name", "").lower())
+                presults = results_by_id.get(pid, [])
+                last_cm_ok = presults[0].get("content_match_ok") if presults else None
+                last_cm_res = presults[0].get("content_match_result", "no data") if presults else "no data"
+                cm_color = "32" if last_cm_ok else ("31" if last_cm_ok is False else "35")
+                cm_status = c(cm_color, "\u2713 " + last_cm_res) if last_cm_ok else c("31", "\u2717 " + last_cm_res) if last_cm_ok is False else c("35", "? no data")
+                row.append(f"\U0001f50d {cm.get('mode','contains')}: \"{cm.get('value','?')[:15]}\" {cm_status}")
+            else:
+                row.append("-")
+        table(["Probe Name", "Target/URL", "Type", "Status", "Score", "Latency (avg)", "Reliability", "Content Match"], rows)
 
     else:
         _help_section("TARGET PROBES", [
