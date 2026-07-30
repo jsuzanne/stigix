@@ -381,7 +381,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const [interfaces, setInterfaces] = useState<string[]>([]);
     const [availableInterfaces, setAvailableInterfaces] = useState<string[]>([]);
     const [customProbes, setCustomProbes] = useState<CustomProbe[]>([]);
-    const [newProbe, setNewProbe] = useState<CustomProbe>({ name: '', type: 'HTTP', target: '', timeout: 5000, frequency: 60 });
+    const [newProbe, setNewProbe] = useState<CustomProbe>({ name: '', type: 'HTTP', target: '', timeout: 5000, frequency: 300 });
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [isProbeModalOpen, setIsProbeModalOpen] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -2011,7 +2011,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                             <div className="space-y-2">
                                                 <div className="flex items-center justify-between ml-1 leading-none">
                                                     <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Freq (s)</label>
-                                                    <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 30 — MAX 3600</span>
+                                                    <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 30 — MAX 3600 — default 300</span>
                                                 </div>
                                                 <input
                                                     type="number"
@@ -2019,10 +2019,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                     max="3600"
                                                     step="10"
                                                     className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
-                                                    value={newProbe.frequency || 60}
+                                                    value={newProbe.frequency || 300}
                                                     onChange={e => {
                                                         const val = parseInt(e.target.value);
-                                                        setNewProbe({ ...newProbe, frequency: isNaN(val) ? 60 : Math.min(3600, Math.max(30, val)) });
+                                                        setNewProbe({ ...newProbe, frequency: isNaN(val) ? 300 : Math.min(3600, Math.max(30, val)) });
                                                     }}
                                                 />
                                             </div>

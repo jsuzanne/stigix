@@ -3800,7 +3800,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                         let cmResult = 'matching disabled';
                         let cmOk = true;
                         try {
-                            const bodyCmd = `${getTimeoutCmd(8)}curl -sSL --max-filesize 51200 --output - --max-time 5 --connect-timeout 5 -H 'Cache-Control: no-cache' ${ifaceFlag} "${endpoint.target}"`;
+                            const bodyCmd = `${getTimeoutCmd(4)}curl -sSL --max-filesize 10240 --output - --max-time 3 --connect-timeout 3 -H 'Cache-Control: no-cache' ${ifaceFlag} "${endpoint.target}"`;
                             let body = '';
                             try {
                                 const bodyRes = await execPromise(bodyCmd);

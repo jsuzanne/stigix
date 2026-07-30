@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.36] - 2026-07-30
+### Fixed / Changed
+- **Settings.tsx** 🔧: Changed default probe frequency from 60s to **300s** (5 min) to match the realistic effective polling interval. Added "default 300" label hint in the form. Fallbacks in onChange also updated.
+- **server.ts** ⚡: Reduced content_match body curl timeouts (`--max-time 5 → 3`, `--connect-timeout 5 → 3`, `getTimeoutCmd(8) → 4`, `--max-filesize 51200 → 10240`). Reduces per-probe content-match overhead from up to 13s to up to 7s, improving sequential queue throughput.
+- **stigix-cli.py** 🔧: `probes add` now defaults to `frequency: 300`. Added `--freq` / `--frequency` flags. Confirmation message includes `--freq` value.
+
 ## [v1.4.1-patch.35] - 2026-07-30
 ### Fixed / Improved
 - **Digital Experience / Content Match visibility** 🎨 `ConnectivityPerformance.tsx`: Added a prominent info banner below the probe modal header showing mode, expected text, case sensitivity, and last match result (✓/✗ + reason). Banner color: green when matched, red when failed, violet when waiting for first result.

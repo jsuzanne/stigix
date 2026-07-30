@@ -1725,7 +1725,7 @@ def cmd_experience(args):
             table(["Index", "Name", "Target", "Type", "On"], rows)
 
     elif sub == "add":
-        parsed = parse_flags(args[1:], ["name", "target", "host", "url", "type", "port", "timeout"])
+        parsed = parse_flags(args[1:], ["name", "target", "host", "url", "type", "port", "timeout", "freq", "frequency"])
         
         # 1. Probe Type
         ttype = parsed.get("type")
@@ -1870,6 +1870,7 @@ def cmd_experience(args):
             "type": ttype,
             "target": target,
             "timeout": timeout,
+            "frequency": int(parsed.get("freq") or parsed.get("frequency") or 300),
             "enabled": True
         }
         if content_match:
@@ -1880,7 +1881,7 @@ def cmd_experience(args):
         r = api_post("/api/connectivity/custom", {"endpoints": probes_list})
         if r:
             ok(f"Experience target '{name}' added successfully")
-            print(f"→ Equivalent CLI: experience add --name \"{name}\" --target \"{target}\" --type \"{ttype}\" --timeout {timeout}")
+            print(f"→ Equivalent CLI: experience add --name \"{name}\" --target \"{target}\" --type \"{ttype}\" --timeout {timeout} --freq {new_probe['frequency']}")
 
     elif sub == "remove":
         match_val = args[1] if len(args) > 1 else None
