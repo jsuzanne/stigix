@@ -4230,10 +4230,35 @@ app.post('/api/connectivity/custom', authenticateToken, (req, res) => {
     const discoveredProbes = endpoints.filter(p => p.source === 'discovery');
     const customAndEnvProbes = endpoints.filter(p => p.source !== 'discovery');
 
+    // Detect newly added probes (not previously in the saved config) for immediate trigger
+    const existing = getCustomConnectivityEndpoints();
+    const existingKeys = new Set(existing.map((p: any) => `${p.type}:${p.name}`));
+    const newProbes = customAndEnvProbes.filter(p => !existingKeys.has(`${p.type}:${p.name}`) && p.enabled !== false);
+
     const customSuccess = saveCustomConnectivityEndpoints(customAndEnvProbes);
     discoveryManager.updateProbesFromUI(discoveredProbes);
 
     if (customSuccess) {
+        // Option B: trigger an immediate check for each newly added probe (async, non-blocking)
+        if (newProbes.length > 0) {
+            setImmediate(async () => {
+                for (const probe of newProbes) {
+                    const key = `${probe.type}:${probe.name}`;
+                    if (isRunning.has(key)) continue;
+                    try {
+                        console.log(`[DEM] Immediate trigger for new probe: ${key}`);
+                        isRunning.add(key);
+                        lastRunMap.set(key, Date.now()); // prevent double-run on next tick
+                        const checkResult = await performConnectivityCheck(probe);
+                        await connectivityLogger.logResult(checkResult);
+                    } catch (e) {
+                        console.error(`[DEM] Immediate trigger error for ${key}:`, e);
+                    } finally {
+                        isRunning.delete(key);
+                    }
+                }
+            });
+        }
         res.json({ success: true, count: endpoints.length });
     } else {
         res.status(500).json({ error: 'Failed to save custom endpoints' });

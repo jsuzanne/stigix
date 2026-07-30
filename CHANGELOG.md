@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [v1.4.1-patch.38] - 2026-07-30
+## [v1.4.1-patch.39] - 2026-07-30
+### Added
+- **ConnectivityPerformance.tsx** ✨ **Option A — Ghost pending probes**: probes added in Settings appear immediately in the Digital Experience list with a `⏳ PENDING` badge and a slow-spinning icon. They show `—` for Score/Latency/Reliability until the first result arrives, then automatically transition to a normal row.
+- **server.ts** ✨ **Option B — Immediate first check**: after `POST /api/connectivity/custom`, newly added probes (not previously in the config) are checked immediately in a non-blocking `setImmediate` async loop. `lastRunMap` is pre-set to prevent double execution on the next 10s tick. First result should be available in ~5-10s after save.
+- **ConnectivityPerformance.tsx** 🔧 Empty-state text updated to reflect type-aware default frequencies.
+
 ### Fixed / Cosmetic
 - **ConnectivityPerformance.tsx** 🎨 Merged HTTP Code and Match columns into a single inline column.
   - Header: `HTTP Code` when no content_match, `HTTP · Match` when enabled.

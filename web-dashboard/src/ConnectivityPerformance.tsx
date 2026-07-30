@@ -547,6 +547,36 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
         });
     }, [results, activeProbes, filterType, searchQuery, sortField, sortDirection, endpointConfigs]);
 
+    // Pending probes: configs that have no result yet — shown as "ghost" rows
+    const pendingProbes = React.useMemo(() => {
+        const idsWithResults = new Set(results.map(r => r.endpointId));
+        const pending: any[] = [];
+        endpointConfigs.forEach((config, id) => {
+            if (!idsWithResults.has(id) && config.enabled !== false) {
+                pending.push({
+                    id,
+                    name: config.name,
+                    type: (config.type || 'HTTP').toUpperCase(),
+                    target: config.target,
+                    pending: true,
+                    lastScore: null,
+                    avgScore: null,
+                    successRate: null,
+                    avgLatency: null,
+                    minLatency: null,
+                    maxLatency: null,
+                    checks: 0,
+                    enabled: true,
+                    source: config.source,
+                    content_match: config.content_match,
+                    scoreHistory: [],
+                    latencyHistory: [],
+                });
+            }
+        });
+        return pending;
+    }, [results, endpointConfigs]);
+
     const handleSort = (field: string) => {
         if (sortField === field) {
             setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -830,6 +860,48 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
+                        {/* Pending (ghost) probes — never run yet */}
+                        {pendingProbes.filter(p => !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase())).map(e => (
+                            <tr key={`pending-${e.id}`} className="hover:bg-card-secondary/50 transition-colors group cursor-default animate-pulse-subtle">
+                                <td className="px-6 py-4">
+                                    <div className="flex flex-col">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-bold text-text-primary tracking-tight opacity-70">{e.name}</span>
+                                            <span className="px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-widest bg-slate-500/10 text-slate-400 flex items-center gap-1">
+                                                <Activity size={9} className="animate-spin" style={{animationDuration:'3s'}}/>
+                                                pending
+                                            </span>
+                                        </div>
+                                        <span className="text-[10px] text-text-muted font-mono opacity-60 leading-tight mt-0.5">{e.target}</span>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4 text-center align-middle">
+                                    <span className={cn(
+                                        "px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-tighter",
+                                        e.type === 'HTTPS' ? "text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20" :
+                                        e.type === 'HTTP' ? "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20" :
+                                        "text-orange-500 bg-orange-500/10 border-orange-500/20"
+                                    )}>{e.type}</span>
+                                </td>
+                                <td className="px-6 py-4 text-center align-middle">
+                                    <span className="px-2 py-1 rounded-md text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400">Scheduled</span>
+                                </td>
+                                {/* Score — no data yet */}
+                                <td className="px-4 py-2 text-center align-middle">
+                                    <span className="text-text-muted text-[11px] font-bold opacity-50">—</span>
+                                </td>
+                                {/* Latency — no data yet */}
+                                <td className="px-4 py-2 text-center align-middle">
+                                    <span className="text-text-muted text-[11px] font-bold opacity-50">—</span>
+                                </td>
+                                {/* Reliability — no data yet */}
+                                <td className="px-4 py-2 text-center align-middle">
+                                    <span className="text-text-muted text-[11px] font-bold opacity-50">—</span>
+                                </td>
+                                <td className="px-6 py-4"></td>
+                            </tr>
+                        ))}
+                        {/* Normal probes with results */}
                         {endpoints.map(e => (
                             <tr key={e.id} 
                                 onClick={(ev) => { ev.stopPropagation(); setSelectedEndpoint(e); setShowDetailModal(true); }}
@@ -945,10 +1017,10 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                     </tbody>
                 </table>
                 {endpoints.length === 0 && (
-                    <div className="p-12 text-center text-text-muted flex flex-col items-center gap-3 bg-card/40">
+                <div className="p-12 text-center text-text-muted flex flex-col items-center gap-3 bg-card/40">
                         <Activity size={48} className="text-text-muted opacity-30" />
                         <div className="text-sm font-bold tracking-widest">No performance data captured yet</div>
-                        <div className="text-[10px] max-w-xs leading-relaxed italic opacity-70">Synthetic checks run every 1 minute and store metrics for the historical reporting.</div>
+                        <div className="text-[10px] max-w-xs leading-relaxed italic opacity-70">HTTP/HTTPS probes run every 5 min by default. PING/DNS/TCP probes run every 60s.</div>
                     </div>
                 )}
             </div>
