@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.4.1-patch.38] - 2026-07-30
+## [v1.4.1-patch.40] - 2026-07-30
+### Added / Changed
+- **ConnectivityPerformance.tsx** 🎨 Replaced Pause/Play action button with a **Pencil Edit** button (`<Pencil size={16} />`) on each probe row in the Digital Experience list.
+- **ConnectivityPerformance.tsx** ✨ **In-place Probe Edit Modal**: Clicking the pencil icon opens a modal directly from the Digital Experience view to edit probe parameters (Name, Protocol, Target URL/IP, Timeout, Frequency, and Content Matching options).
+- **ConnectivityPerformance.tsx** 💡 Clicking anywhere else on the probe row continues to open the telemetry details modal.
+
 ## [v1.4.1-patch.39] - 2026-07-30
 ### Added
 - **ConnectivityPerformance.tsx** ✨ **Option A — Ghost pending probes**: probes added in Settings appear immediately in the Digital Experience list with a `⏳ PENDING` badge and a slow-spinning icon. They show `—` for Score/Latency/Reliability until the first result arrives, then automatically transition to a normal row.

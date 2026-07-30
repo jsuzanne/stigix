@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, RefreshCw, Globe, Play, Pause, TrendingUp } from 'lucide-react';
+import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine, ReferenceArea } from 'recharts';
 import { twMerge } from 'tailwind-merge';
 
@@ -309,6 +309,11 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
     const [endpointConfigs, setEndpointConfigs] = useState<Map<string, any>>(new Map());
     const [cloudScenarios, setCloudScenarios] = useState<any[]>([]);
 
+    // Edit Probe Modal state
+    const [editingProbe, setEditingProbe] = useState<any>(null);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isSavingProbe, setIsSavingProbe] = useState(false);
+
     const formatDisplayUrl = (endpoint: any) => {
         const target = endpoint.lastResult?.url || '';
         if (endpoint.type !== 'CLOUD') return target;
@@ -417,6 +422,76 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
     const fetchData = async () => {
         await fetchProbesConfig();
         await fetchStatsAndResults();
+    };
+
+    const startEditProbe = (endpoint: any) => {
+        const config = endpointConfigs.get(endpoint.id) || {};
+        const type = (config.type || endpoint.type || 'HTTP').toUpperCase();
+        const isHttp = type === 'HTTP' || type === 'HTTPS';
+        
+        setEditingProbe({
+            _originalName: config.name || endpoint.name,
+            name: config.name || endpoint.name || '',
+            type,
+            target: config.target || endpoint.target || '',
+            timeout: config.timeout || (type === 'PING' ? 2000 : 5000),
+            frequency: config.frequency || (isHttp ? 300 : 60),
+            enabled: config.enabled ?? true,
+            content_match: config.content_match ? { ...config.content_match } : { enabled: false, mode: 'contains', value: '', case_sensitive: false }
+        });
+        setIsEditModalOpen(true);
+    };
+
+    const handleSaveProbeEdit = async () => {
+        if (!editingProbe || !editingProbe.name || !editingProbe.target) return;
+        setIsSavingProbe(true);
+        try {
+            const res = await fetch('/api/connectivity/custom', { headers: authHeaders() });
+            const allEndpoints = await res.json();
+            
+            const origName = (editingProbe._originalName || editingProbe.name).toLowerCase();
+            const index = Array.isArray(allEndpoints) ? allEndpoints.findIndex((p: any) => (p.name || '').toLowerCase() === origName) : -1;
+            
+            let formattedTarget = editingProbe.target.trim();
+            if ((editingProbe.type === 'HTTP' || editingProbe.type === 'HTTPS') && !formattedTarget.startsWith('http://') && !formattedTarget.startsWith('https://')) {
+                formattedTarget = `${editingProbe.type.toLowerCase()}://${formattedTarget}`;
+            }
+
+            const updatedProbe = {
+                name: editingProbe.name.trim(),
+                type: editingProbe.type,
+                target: formattedTarget,
+                timeout: Number(editingProbe.timeout) || 5000,
+                frequency: Number(editingProbe.frequency) || (['HTTP', 'HTTPS', 'CLOUD'].includes(editingProbe.type) ? 300 : 60),
+                enabled: editingProbe.enabled ?? true,
+                ...(editingProbe.content_match?.enabled ? { content_match: editingProbe.content_match } : { content_match: { enabled: false } })
+            };
+
+            let updatedList = Array.isArray(allEndpoints) ? [...allEndpoints] : [];
+            if (index >= 0) {
+                updatedList[index] = { ...updatedList[index], ...updatedProbe };
+            } else {
+                updatedList.push(updatedProbe);
+            }
+
+            await fetch('/api/connectivity/custom', {
+                method: 'POST',
+                headers: {
+                    ...authHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ endpoints: updatedList })
+            });
+
+            setIsEditModalOpen(false);
+            setEditingProbe(null);
+            await fetchProbesConfig();
+            await fetchStatsAndResults();
+        } catch (err) {
+            console.error('Failed to update probe:', err);
+        } finally {
+            setIsSavingProbe(false);
+        }
     };
 
     const toggleProbeStatus = async (endpoint: any, e: React.MouseEvent) => {
@@ -898,7 +973,20 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 <td className="px-4 py-2 text-center align-middle">
                                     <span className="text-text-muted text-[11px] font-bold opacity-50">—</span>
                                 </td>
-                                <td className="px-6 py-4"></td>
+                                <td className="px-6 py-4 px-8">
+                                    <div className="flex justify-end items-center gap-2">
+                                        <button
+                                            onClick={(ev) => {
+                                                ev.stopPropagation();
+                                                startEditProbe(e);
+                                            }}
+                                            className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-blue-500/10 hover:text-blue-500 hover:border-blue-500/20"
+                                            title="Edit Probe Parameters"
+                                        >
+                                            <Pencil size={16} />
+                                        </button>
+                                    </div>
+                                </td>
                             </tr>
                         ))}
                         {/* Normal probes with results */}
@@ -996,20 +1084,16 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 </td>
                                 <td className="px-6 py-4 px-8">
                                     <div className="flex justify-end items-center gap-2">
-                                        {e.source !== 'env' && (
-                                            <button
-                                                onClick={(ev) => toggleProbeStatus(e, ev)}
-                                                className={cn(
-                                                    "p-2 rounded-lg transition-all border border-transparent flex items-center justify-center",
-                                                    e.enabled
-                                                        ? "text-blue-500 hover:bg-blue-500/10 hover:border-blue-500/20"
-                                                        : "text-text-muted hover:bg-card-hover hover:text-text-primary hover:border-border"
-                                                )}
-                                                title={e.enabled ? "Format Pause" : "Format Start"}
-                                            >
-                                                {e.enabled ? <Pause size={18} /> : <Play size={18} />}
-                                            </button>
-                                        )}
+                                        <button
+                                            onClick={(ev) => {
+                                                ev.stopPropagation();
+                                                startEditProbe(e);
+                                            }}
+                                            className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-blue-500/10 hover:text-blue-500 hover:border-blue-500/20"
+                                            title="Edit Probe Parameters"
+                                        >
+                                            <Pencil size={16} />
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -1305,6 +1389,207 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                         </tbody>
                                     </table>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Probe Parameters Modal */}
+            {isEditModalOpen && editingProbe && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300" onClick={() => setIsEditModalOpen(false)}>
+                    <div className="bg-card border border-amber-500/30 rounded-2xl w-full max-w-xl shadow-2xl transition-all duration-300 scale-in-center" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b border-border flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500">
+                                    <Pencil size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black text-text-primary tracking-tight">Edit Probe Parameters</h3>
+                                    <p className="text-[10px] text-text-muted font-bold tracking-widest uppercase opacity-70">
+                                        Modifying {editingProbe.name}
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors">
+                                <XCircle size={24} />
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">Probe Name</label>
+                                    <input
+                                        type="text"
+                                        className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                        value={editingProbe.name}
+                                        onChange={e => setEditingProbe({ ...editingProbe, name: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">Protocol</label>
+                                    <select
+                                        className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                        value={editingProbe.type}
+                                        onChange={e => {
+                                            const t = e.target.value;
+                                            const isHttp = t === 'HTTP' || t === 'HTTPS';
+                                            const defaultFreq = isHttp ? 300 : 60;
+                                            setEditingProbe({ ...editingProbe, type: t, timeout: t === 'PING' ? 2000 : 5000, frequency: defaultFreq });
+                                        }}
+                                    >
+                                        <option value="HTTP">HTTP</option>
+                                        <option value="HTTPS">HTTPS</option>
+                                        <option value="PING">ICMP (Ping)</option>
+                                        <option value="TCP">TCP Port</option>
+                                        <option value="DNS">DNS Query</option>
+                                        <option value="UDP">UDP Stream</option>
+                                        <option value="CLOUD">Stigix Cloud</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between ml-1 leading-none">
+                                        <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Timeout (ms)</label>
+                                        <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 1000 — MAX 60000</span>
+                                    </div>
+                                    <input
+                                        type="number"
+                                        min="1000"
+                                        max="60000"
+                                        step="1000"
+                                        className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                        value={editingProbe.timeout || 5000}
+                                        onChange={e => {
+                                            const val = parseInt(e.target.value);
+                                            setEditingProbe({ ...editingProbe, timeout: isNaN(val) ? 5000 : Math.min(60000, Math.max(1000, val)) });
+                                        }}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between ml-1 leading-none">
+                                        <label className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Freq (s)</label>
+                                        <span className="text-[8px] font-bold text-text-muted/50 tracking-wider">MIN 30 — MAX 3600 — default: HTTP/S=300 · other=60</span>
+                                    </div>
+                                    <input
+                                        type="number"
+                                        min="30"
+                                        max="3600"
+                                        step="10"
+                                        className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                        value={editingProbe.frequency || 300}
+                                        onChange={e => {
+                                            const val = parseInt(e.target.value);
+                                            setEditingProbe({ ...editingProbe, frequency: isNaN(val) ? 300 : Math.min(3600, Math.max(30, val)) });
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em] ml-1 uppercase">Target URL / IP Address</label>
+                                <input
+                                    type="text"
+                                    placeholder={
+                                        editingProbe.type === 'DNS' ? '8.8.8.8' :
+                                        editingProbe.type === 'TCP' ? '192.168.1.100:8080' :
+                                        editingProbe.type === 'UDP' ? '192.168.1.100:5201' :
+                                        'https://google.com'
+                                    }
+                                    className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-black tracking-widest shadow-inner transition-all"
+                                    value={editingProbe.target}
+                                    onChange={e => setEditingProbe({ ...editingProbe, target: e.target.value })}
+                                />
+                            </div>
+
+                            {/* Content Matching (HTTP/HTTPS only) */}
+                            {(editingProbe.type === 'HTTP' || editingProbe.type === 'HTTPS') && (
+                                <div className="border border-border rounded-xl p-4 space-y-3 bg-card-secondary/30">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                id="edit-cm-enabled"
+                                                checked={editingProbe.content_match?.enabled ?? false}
+                                                onChange={e => setEditingProbe({
+                                                    ...editingProbe,
+                                                    content_match: {
+                                                        enabled: e.target.checked,
+                                                        mode: editingProbe.content_match?.mode ?? 'contains',
+                                                        value: editingProbe.content_match?.value ?? '',
+                                                        case_sensitive: editingProbe.content_match?.case_sensitive ?? false
+                                                    }
+                                                })}
+                                                className="accent-blue-500 w-3.5 h-3.5 cursor-pointer"
+                                            />
+                                            <label htmlFor="edit-cm-enabled" className="text-[10px] font-black uppercase tracking-widest text-text-primary cursor-pointer select-none">Enable content matching</label>
+                                        </div>
+                                        <span className="text-[9px] text-text-muted opacity-50 font-bold uppercase tracking-widest">HTTP / HTTPS only</span>
+                                    </div>
+                                    {editingProbe.content_match?.enabled && (
+                                        <div className="space-y-3 pt-1">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-[9px] font-black text-text-muted uppercase tracking-widest mb-1.5">Match mode</label>
+                                                    <select
+                                                        value={editingProbe.content_match?.mode ?? 'contains'}
+                                                        onChange={e => setEditingProbe({
+                                                            ...editingProbe,
+                                                            content_match: { ...editingProbe.content_match!, mode: e.target.value as 'contains' | 'not_contains' }
+                                                        })}
+                                                        className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 text-[10px] font-bold"
+                                                    >
+                                                        <option value="contains">contains</option>
+                                                        <option value="not_contains">not_contains</option>
+                                                    </select>
+                                                </div>
+                                                <div className="flex items-end">
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={editingProbe.content_match?.case_sensitive ?? false}
+                                                            onChange={e => setEditingProbe({
+                                                                ...editingProbe,
+                                                                content_match: { ...editingProbe.content_match!, case_sensitive: e.target.checked }
+                                                            })}
+                                                            className="accent-blue-500 w-3.5 h-3.5 cursor-pointer"
+                                                        />
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-text-muted select-none">Case sensitive</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-black text-text-muted uppercase tracking-widest mb-1.5">Expected text</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g. Welcome, 200 OK, healthy"
+                                                    value={editingProbe.content_match?.value ?? ''}
+                                                    onChange={e => setEditingProbe({
+                                                        ...editingProbe,
+                                                        content_match: { ...editingProbe.content_match!, value: e.target.value }
+                                                    })}
+                                                    className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-blue-500 text-[11px] font-mono shadow-inner transition-all"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-3 pt-4 border-t border-border">
+                                <button
+                                    onClick={() => setIsEditModalOpen(false)}
+                                    className="px-5 py-2.5 rounded-xl border border-border text-text-muted hover:text-text-primary hover:bg-card-secondary font-bold text-xs transition-all"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSaveProbeEdit}
+                                    disabled={isSavingProbe || !editingProbe.name || !editingProbe.target}
+                                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20"
+                                >
+                                    {isSavingProbe ? 'Saving...' : 'Save Parameters'}
+                                </button>
                             </div>
                         </div>
                     </div>
