@@ -283,7 +283,7 @@ netstat -ano | find "8080" # Windows</pre>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <ol>
               <li><strong>Change the password</strong> — Go to Settings and update the default <code>admin/admin</code> credentials immediately.</li>
-              <li><strong>Set the network interface</strong> — In Settings → Network, select the interface the traffic generator should use (e.g. <code>eth0</code>, <code>enp0s3</code>). Run <code>ip addr show</code> on the host if you're unsure which one. Traffic generation won't start without this.</li>
+              <li><strong>Set the network interface</strong> — In <strong>Settings → System Info</strong>, under the <strong>Network Interfaces</strong> section, select the interface the traffic generator should use (e.g. <code>eth0</code>, <code>enp0s3</code>). Run <code>ip addr show</code> on the host if you're unsure which one. Traffic generation won't start without this.</li>
               <li><strong>Enable traffic generation</strong> — Go to the Dashboard tab and toggle the generator on. The status turns green and the request counter starts climbing within a few seconds.</li>
             </ol>
             <p>Everything else (probes, security tests, VyOS routers, API keys) can be configured incrementally as you need each feature.</p>
@@ -430,7 +430,7 @@ Stats            stats.json            Dashboard history</pre>
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I export or import a traffic profile to reuse it across deployments?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>Traffic profiles are stored in <code>config/applications-config.json</code>. You can export the current config directly from the Settings tab using the <strong>Download Config</strong> button, which saves the full JSON file. To import it on another Stigix instance, upload it via the <strong>Import Config</strong> button in the same section — no restart required.</p>
+            <p>Traffic profiles are stored in <code>config/applications-config.json</code>. Go to <strong>Settings → Traffic Distribution</strong> and use the <strong>Export</strong> button (top-right) to download the full JSON file. To import it on another Stigix instance, click the <strong>Import</strong> button next to it — no restart required.</p>
             <p>For CLI-based workflows, the Stigix CLI supports profile management:</p>
             <pre>stigix-cli profile export --output my-profile.json
 stigix-cli profile import --file my-profile.json</pre>
@@ -1177,7 +1177,7 @@ NETWORK_INTERFACE=eth0                 # Interface for traffic generation
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I add Stigix targets (remote probe endpoints)?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>Stigix Targets are remote endpoints that host the Stigix agent services (voice, convergence, XFR, security, connectivity). Add them in <strong>Settings → Targets → Add Target</strong>:</p>
+            <p>Stigix Targets are remote endpoints that host the Stigix agent services (voice, convergence, XFR, security, connectivity). Add them in <strong>Settings → Stigix Targets</strong> using the <strong>Add Stigix Target</strong> button:</p>
             <ul>
               <li><strong>Name</strong> — Friendly label (e.g. "DC1-Paris", "Hetzner-DE")</li>
               <li><strong>Host</strong> — IP or FQDN of the remote agent</li>
