@@ -1079,6 +1079,21 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         }
     };
 
+    const getEicarResult = (url: string) => {
+        if (!url) return null;
+        return testResults.find((r: any) =>
+            (r.testType === 'threat_prevention' || r.testType === 'threat') &&
+            (
+                r.result?.endpoint === url ||
+                r.result?.url === url ||
+                r.details?.endpoint === url ||
+                r.details?.url === url ||
+                (r.testName && r.testName.includes(url)) ||
+                (r.name && r.name.includes(url))
+            )
+        );
+    };
+
     const runSingleEicarTest = async (endpoint: string, e: React.MouseEvent) => {
         e.stopPropagation(); // prevent row selection toggle
         if (runningEicarTarget || loading) return;
@@ -2104,6 +2119,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                             try { host = new URL(cloudEicarUrl).hostname; } catch {}
                                             const status = targetReachability[host];
                                             const disabled = !cloudHasKey;
+                                            const lastResult = getEicarResult(cloudEicarUrl);
 
                                             return (
                                                 <div
@@ -2148,6 +2164,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         )}
                                                     </div>
                                                     <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
+                                                        {lastResult && getStatusBadge(lastResult.result)}
                                                         {/* Status dot */}
                                                         {disabled ? (
                                                             <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Key not configured" />
@@ -2196,6 +2213,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                             const url = `http://${t.host}:${t.ports?.http ?? 8082}/eicar.com.txt`;
                                             const isSelected = selectedEicarTargets.includes(url);
                                             const status = targetReachability[t.host];
+                                            const lastResult = getEicarResult(url);
 
                                             return (
                                                 <div
@@ -2213,6 +2231,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{url}</p>
                                                     </div>
                                                     <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
+                                                        {lastResult && getStatusBadge(lastResult.result)}
                                                         {/* Status dot */}
                                                         {status === 'loading' || status === undefined ? (
                                                             <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
@@ -2253,7 +2272,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                 </div>
                                 
                                 <div className="mt-4 pt-4 border-t border-border">
-                                    <label className="text-[10px] font-black text-text-muted tracking-widest mb-1.5 block">Custom Endpoint URL (Optional)</label>
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <label className="text-[10px] font-black text-text-muted tracking-widest block">Custom Endpoint URL (Optional)</label>
+                                        {customEicarUrl && (() => {
+                                            const lastResult = getEicarResult(customEicarUrl);
+                                            return lastResult ? getStatusBadge(lastResult.result) : null;
+                                        })()}
+                                    </div>
                                     <input
                                         type="text"
                                         value={customEicarUrl}

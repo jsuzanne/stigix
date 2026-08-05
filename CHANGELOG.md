@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.41] - 2026-08-05
+### Added / Changed
+- **Security.tsx** 🛡️ **Inline EICAR Verdict Badges**: Added `getEicarResult` helper and inline status badges (`✓ Blocked` / `⊗ Allowed` / `⚠ Unreachable`) directly inside each EICAR target card row and custom URL section.
+- **Security.tsx** ⚡ Clicking the Play `▶` button on an individual EICAR target now immediately updates and displays its verdict badge in the widget (matching URL Filtering and DNS Security UI).
+
 ## [v1.4.1-patch.40] - 2026-07-30
 ### Added / Changed
 - **ConnectivityPerformance.tsx** 🎨 Replaced Pause/Play action button with a **Pencil Edit** button (`<Pencil size={16} />`) on each probe row in the Digital Experience list.

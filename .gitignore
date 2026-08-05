@@ -87,3 +87,8 @@ __pycache__/
 .venv/
 venv/
 package-lock.json
+
+# Exclude large videos
+docs/screenshots/Videos/
+*.mov
+*.gif
