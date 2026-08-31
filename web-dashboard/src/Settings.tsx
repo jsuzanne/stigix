@@ -467,9 +467,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const [isTestingConnectivity, setIsTestingConnectivity] = useState(false);
     const [connectivityResult, setConnectivityResult] = useState<{ success?: boolean; error?: string } | null>(null);
     // Peer installation card state
-    const [peerInstallLeaderUrl, setPeerInstallLeaderUrl] = useState(() => {
-        try { return window.location.origin; } catch { return ''; }
-    });
+    // Starts empty — populated by useEffect once registryStatus.detected_ip is available
+    const [peerInstallLeaderUrl, setPeerInstallLeaderUrl] = useState('');
+    const [peerInstallLeaderUrlEdited, setPeerInstallLeaderUrlEdited] = useState(false);
     const [peerCommandCopied, setPeerCommandCopied] = useState(false);
 
     const [targetReachability, setTargetReachability] = useState<Record<string, boolean | 'loading'>>({});
@@ -818,6 +818,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
             setStaticLeaderUrl(registryStatus.static_leader_url);
         }
     }, [registryStatus?.static_leader_url]);
+
+    // Auto-populate the peer install Leader URL from the detected LAN IP.
+    // Only sets it once (on first load) — user edits are preserved.
+    useEffect(() => {
+        if (registryStatus?.detected_ip && !peerInstallLeaderUrlEdited && !peerInstallLeaderUrl) {
+            const port = window.location.port || '8080';
+            setPeerInstallLeaderUrl(`http://${registryStatus.detected_ip}:${port}`);
+        }
+    }, [registryStatus?.detected_ip]);
 
     const previewControllerUrl = (input: string) => {
         if (!input) return '';
@@ -3435,12 +3444,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                     id="peer-install-leader-url"
                                     type="text"
                                     value={peerInstallLeaderUrl}
-                                    onChange={(e) => setPeerInstallLeaderUrl(e.target.value)}
-                                    placeholder="https://stigix-central.example.net"
+                                    onChange={(e) => { setPeerInstallLeaderUrl(e.target.value); setPeerInstallLeaderUrlEdited(true); }}
+                                    placeholder="http://192.168.x.x:8080"
                                     className="w-full bg-card hover:bg-card-hover border border-border focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-xs font-mono transition-all"
                                 />
                                 <p className="text-[9px] text-text-muted italic opacity-60 pl-1">
-                                    Pre-filled with the browser origin. Edit if this instance is behind NAT or a reverse proxy.
+                                    Auto-filled with the detected LAN IP. Edit if this instance is behind a reverse proxy or a public FQDN.
                                 </p>
                             </div>
 
