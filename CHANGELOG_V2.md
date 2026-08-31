@@ -26,8 +26,8 @@ All notable changes made specifically on the `v2` branch are documented in this 
 
 ### Fixed
 - **Peer Self-Filtering & Instant Ghost Target Purge on Rename** 🛡️:
-  - `LocalRegistryServer`: Automatically purges old instance registrations sharing the same IP when a node registers under a new `instance_id` (e.g. after a site rename), eliminating ghost entries instantly on the Leader instead of waiting 10 minutes.
-  - `RegistryManager`: Replaces `peerCache` on each discovery refresh cycle and filters out self by both `instance_id` and `ip_private === this.currentIp`.
+  - `LocalRegistryServer`: Automatically purges old instance registrations sharing the same IP when a node registers under a new `instance_id` (e.g. after a site rename), eliminating ghost entries instantly on the Leader instead of waiting 10 minutes. Also supports wildcard `local-leader` / `direct:` instance listing so all local peers are served.
+  - `RegistryManager`: Replaces `peerCache` on each discovery refresh cycle, adds fallback `pocId = 'local-leader'` on Leaders so Leaders also discover registered peers and synthesize target cards for them, and filters out self by both `instance_id` and `ip_private === this.currentIp`.
 
 ### Changed
 - **`docker-compose.yml` + `docker-compose.bridge.yml`** ⚙️: Added `STIGIX_CONTROLLER_URL` passthrough to the container environment.

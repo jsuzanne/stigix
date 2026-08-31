@@ -75,23 +75,25 @@ export class LocalRegistryServer {
             const scope = req.query.scope as string;
             const self_id = req.query.self_instance_id as string;
 
-            if (!poc_id) {
-                return res.status(400).json({ status: 'error', error: 'missing_poc_id' });
-            }
+            let results = Array.from(this.instances.values());
 
-            const prefix = `poc:${poc_id}:inst:`;
-            let results = Array.from(this.instances.entries())
-                .filter(([key]) => key.startsWith(prefix))
-                .map(([_, inst]) => inst);
+            // Filter by specific poc_id if provided and not a direct/local wildcard
+            if (poc_id && !poc_id.startsWith('direct:') && poc_id !== 'local-leader') {
+                const prefix = `poc:${poc_id}:inst:`;
+                results = Array.from(this.instances.entries())
+                    .filter(([key]) => key.startsWith(prefix))
+                    .map(([_, inst]) => inst);
+            }
 
             if (scope === 'others' && self_id) {
                 results = results.filter(inst => inst.instance_id !== self_id);
             }
 
             return res.json({
-                poc_id,
+                poc_id: poc_id || 'local-leader',
                 instances: results
             });
+        });
         });
 
         // GET /targets (Shared Targets from Leader to Peer)

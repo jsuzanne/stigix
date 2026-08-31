@@ -385,6 +385,11 @@ export class RegistryManager {
         log('REGISTRY', `Final Role: ${mode.toUpperCase()} for PoC: ${config.pocId}`);
 
         if (mode === 'leader') {
+            // Ensure Leader has a fallback pocId so discovery fetchInstances() works locally
+            if (!config.pocId) {
+                (config as any).pocId = 'local-leader';
+                (config as any).enabled = true;
+            }
             // Leader Mode: Announce ourselves to Bootstrap Signal
             await this.client.announceLeader(this.currentIp);
             // Switch heartbeats to local server (self)
