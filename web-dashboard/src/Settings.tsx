@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     RefreshCw, Download, AlertCircle, CheckCircle, Clock, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
-    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers,
+    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers, X,
     Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy
 } from 'lucide-react';
 import {
@@ -461,6 +461,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const [newTarget, setNewTarget] = useState<Omit<TargetDefinition, 'id' | 'source'>>(EMPTY_TARGET);
     const [targetError, setTargetError] = useState<string | null>(null);
     const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
+    const [isTargetModalOpen, setIsTargetModalOpen] = useState(false);
     const [showTargetPorts, setShowTargetPorts] = useState(false);
     const [registryStatus, setRegistryStatus] = useState<any>(null);
     const [staticLeaderUrl, setStaticLeaderUrl] = useState<string>('');
@@ -1371,6 +1372,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
             showSuccess(editingTargetId ? 'Target updated' : 'Target added');
             setNewTarget({ ...EMPTY_TARGET, capabilities: { ...EMPTY_TARGET_CAPS } });
             setEditingTargetId(null);
+            setIsTargetModalOpen(false);
             setShowTargetPorts(false);
             fetchTargets();
         } catch (e: any) { setTargetError(e.message); }
@@ -1446,14 +1448,23 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         }
     };
 
+    const openAddTargetModal = () => {
+        setEditingTargetId(null);
+        setNewTarget({ ...EMPTY_TARGET, capabilities: { ...EMPTY_TARGET_CAPS } });
+        setTargetError(null);
+        setIsTargetModalOpen(true);
+    };
+
     const startEditTarget = (t: TargetDefinition) => {
         setEditingTargetId(t.id);
         setNewTarget({ name: t.name, host: t.host, enabled: t.enabled, capabilities: { ...t.capabilities }, ports: t.ports ? { ...t.ports } : undefined });
         setTargetError(null);
+        setIsTargetModalOpen(true);
     };
 
     const cancelEditTarget = () => {
         setEditingTargetId(null);
+        setIsTargetModalOpen(false);
         setNewTarget({ ...EMPTY_TARGET, capabilities: { ...EMPTY_TARGET_CAPS } });
         setTargetError(null);
     };
@@ -3867,6 +3878,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                         </div>
                         <div className="flex gap-2">
                             <button
+                                onClick={openAddTargetModal}
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
+                            >
+                                <Plus size={14} />
+                                Add Target
+                            </button>
+                            <button
                                 onClick={handleExportTargets}
                                 className="px-4 py-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
                             >
@@ -3889,7 +3907,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                             />
                             <button
                                 onClick={() => document.getElementById('import-targets')?.click()}
-                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
+                                className="px-4 py-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
                             >
                                 <Upload size={14} />
                                 Import
@@ -3897,143 +3915,150 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* ── Add / Edit Form ── */}
-                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-5 shadow-inner">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-[10px] font-black text-text-muted tracking-[0.2em] uppercase flex items-center gap-2">
-                                    {editingTargetId ? '✏️ Edit Stigix Target' : '📡 New Remote Stigix Target'}
-                                </h3>
-                                <button
-                                    onClick={saveTarget}
-                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
-                                >
-                                    {editingTargetId ? <Edit2 size={12} /> : <Plus size={12} />}
-                                    {editingTargetId ? 'Update' : 'Add Stigix Target'}
-                                </button>
-                            </div>
-                            {targetError && (
-                                <div className="flex items-center gap-2 text-red-500 text-[10px] font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">
-                                    <AlertCircle size={12} />{targetError}
-                                </div>
-                            )}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em]">Site Name</label>
-                                    <input
-                                        type="text"
-                                        placeholder="DC1, Branch-Paris…"
-                                        value={newTarget.name}
-                                        onChange={e => setNewTarget({ ...newTarget, name: e.target.value })}
-                                        className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-emerald-500 text-[11px] font-black tracking-wider shadow-sm"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[9px] font-black text-text-muted tracking-[0.2em]">IP Address or FQDN</label>
-                                    <input
-                                        type="text"
-                                        placeholder="192.168.1.100 or mysite.example.com"
-                                        value={newTarget.host}
-                                        onChange={e => setNewTarget({ ...newTarget, host: e.target.value })}
-                                        className="w-full bg-card border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-emerald-500 text-[11px] font-black font-mono tracking-wider shadow-sm"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Capability Toggles */}
-                            <div className="space-y-1.5">
-                                <label className="text-[9px] font-black text-text-muted tracking-[0.2em]">Capabilities</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {CAP_LABELS.map(({ key, label, color }) => (
-                                        <button
-                                            key={key}
-                                            onClick={() => setNewTarget(t => ({ ...t, capabilities: { ...t.capabilities, [key]: !t.capabilities[key] } }))}
-                                            className={cn(
-                                                "px-3 py-1.5 rounded-lg text-[10px] font-black border transition-all",
-                                                newTarget.capabilities[key]
-                                                    ? `bg-${color}-600/10 text-${color}-500 border-${color}-500/30`
-                                                    : "bg-card text-text-muted border-border hover:border-text-muted"
-                                            )}
-                                        >
-                                            {label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Port Overrides (collapsed) */}
-                            <div>
-                                <button
-                                    onClick={() => setShowTargetPorts(p => !p)}
-                                    className="text-[9px] font-black text-text-muted tracking-widest flex items-center gap-1.5 hover:text-text-primary transition-colors"
-                                >
-                                    {showTargetPorts ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                    PORT OVERRIDES (OPTIONAL)
-                                </button>
-                                {showTargetPorts && (
-                                    <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3">
-                                        {[
-                                            { key: 'voice', label: 'Voice', placeholder: '6100' },
-                                            { key: 'convergence', label: 'Fail.', placeholder: '6200' },
-                                            { key: 'iperf', label: 'Iperf', placeholder: '5201' },
-                                            { key: 'http', label: 'HTTP', placeholder: '8082' },
-                                            { key: 'xfr', label: 'Speedtest', placeholder: '5201' },
-                                        ].map(({ key, label, placeholder }) => (
-                                            <div key={key} className="space-y-1">
-                                                <label className="text-[9px] font-black text-text-muted">{label}</label>
-                                                <input
-                                                    type="number"
-                                                    placeholder={placeholder}
-                                                    value={(newTarget.ports as any)?.[key] ?? ''}
-                                                    onChange={e => setNewTarget(t => ({
-                                                        ...t,
-                                                        ports: { ...t.ports, [key]: e.target.value ? parseInt(e.target.value) : undefined }
-                                                    }))}
-                                                    className="w-full bg-card border border-border text-text-primary rounded-lg px-3 py-2 text-[10px] font-mono outline-none focus:ring-1 focus:ring-emerald-500"
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {editingTargetId && (
-                                <div className="flex gap-2 justify-end">
-                                    <button onClick={cancelEditTarget} className="px-4 py-2 text-text-muted hover:text-text-primary text-[10px] font-black tracking-widest transition-colors">
-                                        Cancel
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Recently Added manual targets (Demo filler) */}
-                            {!editingTargetId && targets.filter(t => !t.meta?.registry).length > 0 && (
-                                <div className="pt-4 border-t border-border/50 space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <h4 className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Recently Added</h4>
-                                        <span className="text-[8px] font-bold text-text-muted/50 tracking-tighter italic">Last 3 Manual</span>
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        {targets.filter(t => !t.meta?.registry).slice(-3).reverse().map(t => (
-                                            <div key={t.id} className="flex items-center justify-between px-3 py-2 bg-card/20 border border-border/30 rounded-xl group/item">
-                                                <div className="flex items-center gap-2 overflow-hidden">
-                                                    <MapPin size={10} className="text-emerald-500 shrink-0" />
-                                                    <span className="text-[10px] font-bold text-text-muted truncate group-hover/item:text-text-primary transition-colors">{t.name}</span>
-                                                </div>
-                                                <span className="text-[9px] font-mono text-text-muted/40 shrink-0">{t.host}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="p-3 bg-blue-600/5 border border-blue-500/10 rounded-xl">
-                                        <div className="flex items-start gap-2">
-                                            <Info size={12} className="text-blue-400 shrink-0 mt-0.5" />
-                                            <p className="text-[9px] leading-relaxed text-blue-400/80 font-medium italic">
-                                                Tip: Use these targets to simulate multi-site traffic flows in the Performance dashboard.
+                    {/* ── Add / Edit Target Modal ── */}
+                    {isTargetModalOpen && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+                            <div className="bg-card border border-border rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+                                {/* Header */}
+                                <div className="flex items-center justify-between p-6 border-b border-border/60 bg-card-secondary/20">
+                                    <div className="flex items-center gap-3">
+                                        <div className={cn("p-2.5 rounded-xl border shadow-sm", editingTargetId ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20")}>
+                                            {editingTargetId ? <Edit2 size={20} /> : <Plus size={20} />}
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-black text-text-primary tracking-tight">
+                                                {editingTargetId ? 'Edit Target' : 'Configure New Target'}
+                                            </h3>
+                                            <p className="text-text-muted text-[10px] font-bold uppercase tracking-wider">
+                                                {editingTargetId ? `MODIFYING ${newTarget.name || 'TARGET'}` : 'DEFINE A NEW STIGIX ENDPOINT'}
                                             </p>
                                         </div>
                                     </div>
+                                    <button
+                                        onClick={cancelEditTarget}
+                                        className="p-1.5 text-text-muted hover:text-text-primary rounded-lg hover:bg-card-secondary transition-colors"
+                                    >
+                                        <X size={18} />
+                                    </button>
                                 </div>
-                            )}
+
+                                {/* Body */}
+                                <div className="p-6 space-y-5">
+                                    {targetError && (
+                                        <div className="flex items-center gap-2 text-red-500 text-[10px] font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2.5">
+                                            <AlertCircle size={14} />{targetError}
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black text-text-muted uppercase tracking-widest">Site Name</label>
+                                            <input
+                                                type="text"
+                                                placeholder="DC1, Branch-Paris…"
+                                                value={newTarget.name}
+                                                onChange={e => setNewTarget({ ...newTarget, name: e.target.value })}
+                                                className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 text-xs font-bold tracking-wider transition-all shadow-sm"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black text-text-muted uppercase tracking-widest">Target URL / IP Address</label>
+                                            <input
+                                                type="text"
+                                                placeholder="192.168.1.100 or mysite.com"
+                                                value={newTarget.host}
+                                                onChange={e => setNewTarget({ ...newTarget, host: e.target.value })}
+                                                className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 text-xs font-mono font-bold tracking-wider transition-all shadow-sm"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Capability Toggles */}
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-text-muted uppercase tracking-widest">Capabilities</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {CAP_LABELS.map(({ key, label, color }) => (
+                                                <button
+                                                    key={key}
+                                                    type="button"
+                                                    onClick={() => setNewTarget(t => ({ ...t, capabilities: { ...t.capabilities, [key]: !t.capabilities[key] } }))}
+                                                    className={cn(
+                                                        "px-3.5 py-2 rounded-xl text-xs font-black border transition-all shadow-sm flex items-center gap-1.5",
+                                                        newTarget.capabilities[key]
+                                                            ? `bg-${color}-600/15 text-${color}-500 border-${color}-500/40 ring-1 ring-${color}-500/20`
+                                                            : "bg-card-secondary/60 text-text-muted border-border hover:border-text-muted hover:text-text-primary"
+                                                    )}
+                                                >
+                                                    <div className={cn("w-1.5 h-1.5 rounded-full", newTarget.capabilities[key] ? `bg-${color}-500` : "bg-text-muted/40")} />
+                                                    {label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Port Overrides (optional) */}
+                                    <div className="pt-2 border-t border-border/40">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowTargetPorts(p => !p)}
+                                            className="text-[10px] font-black text-text-muted tracking-widest flex items-center gap-1.5 hover:text-text-primary transition-colors"
+                                        >
+                                            {showTargetPorts ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                            PORT OVERRIDES (OPTIONAL)
+                                        </button>
+                                        {showTargetPorts && (
+                                            <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                                                {[
+                                                    { key: 'voice', label: 'Voice', placeholder: '6100' },
+                                                    { key: 'convergence', label: 'Failover', placeholder: '6200' },
+                                                    { key: 'iperf', label: 'Iperf', placeholder: '5201' },
+                                                    { key: 'http', label: 'HTTP', placeholder: '8082' },
+                                                    { key: 'xfr', label: 'Speedtest', placeholder: '5201' },
+                                                ].map(({ key, label, placeholder }) => (
+                                                    <div key={key} className="space-y-1">
+                                                        <label className="text-[9px] font-black text-text-muted">{label}</label>
+                                                        <input
+                                                            type="number"
+                                                            placeholder={placeholder}
+                                                            value={(newTarget.ports as any)?.[key] ?? ''}
+                                                            onChange={e => setNewTarget(t => ({
+                                                                ...t,
+                                                                ports: { ...t.ports, [key]: e.target.value ? parseInt(e.target.value) : undefined }
+                                                            }))}
+                                                            className="w-full bg-card-secondary border border-border text-text-primary rounded-lg px-2.5 py-1.5 text-[10px] font-mono outline-none focus:ring-1 focus:ring-emerald-500"
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Footer */}
+                                <div className="flex items-center justify-end gap-3 p-5 border-t border-border/60 bg-card-secondary/20">
+                                    <button
+                                        type="button"
+                                        onClick={cancelEditTarget}
+                                        className="px-5 py-2.5 text-text-muted hover:text-text-primary text-xs font-bold tracking-wider transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={saveTarget}
+                                        className={cn(
+                                            "px-6 py-2.5 rounded-xl text-xs font-black tracking-wider transition-all flex items-center gap-2 shadow-lg",
+                                            editingTargetId
+                                                ? "bg-amber-600 hover:bg-amber-500 text-white shadow-amber-900/30"
+                                                : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30"
+                                        )}
+                                    >
+                                        {editingTargetId ? <><Edit2 size={14} /> Update Target</> : <><Plus size={14} /> Add Target</>}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
+                    )}
 
                         {/* ── Local Target Service Control ── */}
                         <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-5 shadow-inner flex flex-col">
@@ -4183,7 +4208,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                 </div>
                             </div>
                         </div>
-                    </div>
 
                     {/* ── Targets List ── */}
                     <div className="space-y-3">
