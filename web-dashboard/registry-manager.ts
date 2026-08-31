@@ -5,6 +5,7 @@ import net from 'net';
 import { spawn } from 'child_process';
 import { log } from './utils/logger.js';
 import { StigixRegistryClient, RegistryInstance } from './stigix-registry-client.js';
+import type { LocalRegistryServer } from './local-registry-server.js';
 
 /**
  * RegistryManager — Orchestrates the lifecycle of registry integration.
@@ -12,6 +13,7 @@ import { StigixRegistryClient, RegistryInstance } from './stigix-registry-client
  */
 export class RegistryManager {
     private client: StigixRegistryClient;
+    private localRegistryServer: LocalRegistryServer | null = null;
     private heartbeatInterval: NodeJS.Timeout | null = null;
     private discoveryInterval: NodeJS.Timeout | null = null;
     private peerCache: Map<string, { instance: RegistryInstance, lastSeen: number }> = new Map();
@@ -26,6 +28,10 @@ export class RegistryManager {
     private lastAnnounceTime: number = 0;
     private staticLeaderUrl: string | null = null;
     private directMode: boolean = false;
+
+    public setLocalRegistryServer(server: LocalRegistryServer) {
+        this.localRegistryServer = server;
+    }
 
     /**
      * Normalizes a user-supplied controller URL:
@@ -571,17 +577,20 @@ export class RegistryManager {
         const GRACE_PERIOD_MS = 15 * 60 * 1000; // 15 minutes
         const ownInstanceId = this.client.getConfig().instanceId;
 
+        // On Leader, prefer localRegistryServer.getInstances() as authoritative source
+        const rawInstances: RegistryInstance[] = this.localRegistryServer
+            ? this.localRegistryServer.getInstances()
+            : Array.from(this.peerCache.values()).map(e => e.instance);
+
         const activePeers: RegistryInstance[] = [];
-        for (const [id, entry] of this.peerCache.entries()) {
-            if (now - entry.lastSeen < GRACE_PERIOD_MS) {
+        for (const inst of rawInstances) {
+            const lastSeen = inst.last_seen ? new Date(inst.last_seen).getTime() : now;
+            if (now - lastSeen < GRACE_PERIOD_MS) {
                 // Defense in depth: never include self (by instance_id or IP), even if registry didn't filter it
-                if (entry.instance.instance_id === ownInstanceId || (this.currentIp && entry.instance.ip_private === this.currentIp)) {
+                if (inst.instance_id === ownInstanceId || (this.currentIp && inst.ip_private === this.currentIp)) {
                     continue;
                 }
-                activePeers.push(entry.instance);
-            } else {
-                // Cleanup old entries
-                this.peerCache.delete(id);
+                activePeers.push(inst);
             }
         }
         return activePeers;

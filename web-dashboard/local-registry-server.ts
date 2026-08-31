@@ -80,9 +80,12 @@ export class LocalRegistryServer {
             // Filter by specific poc_id if provided and not a direct/local wildcard
             if (poc_id && !poc_id.startsWith('direct:') && poc_id !== 'local-leader') {
                 const prefix = `poc:${poc_id}:inst:`;
-                results = Array.from(this.instances.entries())
+                const filtered = Array.from(this.instances.entries())
                     .filter(([key]) => key.startsWith(prefix))
                     .map(([_, inst]) => inst);
+                if (filtered.length > 0) {
+                    results = filtered;
+                }
             }
 
             if (scope === 'others' && self_id) {

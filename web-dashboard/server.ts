@@ -10071,6 +10071,7 @@ app.delete('/api/iot/devices/:id', authenticateToken, (req, res) => {
 
 // --- Local Registry API (Hybrid Leader) ---
 const localRegistryServer = new LocalRegistryServer();
+registryManager.setLocalRegistryServer(localRegistryServer);
 app.use('/api/registry', (req, res, next) => {
     const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE;
     if (mode === 'leader') {

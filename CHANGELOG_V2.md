@@ -18,11 +18,10 @@ All notable changes made specifically on the `v2` branch are documented in this 
   - Idempotent: does not overwrite an existing site name.
   - Works fully non-interactively (compatible with `curl | bash`, cloud-init, Ansible).
   - Example: `curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- --controller https://stigix-central.example.net`
-- **"Add a remote Stigix instance" card in Settings → Target Controller** 🖥️: New UI card visible to leader instances.
-  - Editable "Leader URL" field pre-filled with the current browser origin.
-  - Live-updating one-line install command.
-  - Copy button with visual feedback.
-  - Peer count badge ("N peers online").
+- **Peer self-filtering & Leader dynamic targets synthesis** 🎯:
+  - Added `localRegistryServer` reference to `RegistryManager` on Leader nodes so `getPeers()` directly reads active registered instances (`BR1`, `BR2`, `BR5`, etc.) in real time.
+  - Dynamically learned peers now immediately synthesize into active target definitions on the Leader's "Stigix Targets Repository" UI.
+  - Self-filtering by local IP in `getPeers()` prevents ghost targets or self-targeting after site renames.
 
 ### Fixed
 - **Peer Self-Filtering & Instant Ghost Target Purge on Rename** 🛡️:
