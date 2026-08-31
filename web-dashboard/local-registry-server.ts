@@ -94,7 +94,6 @@ export class LocalRegistryServer {
                 instances: results
             });
         });
-        });
 
         // GET /targets (Shared Targets from Leader to Peer)
         router.get('/targets', (req, res) => {
