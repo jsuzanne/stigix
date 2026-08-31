@@ -67,6 +67,7 @@ export class RegistryManager {
         this.client = StigixRegistryClient.fromEnv((usage) => this.handleUsage(usage));
         this.currentIp = this.detectPrivateIp(configDir);
         this.loadStaticLeader();
+        this.loadSiteName();
 
         // Direct mode: STIGIX_CONTROLLER_URL takes absolute priority over everything
         const envControllerUrl = process.env.STIGIX_CONTROLLER_URL;
@@ -104,6 +105,23 @@ export class RegistryManager {
         }
     }
 
+    private loadSiteName() {
+        try {
+            const siteNameFile = path.join(this.configDir, 'site-name.json');
+            if (fs.existsSync(siteNameFile)) {
+                const data = JSON.parse(fs.readFileSync(siteNameFile, 'utf8'));
+                if (data.siteName) {
+                    process.env.STIGIX_SITE_NAME = data.siteName;
+                    (this.client.getConfig() as any).siteName = data.siteName;
+                    (this.client.getConfig() as any).instanceId = data.siteName;
+                    log('REGISTRY', `Site name loaded from config: "${data.siteName}"`);
+                }
+            }
+        } catch (e) {
+            log('REGISTRY', `Failed to load site name config: ${e}`, 'error');
+        }
+    }
+
     public async saveStaticLeader(url: string | null) {
         try {
             const staticFile = path.join(this.configDir, 'static-leader.json');
@@ -125,6 +143,48 @@ export class RegistryManager {
             log('REGISTRY', `Failed to save static leader config: ${e}`, 'error');
             throw e;
         }
+    }
+
+    /**
+     * Updates the site name (STIGIX_SITE_NAME) at runtime.
+     * - Updates process.env so any future fromEnv() calls pick it up
+     * - Updates the live registry client config so the next heartbeat sends the new name
+     * - Persists to site-name.json (survives container restart via config volume)
+     * - Triggers an immediate heartbeat so the leader is updated right away
+     */
+    public async setSiteName(newName: string): Promise<void> {
+        if (!newName || !newName.trim()) throw new Error('Site name cannot be empty');
+        const trimmed = newName.trim();
+
+        // 1. Update live process env
+        process.env.STIGIX_SITE_NAME = trimmed;
+
+        // 2. Update registry client in-memory config
+        (this.client.getConfig() as any).siteName = trimmed;
+        (this.client.getConfig() as any).instanceId = trimmed;
+
+        // 3. Persist to config dir (mounted volume → survives restart)
+        const siteNameFile = path.join(this.configDir, 'site-name.json');
+        fs.writeFileSync(siteNameFile, JSON.stringify({ siteName: trimmed, updatedAt: new Date().toISOString() }));
+        log('REGISTRY', `Site name updated to: "${trimmed}"`);
+
+        // 4. Trigger immediate heartbeat to propagate the change to the leader
+        await this.performHeartbeat();
+    }
+
+    /**
+     * Returns the current site name, checking (in order):
+     * persisted site-name.json → process.env.STIGIX_SITE_NAME → hostname
+     */
+    public getSiteName(): string {
+        const siteNameFile = path.join(this.configDir, 'site-name.json');
+        try {
+            if (fs.existsSync(siteNameFile)) {
+                const data = JSON.parse(fs.readFileSync(siteNameFile, 'utf8'));
+                if (data.siteName) return data.siteName;
+            }
+        } catch {}
+        return process.env.STIGIX_SITE_NAME || os.hostname();
     }
 
     private loadStats() {
@@ -545,6 +605,7 @@ export class RegistryManager {
             controller_url: this.directMode ? this.staticLeaderUrl : null,
             static_leader_url: this.staticLeaderUrl,
             is_static_leader: !!this.staticLeaderUrl,
+            site_name: this.getSiteName(),
             stats: this.stats
         };
     }

@@ -10095,6 +10095,28 @@ app.get('/api/registry/status', authenticateToken, (req, res) => {
     res.json(status);
 });
 
+app.get('/api/registry/site-name', authenticateToken, (_req, res) => {
+    res.json({ siteName: registryManager.getSiteName() });
+});
+
+app.post('/api/registry/site-name', authenticateToken, async (req, res) => {
+    const { siteName } = req.body;
+    if (!siteName || typeof siteName !== 'string' || !siteName.trim()) {
+        return res.status(400).json({ error: 'siteName is required and must be a non-empty string' });
+    }
+    // Basic validation: alphanumeric, dashes, underscores, dots — no spaces
+    if (!/^[a-zA-Z0-9_\-\.]{1,64}$/.test(siteName.trim())) {
+        return res.status(400).json({ error: 'siteName must be 1–64 chars: letters, digits, dashes, underscores, or dots only' });
+    }
+    try {
+        await registryManager.setSiteName(siteName.trim());
+        log('SYSTEM', `Site name changed to "${siteName.trim()}" via UI`);
+        res.json({ success: true, siteName: siteName.trim() });
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to update site name', detail: e.message });
+    }
+});
+
 /**
  * Normalizes a user-provided string (IP, FQDN, or URL) into a full Stigix Controller URL.
  */

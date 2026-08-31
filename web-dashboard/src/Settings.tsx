@@ -471,6 +471,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const [peerInstallLeaderUrl, setPeerInstallLeaderUrl] = useState('');
     const [peerInstallLeaderUrlEdited, setPeerInstallLeaderUrlEdited] = useState(false);
     const [peerCommandCopied, setPeerCommandCopied] = useState(false);
+    // Site name editing state
+    const [siteNameEdit, setSiteNameEdit] = useState('');
+    const [siteNameSaving, setSiteNameSaving] = useState(false);
+    const [siteNameSaved, setSiteNameSaved] = useState(false);
+    const [siteNameError, setSiteNameError] = useState<string | null>(null);
 
     const [targetReachability, setTargetReachability] = useState<Record<string, boolean | 'loading'>>({});
 
@@ -828,6 +833,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         }
     }, [registryStatus?.detected_ip]);
 
+    // Sync site name edit field with current registry status (only on first load)
+    useEffect(() => {
+        if (registryStatus?.site_name && !siteNameEdit) {
+            setSiteNameEdit(registryStatus.site_name);
+        }
+    }, [registryStatus?.site_name]);
+
     const previewControllerUrl = (input: string) => {
         if (!input) return '';
         let val = input.trim();
@@ -900,6 +912,31 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         navigator.clipboard.writeText(cmd).catch(() => {});
         setPeerCommandCopied(true);
         setTimeout(() => setPeerCommandCopied(false), 2000);
+    };
+
+    const handleSaveSiteName = async () => {
+        if (!siteNameEdit.trim()) return;
+        setSiteNameSaving(true);
+        setSiteNameError(null);
+        setSiteNameSaved(false);
+        try {
+            const res = await fetch('/api/registry/site-name', {
+                method: 'POST',
+                headers: { ...authHeaders, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ siteName: siteNameEdit.trim() })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to save');
+            setSiteNameSaved(true);
+            // Refresh registry status to sync the new name
+            const sres = await fetch('/api/registry/status', { headers: authHeaders });
+            if (sres.ok) setRegistryStatus(await sres.json());
+            setTimeout(() => setSiteNameSaved(false), 3000);
+        } catch (e: any) {
+            setSiteNameError(e.message);
+        } finally {
+            setSiteNameSaving(false);
+        }
     };
 
     // Handlers
@@ -4020,6 +4057,42 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         );
                                     })()}
                                 </div>
+                            </div>
+
+                            {/* ── Site Name Inline Editor ── */}
+                            <div className="bg-card/60 border border-border rounded-xl p-3 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Site Name</span>
+                                    {siteNameSaved && (
+                                        <span className="flex items-center gap-1 text-[8px] font-black text-emerald-400 uppercase tracking-widest animate-in fade-in duration-300">
+                                            <CheckCircle size={10} /> Saved — heartbeat sent
+                                        </span>
+                                    )}
+                                    {siteNameError && (
+                                        <span className="text-[8px] font-black text-red-400 uppercase tracking-widest">{siteNameError}</span>
+                                    )}
+                                </div>
+                                <div className="flex gap-2">
+                                    <input
+                                        id="site-name-edit"
+                                        type="text"
+                                        value={siteNameEdit}
+                                        onChange={(e) => { setSiteNameEdit(e.target.value); setSiteNameError(null); setSiteNameSaved(false); }}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleSaveSiteName()}
+                                        placeholder="e.g. BR5-Paris"
+                                        className="flex-1 bg-card border border-border focus:border-emerald-500/50 rounded-lg px-3 py-1.5 text-xs font-mono transition-all"
+                                    />
+                                    <button
+                                        id="site-name-save"
+                                        onClick={handleSaveSiteName}
+                                        disabled={siteNameSaving || !siteNameEdit.trim() || siteNameEdit.trim() === registryStatus?.site_name}
+                                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+                                    >
+                                        {siteNameSaving ? <RefreshCw size={10} className="animate-spin" /> : <CheckCircle size={10} />}
+                                        Save
+                                    </button>
+                                </div>
+                                <p className="text-[8px] text-text-muted italic opacity-50">Identifies this node in the leader registry. Saved immediately + heartbeat sent.</p>
                             </div>
 
                             <div className="space-y-6 flex-1">
