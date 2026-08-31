@@ -481,6 +481,27 @@ export class RegistryManager {
         this.heartbeatInterval = setInterval(() => this.performHeartbeat(), heartbeatMs);
     }
 
+    public getNodeCapabilities(): { voice: boolean; convergence: boolean; xfr: boolean; security: boolean; connectivity: boolean } {
+        const file = path.join(this.configDir, 'node-capabilities.json');
+        const defaultCaps = { voice: true, convergence: true, xfr: true, security: true, connectivity: true };
+        try {
+            if (fs.existsSync(file)) {
+                const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+                return { ...defaultCaps, ...data };
+            }
+        } catch {}
+        return defaultCaps;
+    }
+
+    public async setNodeCapabilities(caps: Partial<{ voice: boolean; convergence: boolean; xfr: boolean; security: boolean; connectivity: boolean }>): Promise<void> {
+        const file = path.join(this.configDir, 'node-capabilities.json');
+        const current = this.getNodeCapabilities();
+        const updated = { ...current, ...caps };
+        fs.writeFileSync(file, JSON.stringify(updated, null, 2), 'utf8');
+        log('REGISTRY', `Node capabilities updated: ${JSON.stringify(updated)}`);
+        await this.performHeartbeat();
+    }
+
     private async performHeartbeat() {
         const config = this.client.getConfig();
         const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
@@ -497,8 +518,7 @@ export class RegistryManager {
         }
 
         // 2. Leader Maintenance: Periodic Announcement to Bootstrap (Cloudflare)
-        // 2. Leader Maintenance: Periodic Announcement to Bootstrap (Cloudflare)
-        if (mode === 'leader') {
+        if (mode === 'leader' && config.registryUrl === config.remoteUrl) {
             // Re-announce to Cloudflare every 15 minutes (approx 3 heartbeats at 5-min intervals)
             // This refreshes the 24h lease and prevents takeover by a new leader.
             if (!this.lastAnnounceTime || Date.now() - this.lastAnnounceTime > 15 * 60 * 1000) {
@@ -507,14 +527,8 @@ export class RegistryManager {
             }
         }
 
-        // Build capabilities based on available services
-        const capabilities = {
-            voice: true,
-            convergence: true,
-            xfr: true,
-            security: true,
-            connectivity: true
-        };
+        // Build capabilities based on configured node capabilities
+        const capabilities = this.getNodeCapabilities();
 
         const result = await this.client.register(this.currentIp, capabilities);
         if (result && result.status === 'ok') {

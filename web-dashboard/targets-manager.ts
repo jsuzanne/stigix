@@ -91,28 +91,29 @@ export class TargetsManager {
         const targets = this.loadTargets();
         const idx = targets.findIndex(t => t.id === id);
         
-        if (idx !== -1) {
-            targets[idx] = { ...targets[idx], ...data, id, source: 'managed' };
-            this.saveTargets(targets);
-            return targets[idx];
-        }
+        const updatedTarget = idx !== -1 ? (targets[idx] = { ...targets[idx], ...data, id, source: 'managed' }) : null;
+        let result = updatedTarget;
 
-        // If not found by ID, it might be a synthesized target being edited.
-        // We look it up in the merged list by ID to get its original properties and promote it.
-        const merged = this.getMergedTargets();
-        const synthTarget = merged.find(t => t.id === id);
-        if (synthTarget) {
+        if (!result && synthTarget) {
             const promoted: TargetDefinition = {
                 ...synthTarget,
                 ...data,
                 id: makeId(), // Assign a new managed ID
                 source: 'managed'
             };
-            // Remove meta data that shouldn't persist in managed (like local_config/registry)
             delete promoted.meta;
             targets.push(promoted);
+            result = promoted;
+        }
+
+        if (result) {
             this.saveTargets(targets);
-            return promoted;
+            // If editing our own node's target, propagate capabilities to node-capabilities.json & heartbeat
+            const ownIp = typeof this.registryManager?.getStatus === 'function' ? this.registryManager.getStatus()?.detected_ip : null;
+            if (data.capabilities && ownIp && result.host.toLowerCase().trim() === ownIp.toLowerCase().trim()) {
+                this.registryManager.setNodeCapabilities(data.capabilities);
+            }
+            return result;
         }
 
         return null;
@@ -387,6 +388,10 @@ export class TargetsManager {
         const status = typeof this.registryManager.getStatus === 'function' ? this.registryManager.getStatus() : null;
         const ownIp = status?.detected_ip;
 
+        const ownCaps = typeof this.registryManager.getNodeCapabilities === 'function' 
+            ? this.registryManager.getNodeCapabilities() 
+            : { voice: true, convergence: true, xfr: true, security: true, connectivity: true };
+
         let selfTarget: TargetDefinition | null = null;
         if (ownSiteName && ownIp && ownIp !== '127.0.0.1') {
             selfTarget = {
@@ -394,13 +399,7 @@ export class TargetsManager {
                 name: ownSiteName,
                 host: ownIp,
                 enabled: true,
-                capabilities: {
-                    voice: true,
-                    convergence: true,
-                    xfr: true,
-                    security: true,
-                    connectivity: true
-                },
+                capabilities: ownCaps,
                 source: 'synthesized' as const,
                 meta: {
                     registry: true,
@@ -456,14 +455,21 @@ export class TargetsManager {
             if (!existing) {
                 byHost.set(key, { ...t });
             } else {
-                // Merge capabilities
-                existing.capabilities = {
-                    voice: existing.capabilities.voice || t.capabilities.voice,
-                    convergence: existing.capabilities.convergence || t.capabilities.convergence,
-                    xfr: existing.capabilities.xfr || t.capabilities.xfr,
-                    security: existing.capabilities.security || t.capabilities.security,
-                    connectivity: existing.capabilities.connectivity || t.capabilities.connectivity,
-                };
+                // Merge capabilities (for managed targets, respect user's explicit capability choices)
+                if (existing.source === 'managed') {
+                    existing.capabilities = {
+                        ...t.capabilities,
+                        ...existing.capabilities
+                    };
+                } else {
+                    existing.capabilities = {
+                        voice: existing.capabilities.voice || t.capabilities.voice,
+                        convergence: existing.capabilities.convergence || t.capabilities.convergence,
+                        xfr: existing.capabilities.xfr || t.capabilities.xfr,
+                        security: existing.capabilities.security || t.capabilities.security,
+                        connectivity: existing.capabilities.connectivity || t.capabilities.connectivity,
+                    };
+                }
                 // Merge port overrides (only fill missing)
                 if (t.ports) {
                     existing.ports = {
