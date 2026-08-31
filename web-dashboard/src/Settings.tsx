@@ -18,6 +18,23 @@ function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
 }
 
+function formatUptime(seconds: number): string {
+    if (!seconds || isNaN(seconds)) return '0m';
+    const d = Math.floor(seconds / (3600 * 24));
+    const h = Math.floor((seconds % (3600 * 24)) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+
+    const parts = [];
+    if (d > 0) parts.push(`${d}d`);
+    if (h > 0 || d > 0) parts.push(`${h}h`);
+    if (m > 0 || h > 0 || d > 0) parts.push(`${m}m`);
+    if (parts.length === 0) {
+        parts.push(`${s}s`);
+    }
+    return parts.join(' ');
+}
+
 // Interfaces & Types
 interface AppConfig {
     domain: string;
@@ -3025,8 +3042,32 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         </div>
                                     </div>
 
-                                    {/* Network I/O */}
+                                    {/* Uptime */}
                                     <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-6 shadow-sm flex flex-col justify-center h-48">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-lg bg-violet-500/10 text-violet-500 flex items-center justify-center">
+                                                <Clock size={16} />
+                                            </div>
+                                            <div className="text-[11px] font-black text-text-primary tracking-widest uppercase">System Uptime</div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4 h-full">
+                                            <div className="bg-card p-4 rounded-xl border border-border flex flex-col justify-center">
+                                                <div className="text-[9px] font-black text-text-muted tracking-widest uppercase mb-1">Instance</div>
+                                                <div className="font-mono text-base font-black text-violet-400">
+                                                    {systemInfo.uptime?.process ? formatUptime(systemInfo.uptime.process) : '0s'}
+                                                </div>
+                                            </div>
+                                            <div className="bg-card p-4 rounded-xl border border-border flex flex-col justify-center">
+                                                <div className="text-[9px] font-black text-text-muted tracking-widest uppercase mb-1">Host</div>
+                                                <div className="font-mono text-base font-black text-indigo-400">
+                                                    {systemInfo.uptime?.system ? formatUptime(systemInfo.uptime.system) : '0s'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Network I/O */}
+                                    <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-6 shadow-sm flex flex-col justify-center h-48 md:col-span-2">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-lg bg-green-500/10 text-green-500 flex items-center justify-center">
                                                 <Network size={16} />

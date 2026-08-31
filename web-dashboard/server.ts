@@ -8957,6 +8957,10 @@ app.get('/api/admin/system/info', authenticateToken, async (req, res) => {
             network,
             mode,
             interfaceIps,
+            uptime: {
+                process: process.uptime(),
+                system: os.uptime()
+            },
             beta: process.env.BETA === 'true' || process.env.BETA === 'True' || process.env.BETA === '1'
         });
     } catch (e: any) {
