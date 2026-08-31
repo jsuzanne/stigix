@@ -24,6 +24,9 @@ All notable changes made specifically on the `v2` branch are documented in this 
   - Copy button with visual feedback.
   - Peer count badge ("N peers online").
 
+### Fixed
+- **Peer Self-Filtering by IP** 🛡️: `RegistryManager.getPeers()` now filters out self using both `instance_id` and local IP address (`ip_private === this.currentIp`), preventing old ghost names from appearing in learned targets on a node after renaming its site.
+
 ### Changed
 - **`docker-compose.yml` + `docker-compose.bridge.yml`** ⚙️: Added `STIGIX_CONTROLLER_URL` passthrough to the container environment.
 - **`.env.example`** 📄: Documented `STIGIX_CONTROLLER_URL` with explanation and example.

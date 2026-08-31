@@ -567,8 +567,8 @@ export class RegistryManager {
         const activePeers: RegistryInstance[] = [];
         for (const [id, entry] of this.peerCache.entries()) {
             if (now - entry.lastSeen < GRACE_PERIOD_MS) {
-                // Defense in depth: never include self, even if registry didn't filter it
-                if (entry.instance.instance_id === ownInstanceId) {
+                // Defense in depth: never include self (by instance_id or IP), even if registry didn't filter it
+                if (entry.instance.instance_id === ownInstanceId || (this.currentIp && entry.instance.ip_private === this.currentIp)) {
                     continue;
                 }
                 activePeers.push(entry.instance);
