@@ -3,7 +3,7 @@ import {
     RefreshCw, Download, AlertCircle, CheckCircle, Clock, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
     Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers,
-    Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users
+    Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy
 } from 'lucide-react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
