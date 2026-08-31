@@ -503,8 +503,8 @@ export class RegistryManager {
         const result = await this.client.register(this.currentIp, capabilities);
         if (result && result.status === 'ok') {
             // Heartbeat successful
-        } else if (mode === 'peer' && config.registryUrl !== config.remoteUrl) {
-            // FAILURE RECOVERY:
+        } else if (mode === 'peer' && config.registryUrl !== config.remoteUrl && !this.directMode) {
+            // FAILURE RECOVERY (Hybrid/Cloudflare mode only):
             // If local registration fails, it means the Leader is likely dead.
             // We MUST reset our registry URL to the Remote (Cloudflare) so that 
             // the next heartbeat will trigger a new findLeader() lookup.
