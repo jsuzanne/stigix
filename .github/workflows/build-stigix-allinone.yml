@@ -70,6 +70,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -95,9 +97,16 @@ jobs:
             echo "version=latest" >> $GITHUB_OUTPUT
           else
             BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')
-            SHORT_SHA=$(echo ${GITHUB_SHA::7})
-            echo "tags=${{ env.IMAGE_NAME }}:$BRANCH_NAME,${{ env.IMAGE_NAME }}:$BRANCH_NAME-$SHORT_SHA" >> $GITHUB_OUTPUT
-            echo "version=$BRANCH_NAME-$SHORT_SHA" >> $GITHUB_OUTPUT
+            BASELINE=$(cat VERSION 2>/dev/null || echo "dev")
+            BASELINE_CLEAN=${BASELINE%-dev}
+            COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
+            if [[ "$BASELINE_CLEAN" == *"$BRANCH_NAME"* ]]; then
+              VERSION_STRING="$BASELINE_CLEAN.dev$COMMIT_COUNT"
+            else
+              VERSION_STRING="$BASELINE_CLEAN-$BRANCH_NAME.dev$COMMIT_COUNT"
+            fi
+            echo "tags=${{ env.IMAGE_NAME }}:$BRANCH_NAME,${{ env.IMAGE_NAME }}:$VERSION_STRING" >> $GITHUB_OUTPUT
+            echo "version=$VERSION_STRING" >> $GITHUB_OUTPUT
           fi
 
       - name: Determine Platforms
