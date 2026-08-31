@@ -214,6 +214,7 @@ function deriveCloudTargetBaseUrl(): string | undefined {
 const cloudTargetBaseUrl = deriveCloudTargetBaseUrl();
 const registryManager = new RegistryManager(APP_CONFIG.configDir);
 const targetsManager = new TargetsManager(APP_CONFIG.configDir, XFR_QUICK_TARGETS, registryManager);
+registryManager.setTargetsManager(targetsManager);
 const targetManager = new TargetManager(APP_CONFIG.configDir, cloudTargetBaseUrl);
 log('SYSTEM', `Targets Manager initialized`);
 log('SYSTEM', `Cloud Target Manager initialized${cloudTargetBaseUrl ? ' with base: ' + cloudTargetBaseUrl : ''}`);

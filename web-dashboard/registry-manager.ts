@@ -14,6 +14,7 @@ import type { LocalRegistryServer } from './local-registry-server.js';
 export class RegistryManager {
     private client: StigixRegistryClient;
     private localRegistryServer: LocalRegistryServer | null = null;
+    private targetsManager: any = null;
     private heartbeatInterval: NodeJS.Timeout | null = null;
     private discoveryInterval: NodeJS.Timeout | null = null;
     private peerCache: Map<string, { instance: RegistryInstance, lastSeen: number }> = new Map();
@@ -31,6 +32,10 @@ export class RegistryManager {
 
     public setLocalRegistryServer(server: LocalRegistryServer) {
         this.localRegistryServer = server;
+    }
+
+    public setTargetsManager(mgr: any) {
+        this.targetsManager = mgr;
     }
 
     /**
@@ -174,7 +179,12 @@ export class RegistryManager {
         fs.writeFileSync(siteNameFile, JSON.stringify({ siteName: trimmed, updatedAt: new Date().toISOString() }));
         log('REGISTRY', `Site name updated to: "${trimmed}"`);
 
-        // 4. Trigger immediate heartbeat to propagate the change to the leader
+        // 4. Update any managed target matching our IP with the new site name
+        if (this.targetsManager && typeof this.targetsManager.updateHostName === 'function' && this.currentIp) {
+            this.targetsManager.updateHostName(this.currentIp, trimmed);
+        }
+
+        // 5. Trigger immediate heartbeat to propagate the change to the leader / peers
         await this.performHeartbeat();
     }
 

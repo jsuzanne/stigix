@@ -118,6 +118,27 @@ export class TargetsManager {
         return null;
     }
 
+    /** Updates the displayed name of any managed target matching the given host. */
+    updateHostName(host: string, newName: string): boolean {
+        if (!host || !newName) return false;
+        const targets = this.loadTargets();
+        const h = host.toLowerCase().trim();
+        let updated = false;
+
+        for (const t of targets) {
+            if (t.host.toLowerCase().trim() === h) {
+                t.name = newName;
+                updated = true;
+            }
+        }
+
+        if (updated) {
+            this.saveTargets(targets);
+            log('TARGETS', `Updated managed target name for host ${host} to "${newName}"`);
+        }
+        return updated;
+    }
+
     deleteTarget(id: string): boolean {
         const targets = this.loadTargets();
         const initialLength = targets.length;
