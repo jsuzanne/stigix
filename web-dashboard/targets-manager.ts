@@ -130,6 +130,7 @@ export class TargetsManager {
             // re-appearing as a synthesized target on the next getMergedTargets() call.
             this.removeFromConvergenceEndpoints(deleted.host);
             this.removeFromVoiceConfig(deleted.host);
+            this.removeFromSecurityConfig(deleted.host);
             return true;
         }
 
@@ -138,31 +139,18 @@ export class TargetsManager {
         const synthTarget = merged.find(t => t.id === id);
         if (synthTarget) {
             // For local-config synthesized targets: delete from the source file directly.
-            // This prevents the infinite re-appear cycle caused by the old
-            // "promote + disable" trick (disabled entry was itself deletable, revealing the source again).
+            // This prevents the infinite re-appear cycle.
             if (synthTarget.id.startsWith('syn-conv-')) {
                 return this.removeFromConvergenceEndpoints(synthTarget.host);
             }
             if (synthTarget.id.startsWith('syn-voice-')) {
                 return this.removeFromVoiceConfig(synthTarget.host);
             }
-            if (synthTarget.id.startsWith('syn-security-') || synthTarget.id.startsWith('syn-xfr-')) {
-                // These are derived from env vars / security-config — not easily editable.
-                // Fall back to promote+disable so the target at least appears hidden.
-                const disabledTarget: TargetDefinition = {
-                    ...synthTarget,
-                    id: makeId(),
-                    enabled: false,
-                    source: 'managed'
-                };
-                delete disabledTarget.meta;
-                targets.push(disabledTarget);
-                this.saveTargets(targets);
-                return true;
+            if (synthTarget.id.startsWith('syn-security-')) {
+                return this.removeFromSecurityConfig(synthTarget.host);
             }
-            // Registry targets (reg-*): promote + disable so they stay hidden even
-            // after a discovery refresh (the registry re-synthesizes them on every cycle).
-            if (synthTarget.id.startsWith('reg-')) {
+            if (synthTarget.id.startsWith('syn-xfr-') || synthTarget.id.startsWith('reg-')) {
+                // These are derived from env vars / registry — fall back to promote+disable so the target at least appears hidden.
                 const disabledTarget: TargetDefinition = {
                     ...synthTarget,
                     id: makeId(),
@@ -220,6 +208,38 @@ export class TargetsManager {
             return false;
         } catch (e: any) {
             log('TARGETS', `Failed to remove ${host} from voice-config.json: ${e.message}`, 'warn');
+            return false;
+        }
+    }
+
+    /** Remove a host entry from security-config.json eicar_endpoints list, if present. */
+    private removeFromSecurityConfig(host: string): boolean {
+        const file = path.join(this.configDir, 'security-config.json');
+        try {
+            if (!fs.existsSync(file)) return false;
+            const config = JSON.parse(fs.readFileSync(file, 'utf-8'));
+            if (!config.threat_prevention) return false;
+            const h = host.toLowerCase().trim();
+            let modified = false;
+
+            if (Array.isArray(config.threat_prevention.eicar_endpoints)) {
+                const filtered = config.threat_prevention.eicar_endpoints.filter((ep: string) => {
+                    try { return new URL(ep).hostname.toLowerCase().trim() !== h; } catch { return true; }
+                });
+                if (filtered.length !== config.threat_prevention.eicar_endpoints.length) {
+                    config.threat_prevention.eicar_endpoints = filtered;
+                    modified = true;
+                }
+            }
+
+            if (modified) {
+                fs.writeFileSync(file, JSON.stringify(config, null, 2), 'utf-8');
+                log('TARGETS', `Removed host ${host} from security-config.json`);
+                return true;
+            }
+            return false;
+        } catch (e: any) {
+            log('TARGETS', `Failed to remove ${host} from security-config.json: ${e.message}`, 'warn');
             return false;
         }
     }
@@ -341,7 +361,34 @@ export class TargetsManager {
             }
         }));
 
-        // 2. Shared generic targets from local Leader (if we are a peer)
+        // 2. Local self-instance target (so this node's site name e.g. DC1-Ubuntu is synthesized and shared)
+        const ownSiteName = this.registryManager.getSiteName();
+        const status = typeof this.registryManager.getStatus === 'function' ? this.registryManager.getStatus() : null;
+        const ownIp = status?.detected_ip;
+
+        let selfTarget: TargetDefinition | null = null;
+        if (ownSiteName && ownIp && ownIp !== '127.0.0.1') {
+            selfTarget = {
+                id: `reg-self-${ownSiteName}`,
+                name: ownSiteName,
+                host: ownIp,
+                enabled: true,
+                capabilities: {
+                    voice: true,
+                    convergence: true,
+                    xfr: true,
+                    security: true,
+                    connectivity: true
+                },
+                source: 'synthesized' as const,
+                meta: {
+                    registry: true,
+                    self: true
+                }
+            };
+        }
+
+        // 3. Shared generic targets from local Leader (if we are a peer)
         const sharedTargetsList = typeof this.registryManager.getSharedTargets === 'function' 
             ? this.registryManager.getSharedTargets() : [];
 
@@ -356,7 +403,7 @@ export class TargetsManager {
             }
         }));
 
-        return [...peerTargets, ...sharedTgtDefs];
+        return [...(selfTarget ? [selfTarget] : []), ...peerTargets, ...sharedTgtDefs];
     }
 
     // ─── Merged View ───────────────────────────────────────────────────────────
@@ -416,8 +463,10 @@ export class TargetsManager {
                     };
                 }
                 
-                // Prefer authoritative registry names over generic legacy local configuration names
-                if (t.meta?.registry && existing.source === 'synthesized') {
+                // Prefer authoritative registry names or friendly site names over raw IP address names
+                const isExistingIpName = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(existing.name.trim());
+                const isNewFriendlyName = t.name && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(t.name.trim());
+                if ((t.meta?.registry || isNewFriendlyName) && (existing.source === 'synthesized' || isExistingIpName)) {
                     existing.name = t.name;
                 }
             }
