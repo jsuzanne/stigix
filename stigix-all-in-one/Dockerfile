@@ -93,6 +93,8 @@ COPY web-dashboard/utils ./utils
 COPY web-dashboard/src/types ./src/types
 COPY web-dashboard/tsconfig.json ./
 COPY --from=builder /app/VERSION ./VERSION
+ARG VERSION
+RUN if [ -n "$VERSION" ]; then echo "$VERSION" > VERSION; fi
 
 # Copy components
 COPY engines ./engines
