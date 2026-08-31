@@ -4,6 +4,33 @@ All notable changes made specifically on the `v2` branch are documented in this 
 
 ---
 
+## [v2-dev] - 2026-08-31 — Direct Controller Peer Installation MVP
+
+### Added
+- **Direct Controller Mode** 🔗: New `STIGIX_CONTROLLER_URL` environment variable that, when set, activates a `direct` registry mode that bypasses all Cloudflare discovery logic and registers the peer directly with an explicit leader.
+  - Registry mode reported as `direct` in `/api/registry/status`.
+  - New `controller_url` and `direct_mode` fields in registry status (backward-compatible).
+  - All heartbeat and peer discovery traffic goes to the explicit controller — Cloudflare is never contacted.
+- **`--controller` flag in `install.sh`** 📦: The installation script now accepts `--controller <URL>` to register a peer during first installation.
+  - Validates the URL (must start with `http://` or `https://`).
+  - Automatically writes `STIGIX_CONTROLLER_URL` and `STIGIX_REGISTRY_ENABLED=true` to `.env`.
+  - Sets `STIGIX_SITE_NAME` from local hostname if not already configured.
+  - Idempotent: does not overwrite an existing site name.
+  - Works fully non-interactively (compatible with `curl | bash`, cloud-init, Ansible).
+  - Example: `curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- --controller https://stigix-central.example.net`
+- **"Add a remote Stigix instance" card in Settings → Target Controller** 🖥️: New UI card visible to leader instances.
+  - Editable "Leader URL" field pre-filled with the current browser origin.
+  - Live-updating one-line install command.
+  - Copy button with visual feedback.
+  - Peer count badge ("N peers online").
+
+### Changed
+- **`docker-compose.yml` + `docker-compose.bridge.yml`** ⚙️: Added `STIGIX_CONTROLLER_URL` passthrough to the container environment.
+- **`.env.example`** 📄: Documented `STIGIX_CONTROLLER_URL` with explanation and example.
+- **`install.sh` REPO_URL** 🔀: Script now points to the `v2` branch by default for consistency with this development branch.
+
+---
+
 ## [v2-dev] - 2026-08-31
 
 ### Added

@@ -25,6 +25,39 @@ export class RegistryManager {
     private stats: { reads: number; writes: number; since: string } = { reads: 0, writes: 0, since: new Date().toISOString() };
     private lastAnnounceTime: number = 0;
     private staticLeaderUrl: string | null = null;
+    private directMode: boolean = false;
+
+    /**
+     * Normalizes a user-supplied controller URL:
+     * - Trims whitespace and trailing slash
+     * - Adds http:// if no protocol
+     * - Appends /api/registry path if absent
+     * Returns empty string if the input is invalid.
+     */
+    private normalizeControllerUrl(input: string): string {
+        if (!input) return '';
+        let url = input.trim();
+        if (!url.startsWith('http')) {
+            url = `http://${url}`;
+        }
+        try {
+            const u = new URL(url);
+            const hostPart = url.split('://')[1] || '';
+            const portPart = hostPart.split('/')[0] || '';
+            if (!portPart.includes(':') && u.port === '') {
+                u.port = '8080';
+            }
+            if (u.pathname === '/' || u.pathname === '') {
+                u.pathname = '/api/registry';
+            } else if (!u.pathname.includes('/api/registry')) {
+                u.pathname = u.pathname.replace(/\/$/, '') + '/api/registry';
+            }
+            return u.toString().replace(/\/$/, '');
+        } catch (e) {
+            log('REGISTRY', `Invalid controller URL: "${input}"`, 'error');
+            return '';
+        }
+    }
 
     constructor(configDir: string) {
         this.configDir = configDir;
@@ -34,6 +67,26 @@ export class RegistryManager {
         this.client = StigixRegistryClient.fromEnv((usage) => this.handleUsage(usage));
         this.currentIp = this.detectPrivateIp(configDir);
         this.loadStaticLeader();
+
+        // Direct mode: STIGIX_CONTROLLER_URL takes absolute priority over everything
+        const envControllerUrl = process.env.STIGIX_CONTROLLER_URL;
+        if (envControllerUrl) {
+            const normalized = this.normalizeControllerUrl(envControllerUrl);
+            if (normalized) {
+                this.directMode = true;
+                this.staticLeaderUrl = normalized;
+                this.client.setLocalRegistryByUrl(normalized);
+                // Derive a synthetic poc_id from the controller hostname so
+                // register/instances calls are scoped and consistent across peers.
+                const controllerHost = new URL(normalized).hostname;
+                const syntheticPocId = `direct:${controllerHost}`;
+                (this.client.getConfig() as any).pocId = syntheticPocId;
+                (this.client.getConfig() as any).enabled = true;
+                log('REGISTRY', `Direct mode activated. Controller: ${normalized}`);
+            } else {
+                log('REGISTRY', `STIGIX_CONTROLLER_URL is set but invalid: "${envControllerUrl}". Falling back to auto-discovery.`, 'error');
+            }
+        }
     }
 
     private loadStaticLeader() {
@@ -216,6 +269,24 @@ export class RegistryManager {
             log('REGISTRY', `Disabled by configuration.`);
             return;
         }
+
+        // ── Direct Controller Mode ───────────────────────────────────────
+        // When STIGIX_CONTROLLER_URL is set, bypass ALL Cloudflare logic.
+        // Register directly with the explicit leader and refresh peer list.
+        if (this.directMode && this.staticLeaderUrl) {
+            log('REGISTRY', `Registry mode: direct`);
+            log('REGISTRY', `Direct controller: ${this.staticLeaderUrl}`);
+            process.env.STIGIX_REGISTRY_MODE_CURRENT = 'peer';
+            const displayHost = (() => {
+                try { return new URL(this.staticLeaderUrl).hostname; } catch { return this.staticLeaderUrl!; }
+            })();
+            this.leaderInfo = { ip: displayHost, id: displayHost };
+            await this.performHeartbeat();
+            await this.performDiscovery();
+            this.setupIntervals();
+            return;
+        }
+        // ─────────────────────────────────────────────────────────────────
 
         // 1. Always detect identity for UI visibility
         log('REGISTRY', `Running identity auto-detection...`);
@@ -451,6 +522,9 @@ export class RegistryManager {
 
     getStatus() {
         const config = this.client.getConfig();
+        const mode = this.directMode
+            ? 'direct'
+            : (process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer');
         return {
             enabled: config.enabled,
             poc_id: config.pocId,
@@ -464,7 +538,11 @@ export class RegistryManager {
             leader_info: this.leaderInfo,
             detected_role: this.detectedRole,
             is_bg: this.isBranchGateway,
-            current_mode: process.env.STIGIX_REGISTRY_MODE_CURRENT,
+            current_mode: mode,
+            mode,
+            // Direct mode fields (backward-compatible additions)
+            direct_mode: this.directMode,
+            controller_url: this.directMode ? this.staticLeaderUrl : null,
             static_leader_url: this.staticLeaderUrl,
             is_static_leader: !!this.staticLeaderUrl,
             stats: this.stats

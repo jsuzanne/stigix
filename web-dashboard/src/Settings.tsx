@@ -466,6 +466,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const [staticLeaderUrl, setStaticLeaderUrl] = useState<string>('');
     const [isTestingConnectivity, setIsTestingConnectivity] = useState(false);
     const [connectivityResult, setConnectivityResult] = useState<{ success?: boolean; error?: string } | null>(null);
+    // Peer installation card state
+    const [peerInstallLeaderUrl, setPeerInstallLeaderUrl] = useState(() => {
+        try { return window.location.origin; } catch { return ''; }
+    });
+    const [peerCommandCopied, setPeerCommandCopied] = useState(false);
 
     const [targetReachability, setTargetReachability] = useState<Record<string, boolean | 'loading'>>({});
 
@@ -878,6 +883,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleCopyPeerCommand = () => {
+        const installScriptUrl = 'https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh';
+        const cmd = `curl -fsSL ${installScriptUrl} | sudo bash -s -- --controller ${peerInstallLeaderUrl || '<leader-url>'}`;
+        navigator.clipboard.writeText(cmd).catch(() => {});
+        setPeerCommandCopied(true);
+        setTimeout(() => setPeerCommandCopied(false), 2000);
     };
 
     // Handlers
@@ -3393,6 +3406,70 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                             </div>
                         </div>
                     </div>
+
+                    {/* ── Add a Remote Stigix Instance ────────────────────────── */}
+                    {registryStatus?.mode === 'leader' && (
+                        <div className="bg-emerald-500/5 border-2 border-dashed border-emerald-500/20 rounded-2xl p-6 space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
+                                    <Plus size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Add a remote Stigix instance</h3>
+                                    <p className="text-[10px] text-text-muted mt-0.5">Paste this command on any Linux host to install Stigix and register it as a peer automatically.</p>
+                                </div>
+                                {registryStatus?.peer_count !== undefined && (
+                                    <div className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                        <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                                            {registryStatus.peer_count} peer{registryStatus.peer_count !== 1 ? 's' : ''} online
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Editable Leader URL */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Leader URL (this instance)</label>
+                                <input
+                                    id="peer-install-leader-url"
+                                    type="text"
+                                    value={peerInstallLeaderUrl}
+                                    onChange={(e) => setPeerInstallLeaderUrl(e.target.value)}
+                                    placeholder="https://stigix-central.example.net"
+                                    className="w-full bg-card hover:bg-card-hover border border-border focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-xs font-mono transition-all"
+                                />
+                                <p className="text-[9px] text-text-muted italic opacity-60 pl-1">
+                                    Pre-filled with the browser origin. Edit if this instance is behind NAT or a reverse proxy.
+                                </p>
+                            </div>
+
+                            {/* Generated Command */}
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Copy and paste on the remote Linux host:</label>
+                                <div className="relative group">
+                                    <div className="bg-card border border-border rounded-xl p-4 pr-14 font-mono text-[11px] text-emerald-400 break-all leading-relaxed">
+                                        {`curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- --controller ${peerInstallLeaderUrl || '<leader-url>'}`}
+                                    </div>
+                                    <button
+                                        id="copy-peer-install-command"
+                                        onClick={handleCopyPeerCommand}
+                                        title="Copy command"
+                                        className={cn(
+                                            "absolute top-2 right-2 p-2 rounded-lg border transition-all flex items-center gap-1.5",
+                                            peerCommandCopied
+                                                ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+                                                : "bg-card-secondary hover:bg-card-hover border-border text-text-muted hover:text-emerald-400 hover:border-emerald-500/30"
+                                        )}
+                                    >
+                                        {peerCommandCopied
+                                            ? <><CheckCircle size={13} /><span className="text-[9px] font-black uppercase tracking-widest">Copied!</span></>
+                                            : <><Copy size={13} /><span className="text-[9px] font-black uppercase tracking-widest">Copy</span></>}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
 
                     {/* Cloud Target Security (Signatures) */}

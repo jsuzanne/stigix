@@ -7,7 +7,8 @@ set -e
 # Default values
 INSTALL_MODE="both"
 DRY_RUN=false
-REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/main"
+CONTROLLER_URL=""
+REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/v2"
 COMPOSE_URL="$REPO_URL/docker-compose.yml"
 
 show_help() {
@@ -16,12 +17,14 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  --mode <target|source|both>  Set the deployment mode (Default: both)"
+    echo "  --controller <URL>           Join a remote Stigix leader as a peer (direct mode)"
     echo "  --dry-run, -d                Download files and show what would happen without starting Docker"
     echo "  --help, -h                   Show this help message"
     echo ""
     echo "Examples:"
-    echo "  curl -sfL https://raw.githubusercontent.com/jsuzanne/stigix/main/install-stigix.sh | bash -s -- --mode both"
-    echo "  curl -sfL https://raw.githubusercontent.com/jsuzanne/stigix/main/install-stigix.sh | bash -s -- --mode target --dry-run"
+    echo "  curl -fsSL $REPO_URL/install.sh | sudo bash"
+    echo "  curl -fsSL $REPO_URL/install.sh | sudo bash -s -- --controller https://stigix-central.example.net"
+    echo "  curl -fsSL $REPO_URL/install.sh | sudo bash -s -- --mode both"
     exit 0
 }
 
@@ -124,11 +127,23 @@ dump_process_on_port() {
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --mode|-m) INSTALL_MODE="$2"; shift 2 ;;
+        --controller|-c) CONTROLLER_URL="$2"; shift 2 ;;
         --dry-run|-d) DRY_RUN=true; shift ;;
         --help|-h) show_help ;;
         *) echo "Unknown parameter passed: $1"; show_help ;;
     esac
 done
+
+# Validate --controller URL
+if [ -n "$CONTROLLER_URL" ]; then
+    if [[ ! "$CONTROLLER_URL" =~ ^https?:// ]]; then
+        echo "❌ Error: --controller URL must start with http:// or https://"
+        echo "   Example: --controller https://stigix-central.example.net"
+        exit 1
+    fi
+    CONTROLLER_URL="${CONTROLLER_URL%/}" # Remove trailing slash
+    echo "🔗 Direct peer mode: will join controller at $CONTROLLER_URL"
+fi
 
 echo "🚀 Stigix (All-in-One) - Installation"
 echo "=========================================="
@@ -261,6 +276,20 @@ elif [ "$INSTALL_MODE" == "source" ]; then
     echo "SOURCE_ONLY=true" >> .env
 fi
 
+# Direct controller mode: inject STIGIX_CONTROLLER_URL
+if [ -n "$CONTROLLER_URL" ]; then
+    echo "" >> .env
+    echo "# --- Direct Controller Mode ---" >> .env
+    echo "# Set by --controller flag at install time. Bypasses Cloudflare discovery." >> .env
+    echo "STIGIX_CONTROLLER_URL=$CONTROLLER_URL" >> .env
+    echo "STIGIX_REGISTRY_ENABLED=true" >> .env
+    # Set site name from hostname only if not already present
+    if ! grep -q "^STIGIX_SITE_NAME=." .env 2>/dev/null; then
+        echo "STIGIX_SITE_NAME=$(hostname | cut -d'.' -f1)" >> .env
+    fi
+    echo "✅ Controller URL written to .env"
+fi
+
 mkdir -p ./config ./logs ./mcp-data
 # Pre-create CLI persistence files so Docker mounts them as files (not dirs)
 touch ./.stigix-cli.history ./.stigix-cli.json
@@ -342,6 +371,13 @@ else
     echo "🔑 Login: admin / admin"
     echo "💻 Console CLI (for headless/terminal control): docker exec -it stigix stigix-cli"
     echo "💡 Note: To change the Web UI port later, edit 'PORT' in stigix/.env and run: cd stigix && docker compose up -d"
+fi
+if [ -n "$CONTROLLER_URL" ]; then
+    echo ""
+    echo "🔗 Controller: $CONTROLLER_URL"
+    echo "🤝 Peer registration is starting automatically."
+    echo "💡 Tip: Run the following to watch live registration logs:"
+    echo "   cd stigix && docker compose logs -f"
 fi
 echo "📝 Check logs: cd stigix && docker compose logs -f"
 echo "=========================================="
