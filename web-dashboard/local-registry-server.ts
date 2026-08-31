@@ -40,6 +40,19 @@ export class LocalRegistryServer {
                 return res.status(400).json({ status: 'error', error: 'invalid_payload' });
             }
 
+            // Automatically purge old instance entry for the same IP if instance_id changed (e.g. after a site rename)
+            if (payload.ip_private) {
+                const prefix = `poc:${payload.poc_id}:inst:`;
+                for (const [existingKey, existingInst] of this.instances.entries()) {
+                    if (existingKey.startsWith(prefix) &&
+                        existingInst.ip_private === payload.ip_private &&
+                        existingInst.instance_id !== payload.instance_id) {
+                        this.instances.delete(existingKey);
+                        log('LOCAL-REGISTRY', `Replaced old instance "${existingInst.instance_id}" with renamed "${payload.instance_id}" for IP ${payload.ip_private}`);
+                    }
+                }
+            }
+
             const key = `poc:${payload.poc_id}:inst:${payload.instance_id}`;
             const instance: RegistryInstance = {
                 ...payload,

@@ -539,12 +539,14 @@ export class RegistryManager {
         const instances = await this.client.fetchInstances();
         if (instances && Array.isArray(instances)) {
             const now = Date.now();
+            const freshCache = new Map<string, { instance: RegistryInstance, lastSeen: number }>();
             for (const inst of instances) {
-                this.peerCache.set(inst.instance_id, {
+                freshCache.set(inst.instance_id, {
                     instance: inst,
                     lastSeen: now
                 });
             }
+            this.peerCache = freshCache;
         }
 
         // Fetch shared targets from Leader if we are a Peer connected to Local Leader
