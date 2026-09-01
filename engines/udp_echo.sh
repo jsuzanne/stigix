@@ -22,6 +22,10 @@ if __name__ == "__main__":
     args = vars(parser.parse_args())
 
     s = socket(AF_INET, SOCK_DGRAM)
+    s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+    try:
+        s.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+    except: pass
     s.bind((args['ip'], args['port']))
     print('UDP echo server {0} ready on port {1}'.format(s.getsockname()[0], s.getsockname()[1]))
     while 1:
