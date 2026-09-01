@@ -100,8 +100,7 @@ export class ProvisioningManager {
         } else {
             const probeType = (item.type || 'PING').toUpperCase().trim();
             const name = (item.name || '').toLowerCase().trim();
-            const target = (item.target || '').toLowerCase().trim();
-            const raw = `probe:${probeType}:${name}:${target}`;
+            const raw = `probe:${probeType}:${name}`;
             const hash = crypto.createHash('md5').update(raw).digest('hex').substring(0, 10);
             return `probe-${hash}`;
         }
@@ -434,5 +433,88 @@ export class ProvisioningManager {
         const tempFile = `${targetFile}.tmp-${Date.now()}`;
         fs.writeFileSync(tempFile, JSON.stringify(payload, null, 2), 'utf8');
         fs.renameSync(tempFile, targetFile);
+    }
+
+    public getEnrichedEffectiveItems(type: 'applications' | 'connectivity-probes', rawItems?: any[]): any[] {
+        const state = this.getState();
+        const currentApp = state.appliedRevisions[type];
+        let globalItems: any[] = [];
+        if (currentApp && currentApp.revision) {
+            globalItems = this.getPublishedBundle(type, currentApp.revision) || [];
+        } else {
+            globalItems = this.getPublishedBundle(type) || [];
+        }
+
+        if (globalItems.length === 0 && !state.enabled) {
+            return rawItems || [];
+        }
+
+        const effective = this.buildEffectiveItems(type, globalItems);
+        return effective;
+    }
+
+    public handleLocalSave(type: 'applications' | 'connectivity-probes', userItems: any[]): void {
+        const state = this.getState();
+        if (!state.enabled) {
+            return;
+        }
+
+        const currentApp = state.appliedRevisions[type];
+        let globalItems: any[] = [];
+        if (currentApp && currentApp.revision) {
+            globalItems = this.getPublishedBundle(type, currentApp.revision) || [];
+        } else {
+            globalItems = this.getPublishedBundle(type) || [];
+        }
+
+        const normalizedGlobal = this.normalizeItemsWithIds(type, globalItems);
+        const globalById = new Map<string, any>(normalizedGlobal.map(g => [g.id, g]));
+        const overrides = this.getLocalOverrides(type);
+
+        for (const rawItem of userItems) {
+            const id = this.generateDeterministicId(type, rawItem);
+            const gItem = globalById.get(id);
+
+            if (gItem) {
+                // Item originated globally — detect field-level changes
+                const changes: any = {};
+                let hasChanges = false;
+
+                const checkFields = type === 'applications'
+                    ? ['enabled', 'weight', 'endpoint', 'category']
+                    : ['enabled', 'target', 'timeout', 'frequency', 'content_match'];
+
+                for (const field of checkFields) {
+                    if (rawItem[field] !== undefined && JSON.stringify(rawItem[field]) !== JSON.stringify(gItem[field])) {
+                        changes[field] = rawItem[field];
+                        hasChanges = true;
+                    }
+                }
+
+                if (hasChanges) {
+                    overrides[id] = {
+                        ...(overrides[id] || {}),
+                        ...changes,
+                        _wasGlobal: true,
+                        updatedAt: new Date().toISOString()
+                    };
+                } else {
+                    // Restored back to match global completely — clean up override
+                    delete overrides[id];
+                }
+            } else {
+                // Item is local-only
+                const { _source, ...cleanItem } = rawItem;
+                overrides[id] = {
+                    ...cleanItem,
+                    id,
+                    _wasGlobal: false,
+                    updatedAt: new Date().toISOString()
+                };
+            }
+        }
+
+        this.saveLocalOverrides(type, overrides);
+        this.reapplyEffectiveConfig(type);
     }
 }

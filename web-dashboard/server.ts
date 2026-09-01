@@ -3597,7 +3597,8 @@ app.get('/api/config/apps', extractUserMiddleware, (req, res) => {
     if (!fs.existsSync(APPLICATIONS_CONFIG_FILE)) return res.json({ error: 'Config not found' });
 
     const config = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
-    const lines = config.applications || [];
+    const rawLines = config.applications || [];
+    const lines = provisioningManager.getEnrichedEffectiveItems('applications', rawLines);
     const categories: { name: string, apps: any[] }[] = [];
     let currentCategory = 'Uncategorized';
     let currentApps: any[] = [];
@@ -4208,13 +4209,14 @@ app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
 // API: Get Custom Connectivity Endpoints
 app.get('/api/connectivity/custom', authenticateToken, (req, res) => {
     const envProbes = getEnvConnectivityEndpoints();
-    const custom = getCustomConnectivityEndpoints();
+    const rawCustom = getCustomConnectivityEndpoints();
+    const custom = provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom);
     const discovered = discoveryManager.getProbes();
 
     // Merge custom state into env probes and serve them all
     const mergedEnvProbes = envProbes.map((p: any) => {
         const override = custom.find((cp: any) => cp.name === p.name);
-        return override ? { ...p, enabled: override.enabled } : p;
+        return override ? { ...p, ...override } : p;
     });
 
     const pureCustom = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
@@ -4239,6 +4241,9 @@ app.post('/api/connectivity/custom', authenticateToken, (req, res) => {
 
     const customSuccess = saveCustomConnectivityEndpoints(customAndEnvProbes);
     discoveryManager.updateProbesFromUI(discoveredProbes);
+
+    // Save field-level local overrides if global provisioning is active
+    provisioningManager.handleLocalSave('connectivity-probes', customAndEnvProbes);
 
     if (customSuccess) {
         // Option B: trigger an immediate check for each newly added probe (async, non-blocking)
@@ -5178,6 +5183,7 @@ const updateAppsWeigth = (updates: Record<string, number>, res: any) => {
 
         config.applications = newApps;
         fs.writeFileSync(APPLICATIONS_CONFIG_FILE, JSON.stringify(config, null, 2));
+        provisioningManager.handleLocalSave('applications', newApps);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: 'Operation failed', details: err });
