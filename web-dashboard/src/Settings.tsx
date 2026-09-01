@@ -963,6 +963,65 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         }
     };
 
+    // ─── Global Provisioning State & Handlers ───
+    const [provisioningData, setProvisioningData] = useState<{ state: any; manifest: any } | null>(null);
+    const [publishingType, setPublishingType] = useState<string | null>(null);
+    const [provisioningToggling, setProvisioningToggling] = useState(false);
+
+    const fetchProvisioningData = useCallback(() => {
+        fetch('/api/provisioning/config', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(res => res.json())
+            .then(data => setProvisioningData(data))
+            .catch(() => {});
+    }, [token]);
+
+    useEffect(() => {
+        fetchProvisioningData();
+        const interval = setInterval(fetchProvisioningData, 30000);
+        return () => clearInterval(interval);
+    }, [fetchProvisioningData]);
+
+    const handlePublishBundle = async (type: 'applications' | 'connectivity-probes') => {
+        setPublishingType(type);
+        try {
+            const res = await fetch(`/api/provisioning/publish/${type}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            });
+            const data = await res.json();
+            if (data.success) {
+                fetchProvisioningData();
+                toast.success(`Published ${type === 'applications' ? 'Applications' : 'Connectivity Probes'} revision ${data.published.revision}`);
+            } else {
+                toast.error(`Failed to publish: ${data.error || 'Unknown error'}`);
+            }
+        } catch {
+            toast.error('Publish network request failed');
+        } finally {
+            setPublishingType(null);
+        }
+    };
+
+    const handleToggleProvisioning = async (enabled: boolean) => {
+        setProvisioningToggling(true);
+        try {
+            const res = await fetch('/api/provisioning/config', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled })
+            });
+            const data = await res.json();
+            if (data.success) {
+                fetchProvisioningData();
+                toast.success(`Global provisioning ${enabled ? 'enabled' : 'disabled'}`);
+            }
+        } catch {
+            toast.error('Failed to update provisioning state');
+        } finally {
+            setProvisioningToggling(false);
+        }
+    };
+
     // Handlers
     const GLOBAL_TOTAL = 1000;
 
@@ -3353,6 +3412,70 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                     {/* ════════ LEADER VIEW ════════ */}
                     {isLeader && (
                         <>
+                            {/* Central Global Provisioning Publishing Card */}
+                            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-emerald-600/10 rounded-lg text-emerald-500">
+                                            <Layers size={18} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Central Global Provisioning</h3>
+                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Publish shared configuration bundles once to all connected remote branch peers</p>
+                                        </div>
+                                    </div>
+                                    <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                        Leader Publisher Active
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Applications Bundle Publish Card */}
+                                    <div className="bg-card-secondary/40 border border-border/60 rounded-xl p-4 flex items-center justify-between gap-4">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <Globe size={14} className="text-emerald-500" />
+                                                <span className="text-xs font-black text-text-primary">Applications Catalogue</span>
+                                            </div>
+                                            <p className="text-[9px] font-bold text-text-muted mt-1">
+                                                Published Rev: <span className="font-mono text-emerald-400">rev {provisioningData?.manifest?.bundles?.find((b: any) => b.type === 'applications')?.revision || 0}</span>
+                                                <span className="opacity-50"> ({provisioningData?.manifest?.bundles?.find((b: any) => b.type === 'applications')?.count || 0} apps)</span>
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => handlePublishBundle('applications')}
+                                            disabled={publishingType === 'applications'}
+                                            className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-sm"
+                                        >
+                                            {publishingType === 'applications' ? <RefreshCw className="animate-spin" size={12} /> : <Upload size={12} />}
+                                            Publish Apps
+                                        </button>
+                                    </div>
+
+                                    {/* Connectivity Probes Bundle Publish Card */}
+                                    <div className="bg-card-secondary/40 border border-border/60 rounded-xl p-4 flex items-center justify-between gap-4">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <Zap size={14} className="text-cyan-500" />
+                                                <span className="text-xs font-black text-text-primary">Connectivity Probes</span>
+                                            </div>
+                                            <p className="text-[9px] font-bold text-text-muted mt-1">
+                                                Published Rev: <span className="font-mono text-cyan-400">rev {provisioningData?.manifest?.bundles?.find((b: any) => b.type === 'connectivity-probes')?.revision || 0}</span>
+                                                <span className="opacity-50"> ({provisioningData?.manifest?.bundles?.find((b: any) => b.type === 'connectivity-probes')?.count || 0} probes)</span>
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => handlePublishBundle('connectivity-probes')}
+                                            disabled={publishingType === 'connectivity-probes'}
+                                            className="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-sm"
+                                        >
+                                            {publishingType === 'connectivity-probes' ? <RefreshCw className="animate-spin" size={12} /> : <Upload size={12} />}
+                                            Publish Probes
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Primary: Peer Table */}
                             <div className="bg-card border border-border rounded-2xl shadow-sm">
                                 <div className="p-5 border-b border-border/50 flex items-center justify-between">
@@ -3568,6 +3691,60 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                     </span>
                                 </div>
                             )}
+
+                            {/* Global Provisioning Status & Opt-In Card */}
+                            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-purple-600/10 rounded-lg text-purple-500">
+                                            <Layers size={18} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Central Global Provisioning</h3>
+                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Automatically pull shared application catalogues and probes published by your Leader</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleToggleProvisioning(!provisioningData?.state?.enabled)}
+                                        disabled={provisioningToggling}
+                                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border shadow-sm ${
+                                            provisioningData?.state?.enabled
+                                                ? "bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/30"
+                                                : "bg-card-secondary text-text-muted border-border hover:border-emerald-500/30"
+                                        }`}
+                                    >
+                                        {provisioningToggling ? <RefreshCw size={12} className="animate-spin" /> : <Power size={12} />}
+                                        {provisioningData?.state?.enabled ? 'Global Provisioning: ON' : 'Global Provisioning: OFF'}
+                                    </button>
+                                </div>
+
+                                {provisioningData?.state?.enabled ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                                        <div className="bg-card-secondary/30 border border-border/50 rounded-xl p-3 flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Globe size={14} className="text-emerald-500" />
+                                                <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Applications Sync</span>
+                                            </div>
+                                            <span className="font-mono text-[10px] font-bold text-emerald-400">
+                                                rev {provisioningData?.state?.appliedRevisions?.['applications']?.revision || 0} ({provisioningData?.state?.appliedRevisions?.['applications']?.status || 'pending'})
+                                            </span>
+                                        </div>
+                                        <div className="bg-card-secondary/30 border border-border/50 rounded-xl p-3 flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Zap size={14} className="text-cyan-500" />
+                                                <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Probes Sync</span>
+                                            </div>
+                                            <span className="font-mono text-[10px] font-bold text-cyan-400">
+                                                rev {provisioningData?.state?.appliedRevisions?.['connectivity-probes']?.revision || 0} ({provisioningData?.state?.appliedRevisions?.['connectivity-probes']?.status || 'pending'})
+                                            </span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="p-3 bg-card-secondary/20 border border-border/40 rounded-xl text-[9px] font-bold text-text-muted opacity-60">
+                                        Global provisioning is OFF. Your local active configuration is preserved and unmanaged by the Leader. Enable to auto-sync with Leader publications.
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 

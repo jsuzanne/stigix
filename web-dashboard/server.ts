@@ -28,6 +28,7 @@ import { TargetsManager } from './targets-manager.js';
 import { TargetManager, TargetScenario } from './target-manager.js';
 import { RegistryManager } from './registry-manager.js';
 import { LocalRegistryServer } from './local-registry-server.js';
+import { ProvisioningManager } from './provisioning-manager.js';
 
 import { Server } from 'socket.io';
 import multer from 'multer';
@@ -10075,17 +10076,88 @@ app.delete('/api/iot/devices/:id', authenticateToken, (req, res) => {
     res.json({ success: true });
 });
 
-// --- Local Registry API (Hybrid Leader) ---
+// --- Local Registry API & Provisioning Engine (Hybrid Leader) ---
+const provisioningManager = new ProvisioningManager(APP_CONFIG.configDir);
 const localRegistryServer = new LocalRegistryServer();
 registryManager.setLocalRegistryServer(localRegistryServer);
+registryManager.setProvisioningManager(provisioningManager);
 app.use('/api/registry', (req, res, next) => {
     const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE;
     if (mode === 'leader') {
-        return localRegistryServer.getRouter(targetsManager)(req, res, next);
+        return localRegistryServer.getRouter(targetsManager, provisioningManager)(req, res, next);
     }
     next();
 });
 log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry (Dynamic Mode)`);
+
+// --- Global Provisioning Management APIs ---
+app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
+    res.json({
+        state: provisioningManager.getState(),
+        manifest: provisioningManager.getManifest()
+    });
+});
+
+app.post('/api/provisioning/config', authenticateToken, (req, res) => {
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+        return res.status(400).json({ error: 'enabled boolean is required' });
+    }
+    const state = provisioningManager.setEnabled(enabled);
+    res.json({ success: true, state });
+});
+
+app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
+    const type = req.params.type as 'applications' | 'connectivity-probes';
+    if (type !== 'applications' && type !== 'connectivity-probes') {
+        return res.status(400).json({ error: 'invalid_bundle_type' });
+    }
+
+    let items: any[] = [];
+    if (type === 'applications') {
+        if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+            try {
+                const parsed = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
+                items = parsed.applications || [];
+            } catch {}
+        }
+    } else {
+        if (fs.existsSync(CUSTOM_CONNECTIVITY_FILE)) {
+            try {
+                items = JSON.parse(fs.readFileSync(CUSTOM_CONNECTIVITY_FILE, 'utf8'));
+            } catch {}
+        }
+    }
+
+    const pub = provisioningManager.publishBundle(type, items);
+    res.json({ success: true, published: pub, manifest: provisioningManager.getManifest() });
+});
+
+app.post('/api/provisioning/rollback/:type/:revision', authenticateToken, (req, res) => {
+    const type = req.params.type as 'applications' | 'connectivity-probes';
+    const revision = parseInt(req.params.revision, 10);
+    if (isNaN(revision)) return res.status(400).json({ error: 'invalid_revision' });
+
+    const bundle = provisioningManager.getPublishedBundle(type, revision);
+    if (!bundle) return res.status(404).json({ error: 'revision_not_found' });
+
+    const pub = provisioningManager.publishBundle(type, bundle);
+    res.json({ success: true, rolledBackTo: revision, newPublished: pub, manifest: provisioningManager.getManifest() });
+});
+
+app.post('/api/provisioning/override/:type/:id', authenticateToken, (req, res) => {
+    const type = req.params.type as 'applications' | 'connectivity-probes';
+    const { id } = req.params;
+    provisioningManager.overrideItemLocally(type, id, req.body);
+    res.json({ success: true });
+});
+
+app.post('/api/provisioning/restore/:type/:id', authenticateToken, (req, res) => {
+    const type = req.params.type as 'applications' | 'connectivity-probes';
+    const { id } = req.params;
+    provisioningManager.restoreGlobalValue(type, id);
+    res.json({ success: true });
+});
 
 // Global Registry Status
 app.get('/api/registry/status', authenticateToken, (req, res) => {

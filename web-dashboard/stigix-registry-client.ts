@@ -251,6 +251,48 @@ export class StigixRegistryClient {
         }
     }
 
+    async fetchProvisioningManifest(): Promise<any | null> {
+        if (!this.config.enabled || this.config.registryUrl === this.config.remoteUrl) return null;
+        try {
+            const res = await fetch(`${this.config.registryUrl}/provisioning/manifest`, {
+                headers: this.getHeaders()
+            });
+            if (res.ok) return await res.json();
+        } catch (e) {
+            log('PROVISIONING', `Error fetching provisioning manifest from ${this.config.registryUrl}: ${e}`, 'warn');
+        }
+        return null;
+    }
+
+    async fetchProvisioningBundle(type: string, revision: number): Promise<any[] | null> {
+        if (!this.config.enabled || this.config.registryUrl === this.config.remoteUrl) return null;
+        try {
+            const res = await fetch(`${this.config.registryUrl}/provisioning/bundles/${type}/${revision}`, {
+                headers: this.getHeaders()
+            });
+            if (res.ok) return await res.json();
+        } catch (e) {
+            log('PROVISIONING', `Error fetching bundle ${type} rev ${revision} from ${this.config.registryUrl}: ${e}`, 'warn');
+        }
+        return null;
+    }
+
+    async reportProvisioningStatus(status: any): Promise<boolean> {
+        if (!this.config.enabled || this.config.registryUrl === this.config.remoteUrl) return false;
+        try {
+            const res = await fetch(`${this.config.registryUrl}/provisioning/status`, {
+                method: 'POST',
+                headers: this.getHeaders(),
+                body: JSON.stringify({
+                    instance_id: this.config.instanceId,
+                    status
+                })
+            });
+            return res.ok;
+        } catch {}
+        return false;
+    }
+
     async announceLeader(localIp: string): Promise<boolean> {
         if (!this.config.pocId || !this.config.remoteUrl) return false;
 

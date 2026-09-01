@@ -30,7 +30,7 @@ export class LocalRegistryServer {
         return Array.from(this.instances.values());
     }
 
-    getRouter(targetsManager?: any): Router {
+    getRouter(targetsManager?: any, provisioningManager?: any): Router {
         const router = Router();
 
         // POST /register
@@ -111,6 +111,53 @@ export class LocalRegistryServer {
                 log('LOCAL-REGISTRY', `Error serving targets: ${e}`, 'error');
                 return res.status(500).json({ status: 'error', error: 'failed_to_get_targets' });
             }
+        });
+
+        // ─── Provisioning Endpoints (Leader → Peer Pull) ───
+
+        // GET /provisioning/manifest
+        router.get('/provisioning/manifest', (req, res) => {
+            if (!provisioningManager) {
+                return res.status(503).json({ error: 'provisioning_unavailable' });
+            }
+            return res.json(provisioningManager.getManifest());
+        });
+
+        // GET /provisioning/bundles/:type/:revision
+        router.get('/provisioning/bundles/:type/:revision', (req, res) => {
+            if (!provisioningManager) {
+                return res.status(503).json({ error: 'provisioning_unavailable' });
+            }
+            const type = req.params.type as 'applications' | 'connectivity-probes';
+            const revision = parseInt(req.params.revision, 10);
+            if (isNaN(revision)) {
+                return res.status(400).json({ error: 'invalid_revision' });
+            }
+            const bundle = provisioningManager.getPublishedBundle(type, revision);
+            if (!bundle) {
+                return res.status(404).json({ error: 'bundle_not_found' });
+            }
+            return res.json(bundle);
+        });
+
+        // POST /provisioning/status (Peer status update to Leader)
+        router.post('/provisioning/status', (req, res) => {
+            const { instance_id, status } = req.body;
+            if (!instance_id || !status) {
+                return res.status(400).json({ error: 'invalid_payload' });
+            }
+
+            // Find matching registered instance and attach provisioning status
+            for (const inst of this.instances.values()) {
+                if (inst.instance_id === instance_id) {
+                    (inst as any).provisioning_status = {
+                        ...status,
+                        lastReportedAt: new Date().toISOString()
+                    };
+                    break;
+                }
+            }
+            return res.json({ status: 'ok' });
         });
 
         return router;

@@ -596,9 +596,38 @@ export class RegistryManager {
         // Fetch shared targets from Leader if we are a Peer connected to Local Leader
         if (mode === 'peer' && config.registryUrl !== config.remoteUrl) {
             this.sharedTargetsCache = await this.client.fetchSharedTargets();
+            // Sync global provisioning bundles if enabled
+            await this.syncProvisioning();
         } else {
             this.sharedTargetsCache = [];
         }
+    }
+
+    public setProvisioningManager(pm: any) {
+        this.provisioningManager = pm;
+    }
+
+    public async syncProvisioning(): Promise<void> {
+        if (!this.provisioningManager) return;
+        const state = this.provisioningManager.getState();
+        if (!state.enabled) return;
+
+        const manifest = await this.client.fetchProvisioningManifest();
+        if (!manifest || !Array.isArray(manifest.bundles)) return;
+
+        for (const bundle of manifest.bundles) {
+            const currentApplied = state.appliedRevisions[bundle.type];
+            if (!currentApplied || currentApplied.revision !== bundle.revision || currentApplied.checksum !== bundle.checksum) {
+                log('PROVISIONING', `New global bundle discovered: ${bundle.type} rev ${bundle.revision}`);
+                const bundleItems = await this.client.fetchProvisioningBundle(bundle.type, bundle.revision);
+                if (bundleItems && Array.isArray(bundleItems)) {
+                    this.provisioningManager.applyGlobalBundle(bundle.type, bundle.revision, bundle.checksum, bundleItems);
+                }
+            }
+        }
+
+        // Report updated state to Leader
+        await this.client.reportProvisioningStatus(this.provisioningManager.getState());
     }
 
     getSharedTargets() {
