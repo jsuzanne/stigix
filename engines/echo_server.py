@@ -21,11 +21,25 @@ def get_version():
 
 def handle_port(ip, port, active_sessions, lock):
     s = socket(AF_INET, SOCK_DGRAM)
-    s.settimeout(1.0)
+    s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
     try:
-        s.bind((ip, port))
-        timestamp = time.strftime('%H:%M:%S')
-        print(f"[{timestamp}] [SYSTEM] 📡 Listening on PORT {port}...")
+        s.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+    except: pass
+    s.settimeout(1.0)
+    
+    bound = False
+    while not bound:
+        try:
+            s.bind((ip, port))
+            bound = True
+            timestamp = time.strftime('%H:%M:%S')
+            print(f"[{timestamp}] [SYSTEM] 📡 Listening on PORT {port}...", flush=True)
+        except Exception as e:
+            timestamp = time.strftime('%H:%M:%S')
+            print(f"[{timestamp}] ❌ Failed to bind to PORT {port}: {e}. Retrying in 2s...", flush=True)
+            time.sleep(2)
+
+    try:
         while True:
             try:
                 data, addr = s.recvfrom(BUFSIZE)
@@ -78,20 +92,26 @@ def handle_port(ip, port, active_sessions, lock):
                     active_sessions[session_key] = session
 
                 # Echo back
-                if session_type == "Convergence":
-                    try:
-                        # Append :S<count> for RX/TX loss calculation
-                        echo_payload = data + f":S{session['packet_count']}".encode('utf-8')
-                        s.sendto(echo_payload, addr)
-                    except:
+                try:
+                    if session_type == "Convergence":
+                        try:
+                            # Append :S<count> for RX/TX loss calculation
+                            echo_payload = data + f":S{session['packet_count']}".encode('utf-8')
+                            s.sendto(echo_payload, addr)
+                        except:
+                            s.sendto(data, addr)
+                    else:
                         s.sendto(data, addr)
-                else:
-                    s.sendto(data, addr)
-                    
+                except Exception as send_err:
+                    if DEBUG_MODE:
+                        print(f"[{time.strftime('%H:%M:%S')}] ⚠️ Echo send error on port {port} to {addr}: {send_err}", flush=True)
+                        
             except timeout:
                 pass
+            except Exception as pkt_err:
+                print(f"[{time.strftime('%H:%M:%S')}] ⚠️ Packet processing error on port {port}: {pkt_err}", flush=True)
     except Exception as e:
-        print(f"Error on port {port}: {e}")
+        print(f"[{time.strftime('%H:%M:%S')}] ❌ Unhandled error on port {port}: {e}", flush=True)
     finally:
         s.close()
 
