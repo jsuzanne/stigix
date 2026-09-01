@@ -1759,7 +1759,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                     <Activity size={20} />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-black text-text-primary tracking-tight">Active Monitoring Probes</h2>
+                                    <h2 className="text-lg font-black text-text-primary tracking-tight flex items-center gap-2">
+                                        <span>Active Monitoring Probes</span>
+                                        <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-xs">
+                                            {customProbes.length} total
+                                        </span>
+                                    </h2>
                                     <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Real-time performance and availability tracking</p>
                                 </div>
                             </div>
@@ -1809,19 +1814,34 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                         </div>
 
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-4">
-                            <div className="flex p-1 bg-card-secondary rounded-lg border border-border">
-                                {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD', 'PRISMA'].map(t => (
-                                    <button
-                                        key={t}
-                                        onClick={() => setProbeFilterType(t)}
-                                        className={cn(
-                                            "px-3 py-1 value-btn rounded-md text-[11px] font-bold transition-all uppercase tracking-tighter",
-                                            probeFilterType === t ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" : "text-text-muted hover:text-text-primary"
-                                        )}
-                                    >
-                                        {t === 'CLOUD' ? 'STIGIX CLOUD' : t}
-                                    </button>
-                                ))}
+                            <div className="flex p-1 bg-card-secondary rounded-lg border border-border flex-wrap gap-0.5">
+                                {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD', 'PRISMA'].map(t => {
+                                    const count = t === 'ALL'
+                                        ? customProbes.length
+                                        : t === 'CLOUD'
+                                            ? customProbes.filter((p: any) => p.type === 'CLOUD' || p.type === 'STIGIX CLOUD').length
+                                            : t === 'PRISMA'
+                                                ? customProbes.filter((p: any) => (p as any).source === 'discovery').length
+                                                : customProbes.filter((p: any) => p.type === t).length;
+                                    return (
+                                        <button
+                                            key={t}
+                                            onClick={() => setProbeFilterType(t)}
+                                            className={cn(
+                                                "px-3 py-1 value-btn rounded-md text-[11px] font-bold transition-all uppercase tracking-tighter flex items-center gap-1.5",
+                                                probeFilterType === t ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" : "text-text-muted hover:text-text-primary"
+                                            )}
+                                        >
+                                            <span>{t === 'CLOUD' ? 'STIGIX CLOUD' : t}</span>
+                                            <span className={cn(
+                                                "px-1.5 py-0.2 rounded-full font-mono text-[9.5px]",
+                                                probeFilterType === t ? "bg-white/20 text-white" : "bg-card-secondary/80 text-text-muted"
+                                            )}>
+                                                {count}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
                             </div>
                             <div className="relative flex-grow max-w-md">
                                 <input

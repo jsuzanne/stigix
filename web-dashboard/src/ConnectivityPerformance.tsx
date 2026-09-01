@@ -53,13 +53,10 @@ interface ConnectivityPerformanceProps {
 }
 
 // Component for individual endpoint type graph
-function EndpointTypeGraph({ type, results, color }: { type: string; results: any[]; color: string }) {
-    // Filter successful results (reachable and score > 0)
-    const successResults = results.filter(r => r.reachable && r.score > 0);
-
-    // Calculate metrics
-    const avgScore = successResults.length > 0
-        ? Math.round(successResults.reduce((sum, r) => sum + r.score, 0) / successResults.length)
+function EndpointTypeGraph({ type, results, color, count }: { type: string; results: any[]; color: string; count?: number }) {
+    const successResults = results.filter(r => r.score > 0);
+    const avgScore = results.length > 0
+        ? Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length)
         : 0;
     const avgLatency = successResults.length > 0
         ? Math.round(successResults.reduce((sum, r) => sum + r.metrics.total_ms, 0) / successResults.length)
@@ -78,64 +75,69 @@ function EndpointTypeGraph({ type, results, color }: { type: string; results: an
             latency: Math.round(r.metrics.total_ms)
         }));
 
-    if (results.length === 0) {
-        return (
-            <div className="bg-card border border-border p-4 rounded-xl shadow-sm">
-                <div className="text-text-muted text-xs font-bold mb-2 tracking-wider">{type}</div>
-                <div className="text-xs text-text-muted italic">No data available</div>
-            </div>
-        );
-    }
-
     return (
         <div className="bg-card border border-border p-3 rounded-xl shadow-sm flex flex-col h-full">
-            <div className="text-text-muted text-[10px] font-bold mb-2 uppercase tracking-wider truncate" title={type}>{type}</div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2 text-[10px] font-bold leading-none">
-                <div className="flex items-center gap-1">
-                    <span className="text-text-muted">Scr:</span>
-                    <span className={twMerge("font-black", avgScore >= 80 ? "text-green-600 dark:text-green-400" : avgScore >= 50 ? "text-orange-500" : "text-red-500")}>
-                        {avgScore}
+            <div className="flex items-center justify-between text-text-muted text-[10px] font-bold mb-2 uppercase tracking-wider">
+                <span className="truncate" title={type}>{type}</span>
+                {typeof count === 'number' && (
+                    <span className="px-1.5 py-0.5 rounded bg-card-secondary text-text-secondary font-mono text-[9px] border border-border">
+                        {count} {count === 1 ? 'probe' : 'probes'}
                     </span>
-                </div>
-                <div className="flex items-center gap-1">
-                    <span className="text-text-muted">Lat:</span>
-                    <span className="text-text-primary font-mono">{avgLatency}ms</span>
-                </div>
-                <div className="flex items-center gap-1">
-                    <span className="text-text-muted">Suc:</span>
-                    <span className={twMerge("font-black", successRate >= 95 ? "text-green-600 dark:text-green-400" : successRate >= 80 ? "text-orange-500" : "text-red-500")}>
-                        {successRate}%
-                    </span>
-                </div>
+                )}
             </div>
-            <div className="h-[50px] w-full mt-auto">
-                <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData}>
-                        <defs>
-                            <linearGradient id={`color${type.replace(/[^a-zA-Z]/g, '')}`} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor={color} stopOpacity={0.3} />
-                                <stop offset="95%" stopColor={color} stopOpacity={0} />
-                            </linearGradient>
-                        </defs>
-                        <Area
-                            type="monotone"
-                            dataKey="score"
-                            stroke={color}
-                            fillOpacity={1}
-                            fill={`url(#color${type.replace(/[^a-zA-Z]/g, '')})`}
-                        />
-                        <ReTooltip
-                            contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                            itemStyle={{ color: 'var(--text-primary)', fontSize: '11px' }}
-                            labelStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: 'bold', marginBottom: '4px' }}
-                            formatter={(value: any, name: string) => {
-                                if (name === 'score') return [value, 'Score'];
-                                return [value, name];
-                            }}
-                        />
-                    </AreaChart>
-                </ResponsiveContainer>
-            </div>
+
+            {results.length === 0 ? (
+                <div className="text-xs text-text-muted italic py-4">No data available</div>
+            ) : (
+                <>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2 text-[10px] font-bold leading-none">
+                        <div className="flex items-center gap-1">
+                            <span className="text-text-muted">Scr:</span>
+                            <span className={twMerge("font-black", avgScore >= 80 ? "text-green-600 dark:text-green-400" : avgScore >= 50 ? "text-orange-500" : "text-red-500")}>
+                                {avgScore}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <span className="text-text-muted">Lat:</span>
+                            <span className="text-text-primary font-mono">{avgLatency}ms</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <span className="text-text-muted">Suc:</span>
+                            <span className={twMerge("font-black", successRate >= 95 ? "text-green-600 dark:text-green-400" : successRate >= 80 ? "text-orange-500" : "text-red-500")}>
+                                {successRate}%
+                            </span>
+                        </div>
+                    </div>
+                    <div className="h-[50px] w-full mt-auto">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={chartData}>
+                                <defs>
+                                    <linearGradient id={`color${type.replace(/[^a-zA-Z]/g, '')}`} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor={color} stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <Area
+                                    type="monotone"
+                                    dataKey="score"
+                                    stroke={color}
+                                    fillOpacity={1}
+                                    fill={`url(#color${type.replace(/[^a-zA-Z]/g, '')})`}
+                                />
+                                <ReTooltip
+                                    contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                    itemStyle={{ color: 'var(--text-primary)', fontSize: '11px' }}
+                                    labelStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: 'bold', marginBottom: '4px' }}
+                                    formatter={(value: any, name: string) => {
+                                        if (name === 'score') return [value, 'Score'];
+                                        return [value, name];
+                                    }}
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </>
+            )}
         </div>
     );
 }
@@ -805,15 +807,45 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
 
                 {/* 3. Performance Trends by Endpoint Type */}
                 <div className="xl:col-span-4 bg-card-secondary/30 border border-border p-5 rounded-2xl shadow-sm">
-                    <div className="text-text-muted text-xs font-bold tracking-wider flex items-center gap-2 mb-4">
-                        <BarChart3 size={16} /> Performance Trends by Type
+                    <div className="text-text-muted text-xs font-bold tracking-wider flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <BarChart3 size={16} /> Performance Trends by Type
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[10px]">
+                            {endpoints.length} active probes
+                        </span>
                     </div>
                     <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                        <EndpointTypeGraph type="HTTP/HTTPS" results={httpResults} color="#3b82f6" />
-                        <EndpointTypeGraph type="PING" results={pingResults} color="#22c55e" />
-                        <EndpointTypeGraph type="DNS" results={dnsResults} color="#a855f7" />
-                        <EndpointTypeGraph type="UDP" results={udpResults} color="#f97316" />
-                        <EndpointTypeGraph type="STIGIX CLOUD" results={cloudResults} color="#6366f1" />
+                        <EndpointTypeGraph
+                            type="HTTP/HTTPS"
+                            results={httpResults}
+                            color="#3b82f6"
+                            count={endpoints.filter(e => e.type === 'HTTP' || e.type === 'HTTPS').length}
+                        />
+                        <EndpointTypeGraph
+                            type="PING"
+                            results={pingResults}
+                            color="#22c55e"
+                            count={endpoints.filter(e => e.type === 'PING').length}
+                        />
+                        <EndpointTypeGraph
+                            type="DNS"
+                            results={dnsResults}
+                            color="#a855f7"
+                            count={endpoints.filter(e => e.type === 'DNS').length}
+                        />
+                        <EndpointTypeGraph
+                            type="UDP"
+                            results={udpResults}
+                            color="#f97316"
+                            count={endpoints.filter(e => e.type === 'UDP').length}
+                        />
+                        <EndpointTypeGraph
+                            type="STIGIX CLOUD"
+                            results={cloudResults}
+                            color="#6366f1"
+                            count={endpoints.filter(e => e.type === 'CLOUD' || e.type === 'STIGIX CLOUD').length}
+                        />
                     </div>
                 </div>
             </div>
@@ -848,19 +880,34 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
-                    <div className="flex p-1 bg-card-secondary rounded-lg border border-border">
-                        {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD', 'PRISMA SDWAN'].map(t => (
-                            <button
-                                key={t}
-                                onClick={() => setFilterType(t)}
-                                className={cn(
-                                    "px-3 py-1 rounded-md text-[11px] font-bold transition-all uppercase tracking-tighter",
-                                    filterType === t ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" : "text-text-muted hover:text-text-primary"
-                                )}
-                            >
-                                {t === 'CLOUD' ? 'STIGIX CLOUD' : t}
-                            </button>
-                        ))}
+                    <div className="flex p-1 bg-card-secondary rounded-lg border border-border flex-wrap gap-0.5">
+                        {['ALL', 'HTTP', 'HTTPS', 'PING', 'TCP', 'UDP', 'DNS', 'CLOUD', 'PRISMA SDWAN'].map(t => {
+                            const count = t === 'ALL'
+                                ? endpoints.length
+                                : t === 'CLOUD'
+                                    ? endpoints.filter(e => e.type === 'CLOUD' || e.type === 'STIGIX CLOUD').length
+                                    : t === 'PRISMA SDWAN'
+                                        ? endpoints.filter(e => e.type === 'PRISMA' || e.type === 'PRISMA SDWAN').length
+                                        : endpoints.filter(e => e.type === t).length;
+                            return (
+                                <button
+                                    key={t}
+                                    onClick={() => setFilterType(t)}
+                                    className={cn(
+                                        "px-3 py-1 rounded-md text-[11px] font-bold transition-all uppercase tracking-tighter flex items-center gap-1.5",
+                                        filterType === t ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" : "text-text-muted hover:text-text-primary"
+                                    )}
+                                >
+                                    <span>{t === 'CLOUD' ? 'STIGIX CLOUD' : t}</span>
+                                    <span className={cn(
+                                        "px-1.5 py-0.2 rounded-full font-mono text-[9.5px]",
+                                        filterType === t ? "bg-white/20 text-white" : "bg-card-secondary/80 text-text-muted"
+                                    )}>
+                                        {count}
+                                    </span>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
