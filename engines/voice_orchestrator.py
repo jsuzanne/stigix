@@ -201,6 +201,42 @@ def check_reachability(ip):
     except subprocess.CalledProcessError:
         return False
 
+def get_local_site_name() -> str:
+    """Reads site name from env, site-detection.json, system-settings.json, or hostname."""
+    name = os.environ.get('SITE_NAME') or os.environ.get('NODE_NAME')
+    if name: return name.strip()
+    
+    try:
+        p = os.path.join(CONFIG_DIR, 'site-detection.json')
+        if os.path.exists(p):
+            with open(p, 'r') as f:
+                d = json.load(f)
+                s = d.get('detected_site_name') or d.get('site_name')
+                if s: return s.strip()
+    except Exception: pass
+
+    try:
+        if os.path.exists(SYSTEM_SETTINGS_FILE):
+            with open(SYSTEM_SETTINGS_FILE, 'r') as f:
+                d = json.load(f)
+                s = d.get('site_name') or d.get('local_site_name') or d.get('target_name')
+                if s: return s.strip()
+    except Exception: pass
+
+    try:
+        config = load_voice_config()
+        s = config.get('site_name') or config.get('control', {}).get('site_name')
+        if s: return s.strip()
+    except Exception: pass
+
+    try:
+        import socket
+        h = socket.gethostname()
+        if h and h != 'localhost': return h.strip()
+    except Exception: pass
+
+    return ''
+
 def start_call(server, interface):
     call_id = get_next_call_id()
     host, port = server['target'].split(':')
@@ -224,15 +260,7 @@ def start_call(server, interface):
     stream_type = server.get('stream_type', 'audio')
     control = load_control()
     source_port_mode = control.get('source_port_mode', 'call_id')
-    site_name = os.environ.get('SITE_NAME') or os.environ.get('NODE_NAME', '')
-    if not site_name:
-        try:
-            import socket
-            h = socket.gethostname()
-            if h and h != 'localhost':
-                site_name = h
-        except Exception:
-            pass
+    site_name = get_local_site_name()
 
     cmd = [
         "python3", "rtp.py",
