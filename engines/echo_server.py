@@ -66,7 +66,7 @@ def handle_port(ip, port, active_sessions, lock):
                         
                         timestamp = time.strftime('%H:%M:%S')
                         label_str = f" {detected_label} -" if detected_label else ""
-                        if DEBUG_MODE: print(f"[{timestamp}] [{log_id}] 📥{label_str} RECEIVED ON PORT {port}: {addr[0]}:{addr[1]}", flush=True)
+                        print(f"[{timestamp}] [{log_id}] 📥{label_str} RECEIVED ON PORT {port}: {addr[0]}:{addr[1]}", flush=True)
                     
                     session = active_sessions.get(session_key, {"packet_count": 0, "start_time": now, "port": port})
                     session["last_seen"] = now
@@ -160,7 +160,7 @@ def maintenance(active_sessions, lock):
                     duration = int(now - session['start_time'] - 60.0)
                     label_str = f" {session.get('label', '')} -" if session.get('label') else ""
                     addr_info = f"{session['last_addr'][0]}:{session['last_addr'][1]}" if "last_addr" in session else "Unknown"
-                    if DEBUG_MODE: print(f"[{timestamp}] [{id_val}] ✅{label_str} COMPLETED ON PORT {session['port']}: {addr_info} | Duration: {duration}s | Packets: {session['packet_count']}", flush=True)
+                    print(f"[{timestamp}] [{id_val}] ✅{label_str} COMPLETED ON PORT {session['port']}: {addr_info} | Duration: {duration}s | Packets: {session['packet_count']}", flush=True)
                     to_remove.append(key)
             
             for key in to_remove:
