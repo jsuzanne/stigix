@@ -202,13 +202,23 @@ def check_reachability(ip):
         return False
 
 def get_local_site_name() -> str:
-    """Reads site name from env (STIGIX_SITE_NAME, SITE_NAME, NODE_NAME), .env file, site-name.json, or hostname."""
-    # 1. Environment variables
-    for env_key in ['STIGIX_SITE_NAME', 'SITE_NAME', 'NODE_NAME', 'TARGET_NAME']:
+    """Reads site name with priority: site-name.json (UI override) > STIGIX_SITE_NAME / SITE_NAME > site-detection.json > NODE_NAME > hostname."""
+    # 1. Check site-name.json (persisted by Settings -> Stigix Targets -> LOCAL TARGET SERVICE)
+    try:
+        p = os.path.join(CONFIG_DIR, 'site-name.json')
+        if os.path.exists(p):
+            with open(p, 'r') as f:
+                d = json.load(f)
+                s = d.get('siteName') or d.get('site_name')
+                if s and s.strip(): return s.strip()
+    except Exception: pass
+
+    # 2. Check explicit env vars (STIGIX_SITE_NAME, SITE_NAME)
+    for env_key in ['STIGIX_SITE_NAME', 'SITE_NAME']:
         v = os.environ.get(env_key)
         if v and v.strip(): return v.strip()
 
-    # 2. Check .env files on disk if not exported into container env
+    # 3. Check .env files on disk
     for env_path in ['/app/.env', '/app/config/.env', '.env', '../.env']:
         try:
             if os.path.exists(env_path):
@@ -217,44 +227,36 @@ def get_local_site_name() -> str:
                         line = line.strip()
                         if line.startswith('#') or '=' not in line: continue
                         k, val = line.split('=', 1)
-                        if k.strip() in ['STIGIX_SITE_NAME', 'SITE_NAME', 'NODE_NAME', 'TARGET_NAME']:
+                        if k.strip() in ['STIGIX_SITE_NAME', 'SITE_NAME']:
                             clean_val = val.strip().strip('"\'')
                             if clean_val: return clean_val
         except Exception: pass
 
-    # 3. Check site-name.json (persisted by Settings -> Stigix Targets -> LOCAL TARGET SERVICE)
-    try:
-        p = os.path.join(CONFIG_DIR, 'site-name.json')
-        if os.path.exists(p):
-            with open(p, 'r') as f:
-                d = json.load(f)
-                s = d.get('siteName') or d.get('site_name')
-                if s: return s.strip()
-    except Exception: pass
-
+    # 4. Check site-detection.json
     try:
         p = os.path.join(CONFIG_DIR, 'site-detection.json')
         if os.path.exists(p):
             with open(p, 'r') as f:
                 d = json.load(f)
                 s = d.get('detected_site_name') or d.get('site_name') or d.get('siteName')
-                if s: return s.strip()
+                if s and s.strip(): return s.strip()
     except Exception: pass
 
+    # 5. Check system-settings.json
     try:
         if os.path.exists(SYSTEM_SETTINGS_FILE):
             with open(SYSTEM_SETTINGS_FILE, 'r') as f:
                 d = json.load(f)
                 s = d.get('site_name') or d.get('siteName') or d.get('local_site_name') or d.get('target_name')
-                if s: return s.strip()
+                if s and s.strip(): return s.strip()
     except Exception: pass
 
-    try:
-        config = load_voice_config()
-        s = config.get('site_name') or config.get('siteName') or config.get('control', {}).get('site_name')
-        if s: return s.strip()
-    except Exception: pass
+    # 6. Fallback env vars (NODE_NAME, TARGET_NAME)
+    for env_key in ['NODE_NAME', 'TARGET_NAME']:
+        v = os.environ.get(env_key)
+        if v and v.strip(): return v.strip()
 
+    # 7. Hostname fallback
     try:
         import socket
         h = socket.gethostname()
