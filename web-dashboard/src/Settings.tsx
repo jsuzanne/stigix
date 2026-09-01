@@ -1862,7 +1862,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                                     <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            navigator.clipboard.writeText(fullUrl).then(() => showSuccess('URL copied!'));
+                                                                            copyToClipboard(fullUrl); showSuccess('URL copied!');
                                                                         }}
                                                                         className="opacity-40 hover:opacity-100 transition-opacity p-0.5 hover:bg-blue-500/10 rounded text-blue-500/60 hover:text-blue-500 flex-shrink-0"
                                                                         title="Copy full URL to clipboard"
@@ -2302,7 +2302,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                                                  Effective URL <span className="opacity-50 normal-case font-bold tracking-normal">(read-only — includes overrides)</span>
                                                                              </label>
                                                                              <button
-                                                                                 onClick={() => navigator.clipboard.writeText(curlUrl).then(() => showSuccess('Full URL copied! Key and overrides included.'))}
+                                                                                 onClick={() => () => { copyToClipboard(curlUrl); showSuccess('Full URL copied! Key and overrides included.'); }}
                                                                                  className="text-[9px] font-black text-blue-500 hover:text-blue-400 flex items-center gap-1 px-2 py-0.5 rounded hover:bg-blue-500/10 transition-all font-mono"
                                                                                  title="Copy full signed URL (with key) for curl"
                                                                              >
@@ -4022,7 +4022,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                     <div className="flex items-center gap-1.5">
                                                         <button
                                                             onClick={() => {
-                                                                navigator.clipboard.writeText(fullUrl);
+                                                                copyToClipboard(fullUrl);
                                                                 toast.success('Link copied!');
                                                             }}
                                                             className="p-1 hover:bg-emerald-500/10 text-text-muted hover:text-emerald-500 rounded transition-colors"
