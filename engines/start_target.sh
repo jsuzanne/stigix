@@ -12,9 +12,10 @@ trap cleanup SIGTERM SIGINT
 
 # Pre-emptive cleanup for host-mode port conflicts
 echo "🧹 Pre-cleaning local ports 6100, 6200, 5201, 8082..."
-pkill -f "echo_server.py" || true
-pkill -f "http_server.py" || true
-pkill -f "iperf3" || true
+pkill -9 -f "echo_server.py" || true
+pkill -9 -f "http_server.py" || true
+pkill -9 -f "iperf3" || true
+sleep 1
 
 echo "🚀 Starting SD-WAN Voice Echo Server..."
 python3 -u /app/engines/echo_server.py --ports 6100,6200 &
