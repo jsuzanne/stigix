@@ -1253,7 +1253,8 @@ export default function Voice(props: VoiceProps) {
                             </thead>
                             <tbody className="divide-y divide-border/50">
                                 {(() => {
-                                    const getResolvedSiteName = (ip: string) => {
+                                    const getResolvedSiteName = (ip: string, payloadSite?: string) => {
+                                        if (payloadSite && payloadSite.trim()) return payloadSite.trim();
                                         if (!ip) return 'Unknown';
                                         const regMatch = allRegistryTargets.find((t: any) => t.host === ip || t.ip === ip);
                                         if (regMatch?.name && !/^[\d.]+$/.test(regMatch.name)) return regMatch.name;
@@ -1276,7 +1277,7 @@ export default function Voice(props: VoiceProps) {
                                         .filter(s => {
                                             if (!searchTerm) return true;
                                             const term = searchTerm.toLowerCase();
-                                            const siteName = getResolvedSiteName(s.src_ip);
+                                            const siteName = getResolvedSiteName(s.src_ip, (s as any).src_site);
                                             return (s.id || '').toLowerCase().includes(term) ||
                                                    (s.src_ip || '').toLowerCase().includes(term) ||
                                                    siteName.toLowerCase().includes(term) ||
@@ -1287,7 +1288,7 @@ export default function Voice(props: VoiceProps) {
                                                    String(s.src_port || '').includes(term);
                                         })
                                         .map((session, idx) => {
-                                            const siteName = getResolvedSiteName(session.src_ip);
+                                            const siteName = getResolvedSiteName(session.src_ip, (session as any).src_site);
                                             const isActive = session.status === 'active';
                                             const startTime = session.start_time ? new Date(session.start_time * 1000) : new Date();
                                             return (

@@ -50,9 +50,16 @@ def handle_port(ip, port, active_sessions, lock):
                 # Extract IDs
                 detected_id = "Unknown"
                 detected_label = ""
+                detected_site = ""
                 session_type = "Voice"
                 try:
                     payload_str = data.decode('latin-1', errors='ignore')
+                    if "SITE:" in payload_str:
+                        import re
+                        m_site = re.search(r'SITE:([A-Za-z0-9_-]+):?', payload_str)
+                        if m_site:
+                            detected_site = m_site.group(1).strip()
+
                     if "CID:" in payload_str:
                         detected_id = payload_str.split("CID:")[1].split(":")[0].strip()
                         detected_label = ""
@@ -102,6 +109,8 @@ def handle_port(ip, port, active_sessions, lock):
                     session["last_seen"] = now
                     session["id"] = detected_id
                     session["label"] = detected_label
+                    if detected_site:
+                        session["src_site"] = detected_site
                     session["type"] = session_type
                     session["packet_count"] += 1
                     session["last_addr"] = addr # Track last seen address for maintenance logging
@@ -159,6 +168,7 @@ def export_ingress_sessions(active_sessions, lock):
                     "type": session.get('type', 'Voice'),
                     "label": session.get('label', ''),
                     "src_ip": addr_info[0],
+                    "src_site": session.get('src_site', ''),
                     "src_port": addr_info[1],
                     "dest_port": session.get('port', 6100),
                     "packet_count": session.get('packet_count', 0),
@@ -210,6 +220,7 @@ def maintenance(active_sessions, lock):
                     "type": session.get('type', 'Voice'),
                     "label": session.get('label', ''),
                     "src_ip": addr_info[0],
+                    "src_site": session.get('src_site', ''),
                     "src_port": addr_info[1],
                     "dest_port": session.get('port', 6100),
                     "packet_count": session.get('packet_count', 0),

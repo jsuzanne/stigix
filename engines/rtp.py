@@ -126,6 +126,8 @@ if __name__ == "__main__":
                       help="Max packets to send (default 90000)", type=int, default=90000)
     opts.add_argument("--call-id",
                       help="Call ID embedded in payload for tracking", type=str, default="NONE")
+    opts.add_argument("--site-name",
+                      help="Site Name embedded in payload for source identification under NAT", type=str, default="")
     opts.add_argument("--stream-type",
                       help="Stream type: audio or video (default audio)",
                       type=str, default="audio", choices=["audio", "video"])
@@ -174,7 +176,13 @@ if __name__ == "__main__":
 
     # ── Build payload ─────────────────────────────────────────────────────────
     payload_padding = os.urandom(payload_size)  # fast, no loop needed
-    call_id_tag   = f"CID:{args.get('call_id', 'NONE')}:".encode()
+    call_id = args.get('call_id', 'NONE')
+    site_name = args.get('site_name') or os.environ.get('SITE_NAME') or os.environ.get('NODE_NAME', '')
+    site_name = site_name.strip()
+    if site_name:
+        call_id_tag = f"CID:{call_id}:SITE:{site_name}:".encode()
+    else:
+        call_id_tag = f"CID:{call_id}:".encode()
     final_payload = (call_id_tag + payload_padding)[:payload_size]
     if is_debug_mode:
         print(f"[DEBUG MODE] stream={stream_type} | call_id={args.get('call_id')} | tos=0 | port=RANDOM | payload=tagged",

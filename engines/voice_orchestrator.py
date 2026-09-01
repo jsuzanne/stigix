@@ -224,6 +224,7 @@ def start_call(server, interface):
     stream_type = server.get('stream_type', 'audio')
     control = load_control()
     source_port_mode = control.get('source_port_mode', 'call_id')
+    site_name = os.environ.get('SITE_NAME') or os.environ.get('NODE_NAME', '')
 
     cmd = [
         "python3", "rtp.py",
@@ -236,6 +237,8 @@ def start_call(server, interface):
         "--call-id", call_id,
         "--stream-type", stream_type
     ]
+    if site_name:
+        cmd.extend(["--site-name", site_name])
     
     timestamp = time.strftime('%H:%M:%S')
     print(f"[{timestamp}] [{call_id}] 🚀 Executing: {' '.join(cmd)}")
