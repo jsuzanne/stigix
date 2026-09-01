@@ -202,16 +202,26 @@ def check_reachability(ip):
         return False
 
 def get_local_site_name() -> str:
-    """Reads site name from env, site-detection.json, system-settings.json, or hostname."""
+    """Reads site name from env, site-name.json, site-detection.json, system-settings.json, or hostname."""
     name = os.environ.get('SITE_NAME') or os.environ.get('NODE_NAME')
     if name: return name.strip()
     
+    # Check site-name.json (persisted by Settings -> Stigix Targets -> LOCAL TARGET SERVICE)
+    try:
+        p = os.path.join(CONFIG_DIR, 'site-name.json')
+        if os.path.exists(p):
+            with open(p, 'r') as f:
+                d = json.load(f)
+                s = d.get('siteName') or d.get('site_name')
+                if s: return s.strip()
+    except Exception: pass
+
     try:
         p = os.path.join(CONFIG_DIR, 'site-detection.json')
         if os.path.exists(p):
             with open(p, 'r') as f:
                 d = json.load(f)
-                s = d.get('detected_site_name') or d.get('site_name')
+                s = d.get('detected_site_name') or d.get('site_name') or d.get('siteName')
                 if s: return s.strip()
     except Exception: pass
 
@@ -219,13 +229,13 @@ def get_local_site_name() -> str:
         if os.path.exists(SYSTEM_SETTINGS_FILE):
             with open(SYSTEM_SETTINGS_FILE, 'r') as f:
                 d = json.load(f)
-                s = d.get('site_name') or d.get('local_site_name') or d.get('target_name')
+                s = d.get('site_name') or d.get('siteName') or d.get('local_site_name') or d.get('target_name')
                 if s: return s.strip()
     except Exception: pass
 
     try:
         config = load_voice_config()
-        s = config.get('site_name') or config.get('control', {}).get('site_name')
+        s = config.get('site_name') or config.get('siteName') or config.get('control', {}).get('site_name')
         if s: return s.strip()
     except Exception: pass
 
