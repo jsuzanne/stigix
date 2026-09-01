@@ -617,11 +617,19 @@ export class RegistryManager {
 
         for (const bundle of manifest.bundles) {
             const currentApplied = state.appliedRevisions[bundle.type];
-            if (!currentApplied || currentApplied.revision !== bundle.revision || currentApplied.checksum !== bundle.checksum) {
-                log('PROVISIONING', `New global bundle discovered: ${bundle.type} rev ${bundle.revision}`);
+            const needsSync = !currentApplied ||
+                              currentApplied.status !== 'applied' ||
+                              currentApplied.revision !== bundle.revision ||
+                              currentApplied.checksum !== bundle.checksum;
+
+            if (needsSync) {
+                log('PROVISIONING', `[SYNC] Pulling global bundle "${bundle.type}" rev ${bundle.revision} from Leader (current status: ${currentApplied?.status || 'none'}, local rev: ${currentApplied?.revision || 0})...`);
                 const bundleItems = await this.client.fetchProvisioningBundle(bundle.type, bundle.revision);
                 if (bundleItems && Array.isArray(bundleItems)) {
-                    this.provisioningManager.applyGlobalBundle(bundle.type, bundle.revision, bundle.checksum, bundleItems);
+                    const success = this.provisioningManager.applyGlobalBundle(bundle.type, bundle.revision, bundle.checksum, bundleItems);
+                    log('PROVISIONING', `[SYNC] Bundle "${bundle.type}" rev ${bundle.revision} apply result: ${success ? 'SUCCESS' : 'FAILED'}`);
+                } else {
+                    log('PROVISIONING', `[SYNC] Failed to fetch bundle items for "${bundle.type}" rev ${bundle.revision}`, 'error');
                 }
             }
         }
