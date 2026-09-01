@@ -3530,6 +3530,20 @@ app.delete('/api/voice/counter', authenticateToken, (req, res) => {
     }
 });
 
+// API: Get Ingress / Receiver Voice Calls
+app.get('/api/voice/ingress', authenticateToken, (_req, res) => {
+    try {
+        const ingressFile = '/tmp/ingress-voice-sessions.json';
+        if (fs.existsSync(ingressFile)) {
+            const data = JSON.parse(fs.readFileSync(ingressFile, 'utf8'));
+            return res.json({ success: true, sessions: data });
+        }
+        res.json({ success: true, sessions: [] });
+    } catch (e: any) {
+        res.json({ success: true, sessions: [] });
+    }
+});
+
 // API: Get Stats
 app.get('/api/stats', (req, res) => {
     const stats = aggregateStats();

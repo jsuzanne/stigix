@@ -95,9 +95,45 @@ def handle_port(ip, port, active_sessions, lock):
     finally:
         s.close()
 
+INGRESS_FILE = "/tmp/ingress-voice-sessions.json"
+
+def export_ingress_sessions(active_sessions, lock):
+    try:
+        now = time.time()
+        sessions_list = []
+        with lock:
+            for key, session in active_sessions.items():
+                last_seen_diff = now - session.get('last_seen', now)
+                status = "active" if last_seen_diff <= 5.0 else "completed"
+                
+                addr_info = session.get('last_addr', ('Unknown', 0))
+                sessions_list.append({
+                    "id": session.get('id', 'Unknown'),
+                    "type": session.get('type', 'Voice'),
+                    "label": session.get('label', ''),
+                    "src_ip": addr_info[0],
+                    "src_port": addr_info[1],
+                    "dest_port": session.get('port', 6100),
+                    "packet_count": session.get('packet_count', 0),
+                    "start_time": session.get('start_time', now),
+                    "last_seen": session.get('last_seen', now),
+                    "duration": int(now - session.get('start_time', now)),
+                    "status": status
+                })
+        
+        sessions_list.sort(key=lambda x: x['start_time'], reverse=True)
+        
+        temp_file = INGRESS_FILE + ".tmp"
+        with open(temp_file, 'w') as f:
+            json.dump(sessions_list, f, indent=2)
+        os.replace(temp_file, INGRESS_FILE)
+    except Exception as e:
+        if DEBUG_MODE: print(f"Error exporting ingress sessions: {e}")
+
 def maintenance(active_sessions, lock):
     while True:
         time.sleep(1)
+        export_ingress_sessions(active_sessions, lock)
         now = time.time()
         to_remove = []
         with lock:
@@ -133,6 +169,10 @@ if __name__ == "__main__":
     print(f"🚀 SD-WAN VOICE ECHO SERVER {version}")
     print(f"📡 Multi-port mode: {port_list}")
     print("="*60)
+
+    m_thread = threading.Thread(target=maintenance, args=(active_sessions, lock))
+    m_thread.daemon = True
+    m_thread.start()
 
     for p in port_list:
         t = threading.Thread(target=handle_port, args=(args.ip, p, active_sessions, lock))

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Phone, Play, Pause, BarChart2, Save, Plus, Trash2, Clock, Activity, Wifi, Search, CheckSquare, AlertCircle, Hash, Download, Upload, X } from 'lucide-react';
+import { Phone, PhoneIncoming, PhoneOutgoing, Play, Pause, BarChart2, Save, Plus, Trash2, Clock, Activity, Wifi, Search, CheckSquare, AlertCircle, Hash, Download, Upload, X } from 'lucide-react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -116,7 +116,9 @@ export default function Voice(props: VoiceProps) {
     const [isStartingV, setIsStartingV] = useState(false);
     const [isStoppingV, setIsStoppingV] = useState(false);
 
-    // ── Call history filters ──
+    // ── Call history filters & Ingress ──
+    const [ingressSessions, setIngressSessions] = useState<any[]>([]);
+    const [callTab, setCallTab] = useState<'egress' | 'ingress'>('egress');
     const [searchTerm, setSearchTerm] = useState('');
     const [qualityFilter, setQualityFilter] = useState<'all' | 'excellent' | 'fair' | 'poor'>('all');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>({ key: 'timestamp', direction: 'desc' });
@@ -196,7 +198,11 @@ export default function Voice(props: VoiceProps) {
     // ════════════════════════════════════════════════
     useEffect(() => {
         fetchConfig();
-        const interval = setInterval(fetchConfig, 30000);
+        fetchIngress();
+        const interval = setInterval(() => {
+            fetchConfig();
+            fetchIngress();
+        }, 3000);
 
         fetch('/api/targets', { headers: { Authorization: `Bearer ${token}` } })
             .then(r => r.json())
@@ -274,6 +280,16 @@ export default function Voice(props: VoiceProps) {
     // ════════════════════════════════════════════════
     // API helpers
     // ════════════════════════════════════════════════
+    const fetchIngress = async () => {
+        try {
+            const r = await fetch('/api/voice/ingress', { headers: { Authorization: `Bearer ${token}` } });
+            const data = await r.json();
+            if (data.success && Array.isArray(data.sessions)) {
+                setIngressSessions(data.sessions);
+            }
+        } catch { }
+    };
+
     const fetchConfig = async () => {
         try {
             const r = await fetch('/api/voice/config', { headers: { Authorization: `Bearer ${token}` } });
@@ -1007,16 +1023,52 @@ export default function Voice(props: VoiceProps) {
             {/* ─── CALL HISTORY ─── */}
             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-4">
                         <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400">
                             <BarChart2 size={16} />
                         </div>
                         <div>
-                            <h3 className="text-[10px] font-black text-text-primary tracking-[0.2em]">Call History</h3>
-                            {activeCalls.length > 0 && (
-                                <p className="text-[9px] text-green-500 font-black mt-0.5 flex items-center gap-1">
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setCallTab('egress')}
+                                    className={cn(
+                                        "px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border shadow-sm",
+                                        callTab === 'egress'
+                                            ? "bg-blue-600/20 text-blue-400 border-blue-500/40"
+                                            : "bg-card-secondary/40 text-text-muted border-border/50 hover:text-text-primary"
+                                    )}
+                                >
+                                    <PhoneOutgoing size={12} />
+                                    <span>Outbound (Caller)</span>
+                                </button>
+                                <button
+                                    onClick={() => setCallTab('ingress')}
+                                    className={cn(
+                                        "px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border shadow-sm",
+                                        callTab === 'ingress'
+                                            ? "bg-cyan-600/20 text-cyan-400 border-cyan-500/40"
+                                            : "bg-card-secondary/40 text-text-muted border-border/50 hover:text-text-primary"
+                                    )}
+                                >
+                                    <PhoneIncoming size={12} />
+                                    <span>Inbound (Receiver)</span>
+                                    {ingressSessions.filter(s => s.status === 'active').length > 0 && (
+                                        <span className="px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 text-[8px] font-mono animate-pulse">
+                                            {ingressSessions.filter(s => s.status === 'active').length}
+                                        </span>
+                                    )}
+                                </button>
+                            </div>
+                            {callTab === 'egress' && activeCalls.length > 0 && (
+                                <p className="text-[9px] text-green-500 font-black mt-1 flex items-center gap-1">
                                     <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
                                     {activeCalls.length} stream{activeCalls.length > 1 ? 's' : ''} live
+                                </p>
+                            )}
+                            {callTab === 'ingress' && (
+                                <p className="text-[9px] text-cyan-400 font-black mt-1 flex items-center gap-1">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse inline-block" />
+                                    {ingressSessions.filter(s => s.status === 'active').length} inbound stream{ingressSessions.filter(s => s.status === 'active').length !== 1 ? 's' : ''} live
                                 </p>
                             )}
                         </div>
@@ -1031,15 +1083,17 @@ export default function Voice(props: VoiceProps) {
                                 className="w-full bg-card-secondary/50 border border-border text-[10px] font-black tracking-widest text-text-primary rounded-xl pl-10 pr-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-500"
                             />
                         </div>
-                        <select
-                            value={qualityFilter} onChange={e => setQualityFilter(e.target.value as any)}
-                            className="bg-card-secondary/50 border border-border text-[10px] font-black uppercase tracking-widest text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                            <option value="all">Any Quality</option>
-                            <option value="excellent">Excellent</option>
-                            <option value="fair">Fair</option>
-                            <option value="poor">Poor</option>
-                        </select>
+                        {callTab === 'egress' && (
+                            <select
+                                value={qualityFilter} onChange={e => setQualityFilter(e.target.value as any)}
+                                className="bg-card-secondary/50 border border-border text-[10px] font-black uppercase tracking-widest text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+                                <option value="all">Any Quality</option>
+                                <option value="excellent">Excellent</option>
+                                <option value="fair">Fair</option>
+                                <option value="poor">Poor</option>
+                            </select>
+                        )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -1052,116 +1106,196 @@ export default function Voice(props: VoiceProps) {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto max-h-[500px] overflow-y-auto pr-2">
-                    <table className="w-full text-sm relative">
-                        <thead className="sticky top-0 bg-card z-10 text-left">
-                            <tr className="border-b border-border">
-                                {[
-                                    { key: 'timestamp', label: 'Timeline' },
-                                    { key: 'event', label: 'Disposition' },
-                                    { key: 'target', label: 'Site' },
-                                    { key: 'target_ip', label: 'Endpoint' },
-                                    { key: 'src_port', label: 'Src Port' },
-                                    { key: 'loss_pct', label: 'Loss / MOS' },
-                                    { key: 'avg_rtt_ms', label: 'RTT / Jitter', right: true },
-                                ].map(col => (
-                                    <th key={col.key} onClick={() => handleSort(col.key)}
-                                        className={cn('pb-4 px-3 text-[9px] font-black text-text-muted tracking-widest cursor-pointer hover:text-blue-500 transition-colors', col.right && 'text-right')}
-                                    >
-                                        <div className={cn('flex items-center gap-2', col.right && 'justify-end')}>
-                                            {col.label}
-                                            {sortConfig?.key === col.key && (
-                                                <Activity size={10} className={cn('text-blue-500 transform transition-transform', sortConfig.direction === 'desc' ? 'rotate-180' : '')} />
-                                            )}
-                                        </div>
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/50">
-                            {sortedHistory.map((call: VoiceCall, idx: number) => (
-                                <tr key={idx} className="hover:bg-card-secondary/30 transition-all group">
-                                    <td className="py-4 px-3 text-[10px] font-black font-mono text-text-muted">
-                                        {new Date(call.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                    </td>
-                                    <td className="py-4 px-3">
-                                        <div className="flex items-center gap-3">
-                                            <span title={`Source Port: ${deriveSourcePort(call.call_id)}`} className="text-[10px] font-black text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded bg-blue-600/10 border border-blue-500/10 font-mono italic min-w-[80px] text-center cursor-help">
-                                                #{call.call_id}
-                                            </span>
-                                            {call.event === 'start' && <Phone className="text-blue-500 animate-pulse" size={14} fill="currentColor" />}
-                                            {call.event === 'end' && <div className="flex items-center justify-center w-3.5 h-3.5 rounded-full bg-green-500/20"><CheckSquare className="text-green-500" size={10} /></div>}
-                                            {call.event === 'skipped' && <AlertCircle className="text-orange-500" size={14} />}
-                                        </div>
-                                    </td>
-                                    {/* Site name column */}
-                                    <td className="py-4 px-3">
-                                        {(() => {
-                                            const name = targetNameMap.get(call.target);
-                                            return name
-                                                ? <span className="text-xs font-black text-text-primary">{name}</span>
-                                                : <span className="text-[9px] text-orange-500 font-black uppercase tracking-wider opacity-70">Manual</span>;
-                                        })()}
-                                    </td>
-                                    {/* Endpoint (IP:port) column */}
-                                    <td className="py-4 px-3 text-[10px] font-mono font-bold text-text-muted">{call.target}</td>
-                                    {/* Source Port column */}
-                                    <td className="py-4 px-3">
-                                        {(() => {
-                                            const sp = deriveSourcePort(call.call_id);
-                                            return sp !== '?' ? (
-                                                <button
-                                                    onClick={() => { navigator.clipboard.writeText(sp); toast.success(`Port ${sp} copied`); }}
-                                                    title="Click to copy — use in Prisma SD-WAN flow browser to filter this call's RTP stream"
-                                                    className="font-mono text-[11px] font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded hover:bg-cyan-500/20 transition-all cursor-copy"
-                                                >
-                                                    {sp}
-                                                </button>
-                                            ) : (
-                                                <span className="text-text-muted opacity-30">—</span>
-                                            );
-                                        })()}
-                                    </td>
-                                    <td className="py-4 px-3">
-                                        {call.event === 'end' && call.loss_pct !== undefined ? (
-                                            <div className="flex items-center gap-4">
-                                                <div className="flex items-center gap-2">
-                                                    <div className={cn('h-2 w-2 rounded-full', call.loss_pct < 1 ? 'bg-green-500' : call.loss_pct < 5 ? 'bg-orange-500' : 'bg-red-500')} />
-                                                    <span className={cn('text-[10px] font-black', call.loss_pct < 1 ? 'text-green-500' : call.loss_pct < 5 ? 'text-orange-500' : 'text-red-500')}>
-                                                        {call.loss_pct}% loss
-                                                    </span>
-                                                </div>
-                                                {call.mos_score !== undefined && (
-                                                    <span className={cn(
-                                                        'text-[10px] font-black px-2 py-0.5 rounded-lg border whitespace-nowrap',
-                                                        call.mos_score >= 4 ? 'bg-green-600/10 text-green-500 border-green-500/20'
-                                                            : call.mos_score >= 3 ? 'bg-orange-600/10 text-orange-500 border-orange-500/20'
-                                                                : 'bg-red-600/10 text-red-500 border-red-500/20'
-                                                    )}>MOS: {call.mos_score}</span>
+                {callTab === 'egress' ? (
+                    <div className="overflow-x-auto max-h-[500px] overflow-y-auto pr-2">
+                        <table className="w-full text-sm relative">
+                            <thead className="sticky top-0 bg-card z-10 text-left">
+                                <tr className="border-b border-border">
+                                    {[
+                                        { key: 'timestamp', label: 'Timeline' },
+                                        { key: 'event', label: 'Disposition' },
+                                        { key: 'target', label: 'Site' },
+                                        { key: 'target_ip', label: 'Endpoint' },
+                                        { key: 'src_port', label: 'Src Port' },
+                                        { key: 'loss_pct', label: 'Loss / MOS' },
+                                        { key: 'avg_rtt_ms', label: 'RTT / Jitter', right: true },
+                                    ].map(col => (
+                                        <th key={col.key} onClick={() => handleSort(col.key)}
+                                            className={cn('pb-4 px-3 text-[9px] font-black text-text-muted tracking-widest cursor-pointer hover:text-blue-500 transition-colors', col.right && 'text-right')}
+                                        >
+                                            <div className={cn('flex items-center gap-2', col.right && 'justify-end')}>
+                                                {col.label}
+                                                {sortConfig?.key === col.key && (
+                                                    <Activity size={10} className={cn('text-blue-500 transform transition-transform', sortConfig.direction === 'desc' ? 'rotate-180' : '')} />
                                                 )}
                                             </div>
-                                        ) : <span className="text-text-muted opacity-30">—</span>}
-                                    </td>
-                                    <td className="py-4 px-3 text-right">
-                                        {call.event === 'end' && call.avg_rtt_ms !== undefined ? (
-                                            <div className="flex flex-col items-end gap-1">
-                                                <span className={cn('text-[11px] font-black tracking-tighter', call.avg_rtt_ms < 100 ? 'text-text-primary' : call.avg_rtt_ms < 200 ? 'text-orange-500' : 'text-red-500')}>
-                                                    {call.avg_rtt_ms}ms
-                                                </span>
-                                                <span className="text-[9px] text-text-muted font-bold uppercase tracking-widest opacity-50">Jitter: {call.jitter_ms}ms</span>
-                                            </div>
-                                        ) : <span className="text-text-muted opacity-30">—</span>}
-                                    </td>
+                                        </th>
+                                    ))}
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    {sortedHistory.length === 0 && (
-                        <div className="text-center py-16 text-[10px] font-black text-text-muted uppercase tracking-widest opacity-40">
-                            No call history yet
-                        </div>
-                    )}
-                </div>
+                            </thead>
+                            <tbody className="divide-y divide-border/50">
+                                {sortedHistory.map((call: VoiceCall, idx: number) => (
+                                    <tr key={idx} className="hover:bg-card-secondary/30 transition-all group">
+                                        <td className="py-4 px-3 text-[10px] font-black font-mono text-text-muted">
+                                            {new Date(call.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                        </td>
+                                        <td className="py-4 px-3">
+                                            <div className="flex items-center gap-3">
+                                                <span title={`Source Port: ${deriveSourcePort(call.call_id)}`} className="text-[10px] font-black text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded bg-blue-600/10 border border-blue-500/10 font-mono italic min-w-[80px] text-center cursor-help">
+                                                    #{call.call_id}
+                                                </span>
+                                                {call.event === 'start' && <Phone className="text-blue-500 animate-pulse" size={14} fill="currentColor" />}
+                                                {call.event === 'end' && <div className="flex items-center justify-center w-3.5 h-3.5 rounded-full bg-green-500/20"><CheckSquare className="text-green-500" size={10} /></div>}
+                                                {call.event === 'skipped' && <AlertCircle className="text-orange-500" size={14} />}
+                                            </div>
+                                        </td>
+                                        {/* Site name column */}
+                                        <td className="py-4 px-3">
+                                            {(() => {
+                                                const name = targetNameMap.get(call.target);
+                                                return name
+                                                    ? <span className="text-xs font-black text-text-primary">{name}</span>
+                                                    : <span className="text-[9px] text-orange-500 font-black uppercase tracking-wider opacity-70">Manual</span>;
+                                            })()}
+                                        </td>
+                                        {/* Endpoint (IP:port) column */}
+                                        <td className="py-4 px-3 text-[10px] font-mono font-bold text-text-muted">{call.target}</td>
+                                        {/* Source Port column */}
+                                        <td className="py-4 px-3">
+                                            {(() => {
+                                                const sp = deriveSourcePort(call.call_id);
+                                                return sp !== '?' ? (
+                                                    <button
+                                                        onClick={() => { navigator.clipboard.writeText(sp); toast.success(`Port ${sp} copied`); }}
+                                                        title="Click to copy — use in Prisma SD-WAN flow browser to filter this call's RTP stream"
+                                                        className="font-mono text-[11px] font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded hover:bg-cyan-500/20 transition-all cursor-copy"
+                                                    >
+                                                        {sp}
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-text-muted opacity-30">—</span>
+                                                );
+                                            })()}
+                                        </td>
+                                        <td className="py-4 px-3">
+                                            {call.event === 'end' && call.loss_pct !== undefined ? (
+                                                <div className="flex items-center gap-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={cn('h-2 w-2 rounded-full', call.loss_pct < 1 ? 'bg-green-500' : call.loss_pct < 5 ? 'bg-orange-500' : 'bg-red-500')} />
+                                                        <span className={cn('text-[10px] font-black', call.loss_pct < 1 ? 'text-green-500' : call.loss_pct < 5 ? 'text-orange-500' : 'text-red-500')}>
+                                                            {call.loss_pct}% loss
+                                                        </span>
+                                                    </div>
+                                                    {call.mos_score !== undefined && (
+                                                        <span className={cn(
+                                                            'text-[10px] font-black px-2 py-0.5 rounded-lg border whitespace-nowrap',
+                                                            call.mos_score >= 4 ? 'bg-green-600/10 text-green-500 border-green-500/20'
+                                                                : call.mos_score >= 3 ? 'bg-orange-600/10 text-orange-500 border-orange-500/20'
+                                                                    : 'bg-red-600/10 text-red-500 border-red-500/20'
+                                                        )}>MOS: {call.mos_score}</span>
+                                                    )}
+                                                </div>
+                                            ) : <span className="text-text-muted opacity-30">—</span>}
+                                        </td>
+                                        <td className="py-4 px-3 text-right">
+                                            {call.event === 'end' && call.avg_rtt_ms !== undefined ? (
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <span className={cn('text-[11px] font-black tracking-tighter', call.avg_rtt_ms < 100 ? 'text-text-primary' : call.avg_rtt_ms < 200 ? 'text-orange-500' : 'text-red-500')}>
+                                                        {call.avg_rtt_ms}ms
+                                                    </span>
+                                                    <span className="text-[9px] text-text-muted font-bold uppercase tracking-widest opacity-50">Jitter: {call.jitter_ms}ms</span>
+                                                </div>
+                                            ) : <span className="text-text-muted opacity-30">—</span>}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {sortedHistory.length === 0 && (
+                            <div className="text-center py-16 text-[10px] font-black text-text-muted uppercase tracking-widest opacity-40">
+                                No call history yet
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto max-h-[500px] overflow-y-auto pr-2">
+                        <table className="w-full text-sm relative">
+                            <thead className="sticky top-0 bg-card z-10 text-left">
+                                <tr className="border-b border-border">
+                                    <th className="pb-4 px-3 text-[9px] font-black text-text-muted tracking-widest">Timeline</th>
+                                    <th className="pb-4 px-3 text-[9px] font-black text-text-muted tracking-widest">Disposition</th>
+                                    <th className="pb-4 px-3 text-[9px] font-black text-text-muted tracking-widest">Source Site / IP</th>
+                                    <th className="pb-4 px-3 text-[9px] font-black text-text-muted tracking-widest">Src Port</th>
+                                    <th className="pb-4 px-3 text-[9px] font-black text-text-muted tracking-widest">Dest Port</th>
+                                    <th className="pb-4 px-3 text-[9px] font-black text-text-muted tracking-widest">Volume (Packets)</th>
+                                    <th className="pb-4 px-3 text-[9px] font-black text-text-muted tracking-widest text-right">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border/50">
+                                {ingressSessions
+                                    .filter(s => {
+                                        if (!searchTerm) return true;
+                                        const term = searchTerm.toLowerCase();
+                                        return (s.id || '').toLowerCase().includes(term) ||
+                                               (s.src_ip || '').toLowerCase().includes(term) ||
+                                               (s.type || '').toLowerCase().includes(term);
+                                    })
+                                    .map((session, idx) => {
+                                        const siteName = registryVoiceTargets.find((t: any) => t.host === session.src_ip)?.name || session.src_ip;
+                                        const isActive = session.status === 'active';
+                                        const startTime = session.start_time ? new Date(session.start_time * 1000) : new Date();
+                                        return (
+                                            <tr key={session.id || idx} className="hover:bg-card-secondary/30 transition-all group">
+                                                <td className="py-4 px-3 text-[10px] font-black font-mono text-text-muted">
+                                                    {startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                </td>
+                                                <td className="py-4 px-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[10px] font-black text-cyan-400 px-2 py-0.5 rounded bg-cyan-600/10 border border-cyan-500/20 font-mono italic">
+                                                            #{session.id || 'CALL-IN'}
+                                                        </span>
+                                                        <PhoneIncoming size={13} className={isActive ? "text-cyan-400 animate-pulse" : "text-text-muted opacity-50"} />
+                                                    </div>
+                                                </td>
+                                                <td className="py-4 px-3">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-xs font-black text-text-primary">{siteName}</span>
+                                                        <span className="text-[9px] font-mono text-text-muted opacity-60">{session.src_ip}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="py-4 px-3 font-mono text-[10px] font-bold text-text-muted">
+                                                    <span className="px-2 py-0.5 rounded bg-card-secondary border border-border">
+                                                        {session.src_port || '—'}
+                                                    </span>
+                                                </td>
+                                                <td className="py-4 px-3 font-mono text-[10px] font-bold text-cyan-400">
+                                                    {session.dest_port || 6100} UDP
+                                                </td>
+                                                <td className="py-4 px-3 font-mono text-[10px] font-bold text-text-primary">
+                                                    {session.packet_count?.toLocaleString() || 0} pkts
+                                                </td>
+                                                <td className="py-4 px-3 text-right">
+                                                    <span className={cn(
+                                                        "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border",
+                                                        isActive
+                                                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                                            : "bg-gray-500/10 text-gray-400 border-gray-500/20"
+                                                    )}>
+                                                        {isActive ? '🟢 LIVE' : '✅ COMPLETED'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                            </tbody>
+                        </table>
+                        {ingressSessions.length === 0 && (
+                            <div className="text-center py-16 text-[10px] font-black text-text-muted uppercase tracking-widest opacity-40">
+                                No inbound voice sessions recorded yet
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* ─── QoS Spider Chart Modal ─── */}
