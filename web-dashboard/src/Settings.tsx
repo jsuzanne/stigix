@@ -3266,175 +3266,299 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
             </div>
 
             {/* ─── Registry Tab ────────────────────────────────────────────── */}
-            {activeTab === 'registry' && (
-                <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-purple-600/10 rounded-lg text-purple-500">
-                                <Database size={20} />
+            {activeTab === 'registry' && (() => {
+                const isLeader = registryStatus?.mode === 'leader';
+                const isPeerConnected = !isLeader && registryStatus?.registry_url && registryStatus?.registry_url !== registryStatus?.remote_url;
+                const siteName = registryStatus?.site_name || 'This Instance';
+                const detectedIp = registryStatus?.detected_ip || '—';
+
+                return (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+
+                    {/* ── Hero Header ── */}
+                    <div className={cn(
+                        "rounded-2xl p-6 border-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4",
+                        isLeader
+                            ? "bg-purple-600/5 border-purple-500/20"
+                            : "bg-blue-600/5 border-blue-500/20"
+                    )}>
+                        <div className="flex items-center gap-4">
+                            <div className={cn(
+                                "p-3 rounded-2xl",
+                                isLeader ? "bg-purple-600/15 text-purple-400" : "bg-blue-600/15 text-blue-400"
+                            )}>
+                                {isLeader ? <Globe size={28} /> : <Radio size={28} />}
                             </div>
                             <div>
-                                <h2 className="text-lg font-black text-text-primary tracking-tight">Target Controller Dashboard</h2>
-                                <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70">Monitor peer-to-peer discovery and controller state</p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className={cn(
+                                        "px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm",
+                                        isLeader
+                                            ? "bg-purple-600/20 text-purple-400 border-purple-500/30"
+                                            : "bg-blue-600/20 text-blue-400 border-blue-500/30"
+                                    )}>
+                                        {isLeader ? '⭐ Leader' : '🔵 Peer'}
+                                    </span>
+                                    <span className="text-xs font-black text-text-primary tracking-tight">{siteName}</span>
+                                    <span className="text-[10px] font-mono text-text-muted opacity-60">· {detectedIp}</span>
+                                </div>
+                                <p className="text-[10px] text-text-muted mt-1 opacity-70">
+                                    {isLeader
+                                        ? `Handling registration for ${registryStatus?.peer_count ?? 0} peer${(registryStatus?.peer_count ?? 0) !== 1 ? 's' : ''}. Peers connect directly to this node.`
+                                        : isPeerConnected
+                                            ? `Connected to leader ${registryStatus?.leader_info?.id || registryStatus?.leader_info?.ip || '—'}. Targets are synced automatically.`
+                                            : 'Not connected to a leader. Enter the leader URL below to join the mesh.'}
+                                </p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span className={cn(
-                                "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm",
-                                registryStatus?.mode === 'leader'
-                                    ? "bg-purple-600/10 text-purple-500 border-purple-500/30"
-                                    : "bg-blue-600/10 text-blue-500 border-blue-500/30"
-                            )}>
-                                Role: {registryStatus?.mode?.toUpperCase() || 'PEER'}
-                            </span>
-                            {registryStatus?.is_registered && (
+                        <div className="flex items-center gap-2 shrink-0">
+                            {isPeerConnected && (
                                 <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-green-500/10 text-green-500 border border-green-500/30 shadow-sm flex items-center gap-1.5">
                                     <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                                    Cloudflare Online
+                                    Synced
+                                </span>
+                            )}
+                            {!isLeader && !isPeerConnected && (
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-500 border border-amber-500/30 shadow-sm flex items-center gap-1.5">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                    Not connected
                                 </span>
                             )}
                         </div>
                     </div>
 
-                    {/* Overview Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-purple-500/30 transition-all">
-                            <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">Discovered Peers</div>
-                            <div className="text-2xl font-black text-text-primary group-hover:text-purple-500 transition-colors uppercase">{registryStatus?.peer_count || 0}</div>
-                            <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Nodes currently known to this instance</div>
-                        </div>
-                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-blue-500/30 transition-all">
-                            <div className="text-[10px] font-black text-text-muted uppercase tracking-widest">Detected Local IP</div>
-                            <div className="text-xl font-black text-text-primary font-mono group-hover:text-blue-500 transition-colors uppercase">{registryStatus?.detected_ip || 'N/A'}</div>
-                            <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Local address reported to controller</div>
-                        </div>
-                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-emerald-500/30 transition-all">
-                            <div className="text-[9px] font-black text-text-muted uppercase tracking-widest">PoC ID</div>
-                            <div className="text-lg font-black text-text-primary group-hover:text-emerald-500 transition-colors">{registryStatus?.poc_id || 'unconfigured'}</div>
-                            <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Prisma SD-WAN TSG Context</div>
-                        </div>
-                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-2 group hover:border-amber-500/30 transition-all">
-                            <div className="text-[10px] font-black text-text-muted uppercase tracking-widest">Controller Sync</div>
-                            <div className="text-sm font-black text-text-primary truncate font-mono opacity-80 group-hover:text-amber-500 transition-colors uppercase">{registryStatus?.registry_url ? new URL(registryStatus.registry_url).hostname : 'N/A'}</div>
-                            <div className="text-[8px] font-bold text-text-muted leading-tight opacity-60">Current active discovery endpoint</div>
-                        </div>
-                    </div>
-
-                    {/* Static Leader / Controller Configuration (Manual Override) */}
-                    <div className="bg-card-secondary/20 border-2 border-dashed border-border rounded-2xl p-6 space-y-4">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="p-1.5 bg-blue-500/10 rounded text-blue-500">
-                                    <SettingsIcon size={16} />
-                                </div>
-                                <h3 className="text-xs font-black text-text-primary uppercase tracking-wider">Static Controller Configuration</h3>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {registryStatus?.is_static_leader && (
-                                    <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center gap-1 shadow-sm animate-pulse">
-                                        <div className="w-1 h-1 rounded-full bg-blue-400" />
-                                        Static Override Active
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                            <div className="md:col-span-8 space-y-2">
-                                <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Manual Controller IP / FQDN / URL</label>
-                                <div className="relative group">
-                                    <input
-                                        type="text"
-                                        placeholder="e.g. 192.168.1.50 or stigix.local"
-                                        value={staticLeaderUrl}
-                                        onChange={(e) => setStaticLeaderUrl(e.target.value)}
-                                        className="w-full bg-card hover:bg-card-hover border border-border focus:border-blue-500/50 rounded-xl px-4 py-2.5 text-xs font-mono transition-all pr-24"
-                                    />
-                                    {connectivityResult && (
-                                        <div className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
-                                            connectivityResult.success 
-                                                ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" 
-                                                : "bg-red-500/10 text-red-500 border-red-500/20"
-                                        }`}>
-                                            {connectivityResult.success ? (
-                                                <><CheckCircle size={10} /> Online</>
-                                            ) : (
-                                                <><XCircle size={10} /> {connectivityResult.error || "Failed"}</>
-                                            )}
+                    {/* ════════ LEADER VIEW ════════ */}
+                    {isLeader && (
+                        <>
+                            {/* Primary: Peer Table */}
+                            <div className="bg-card border border-border rounded-2xl shadow-sm">
+                                <div className="p-5 border-b border-border/50 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-purple-600/10 rounded-lg text-purple-500">
+                                            <Users size={16} />
                                         </div>
+                                        <div>
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Connected Peers</h3>
+                                            <p className="text-[9px] text-text-muted mt-0.5 opacity-60">Instances that have registered with this leader</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-mono font-bold text-text-muted bg-card-secondary px-2.5 py-1 rounded-lg border border-border">
+                                            {registryStatus?.local_instances?.length ?? 0} registered
+                                        </span>
+                                        <button
+                                            onClick={() => fetch('/api/registry/status', { headers: authHeaders }).then(r => r.json()).then(setRegistryStatus)}
+                                            className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
+                                            title="Refresh"
+                                        >
+                                            <RefreshCw size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="overflow-auto">
+                                    {!registryStatus?.local_instances?.length ? (
+                                        <div className="py-16 text-center">
+                                            <div className="w-12 h-12 mx-auto mb-4 rounded-2xl bg-purple-600/10 text-purple-500 flex items-center justify-center">
+                                                <Users size={24} />
+                                            </div>
+                                            <p className="text-[10px] font-bold text-text-muted tracking-widest opacity-50 uppercase">No peers registered yet</p>
+                                            <p className="text-[9px] text-text-muted opacity-40 mt-1">Use the onboard command below to add a remote instance</p>
+                                        </div>
+                                    ) : (
+                                        <table className="w-full text-left">
+                                            <thead>
+                                                <tr className="border-b border-border/50">
+                                                    <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Instance</th>
+                                                    <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">IP</th>
+                                                    <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Capabilities</th>
+                                                    <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Last Seen</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {registryStatus.local_instances.map((inst: any) => (
+                                                    <tr key={inst.instance_id} className="group hover:bg-card-hover/50 transition-colors border-b border-border/20 last:border-0">
+                                                        <td className="py-3.5 px-5">
+                                                            <div className="flex items-center gap-2.5">
+                                                                <div className="w-7 h-7 rounded-lg bg-purple-600/10 text-purple-400 flex items-center justify-center shrink-0">
+                                                                    <Server size={13} />
+                                                                </div>
+                                                                <span className="text-[11px] font-black text-text-primary">{inst.instance_id}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-3.5 px-5 font-mono text-[10px] text-text-secondary">{inst.ip_private}</td>
+                                                        <td className="py-3.5 px-5">
+                                                            <div className="flex gap-1.5 items-center">
+                                                                {inst.capabilities?.voice && <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.5)]" title="Voice" />}
+                                                                {inst.capabilities?.xfr && <div className="w-2 h-2 rounded-full bg-cyan-500 shadow-[0_0_6px_rgba(6,182,212,0.5)]" title="Speedtest" />}
+                                                                {inst.capabilities?.convergence && <div className="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_6px_rgba(168,85,247,0.5)]" title="Failover" />}
+                                                                {inst.capabilities?.security && <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]" title="Security" />}
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-3.5 px-5 text-[10px] text-text-muted font-bold whitespace-nowrap">
+                                                            {new Date(inst.last_seen).toLocaleTimeString()}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
                                     )}
                                 </div>
-                                <div className="flex flex-col gap-1 pl-1">
-                                    <p className="text-[9px] text-text-muted italic opacity-60">Configure a static IP or FQDN to reach the leader directly and bypass Cloudflare discovery.</p>
-                                    {staticLeaderUrl && (
-                                        <div className="flex items-center gap-1.5 mt-1">
-                                            <span className="text-[8px] font-black uppercase text-blue-500/60 tracking-widest">Resulting URL:</span>
-                                            <span className="text-[9px] font-mono text-text-secondary opacity-80 bg-blue-500/5 px-1.5 py-0.5 rounded border border-blue-500/10">
-                                                {previewControllerUrl(staticLeaderUrl)}
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
                             </div>
-                            <div className="md:col-span-4 flex gap-2">
-                                <button
-                                    onClick={handleTestConnectivity}
-                                    disabled={isTestingConnectivity || !staticLeaderUrl}
-                                    className="flex-1 bg-card hover:bg-card-hover border border-border rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all hover:border-blue-500/30 disabled:opacity-50 flex items-center justify-center gap-2"
-                                >
-                                    {isTestingConnectivity ? <RefreshCw className="animate-spin" size={12} /> : <Zap size={12} className="text-blue-500" />}
-                                    Test
-                                </button>
-                                <button
-                                    onClick={() => handleSaveStaticLeader(staticLeaderUrl)}
-                                    disabled={saving || !staticLeaderUrl}
-                                    className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(37,99,235,0.2)] disabled:opacity-50"
-                                >
-                                    Save
-                                </button>
-                                {registryStatus?.is_static_leader && (
-                                    <button
-                                        onClick={() => {
-                                            setStaticLeaderUrl('');
-                                            handleSaveStaticLeader(null);
-                                        }}
-                                        className="p-2.5 bg-card hover:bg-red-500/10 border border-border hover:border-red-500/30 rounded-xl text-text-muted hover:text-red-500 transition-all"
-                                        title="Reset to Auto-Discovery"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
 
-                        {registryStatus?.mode === 'leader' && (
-                            <div className="mt-4 p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl flex items-center justify-between">
+                            {/* Secondary: Onboard Command */}
+                            <div className="bg-emerald-500/5 border-2 border-dashed border-emerald-500/20 rounded-2xl p-6 space-y-5">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500">
-                                        <Globe size={18} />
+                                    <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
+                                        <Plus size={18} />
                                     </div>
                                     <div>
-                                        <div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Local Controller Access</div>
-                                        <p className="text-[11px] font-bold text-text-secondary">Peers can manually reach this node at: <span className="font-mono text-emerald-400">http://{registryStatus?.detected_ip}:8080</span></p>
+                                        <h3 className="text-sm font-black text-text-primary tracking-tight">Onboard a Remote Peer</h3>
+                                        <p className="text-[10px] text-text-muted mt-0.5">Paste this command on any Linux host to install Stigix and join it to this leader automatically.</p>
                                     </div>
                                 </div>
-                                <Activity size={24} className="text-emerald-500 opacity-20" />
-                            </div>
-                        )}
 
-                        {/* Registry Mode Override */}
-                        <div className="mt-4 p-5 bg-card-secondary/30 border border-border rounded-xl">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 bg-indigo-500/10 rounded text-indigo-500">
-                                        <Server size={16} />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-xs font-black text-text-primary uppercase tracking-wider">Registry Role Override</h3>
-                                        <p className="text-[9px] text-text-muted mt-0.5">Force this node's discovery role. Bypasses .env configuration.</p>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Leader URL (this instance)</label>
+                                    <input
+                                        id="peer-install-leader-url"
+                                        type="text"
+                                        value={peerInstallLeaderUrl}
+                                        onChange={(e) => { setPeerInstallLeaderUrl(e.target.value); setPeerInstallLeaderUrlEdited(true); }}
+                                        placeholder={`http://${detectedIp}:8080`}
+                                        className="w-full bg-card hover:bg-card-hover border border-border focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-xs font-mono transition-all max-w-md"
+                                    />
+                                    <p className="text-[9px] text-text-muted italic opacity-60 pl-1">Edit if this instance is behind a reverse proxy or a public FQDN.</p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Install command — copy and paste on the remote host:</label>
+                                    <div className="relative group">
+                                        <div className="bg-card border border-border rounded-xl p-4 pr-28 font-mono text-[11px] text-emerald-400 break-all leading-relaxed">
+                                            {`curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- --controller ${peerInstallLeaderUrl || `http://${detectedIp}:8080`}`}
+                                        </div>
+                                        <button
+                                            id="copy-peer-install-command"
+                                            onClick={handleCopyPeerCommand}
+                                            title="Copy command"
+                                            className={cn(
+                                                "absolute top-2 right-2 p-2 rounded-lg border transition-all flex items-center gap-1.5",
+                                                peerCommandCopied
+                                                    ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+                                                    : "bg-card-secondary hover:bg-card-hover border-border text-text-muted hover:text-emerald-400 hover:border-emerald-500/30"
+                                            )}
+                                        >
+                                            {peerCommandCopied
+                                                ? <><CheckCircle size={13} /><span className="text-[9px] font-black uppercase tracking-widest">Copied!</span></>
+                                                : <><Copy size={13} /><span className="text-[9px] font-black uppercase tracking-widest">Copy</span></>}
+                                        </button>
                                     </div>
                                 </div>
-                                {savingSystemSettings && <RefreshCw size={14} className="text-blue-500 animate-spin" />}
+                            </div>
+                        </>
+                    )}
+
+                    {/* ════════ PEER VIEW ════════ */}
+                    {!isLeader && (
+                        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-600/10 rounded-lg text-blue-500">
+                                    <Network size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Leader Connection</h3>
+                                    <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Enter the IP or FQDN of your Stigix Leader. Targets will sync automatically once connected.</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                                <div className="md:col-span-8 space-y-2">
+                                    <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Leader IP / FQDN / URL</label>
+                                    <div className="relative group">
+                                        <input
+                                            type="text"
+                                            placeholder="e.g. 192.168.1.50 or stigix-leader.local"
+                                            value={staticLeaderUrl}
+                                            onChange={(e) => setStaticLeaderUrl(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleTestConnectivity()}
+                                            className="w-full bg-card hover:bg-card-hover border border-border focus:border-blue-500/50 rounded-xl px-4 py-2.5 text-xs font-mono transition-all pr-28"
+                                        />
+                                        {connectivityResult && (
+                                            <div className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${
+                                                connectivityResult.success
+                                                    ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                                    : "bg-red-500/10 text-red-500 border-red-500/20"
+                                            }`}>
+                                                {connectivityResult.success ? <><CheckCircle size={10} /> Reachable</> : <><XCircle size={10} /> {connectivityResult.error || 'Failed'}</>}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {staticLeaderUrl && (
+                                        <p className="text-[9px] text-text-muted pl-1 font-mono opacity-50">→ {previewControllerUrl(staticLeaderUrl)}</p>
+                                    )}
+                                </div>
+                                <div className="md:col-span-4 flex gap-2">
+                                    <button
+                                        onClick={handleTestConnectivity}
+                                        disabled={isTestingConnectivity || !staticLeaderUrl}
+                                        className="flex-1 bg-card hover:bg-card-hover border border-border rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all hover:border-blue-500/30 disabled:opacity-50 flex items-center justify-center gap-2"
+                                    >
+                                        {isTestingConnectivity ? <RefreshCw className="animate-spin" size={12} /> : <Zap size={12} className="text-blue-500" />}
+                                        Test
+                                    </button>
+                                    <button
+                                        onClick={() => handleSaveStaticLeader(staticLeaderUrl)}
+                                        disabled={saving || !staticLeaderUrl}
+                                        className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(37,99,235,0.2)] disabled:opacity-50"
+                                    >
+                                        {saving ? <RefreshCw size={12} className="animate-spin" /> : 'Save'}
+                                    </button>
+                                    {registryStatus?.is_static_leader && (
+                                        <button
+                                            onClick={() => { setStaticLeaderUrl(''); handleSaveStaticLeader(null); }}
+                                            className="p-2.5 bg-card hover:bg-red-500/10 border border-border hover:border-red-500/30 rounded-xl text-text-muted hover:text-red-500 transition-all"
+                                            title="Reset to Auto-Discovery"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Connection status card */}
+                            {isPeerConnected && (
+                                <div className="p-4 bg-blue-500/5 border border-blue-500/15 rounded-xl flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="relative">
+                                            <Server size={28} className="text-blue-400" />
+                                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-card shadow" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black text-text-muted uppercase tracking-widest">Active Leader</p>
+                                            <p className="text-sm font-black text-text-primary">{registryStatus?.leader_info?.id || 'Leader'}</p>
+                                            <p className="text-[10px] font-mono text-blue-400">{registryStatus?.leader_info?.ip || registryStatus?.registry_url}</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-[9px] font-black text-green-500 uppercase flex items-center gap-1.5 bg-green-500/10 px-2.5 py-1 rounded-full border border-green-500/20">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                        Connected
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ════════ DANGER ZONE ════════ */}
+                    <details className="group">
+                        <summary className="flex items-center gap-2 cursor-pointer select-none px-1 py-2 text-[10px] font-black text-text-muted uppercase tracking-widest hover:text-text-primary transition-colors list-none">
+                            <ChevronRight size={12} className="group-open:rotate-90 transition-transform" />
+                            Advanced / Danger Zone
+                        </summary>
+                        <div className="mt-3 space-y-4 border border-border/60 border-dashed rounded-2xl p-5">
+                            <div className="flex items-center gap-2 mb-2">
+                                <ShieldAlert size={14} className="text-amber-500" />
+                                <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Registry Role Override</span>
+                                <span className="text-[9px] text-text-muted opacity-60">— normally auto-detected, do not change unless you know what you're doing</span>
                             </div>
                             <div className="flex bg-card p-1 rounded-lg border border-border shadow-sm">
                                 {['auto', 'leader', 'peer'].map((mode) => (
@@ -3442,7 +3566,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         key={mode}
                                         onClick={async () => {
                                             if (mode === 'leader') {
-                                                const confirmed = window.confirm("Are you sure you want to manually force this instance to be the Leader? Normally this is auto-detected.\n\nIf another active Leader exists, this instance will be blocked from taking over.");
+                                                const confirmed = window.confirm("Are you sure you want to force this instance to be the Leader?\n\nIf another active Leader exists, this instance will be blocked from taking over.");
                                                 if (!confirmed) return;
                                             }
                                             await saveSystemSetting('registry_mode', mode);
@@ -3450,7 +3574,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         className={cn(
                                             "flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-md transition-all flex justify-center items-center gap-1.5",
                                             (systemSettings.registry_mode || 'auto') === mode
-                                                ? "bg-indigo-500/10 text-indigo-500 shadow-sm border border-indigo-500/20"
+                                                ? "bg-amber-500/10 text-amber-500 shadow-sm border border-amber-500/20"
                                                 : "text-text-muted hover:text-text-primary hover:bg-card-hover border border-transparent"
                                         )}
                                     >
@@ -3461,408 +3585,102 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                     </button>
                                 ))}
                             </div>
-                        </div>
-                    </div>
-
-                    {/* ── Add a Remote Stigix Instance ────────────────────────── */}
-                    {registryStatus?.mode === 'leader' && (
-                        <div className="bg-emerald-500/5 border-2 border-dashed border-emerald-500/20 rounded-2xl p-6 space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
-                                    <Plus size={18} />
+                            {savingSystemSettings && (
+                                <div className="flex items-center gap-2 text-[9px] text-text-muted">
+                                    <RefreshCw size={10} className="animate-spin text-blue-500" /> Saving…
                                 </div>
-                                <div>
-                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Add a remote Stigix instance</h3>
-                                    <p className="text-[10px] text-text-muted mt-0.5">Paste this command on any Linux host to install Stigix and register it as a peer automatically.</p>
-                                </div>
-                                {registryStatus?.peer_count !== undefined && (
-                                    <div className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                        <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
-                                            {registryStatus.peer_count} peer{registryStatus.peer_count !== 1 ? 's' : ''} online
-                                        </span>
+                            )}
+
+                            {/* Cloud Target Security */}
+                            <div className="mt-4 pt-4 border-t border-border/40">
+                                <div id="cloud-target-security" className="space-y-5">
+                                    <div className="flex items-center gap-2">
+                                        <Lock size={14} className="text-blue-500 opacity-60" />
+                                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Cloud Target Security (Cloudflare Probe Signing)</span>
                                     </div>
-                                )}
-                            </div>
-
-                            {/* Editable Leader URL */}
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Leader URL (this instance)</label>
-                                <input
-                                    id="peer-install-leader-url"
-                                    type="text"
-                                    value={peerInstallLeaderUrl}
-                                    onChange={(e) => { setPeerInstallLeaderUrl(e.target.value); setPeerInstallLeaderUrlEdited(true); }}
-                                    placeholder="http://192.168.x.x:8080"
-                                    className="w-full bg-card hover:bg-card-hover border border-border focus:border-emerald-500/50 rounded-xl px-4 py-2.5 text-xs font-mono transition-all"
-                                />
-                                <p className="text-[9px] text-text-muted italic opacity-60 pl-1">
-                                    Auto-filled with the detected LAN IP. Edit if this instance is behind a reverse proxy or a public FQDN.
-                                </p>
-                            </div>
-
-                            {/* Generated Command */}
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Copy and paste on the remote Linux host:</label>
-                                <div className="relative group">
-                                    <div className="bg-card border border-border rounded-xl p-4 pr-14 font-mono text-[11px] text-emerald-400 break-all leading-relaxed">
-                                        {`curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- --controller ${peerInstallLeaderUrl || '<leader-url>'}`}
-                                    </div>
-                                    <button
-                                        id="copy-peer-install-command"
-                                        onClick={handleCopyPeerCommand}
-                                        title="Copy command"
-                                        className={cn(
-                                            "absolute top-2 right-2 p-2 rounded-lg border transition-all flex items-center gap-1.5",
-                                            peerCommandCopied
-                                                ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-                                                : "bg-card-secondary hover:bg-card-hover border-border text-text-muted hover:text-emerald-400 hover:border-emerald-500/30"
-                                        )}
-                                    >
-                                        {peerCommandCopied
-                                            ? <><CheckCircle size={13} /><span className="text-[9px] font-black uppercase tracking-widest">Copied!</span></>
-                                            : <><Copy size={13} /><span className="text-[9px] font-black uppercase tracking-widest">Copy</span></>}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-
-                    {/* Cloud Target Security (Signatures) */}
-                    <div id="cloud-target-security" className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600">
-                                    <Lock size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-black text-text-primary tracking-tight">Cloud Target Security</h2>
-                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-1 opacity-70 uppercase">Probe Signing & Master Credentials</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {(cloudDirty || (cloudTestResult && !cloudTestResult.success)) && (
-                                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 bg-amber-500/10 text-amber-500 border-amber-500/30">
-                                        <AlertTriangle size={11} /> Not tested
-                                    </span>
-                                )}
-                                {cloudTestResult && !cloudDirty && (
-                                    <span className={cn(
-                                        "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 shadow-sm",
-                                        cloudTestResult.success ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" : "bg-red-500/10 text-red-500 border-red-500/30"
-                                    )}>
-                                        {cloudTestResult.success ? <><CheckCircle2 size={12} /> Target Verified</> : <><XCircle size={12} /> {cloudTestResult.error || 'Failed'}</>}
-                                    </span>
-                                )}
-                                <button
-                                    onClick={handleTestCloud}
-                                    disabled={isTestingCloud || !cloudConfig?.baseUrl}
-                                    className="px-4 py-2.5 bg-card hover:bg-card-hover border border-border hover:border-blue-500/30 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 disabled:opacity-50"
-                                >
-                                    {isTestingCloud ? <RefreshCw size={14} className="animate-spin text-blue-500" /> : <Activity size={14} className="text-blue-500" />}
-                                    Test
-                                </button>
-                                <button
-                                    onClick={saveCloudConfig}
-                                    disabled={isSavingCloud || (!cloudMasterKey && cloudConfig?.baseUrl === (registryStatus?.remote_url || 'https://stigix-target.jlsuzanne.workers.dev')) }
-                                    className={cn(
-                                        "px-6 py-2.5 rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2 shadow-lg",
-                                        isSavingCloud
-                                            ? "bg-card-secondary text-text-muted cursor-not-allowed border border-border"
-                                            : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
-                                    )}
-                                >
-                                    {isSavingCloud ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                                    UPDATE SECURITY
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-                            <div className="space-y-6">
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between pl-1">
-                                        <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Stigix Master Key</label>
-                                        {cloudConfig?.hasKey && (
-                                            <span className="flex items-center gap-1.5 text-[8px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                                <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
-                                                Master Key Active
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="relative group">
-                                        <input
-                                            type={showCloudKey ? "text" : "password"}
-                                            autoComplete="new-password"
-                                            placeholder={cloudConfig?.hasKey ? "Leave empty to keep saved key" : "paste your master key here..."}
-                                            value={cloudMasterKey}
-                                            onChange={e => { setCloudMasterKey(e.target.value); setCloudDirty(true); setCloudTestResult(null); }}
-                                            className="w-full bg-card-secondary/50 border border-border text-[11px] font-black tracking-widest text-text-primary rounded-xl px-5 py-3 outline-none focus:ring-1 focus:ring-blue-500 transition-all shadow-inner font-mono"
-                                        />
-                                        <button 
-                                            onClick={() => setShowCloudKey(!showCloudKey)}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-card rounded-lg text-text-muted transition-colors"
-                                        >
-                                            <Globe size={14} className={showCloudKey ? "text-blue-500" : "opacity-40"} />
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1">Worker Base URL</label>
-                                    <div className="relative group">
-                                        <input
-                                            type="text"
-                                            placeholder="https://stigix-target.your-account.workers.dev"
-                                            value={cloudConfig?.baseUrl || ''}
-                                            onChange={e => { setCloudConfig(prev => prev ? { ...prev, baseUrl: e.target.value } : null); setCloudDirty(true); setCloudTestResult(null); }}
-                                            className="w-full bg-card-secondary/50 border border-border text-[11px] font-mono text-text-primary rounded-xl px-5 py-3 outline-none focus:ring-1 focus:ring-blue-500 transition-all shadow-inner"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-5">
-                                <div className="p-5 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-2xl flex gap-4 items-start">
-                                    <Info size={18} className="text-blue-500 mt-1 shrink-0" />
-                                    <div className="space-y-2">
-                                        <p className="text-[10px] font-black text-blue-600/80 uppercase tracking-widest">Why specify a Master Key?</p>
-                                        <p className="text-[11px] font-bold text-text-secondary leading-relaxed opacity-90">
-                                            The Master Key is used to securely sign Synthetic Cloud Probes (Slow SaaS, download/large, etc.) before they hit your Cloudflare Worker. This prevents unauthorized access to your probe infrastructure.
-                                        </p>
-                                        <p className="text-[11px] font-bold text-text-secondary leading-relaxed opacity-90">
-                                            If you are using the official Stigix laboratory, please contact your account manager or the Stigix core team for the official credentials.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="p-4 bg-purple-600/5 border border-purple-500/10 rounded-xl flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600">
-                                            <Zap size={14} />
-                                        </div>
-                                        <div>
-                                            <div className="text-[9px] font-black text-purple-600 uppercase tracking-widest">Active Protection</div>
-                                            <p className="text-[10px] font-bold text-text-muted">Master signatures are derived from your TSG ID.</p>
-                                        </div>
-                                    </div>
-                                    <Activity size={24} className="text-purple-500 opacity-20" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Details and Local Instances */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Registry Details */}
-                        <div className="lg:col-span-1 space-y-6">
-                            <div className="bg-card p-6 border border-border rounded-2xl space-y-5 shadow-sm">
-                                <h3 className="text-[11px] font-black text-text-muted tracking-[0.2em] uppercase">Configuration State</h3>
-
-                                <div className="space-y-4">
-                                    <div className="space-y-1.5">
-                                        <div className="text-[10px] font-black text-text-muted tracking-widest uppercase">Bootstrap URL (Cloudflare)</div>
-                                        <div className="p-2.5 bg-card-secondary/50 border border-border rounded-xl font-mono text-[11px] text-text-secondary truncate">
-                                            {registryStatus?.remote_url || 'N/A'}
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <div className="text-[10px] font-black text-text-muted tracking-widest uppercase">Active Registry</div>
-                                        <div className="p-2.5 bg-card-secondary/50 border border-border rounded-xl font-mono text-[11px] text-text-primary truncate flex items-center gap-2">
-                                            {registryStatus?.registry_url === registryStatus?.remote_url ? (
-                                                <Globe size={12} className="text-blue-500" />
-                                            ) : (
-                                                <Server size={12} className="text-purple-500" />
-                                            )}
-                                            {registryStatus?.registry_url || 'N/A'}
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-1.5 col-span-2">
-                                        <div className="text-[10px] font-black text-text-muted tracking-widest uppercase">Auto-Detection Identity</div>
-                                        <div className="p-3 bg-card-secondary/50 border border-border rounded-xl space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-[11px] font-bold text-text-muted">Site Role:</span>
-                                                <span className={`text-[11px] font-black tracking-tight ${registryStatus?.detected_role === 'HUB' ? 'text-purple-500' : 'text-blue-500'}`}>
-                                                    {registryStatus?.detected_role || 'UNKNOWN'}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-[11px] font-bold text-text-muted">Branch Gateway:</span>
-                                                <span className="text-[11px] font-black text-text-primary px-1.5 py-0.5 rounded bg-card">{registryStatus?.is_bg ? 'YES' : 'NO'}</span>
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-[11px] font-bold text-text-muted">Election Mode:</span>
-                                                <span className="text-[11px] font-black text-emerald-500 uppercase">{registryStatus?.current_mode || 'MANUAL'}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <div className="text-[10px] font-black text-text-muted tracking-widest uppercase">PoC Registry Key</div>
-                                        <div className="p-2.5 bg-card-secondary/50 border border-border rounded-xl font-mono text-[11px] text-text-muted flex items-center justify-between">
-                                            <div className="flex gap-1">
-                                                {registryStatus?.poc_key ? '••••••••••••••••' : 'None'}
-                                            </div>
-                                            <Lock size={12} className="opacity-40" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="pt-4 border-t border-border/50">
-                                    <div className="p-4 bg-purple-600/5 border border-purple-500/10 rounded-xl space-y-2">
-                                        <div className="flex items-center gap-2 text-purple-500">
-                                            <Info size={16} />
-                                            <span className="text-[10px] font-black uppercase tracking-widest">Hybrid Mode Info</span>
-                                        </div>
-                                        <p className="text-[10px] text-text-muted leading-relaxed font-bold opacity-80">
-                                            {registryStatus?.mode === 'leader'
-                                                ? "This node is the Leader. It handles registration for all local peers and periodically syncs to Cloudflare for global discovery."
-                                                : registryStatus?.registry_url === registryStatus?.remote_url
-                                                    ? "Node is in Peer Fallback mode. No local leader was found; communicating directly with Cloudflare (Write Quota Warning)."
-                                                    : "This node is a Peer. It finds the Leader via Cloudflare once, then communicates locally to save Worker resources."}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Local Instance Table (Leader Only) or Peer View */}
-                        <div className="lg:col-span-2">
-                            <div className="bg-card border border-border rounded-2xl h-full flex flex-col shadow-sm">
-                                <div className="p-6 border-b border-border/50 flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-emerald-600/10 rounded-lg text-emerald-500">
-                                            <Activity size={18} />
-                                        </div>
-                                        <h3 className="text-sm font-black text-text-primary tracking-tight">
-                                            {registryStatus?.mode === 'leader' ? 'Locally Registered Instances' : 'Visible Peers'}
-                                        </h3>
-                                    </div>
-                                    <button
-                                        onClick={() => window.location.reload()}
-                                        className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
-                                        title="Refresh"
-                                    >
-                                        <RefreshCw size={14} />
-                                    </button>
-                                </div>
-
-                                <div className="flex-1 overflow-auto p-4">
-                                    {registryStatus?.mode === 'leader' ? (
-                                        <table className="w-full text-left">
-                                            <thead>
-                                                <tr className="border-b border-border/50">
-                                                    <th className="pb-3 px-4 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Instance ID</th>
-                                                    <th className="pb-3 px-4 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Private IP</th>
-                                                    <th className="pb-3 px-4 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Capabilities</th>
-                                                    <th className="pb-3 px-4 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Last Seen</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {registryStatus?.local_instances?.length === 0 ? (
-                                                    <tr>
-                                                        <td colSpan={4} className="py-12 text-center text-text-muted text-[10px] font-bold tracking-widest opacity-50">
-                                                            No peers have registered with this leader yet.
-                                                        </td>
-                                                    </tr>
-                                                ) : (
-                                                    registryStatus?.local_instances?.map((inst: any) => (
-                                                        <tr key={inst.instance_id} className="group hover:bg-card-hover transition-colors">
-                                                            <td className="py-4 px-4">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-7 h-7 rounded-lg bg-purple-600/10 text-purple-500 flex items-center justify-center shrink-0">
-                                                                        <Server size={14} />
-                                                                    </div>
-                                                                    <span className="text-[11px] font-black text-text-primary tracking-tight">{inst.instance_id}</span>
-                                                                </div>
-                                                            </td>
-                                                            <td className="py-4 px-4 font-mono text-[10px] text-text-secondary">{inst.ip_private}</td>
-                                                            <td className="py-4 px-4">
-                                                                <div className="flex gap-1">
-                                                                    {inst.capabilities?.voice && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" title="Voice" />}
-                                                                    {inst.capabilities?.xfr && <div className="w-1.5 h-1.5 rounded-full bg-cyan-500" title="Speedtest" />}
-                                                                    {inst.capabilities?.convergence && <div className="w-1.5 h-1.5 rounded-full bg-purple-500" title="Failover" />}
-                                                                    {inst.capabilities?.security && <div className="w-1.5 h-1.5 rounded-full bg-red-500" title="Security" />}
-                                                                </div>
-                                                            </td>
-                                                            <td className="py-4 px-4 text-[10px] text-text-muted font-bold whitespace-nowrap">
-                                                                {new Date(inst.last_seen).toLocaleTimeString()}
-                                                            </td>
-                                                        </tr>
-                                                    ))
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    ) : registryStatus?.registry_url === registryStatus?.remote_url ? (
-                                        <div className="h-full flex flex-col items-center justify-center space-y-8 py-10">
-                                            <div className="relative">
-                                                <div className="absolute inset-0 bg-amber-500/20 blur-3xl rounded-full animate-pulse" />
-                                                <Globe size={64} className="text-amber-500 relative" />
-                                                <div className="absolute -top-2 -right-2 p-1 bg-amber-500 rounded-full border-4 border-card shadow-lg">
-                                                    <AlertTriangle size={16} className="text-white" />
-                                                </div>
-                                            </div>
-
-                                            <div className="text-center space-y-5 max-w-sm">
-                                                <div className="space-y-1">
-                                                    <p className="text-[12px] font-black text-amber-500/70 uppercase tracking-[0.3em]">Fallback Mode</p>
-                                                    <h4 className="text-2xl font-black text-text-primary tracking-tight">
-                                                        No Local Leader
-                                                    </h4>
-                                                </div>
-
-                                                <p className="text-[10px] text-text-muted font-bold leading-relaxed opacity-60">
-                                                    This node is communicating directly with Cloudflare for discovery. To save Cloudflare Worker quota, configure a local leader or let autodiscovery elect one.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="h-full flex flex-col items-center justify-center space-y-8 py-10">
-                                            <div className="relative">
-                                                <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full animate-pulse" />
-                                                <Server size={64} className="text-blue-500 relative" />
-                                                <div className="absolute -top-2 -right-2 p-1 bg-green-500 rounded-full border-4 border-card shadow-lg">
-                                                    <Activity size={16} className="text-white" />
-                                                </div>
-                                            </div>
-
-                                            <div className="text-center space-y-5 max-w-sm">
-                                                <div className="space-y-1">
-                                                    <p className="text-[12px] font-black text-text-muted uppercase tracking-[0.3em]">Active Local Leader</p>
-                                                    <h4 className="text-2xl font-black text-text-primary tracking-tight">
-                                                        {registryStatus?.leader_info?.id || 'Leader Found'}
-                                                    </h4>
-                                                </div>
-
-                                                <div className="p-4 bg-card-secondary/50 border border-border rounded-2xl space-y-3">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase">Leader IP</span>
-                                                        <span className="font-mono text-xs font-bold text-blue-500">{registryStatus?.leader_info?.ip || 'Connecting...'}</span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase">Sync Status</span>
-                                                        <span className="text-[9px] font-black text-green-500 uppercase flex items-center gap-1.5">
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                                                            Connected
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                                        <div className="space-y-4">
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between pl-1">
+                                                    <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Master Key</label>
+                                                    {cloudConfig?.hasKey && (
+                                                        <span className="flex items-center gap-1.5 text-[8px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                                            <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                                                            Active
                                                         </span>
-                                                    </div>
+                                                    )}
                                                 </div>
-
-                                                <p className="text-[10px] text-text-muted font-bold leading-relaxed opacity-60">
-                                                    This node is discovery-delegated. Peers discovered via the leader are automatically synchronized in your <span className="text-emerald-500">Targets</span> dashboard.
-                                                </p>
+                                                <div className="relative">
+                                                    <input
+                                                        type={showCloudKey ? "text" : "password"}
+                                                        autoComplete="new-password"
+                                                        placeholder={cloudConfig?.hasKey ? "Leave empty to keep saved key" : "paste your master key here..."}
+                                                        value={cloudMasterKey}
+                                                        onChange={e => { setCloudMasterKey(e.target.value); setCloudDirty(true); setCloudTestResult(null); }}
+                                                        className="w-full bg-card-secondary/50 border border-border text-[11px] font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                                                    />
+                                                    <button
+                                                        onClick={() => setShowCloudKey(!showCloudKey)}
+                                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-card rounded text-text-muted transition-colors"
+                                                    >
+                                                        <Globe size={12} className={showCloudKey ? "text-blue-500" : "opacity-40"} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1">Worker Base URL</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="https://stigix-target.your-account.workers.dev"
+                                                    value={cloudConfig?.baseUrl || ''}
+                                                    onChange={e => { setCloudConfig(prev => prev ? { ...prev, baseUrl: e.target.value } : null); setCloudDirty(true); setCloudTestResult(null); }}
+                                                    className="w-full bg-card-secondary/50 border border-border text-[11px] font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                                                />
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={handleTestCloud}
+                                                    disabled={isTestingCloud || !cloudConfig?.baseUrl}
+                                                    className="px-4 py-2 bg-card hover:bg-card-hover border border-border hover:border-blue-500/30 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 disabled:opacity-50"
+                                                >
+                                                    {isTestingCloud ? <RefreshCw size={12} className="animate-spin text-blue-500" /> : <Activity size={12} className="text-blue-500" />}
+                                                    Test
+                                                </button>
+                                                <button
+                                                    onClick={saveCloudConfig}
+                                                    disabled={isSavingCloud || (!cloudMasterKey && cloudConfig?.baseUrl === (registryStatus?.remote_url || 'https://stigix-target.jlsuzanne.workers.dev'))}
+                                                    className={cn(
+                                                        "px-5 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2",
+                                                        isSavingCloud ? "bg-card-secondary text-text-muted border border-border" : "bg-blue-600 hover:bg-blue-500 text-white"
+                                                    )}
+                                                >
+                                                    {isSavingCloud ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                                                    Save
+                                                </button>
+                                                {cloudTestResult && !cloudDirty && (
+                                                    <span className={cn(
+                                                        "px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5",
+                                                        cloudTestResult.success ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" : "bg-red-500/10 text-red-500 border-red-500/30"
+                                                    )}>
+                                                        {cloudTestResult.success ? <><CheckCircle2 size={11} /> OK</> : <><XCircle size={11} /> {cloudTestResult.error || 'Failed'}</>}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
-                                    )}
+                                        <div className="p-4 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl flex gap-3 items-start">
+                                            <Info size={14} className="text-blue-500 mt-0.5 shrink-0" />
+                                            <p className="text-[10px] font-bold text-text-muted leading-relaxed opacity-80">
+                                                The Master Key signs Synthetic Cloud Probes (Slow SaaS, download/large, etc.) before they reach your Cloudflare Worker, preventing unauthorized access. If you remove Cloudflare from your setup, this section can be ignored.
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </details>
                 </div>
-            )}
+                );
+            })()}
 
             {activeTab === 'targets' && (
                 <div className="bg-card border border-border rounded-2xl p-8 shadow-sm space-y-8">
