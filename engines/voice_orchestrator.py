@@ -202,11 +202,27 @@ def check_reachability(ip):
         return False
 
 def get_local_site_name() -> str:
-    """Reads site name from env, site-name.json, site-detection.json, system-settings.json, or hostname."""
-    name = os.environ.get('SITE_NAME') or os.environ.get('NODE_NAME')
-    if name: return name.strip()
-    
-    # Check site-name.json (persisted by Settings -> Stigix Targets -> LOCAL TARGET SERVICE)
+    """Reads site name from env (STIGIX_SITE_NAME, SITE_NAME, NODE_NAME), .env file, site-name.json, or hostname."""
+    # 1. Environment variables
+    for env_key in ['STIGIX_SITE_NAME', 'SITE_NAME', 'NODE_NAME', 'TARGET_NAME']:
+        v = os.environ.get(env_key)
+        if v and v.strip(): return v.strip()
+
+    # 2. Check .env files on disk if not exported into container env
+    for env_path in ['/app/.env', '/app/config/.env', '.env', '../.env']:
+        try:
+            if os.path.exists(env_path):
+                with open(env_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('#') or '=' not in line: continue
+                        k, val = line.split('=', 1)
+                        if k.strip() in ['STIGIX_SITE_NAME', 'SITE_NAME', 'NODE_NAME', 'TARGET_NAME']:
+                            clean_val = val.strip().strip('"\'')
+                            if clean_val: return clean_val
+        except Exception: pass
+
+    # 3. Check site-name.json (persisted by Settings -> Stigix Targets -> LOCAL TARGET SERVICE)
     try:
         p = os.path.join(CONFIG_DIR, 'site-name.json')
         if os.path.exists(p):
