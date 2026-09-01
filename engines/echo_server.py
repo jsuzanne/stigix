@@ -49,25 +49,39 @@ def handle_port(ip, port, active_sessions, lock):
                 
                 # Extract IDs
                 detected_id = "Unknown"
-                detected_label = "Unknown"
+                detected_label = ""
                 session_type = "Voice"
                 try:
-                    payload_str = data.decode('utf-8', errors='ignore')
+                    payload_str = data.decode('latin-1', errors='ignore')
                     if "CID:" in payload_str:
-                        detected_id = payload_str.split("CID:")[1].split(":")[0]
+                        detected_id = payload_str.split("CID:")[1].split(":")[0].strip()
                         detected_label = ""
                     elif "CONV:" in payload_str:
                         # Format: CONV:TEST-ID:LABEL:SEQ:TS
                         parts = payload_str.split(':')
                         if len(parts) >= 3:
-                            detected_id = parts[1]
-                            detected_label = parts[2]
+                            detected_id = parts[1].strip()
+                            detected_label = parts[2].strip()
                             session_type = "Convergence"
                     elif "TEST-" in payload_str:
-                        detected_id = payload_str.split(":")[0]
+                        detected_id = payload_str.split(":")[0].strip()
                         detected_label = ""
                         session_type = "Convergence"
-                except: pass
+                    elif "CALL-" in payload_str:
+                        import re
+                        m = re.search(r'CALL-[A-Za-z0-9_-]+', payload_str)
+                        if m:
+                            detected_id = m.group(0)
+                except Exception:
+                    pass
+
+                # Fallback: Deterministic Source Port mapping (rtp.py maps source_port = 30000 + call_num)
+                if detected_id in ("Unknown", "", "NONE"):
+                    if 30000 <= addr[1] <= 39999:
+                        call_num = addr[1] - 30000
+                        detected_id = f"CALL-{call_num:04d}"
+                    elif addr[1] > 0:
+                        detected_id = f"CALL-P{addr[1]}"
 
                 with lock:
                     # Use Test ID as key for Convergence to handle IP/Port change during failover
@@ -136,6 +150,9 @@ def export_ingress_sessions(active_sessions, lock):
                 status = "active" if last_seen_diff <= 5.0 else "completed"
                 addr_info = session.get('last_addr', ('Unknown', 0))
                 id_val = session.get('id', 'Unknown')
+                prefix = "CONV" if session.get("type") == "Convergence" else "CALL"
+                if id_val != "Unknown" and not (id_val.startswith("CONV-") or id_val.startswith("CALL-")):
+                    id_val = f"{prefix}-{id_val}"
                 
                 item = {
                     "id": id_val,
