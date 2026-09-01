@@ -91,7 +91,7 @@ export class ProvisioningManager {
 
             if (!fs.existsSync(this.stateFile)) {
                 const defaultState: PeerProvisioningState = {
-                    enabled: false, // Default OFF for existing instances (safe opt-in)
+                    enabled: true, // Default ON for Zero-Touch Provisioning
                     appliedRevisions: {},
                     orphans: {}
                 };
@@ -198,7 +198,7 @@ export class ProvisioningManager {
                 return JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
             }
         } catch {}
-        return { enabled: false, appliedRevisions: {}, orphans: {} };
+        return { enabled: true, appliedRevisions: {}, orphans: {} };
     }
 
     public saveState(state: PeerProvisioningState): void {

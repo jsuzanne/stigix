@@ -3509,9 +3509,18 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                             <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Publish shared configuration bundles once to all connected remote branch peers</p>
                                         </div>
                                     </div>
-                                    <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                                        Leader Publisher Active
-                                    </span>
+                                    <button
+                                        onClick={() => handleToggleProvisioning(!provisioningData?.state?.enabled)}
+                                        disabled={provisioningToggling}
+                                        className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 border shadow-sm ${
+                                            provisioningData?.state?.enabled
+                                                ? "bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/30"
+                                                : "bg-card-secondary text-text-muted border-border hover:border-emerald-500/30"
+                                        }`}
+                                    >
+                                        {provisioningToggling ? <RefreshCw size={10} className="animate-spin" /> : <Power size={10} />}
+                                        {provisioningData?.state?.enabled ? 'Master Publisher Active' : 'Master Publisher Disabled'}
+                                    </button>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
