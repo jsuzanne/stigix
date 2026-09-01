@@ -17,6 +17,22 @@ export interface ProvisioningManifest {
     bundles: ProvisioningManifestBundle[];
 }
 
+export interface SyncDiffItem {
+    id: string;
+    name: string;
+    action: 'added' | 'removed' | 'modified';
+    details?: string;
+}
+
+export interface SyncHistoryEntry {
+    id: string;
+    type: 'applications' | 'connectivity-probes';
+    revision: number;
+    timestamp: string;
+    diff: SyncDiffItem[];
+    summary: { added: number; removed: number; modified: number };
+}
+
 export interface PeerProvisioningState {
     enabled: boolean;
     appliedRevisions: {
@@ -31,6 +47,7 @@ export interface PeerProvisioningState {
     orphans: {
         [bundleType: string]: string[]; // array of item IDs
     };
+    history?: SyncHistoryEntry[];
 }
 
 export class ProvisioningManager {
@@ -336,6 +353,51 @@ export class ProvisioningManager {
         }
     }
 
+    public computeDiff(type: 'applications' | 'connectivity-probes', oldItems: any[], newItems: any[]): { diff: SyncDiffItem[]; summary: { added: number; removed: number; modified: number } } {
+        const oldMap = new Map<string, any>(oldItems.map(i => [i.id || this.generateDeterministicId(type, i), i]));
+        const newMap = new Map<string, any>(newItems.map(i => [i.id || this.generateDeterministicId(type, i), i]));
+
+        const diff: SyncDiffItem[] = [];
+        let added = 0, removed = 0, modified = 0;
+
+        for (const [id, newItem] of newMap.entries()) {
+            const oldItem = oldMap.get(id);
+            const displayName = newItem.name || newItem.domain || id;
+
+            if (!oldItem) {
+                added++;
+                const desc = type === 'applications' ? `${newItem.domain} (weight: ${newItem.weight})` : `${newItem.type || 'PING'} ➔ ${newItem.target || ''}`;
+                diff.push({ id, name: displayName, action: 'added', details: desc });
+            } else {
+                const changes: string[] = [];
+                if (type === 'applications') {
+                    if (oldItem.weight !== newItem.weight) changes.push(`weight: ${oldItem.weight} ➔ ${newItem.weight}`);
+                    if (oldItem.endpoint !== newItem.endpoint) changes.push(`endpoint: ${oldItem.endpoint} ➔ ${newItem.endpoint}`);
+                    if (oldItem.category !== newItem.category) changes.push(`category: ${oldItem.category} ➔ ${newItem.category}`);
+                } else {
+                    if (oldItem.target !== newItem.target) changes.push(`target: ${oldItem.target} ➔ ${newItem.target}`);
+                    if (oldItem.timeout !== newItem.timeout) changes.push(`timeout: ${oldItem.timeout}ms ➔ ${newItem.timeout}ms`);
+                    if (oldItem.frequency !== newItem.frequency) changes.push(`freq: ${oldItem.frequency}s ➔ ${newItem.frequency}s`);
+                    if (oldItem.enabled !== newItem.enabled) changes.push(`enabled: ${oldItem.enabled} ➔ ${newItem.enabled}`);
+                }
+                if (changes.length > 0) {
+                    modified++;
+                    diff.push({ id, name: displayName, action: 'modified', details: changes.join(', ') });
+                }
+            }
+        }
+
+        for (const [id, oldItem] of oldMap.entries()) {
+            if (!newMap.has(id)) {
+                removed++;
+                const displayName = oldItem.name || oldItem.domain || id;
+                diff.push({ id, name: displayName, action: 'removed' });
+            }
+        }
+
+        return { diff, summary: { added, removed, modified } };
+    }
+
     // ─── Merge & Atomic Apply ───────────────────────────────────────────────────
 
     public applyGlobalBundle(type: 'applications' | 'connectivity-probes', revision: number, checksum: string, globalItems: any[]): boolean {
@@ -365,13 +427,27 @@ export class ProvisioningManager {
             const cacheFile = path.join(this.globalDir, type, `rev-${revision}.json`);
             fs.writeFileSync(cacheFile, JSON.stringify(globalItems, null, 2), 'utf8');
 
-            // 3. Load local overrides & compute effective merged list
+            // 3. Load previous active items to calculate diff
+            let oldEffective: any[] = [];
+            if (fs.existsSync(activeFile)) {
+                try {
+                    if (type === 'applications') {
+                        const raw = JSON.parse(fs.readFileSync(activeFile, 'utf8'));
+                        oldEffective = raw.applications || [];
+                    } else {
+                        oldEffective = JSON.parse(fs.readFileSync(activeFile, 'utf8'));
+                    }
+                } catch {}
+            }
+
+            // Load local overrides & compute effective merged list
             const merged = this.buildEffectiveItems(type, globalItems);
+            const { diff, summary } = this.computeDiff(type, oldEffective, merged);
 
             // 4. Atomic write to active flat config file
             this.atomicWriteActiveFile(type, activeFile, merged);
 
-            // 5. Update state
+            // 5. Update state & history log
             const orphanIds = merged.filter((x: any) => x._source === 'orphaned').map((x: any) => x.id);
             state.appliedRevisions[type] = {
                 revision,
@@ -380,6 +456,20 @@ export class ProvisioningManager {
                 status: 'applied'
             };
             state.orphans[type] = orphanIds;
+
+            if (!state.history) state.history = [];
+            state.history.unshift({
+                id: `${type}-rev-${revision}-${Date.now()}`,
+                type,
+                revision,
+                timestamp: new Date().toISOString(),
+                diff,
+                summary
+            });
+            if (state.history.length > 20) {
+                state.history = state.history.slice(0, 20);
+            }
+
             this.saveState(state);
 
             log('PROVISIONING', `Successfully applied ${type} rev ${revision} (${merged.length} effective items, ${orphanIds.length} orphans)`);

@@ -3,7 +3,7 @@ import {
     RefreshCw, Download, AlertCircle, CheckCircle, Clock, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
     Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers, X, Radio,
-    Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy
+    Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy, History, ChevronUp
 } from 'lucide-react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
@@ -967,6 +967,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const [provisioningData, setProvisioningData] = useState<{ state: any; manifest: any; pending?: { applications: boolean; connectivityProbes: boolean } } | null>(null);
     const [publishingType, setPublishingType] = useState<string | null>(null);
     const [provisioningToggling, setProvisioningToggling] = useState(false);
+    const [historyExpanded, setHistoryExpanded] = useState(false);
+    const lastToastedRevs = useRef<{ applications?: number; 'connectivity-probes'?: number }>({});
 
     const fetchProvisioningData = useCallback(() => {
         fetch('/api/provisioning/config', { headers: { 'Authorization': `Bearer ${token}` } })
@@ -977,9 +979,33 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
 
     useEffect(() => {
         fetchProvisioningData();
-        const interval = setInterval(fetchProvisioningData, 30000);
+        const interval = setInterval(fetchProvisioningData, 10000);
         return () => clearInterval(interval);
     }, [fetchProvisioningData]);
+
+    useEffect(() => {
+        if (provisioningData?.state?.appliedRevisions) {
+            const appRev = provisioningData.state.appliedRevisions.applications;
+            const probeRev = provisioningData.state.appliedRevisions['connectivity-probes'];
+
+            if (appRev && appRev.status === 'applied' && lastToastedRevs.current.applications !== undefined && lastToastedRevs.current.applications !== appRev.revision) {
+                const latestHist = provisioningData.state.history?.find((h: any) => h.type === 'applications' && h.revision === appRev.revision);
+                const summaryText = latestHist?.summary ? `(+${latestHist.summary.added} added, -${latestHist.summary.removed} removed, ~${latestHist.summary.modified} modified)` : '';
+                toast.success(`🌐 Global Sync: Applications rev ${appRev.revision} applied! ${summaryText}`, { duration: 6000 });
+            }
+
+            if (probeRev && probeRev.status === 'applied' && lastToastedRevs.current['connectivity-probes'] !== undefined && lastToastedRevs.current['connectivity-probes'] !== probeRev.revision) {
+                const latestHist = provisioningData.state.history?.find((h: any) => h.type === 'connectivity-probes' && h.revision === probeRev.revision);
+                const summaryText = latestHist?.summary ? `(+${latestHist.summary.added} added, -${latestHist.summary.removed} removed, ~${latestHist.summary.modified} modified)` : '';
+                toast.success(`🌐 Global Sync: Connectivity Probes rev ${probeRev.revision} applied! ${summaryText}`, { duration: 6000 });
+            }
+
+            lastToastedRevs.current = {
+                applications: appRev?.revision,
+                'connectivity-probes': probeRev?.revision
+            };
+        }
+    }, [provisioningData]);
 
     const handlePublishBundle = async (type: 'applications' | 'connectivity-probes') => {
         setPublishingType(type);
@@ -3514,6 +3540,90 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                             Publish Probes
                                         </button>
                                     </div>
+                                </div>
+
+                                {/* Collapsible Sync Audit History & Diff Log */}
+                                <div className="mt-4 border-t border-border/40 pt-4">
+                                    <button
+                                        onClick={() => setHistoryExpanded(!historyExpanded)}
+                                        className="w-full flex items-center justify-between p-2.5 rounded-xl bg-card-secondary/30 hover:bg-card-secondary/60 border border-border/50 text-[10px] font-black uppercase tracking-widest text-text-muted hover:text-text-primary transition-all select-none"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <History size={14} className="text-blue-400" />
+                                            <span>Sync Audit History & Diff Log</span>
+                                            {provisioningData?.state?.history && provisioningData.state.history.length > 0 && (
+                                                <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[9px]">
+                                                    {provisioningData.state.history.length} entries
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-[9px] opacity-70 font-mono">{historyExpanded ? 'Hide' : 'Expand'}</span>
+                                            {historyExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                        </div>
+                                    </button>
+
+                                    {historyExpanded && (
+                                        <div className="mt-3 space-y-3 max-h-72 overflow-y-auto pr-1 animate-in slide-in-from-top-2 duration-200">
+                                            {(!provisioningData?.state?.history || provisioningData.state.history.length === 0) ? (
+                                                <div className="p-4 text-center text-[10px] text-text-muted font-bold opacity-60 bg-card/40 rounded-xl border border-dashed border-border/50">
+                                                    No sync revision history recorded yet.
+                                                </div>
+                                            ) : (
+                                                provisioningData.state.history.map((entry: any) => (
+                                                    <div key={entry.id} className="p-3 bg-card-secondary/50 border border-border/60 rounded-xl space-y-2 text-[10px]">
+                                                        <div className="flex items-center justify-between border-b border-border/30 pb-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={cn(
+                                                                    "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest",
+                                                                    entry.type === 'applications' ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
+                                                                )}>
+                                                                    {entry.type === 'applications' ? 'Apps' : 'Probes'} rev {entry.revision}
+                                                                </span>
+                                                                <span className="text-[9px] font-mono text-text-muted opacity-70">
+                                                                    {new Date(entry.timestamp).toLocaleTimeString()} • {new Date(entry.timestamp).toLocaleDateString()}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2 font-mono text-[9px]">
+                                                                {entry.summary?.added > 0 && <span className="text-emerald-400 font-bold">+{entry.summary.added} added</span>}
+                                                                {entry.summary?.removed > 0 && <span className="text-red-400 font-bold">-{entry.summary.removed} removed</span>}
+                                                                {entry.summary?.modified > 0 && <span className="text-amber-400 font-bold">~{entry.summary.modified} modified</span>}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Diff items list */}
+                                                        <div className="space-y-1 pl-1 pt-1 font-mono text-[9.5px]">
+                                                            {(!entry.diff || entry.diff.length === 0) ? (
+                                                                <p className="text-text-muted opacity-50 text-[9px]">No items changed in this revision.</p>
+                                                            ) : (
+                                                                entry.diff.map((item: any, idx: number) => (
+                                                                    <div key={idx} className="flex items-center gap-2 leading-relaxed">
+                                                                        {item.action === 'added' && (
+                                                                            <span className="px-1 py-0.2 bg-emerald-500/10 text-emerald-400 rounded text-[8px] font-black uppercase">
+                                                                                + ADDED
+                                                                            </span>
+                                                                        )}
+                                                                        {item.action === 'removed' && (
+                                                                            <span className="px-1 py-0.2 bg-red-500/10 text-red-400 rounded text-[8px] font-black uppercase">
+                                                                                - REMOVED
+                                                                            </span>
+                                                                        )}
+                                                                        {item.action === 'modified' && (
+                                                                            <span className="px-1 py-0.2 bg-amber-500/10 text-amber-400 rounded text-[8px] font-black uppercase">
+                                                                                ~ MODIFIED
+                                                                            </span>
+                                                                        )}
+                                                                        <span className="font-bold text-text-primary">{item.name}</span>
+                                                                        {item.details && <span className="text-text-muted opacity-75 text-[9px]">({item.details})</span>}
+                                                                    </div>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
