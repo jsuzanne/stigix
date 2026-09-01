@@ -964,7 +964,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     };
 
     // ─── Global Provisioning State & Handlers ───
-    const [provisioningData, setProvisioningData] = useState<{ state: any; manifest: any } | null>(null);
+    const [provisioningData, setProvisioningData] = useState<{ state: any; manifest: any; pending?: { applications: boolean; connectivityProbes: boolean } } | null>(null);
     const [publishingType, setPublishingType] = useState<string | null>(null);
     const [provisioningToggling, setProvisioningToggling] = useState(false);
 
@@ -3446,11 +3446,19 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {/* Applications Bundle Publish Card */}
-                                    <div className="bg-card-secondary/40 border border-border/60 rounded-xl p-4 flex items-center justify-between gap-4">
+                                    <div className={cn(
+                                        "bg-card-secondary/40 border rounded-xl p-4 flex items-center justify-between gap-4 transition-all",
+                                        provisioningData?.pending?.applications ? "border-amber-500/50 bg-amber-500/5" : "border-border/60"
+                                    )}>
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <Globe size={14} className="text-emerald-500" />
                                                 <span className="text-xs font-black text-text-primary">Applications Catalogue</span>
+                                                {provisioningData?.pending?.applications && (
+                                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
+                                                        ⚠️ Changes Pending
+                                                    </span>
+                                                )}
                                             </div>
                                             <p className="text-[9px] font-bold text-text-muted mt-1">
                                                 Published Rev: <span className="font-mono text-emerald-400">rev {provisioningData?.manifest?.bundles?.find((b: any) => b.type === 'applications')?.revision || 0}</span>
@@ -3460,7 +3468,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         <button
                                             onClick={() => handlePublishBundle('applications')}
                                             disabled={publishingType === 'applications'}
-                                            className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-sm"
+                                            className={cn(
+                                                "px-3 py-2 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-sm",
+                                                provisioningData?.pending?.applications
+                                                    ? "bg-amber-600 hover:bg-amber-500 shadow-amber-900/30 animate-pulse"
+                                                    : "bg-emerald-600 hover:bg-emerald-500"
+                                            )}
                                         >
                                             {publishingType === 'applications' ? <RefreshCw className="animate-spin" size={12} /> : <Upload size={12} />}
                                             Publish Apps
@@ -3468,11 +3481,19 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                     </div>
 
                                     {/* Connectivity Probes Bundle Publish Card */}
-                                    <div className="bg-card-secondary/40 border border-border/60 rounded-xl p-4 flex items-center justify-between gap-4">
+                                    <div className={cn(
+                                        "bg-card-secondary/40 border rounded-xl p-4 flex items-center justify-between gap-4 transition-all",
+                                        provisioningData?.pending?.connectivityProbes ? "border-amber-500/50 bg-amber-500/5" : "border-border/60"
+                                    )}>
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <Zap size={14} className="text-cyan-500" />
                                                 <span className="text-xs font-black text-text-primary">Connectivity Probes</span>
+                                                {provisioningData?.pending?.connectivityProbes && (
+                                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
+                                                        ⚠️ Changes Pending
+                                                    </span>
+                                                )}
                                             </div>
                                             <p className="text-[9px] font-bold text-text-muted mt-1">
                                                 Published Rev: <span className="font-mono text-cyan-400">rev {provisioningData?.manifest?.bundles?.find((b: any) => b.type === 'connectivity-probes')?.revision || 0}</span>
@@ -3482,7 +3503,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         <button
                                             onClick={() => handlePublishBundle('connectivity-probes')}
                                             disabled={publishingType === 'connectivity-probes'}
-                                            className="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-sm"
+                                            className={cn(
+                                                "px-3 py-2 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-sm",
+                                                provisioningData?.pending?.connectivityProbes
+                                                    ? "bg-amber-600 hover:bg-amber-500 shadow-amber-900/30 animate-pulse"
+                                                    : "bg-cyan-600 hover:bg-cyan-500"
+                                            )}
                                         >
                                             {publishingType === 'connectivity-probes' ? <RefreshCw className="animate-spin" size={12} /> : <Upload size={12} />}
                                             Publish Probes

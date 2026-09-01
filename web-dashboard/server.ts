@@ -10099,9 +10099,32 @@ log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry (Dynamic Mo
 
 // --- Global Provisioning Management APIs ---
 app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
+    let rawApps: any[] = [];
+    if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+        try {
+            const parsed = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
+            rawApps = parsed.applications || [];
+        } catch {}
+    }
+    const envProbes = getEnvConnectivityEndpoints();
+    const rawCustom = getCustomConnectivityEndpoints();
+    const mergedEnvProbes = envProbes.map((p: any) => {
+        const override = rawCustom.find((cp: any) => cp.name === p.name);
+        return override ? { ...p, ...override } : p;
+    });
+    const pureCustom = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+    const rawProbes = [...mergedEnvProbes, ...pureCustom];
+
+    const appsPending = provisioningManager.hasUnpublishedChanges('applications', rawApps);
+    const probesPending = provisioningManager.hasUnpublishedChanges('connectivity-probes', rawProbes);
+
     res.json({
         state: provisioningManager.getState(),
-        manifest: provisioningManager.getManifest()
+        manifest: provisioningManager.getManifest(),
+        pending: {
+            applications: appsPending,
+            connectivityProbes: probesPending
+        }
     });
 });
 
@@ -10131,12 +10154,11 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     } else {
         const envProbes = getEnvConnectivityEndpoints();
         const rawCustom = getCustomConnectivityEndpoints();
-        const custom = provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom);
         const mergedEnvProbes = envProbes.map((p: any) => {
-            const override = custom.find((cp: any) => cp.name === p.name);
+            const override = rawCustom.find((cp: any) => cp.name === p.name);
             return override ? { ...p, ...override } : p;
         });
-        const pureCustom = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+        const pureCustom = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
         items = [...mergedEnvProbes, ...pureCustom];
     }
 

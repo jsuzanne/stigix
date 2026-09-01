@@ -284,6 +284,15 @@ export class ProvisioningManager {
         return null;
     }
 
+    public hasUnpublishedChanges(type: 'applications' | 'connectivity-probes', currentActiveItems: any[]): boolean {
+        const lastBundle = this.getPublishedBundle(type);
+        if (!lastBundle) return currentActiveItems.length > 0;
+        const currentNormalized = this.normalizeItemsWithIds(type, currentActiveItems);
+        const currentChecksum = this.computeChecksum(currentNormalized);
+        const publishedChecksum = this.computeChecksum(lastBundle);
+        return currentChecksum !== publishedChecksum;
+    }
+
     // ─── Local Overrides Storage ────────────────────────────────────────────────
 
     public getLocalOverrides(type: 'applications' | 'connectivity-probes'): { [id: string]: any } {
