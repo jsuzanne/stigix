@@ -127,6 +127,7 @@ export default function Voice(props: VoiceProps) {
     // ── Target rows (merged registry + manual) ──
     const [targetRows, setTargetRows] = useState<TargetRow[]>([]);
     const [registryVoiceTargets, setRegistryVoiceTargets] = useState<any[]>([]);
+    const [allRegistryTargets, setAllRegistryTargets] = useState<any[]>([]);
     const [excludedCount, setExcludedCount] = useState(0);
     const [voiceTargetsLoaded, setVoiceTargetsLoaded] = useState(false);
     const [configLoaded, setConfigLoaded] = useState(false);
@@ -208,6 +209,7 @@ export default function Voice(props: VoiceProps) {
             .then(r => r.json())
             .then((data: any[]) => {
                 const all = Array.isArray(data) ? data : [];
+                setAllRegistryTargets(all);
                 const withVoice = all.filter(t => t.enabled && t.capabilities?.voice);
                 const withoutVoice = all.filter(t => t.enabled && !t.capabilities?.voice).length;
                 setRegistryVoiceTargets(withVoice);
@@ -1235,67 +1237,88 @@ export default function Voice(props: VoiceProps) {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border/50">
-                                {ingressSessions
-                                    .filter(s => {
-                                        if (!searchTerm) return true;
-                                        const term = searchTerm.toLowerCase();
-                                        const siteName = targetNameMap.get(s.src_ip) || registryVoiceTargets.find((t: any) => t.host === s.src_ip)?.name || s.src_ip || '';
-                                        return (s.id || '').toLowerCase().includes(term) ||
-                                               (s.src_ip || '').toLowerCase().includes(term) ||
-                                               siteName.toLowerCase().includes(term) ||
-                                               (s.type || '').toLowerCase().includes(term) ||
-                                               (s.label || '').toLowerCase().includes(term) ||
-                                               (s.status || '').toLowerCase().includes(term) ||
-                                               String(s.dest_port || '').includes(term) ||
-                                               String(s.src_port || '').includes(term);
-                                    })
-                                    .map((session, idx) => {
-                                        const siteName = targetNameMap.get(session.src_ip) || registryVoiceTargets.find((t: any) => t.host === session.src_ip)?.name || session.src_ip;
-                                        const isActive = session.status === 'active';
-                                        const startTime = session.start_time ? new Date(session.start_time * 1000) : new Date();
-                                        return (
-                                            <tr key={session.id || idx} className="hover:bg-card-secondary/30 transition-all group">
-                                                <td className="py-4 px-3 text-[10px] font-black font-mono text-text-muted">
-                                                    {startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                                </td>
-                                                <td className="py-4 px-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[10px] font-black text-cyan-400 px-2 py-0.5 rounded bg-cyan-600/10 border border-cyan-500/20 font-mono italic">
-                                                            #{session.id || 'CALL-IN'}
+                                {(() => {
+                                    const getResolvedSiteName = (ip: string) => {
+                                        if (!ip) return 'Unknown';
+                                        const regMatch = allRegistryTargets.find((t: any) => t.host === ip || t.ip === ip);
+                                        if (regMatch?.name && !/^[\d.]+$/.test(regMatch.name)) return regMatch.name;
+
+                                        const rowMatch = targetRows.find((r: any) => r.host === ip || r.ip === ip);
+                                        if (rowMatch?.name && !/^[\d.]+$/.test(rowMatch.name)) return rowMatch.name;
+
+                                        const ipPrefix = ip.split('.').slice(0, 3).join('.');
+                                        const subnetMatch = allRegistryTargets.find((t: any) => {
+                                            const targetIp = t.host || t.ip;
+                                            if (!targetIp) return false;
+                                            return targetIp.split('.').slice(0, 3).join('.') === ipPrefix && t.name && !/^[\d.]+$/.test(t.name);
+                                        });
+                                        if (subnetMatch?.name) return subnetMatch.name;
+
+                                        return ip;
+                                    };
+
+                                    return ingressSessions
+                                        .filter(s => {
+                                            if (!searchTerm) return true;
+                                            const term = searchTerm.toLowerCase();
+                                            const siteName = getResolvedSiteName(s.src_ip);
+                                            return (s.id || '').toLowerCase().includes(term) ||
+                                                   (s.src_ip || '').toLowerCase().includes(term) ||
+                                                   siteName.toLowerCase().includes(term) ||
+                                                   (s.type || '').toLowerCase().includes(term) ||
+                                                   (s.label || '').toLowerCase().includes(term) ||
+                                                   (s.status || '').toLowerCase().includes(term) ||
+                                                   String(s.dest_port || '').includes(term) ||
+                                                   String(s.src_port || '').includes(term);
+                                        })
+                                        .map((session, idx) => {
+                                            const siteName = getResolvedSiteName(session.src_ip);
+                                            const isActive = session.status === 'active';
+                                            const startTime = session.start_time ? new Date(session.start_time * 1000) : new Date();
+                                            return (
+                                                <tr key={session.id || idx} className="hover:bg-card-secondary/30 transition-all group">
+                                                    <td className="py-4 px-3 text-[10px] font-black font-mono text-text-muted">
+                                                        {startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                    </td>
+                                                    <td className="py-4 px-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] font-black text-cyan-400 px-2 py-0.5 rounded bg-cyan-600/10 border border-cyan-500/20 font-mono italic">
+                                                                #{session.id || 'CALL-IN'}
+                                                            </span>
+                                                            <PhoneIncoming size={13} className={isActive ? "text-cyan-400 animate-pulse" : "text-text-muted opacity-50"} />
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 px-3">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-xs font-black text-text-primary">{siteName}</span>
+                                                            <span className="text-[9px] font-mono text-text-muted opacity-60">{session.src_ip}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 px-3 font-mono text-[10px] font-bold text-text-muted">
+                                                        <span className="px-2 py-0.5 rounded bg-card-secondary border border-border">
+                                                            {session.src_port || '—'}
                                                         </span>
-                                                        <PhoneIncoming size={13} className={isActive ? "text-cyan-400 animate-pulse" : "text-text-muted opacity-50"} />
-                                                    </div>
-                                                </td>
-                                                <td className="py-4 px-3">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-xs font-black text-text-primary">{siteName}</span>
-                                                        <span className="text-[9px] font-mono text-text-muted opacity-60">{session.src_ip}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="py-4 px-3 font-mono text-[10px] font-bold text-text-muted">
-                                                    <span className="px-2 py-0.5 rounded bg-card-secondary border border-border">
-                                                        {session.src_port || '—'}
-                                                    </span>
-                                                </td>
-                                                <td className="py-4 px-3 font-mono text-[10px] font-bold text-cyan-400">
-                                                    {session.dest_port || 6100} UDP
-                                                </td>
-                                                <td className="py-4 px-3 font-mono text-[10px] font-bold text-text-primary">
-                                                    {session.packet_count?.toLocaleString() || 0} pkts
-                                                </td>
-                                                <td className="py-4 px-3 text-right">
-                                                    <span className={cn(
-                                                        "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border",
-                                                        isActive
-                                                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                                            : "bg-gray-500/10 text-gray-400 border-gray-500/20"
-                                                    )}>
-                                                        {isActive ? '🟢 LIVE' : '✅ COMPLETED'}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
+                                                    </td>
+                                                    <td className="py-4 px-3 font-mono text-[10px] font-bold text-cyan-400">
+                                                        {session.dest_port || 6100} UDP
+                                                    </td>
+                                                    <td className="py-4 px-3 font-mono text-[10px] font-bold text-text-primary">
+                                                        {session.packet_count?.toLocaleString() || 0} pkts
+                                                    </td>
+                                                    <td className="py-4 px-3 text-right">
+                                                        <span className={cn(
+                                                            "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border",
+                                                            isActive
+                                                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                                                : "bg-gray-500/10 text-gray-400 border-gray-500/20"
+                                                        )}>
+                                                            {isActive ? '🟢 LIVE' : '✅ COMPLETED'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        });
+                                })()}
                             </tbody>
                         </table>
                         {ingressSessions.length === 0 && (
