@@ -21,17 +21,18 @@ def get_version():
     return "1.1.0-patch.100"
 
 def handle_port(ip, port, active_sessions, lock):
-    s = socket(AF_INET, SOCK_DGRAM)
-    s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-    try:
-        s.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
-    except: pass
-    s.settimeout(1.0)
-    
     bound = False
+    s = None
     while not bound:
         try:
-            s.bind((ip, port))
+            sock = socket(AF_INET, SOCK_DGRAM)
+            sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+            try:
+                sock.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+            except: pass
+            sock.settimeout(1.0)
+            sock.bind((ip, port))
+            s = sock
             bound = True
             timestamp = time.strftime('%H:%M:%S')
             print(f"[{timestamp}] [SYSTEM] 📡 Listening on PORT {port}...", flush=True)

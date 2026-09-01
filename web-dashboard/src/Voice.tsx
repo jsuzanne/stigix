@@ -1239,9 +1239,15 @@ export default function Voice(props: VoiceProps) {
                                     .filter(s => {
                                         if (!searchTerm) return true;
                                         const term = searchTerm.toLowerCase();
+                                        const siteName = targetNameMap.get(s.src_ip) || registryVoiceTargets.find((t: any) => t.host === s.src_ip)?.name || s.src_ip || '';
                                         return (s.id || '').toLowerCase().includes(term) ||
                                                (s.src_ip || '').toLowerCase().includes(term) ||
-                                               (s.type || '').toLowerCase().includes(term);
+                                               siteName.toLowerCase().includes(term) ||
+                                               (s.type || '').toLowerCase().includes(term) ||
+                                               (s.label || '').toLowerCase().includes(term) ||
+                                               (s.status || '').toLowerCase().includes(term) ||
+                                               String(s.dest_port || '').includes(term) ||
+                                               String(s.src_port || '').includes(term);
                                     })
                                     .map((session, idx) => {
                                         const siteName = targetNameMap.get(session.src_ip) || registryVoiceTargets.find((t: any) => t.host === session.src_ip)?.name || session.src_ip;
