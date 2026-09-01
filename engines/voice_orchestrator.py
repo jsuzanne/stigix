@@ -118,6 +118,7 @@ def load_control():
     if 'max_simultaneous_calls' not in data: data['max_simultaneous_calls'] = 3
     if 'sleep_between_calls' not in data: data['sleep_between_calls'] = 5
     if 'interface' not in data: data['interface'] = default_iface
+    if 'source_port_mode' not in data: data['source_port_mode'] = 'call_id'
     
     return data
 
@@ -221,6 +222,8 @@ def start_call(server, interface):
     # Packet count: rtp.py sends one packet every 30ms (reverted from 20ms / G.711)
     num_packets = int(server['duration'] / 0.03)
     stream_type = server.get('stream_type', 'audio')
+    control = load_control()
+    source_port_mode = control.get('source_port_mode', 'call_id')
 
     cmd = [
         "python3", "rtp.py",
@@ -229,6 +232,7 @@ def start_call(server, interface):
         "--min-count", str(num_packets),
         "--max-count", str(num_packets + 1),
         "--source-interface", interface,
+        "--source-port-mode", source_port_mode,
         "--call-id", call_id,
         "--stream-type", stream_type
     ]

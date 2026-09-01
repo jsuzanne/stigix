@@ -112,6 +112,9 @@ if __name__ == "__main__":
     binding.add_argument("--source-port", "-sport",
                          help="Source port (default 0 = auto from CALL-ID)",
                          type=int, default=0)
+    binding.add_argument("--source-port-mode",
+                         help="Source port allocation mode: call_id or ephemeral",
+                         type=str, default="call_id", choices=["call_id", "ephemeral"])
     binding.add_argument("--source-interface",
                          help="Source interface (SO_BINDTODEVICE, Linux only)",
                          type=str, default=None)
@@ -135,10 +138,11 @@ if __name__ == "__main__":
     max_count = args['max_count']
     count = random.randrange(min_count, max_count)
 
-    # ── Source port: deterministic from CALL-ID (30000-39999) ─────────────────
+    # ── Source port: deterministic from CALL-ID (30000-39999) or ephemeral ───
     source_port = args['source_port']
+    source_port_mode = args.get('source_port_mode', 'call_id')
     if source_port == 0:
-        if is_debug_mode:
+        if source_port_mode == 'ephemeral':
             source_port = random.randrange(10000, 65535)
         else:
             call_id = args.get('call_id', 'NONE')

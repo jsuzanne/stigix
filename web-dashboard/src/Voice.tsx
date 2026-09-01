@@ -74,6 +74,7 @@ interface VoiceControl {
     max_simultaneous_calls: number;
     sleep_between_calls: number;
     interface: string;
+    source_port_mode?: 'call_id' | 'ephemeral';
 }
 
 interface TargetRow {
@@ -602,6 +603,20 @@ export default function Voice(props: VoiceProps) {
                                         className="w-28 bg-card-secondary/50 border border-border text-text-primary rounded-lg px-2 py-1.5 text-xs font-black focus:ring-1 focus:ring-blue-500 outline-none shadow-sm"
                                         placeholder="eth0, bond0…"
                                     />
+                                </div>
+                                <div className="w-px h-5 bg-border hidden sm:block" />
+                                <div className="flex items-center gap-2">
+                                    <label className="text-[9px] text-text-muted uppercase font-black tracking-widest flex items-center gap-1 whitespace-nowrap opacity-70">
+                                        <Hash size={9} /> Source Ports
+                                    </label>
+                                    <select
+                                        value={config.source_port_mode || 'call_id'}
+                                        onChange={e => { setIsDirty(true); setConfig(p => p ? { ...p, source_port_mode: e.target.value as any } : null); }}
+                                        className="bg-card-secondary/50 border border-border text-text-primary rounded-lg px-2 py-1.5 text-xs font-black focus:ring-1 focus:ring-blue-500 outline-none shadow-sm cursor-pointer"
+                                    >
+                                        <option value="call_id">🎯 Call ID Based (30000+N)</option>
+                                        <option value="ephemeral">🎲 Ephemeral Ports</option>
+                                    </select>
                                 </div>
                             </div>
                         )}
