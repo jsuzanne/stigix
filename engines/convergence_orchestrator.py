@@ -13,7 +13,7 @@ import signal
 # ========================================
 # CONFIGURATION TEST/DEBUG
 # ========================================
-DEBUG_MODE = False   # ← ACTIVÉ pour logs détaillés
+DEBUG_MODE = os.getenv('DEBUG', 'false').lower() == 'true'
 LOG_FILE = "/tmp/convergence_debug.log"
 # ========================================
 
