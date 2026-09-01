@@ -3,7 +3,7 @@ import {
     RefreshCw, Download, AlertCircle, CheckCircle, Clock, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
     Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers, X, Radio,
-    Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy, History, ChevronUp
+    Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy, History, ChevronUp, PhoneCall
 } from 'lucide-react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
@@ -964,11 +964,23 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     };
 
     // ─── Global Provisioning State & Handlers ───
-    const [provisioningData, setProvisioningData] = useState<{ state: any; manifest: any; pending?: { applications: boolean; connectivityProbes: boolean } } | null>(null);
+    const [provisioningData, setProvisioningData] = useState<{
+        state: any;
+        manifest: any;
+        pending?: {
+            applications?: boolean;
+            connectivityProbes?: boolean;
+            convergenceSla?: boolean;
+            prismaSase?: boolean;
+            securityConfig?: boolean;
+            voiceConfig?: boolean;
+            iotConfig?: boolean;
+        };
+    } | null>(null);
     const [publishingType, setPublishingType] = useState<string | null>(null);
     const [provisioningToggling, setProvisioningToggling] = useState(false);
     const [historyExpanded, setHistoryExpanded] = useState(false);
-    const lastToastedRevs = useRef<{ applications?: number; 'connectivity-probes'?: number }>({});
+    const lastToastedRevs = useRef<{ [bundleType: string]: number }>({});
 
     const fetchProvisioningData = useCallback(() => {
         fetch('/api/provisioning/config', { headers: { 'Authorization': `Bearer ${token}` } })
@@ -985,29 +997,41 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
 
     useEffect(() => {
         if (provisioningData?.state?.appliedRevisions) {
-            const appRev = provisioningData.state.appliedRevisions.applications;
-            const probeRev = provisioningData.state.appliedRevisions['connectivity-probes'];
+            const bundleTypes = [
+                'applications', 'connectivity-probes', 'convergence-sla',
+                'prisma-sase', 'security-config', 'voice-config', 'iot-config'
+            ];
 
-            if (appRev && appRev.status === 'applied' && lastToastedRevs.current.applications !== undefined && lastToastedRevs.current.applications !== appRev.revision) {
-                const latestHist = provisioningData.state.history?.find((h: any) => h.type === 'applications' && h.revision === appRev.revision);
-                const summaryText = latestHist?.summary ? `(+${latestHist.summary.added} added, -${latestHist.summary.removed} removed, ~${latestHist.summary.modified} modified)` : '';
-                toast.success(`🌐 Global Sync: Applications rev ${appRev.revision} applied! ${summaryText}`, { duration: 6000 });
+            const updatedToasted: { [k: string]: number } = { ...lastToastedRevs.current };
+
+            for (const bType of bundleTypes) {
+                const bRev = provisioningData.state.appliedRevisions[bType];
+                if (bRev && bRev.status === 'applied') {
+                    if (lastToastedRevs.current[bType] !== undefined && lastToastedRevs.current[bType] !== bRev.revision) {
+                        const latestHist = provisioningData.state.history?.find((h: any) => h.type === bType && h.revision === bRev.revision);
+                        const label = bType === 'applications' ? 'Applications'
+                            : bType === 'connectivity-probes' ? 'Probes'
+                            : bType === 'convergence-sla' ? 'Convergence SLA'
+                            : bType === 'prisma-sase' ? 'Prisma SASE Credentials'
+                            : bType === 'security-config' ? 'Security Policy'
+                            : bType === 'voice-config' ? 'Voice Settings' : 'IoT Simulation';
+
+                        const summaryText = latestHist?.summary
+                            ? latestHist.summary.added || latestHist.summary.removed
+                                ? `(+${latestHist.summary.added} added, -${latestHist.summary.removed} removed)`
+                                : `(~${latestHist.summary.modified} modified)`
+                            : '';
+                        toast.success(`🌐 Global Sync: ${label} rev ${bRev.revision} applied! ${summaryText}`, { duration: 6000 });
+                    }
+                    updatedToasted[bType] = bRev.revision;
+                }
             }
 
-            if (probeRev && probeRev.status === 'applied' && lastToastedRevs.current['connectivity-probes'] !== undefined && lastToastedRevs.current['connectivity-probes'] !== probeRev.revision) {
-                const latestHist = provisioningData.state.history?.find((h: any) => h.type === 'connectivity-probes' && h.revision === probeRev.revision);
-                const summaryText = latestHist?.summary ? `(+${latestHist.summary.added} added, -${latestHist.summary.removed} removed, ~${latestHist.summary.modified} modified)` : '';
-                toast.success(`🌐 Global Sync: Connectivity Probes rev ${probeRev.revision} applied! ${summaryText}`, { duration: 6000 });
-            }
-
-            lastToastedRevs.current = {
-                applications: appRev?.revision,
-                'connectivity-probes': probeRev?.revision
-            };
+            lastToastedRevs.current = updatedToasted;
         }
     }, [provisioningData]);
 
-    const handlePublishBundle = async (type: 'applications' | 'connectivity-probes') => {
+    const handlePublishBundle = async (type: string) => {
         setPublishingType(type);
         try {
             const res = await fetch(`/api/provisioning/publish/${type}`, {
@@ -1017,7 +1041,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
             const data = await res.json();
             if (data.success) {
                 fetchProvisioningData();
-                toast.success(`Published ${type === 'applications' ? 'Applications' : 'Connectivity Probes'} revision ${data.published.revision}`);
+                toast.success(`Published ${type} revision ${data.published.revision}`);
             } else {
                 toast.error(`Failed to publish: ${data.error || 'Unknown error'}`);
             }
@@ -3490,76 +3514,58 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                     </span>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {/* Applications Bundle Publish Card */}
-                                    <div className={cn(
-                                        "bg-card-secondary/40 border rounded-xl p-4 flex items-center justify-between gap-4 transition-all",
-                                        provisioningData?.pending?.applications ? "border-amber-500/50 bg-amber-500/5" : "border-border/60"
-                                    )}>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <Globe size={14} className="text-emerald-500" />
-                                                <span className="text-xs font-black text-text-primary">Applications Catalogue</span>
-                                                {provisioningData?.pending?.applications && (
-                                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
-                                                        ⚠️ Changes Pending
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="text-[9px] font-bold text-text-muted mt-1">
-                                                Published Rev: <span className="font-mono text-emerald-400">rev {provisioningData?.manifest?.bundles?.find((b: any) => b.type === 'applications')?.revision || 0}</span>
-                                                <span className="opacity-50"> ({provisioningData?.manifest?.bundles?.find((b: any) => b.type === 'applications')?.count || 0} apps)</span>
-                                            </p>
-                                        </div>
-                                        <button
-                                            onClick={() => handlePublishBundle('applications')}
-                                            disabled={publishingType === 'applications'}
-                                            className={cn(
-                                                "px-3 py-2 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-sm",
-                                                provisioningData?.pending?.applications
-                                                    ? "bg-amber-600 hover:bg-amber-500 shadow-amber-900/30 animate-pulse"
-                                                    : "bg-emerald-600 hover:bg-emerald-500"
-                                            )}
-                                        >
-                                            {publishingType === 'applications' ? <RefreshCw className="animate-spin" size={12} /> : <Upload size={12} />}
-                                            Publish Apps
-                                        </button>
-                                    </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {[
+                                        { key: 'applications', label: 'Applications Catalogue', icon: Globe, color: 'emerald', actionLabel: 'Publish Apps', pending: provisioningData?.pending?.applications },
+                                        { key: 'connectivity-probes', label: 'Connectivity Probes', icon: Zap, color: 'cyan', actionLabel: 'Publish Probes', pending: provisioningData?.pending?.connectivityProbes },
+                                        { key: 'convergence-sla', label: 'Convergence SLA', icon: Activity, color: 'purple', actionLabel: 'Publish SLA', pending: provisioningData?.pending?.convergenceSla },
+                                        { key: 'prisma-sase', label: 'Prisma SASE Credentials', icon: Lock, color: 'blue', actionLabel: 'Publish SASE', pending: provisioningData?.pending?.prismaSase },
+                                        { key: 'security-config', label: 'Security Policy & Schedules', icon: Shield, color: 'red', actionLabel: 'Publish Security', pending: provisioningData?.pending?.securityConfig },
+                                        { key: 'voice-config', label: 'Voice Settings', icon: PhoneCall, color: 'indigo', actionLabel: 'Publish Voice', pending: provisioningData?.pending?.voiceConfig },
+                                        { key: 'iot-config', label: 'IoT Simulation', icon: Radio, color: 'amber', actionLabel: 'Publish IoT', pending: provisioningData?.pending?.iotConfig },
+                                    ].map(b => {
+                                        const Icon = b.icon;
+                                        const bMeta = provisioningData?.manifest?.bundles?.find((x: any) => x.type === b.key);
+                                        const rev = bMeta?.revision || 0;
+                                        const cnt = bMeta?.count ?? 0;
+                                        const isPublishing = publishingType === b.key;
 
-                                    {/* Connectivity Probes Bundle Publish Card */}
-                                    <div className={cn(
-                                        "bg-card-secondary/40 border rounded-xl p-4 flex items-center justify-between gap-4 transition-all",
-                                        provisioningData?.pending?.connectivityProbes ? "border-amber-500/50 bg-amber-500/5" : "border-border/60"
-                                    )}>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <Zap size={14} className="text-cyan-500" />
-                                                <span className="text-xs font-black text-text-primary">Connectivity Probes</span>
-                                                {provisioningData?.pending?.connectivityProbes && (
-                                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
-                                                        ⚠️ Changes Pending
-                                                    </span>
-                                                )}
+                                        return (
+                                            <div key={b.key} className={cn(
+                                                "bg-card-secondary/40 border rounded-xl p-4 flex items-center justify-between gap-3 transition-all",
+                                                b.pending ? "border-amber-500/50 bg-amber-500/5" : "border-border/60"
+                                            )}>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <Icon size={14} className="text-blue-500" />
+                                                        <span className="text-xs font-black text-text-primary truncate">{b.label}</span>
+                                                        {b.pending && (
+                                                            <span className="px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
+                                                                ⚠️ Pending
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-[9px] font-bold text-text-muted mt-1 truncate">
+                                                        Rev: <span className="font-mono text-emerald-400">rev {rev}</span>
+                                                        <span className="opacity-50"> ({cnt} items)</span>
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    onClick={() => handlePublishBundle(b.key as any)}
+                                                    disabled={isPublishing}
+                                                    className={cn(
+                                                        "px-3 py-2 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-sm shrink-0",
+                                                        b.pending
+                                                            ? "bg-amber-600 hover:bg-amber-500 shadow-amber-900/30 animate-pulse"
+                                                            : "bg-blue-600 hover:bg-blue-500"
+                                                    )}
+                                                >
+                                                    {isPublishing ? <RefreshCw className="animate-spin" size={12} /> : <Upload size={12} />}
+                                                    {b.actionLabel}
+                                                </button>
                                             </div>
-                                            <p className="text-[9px] font-bold text-text-muted mt-1">
-                                                Published Rev: <span className="font-mono text-cyan-400">rev {provisioningData?.manifest?.bundles?.find((b: any) => b.type === 'connectivity-probes')?.revision || 0}</span>
-                                                <span className="opacity-50"> ({provisioningData?.manifest?.bundles?.find((b: any) => b.type === 'connectivity-probes')?.count || 0} probes)</span>
-                                            </p>
-                                        </div>
-                                        <button
-                                            onClick={() => handlePublishBundle('connectivity-probes')}
-                                            disabled={publishingType === 'connectivity-probes'}
-                                            className={cn(
-                                                "px-3 py-2 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-sm",
-                                                provisioningData?.pending?.connectivityProbes
-                                                    ? "bg-amber-600 hover:bg-amber-500 shadow-amber-900/30 animate-pulse"
-                                                    : "bg-cyan-600 hover:bg-cyan-500"
-                                            )}
-                                        >
-                                            {publishingType === 'connectivity-probes' ? <RefreshCw className="animate-spin" size={12} /> : <Upload size={12} />}
-                                            Publish Probes
-                                        </button>
-                                    </div>
+                                        );
+                                    })}
                                 </div>
 
                                 {/* Collapsible Sync Audit History & Diff Log */}

@@ -3,8 +3,17 @@ import path from 'path';
 import crypto from 'crypto';
 import { log } from './utils/logger.js';
 
+export type GlobalBundleType =
+    | 'applications'
+    | 'connectivity-probes'
+    | 'convergence-sla'
+    | 'prisma-sase'
+    | 'security-config'
+    | 'voice-config'
+    | 'iot-config';
+
 export interface ProvisioningManifestBundle {
-    type: 'applications' | 'connectivity-probes';
+    type: GlobalBundleType;
     revision: number;
     checksum: string;
     updatedAt: string;
@@ -26,7 +35,7 @@ export interface SyncDiffItem {
 
 export interface SyncHistoryEntry {
     id: string;
-    type: 'applications' | 'connectivity-probes';
+    type: GlobalBundleType;
     revision: number;
     timestamp: string;
     diff: SyncDiffItem[];
@@ -223,19 +232,21 @@ export class ProvisioningManager {
         fs.writeFileSync(this.manifestFile, JSON.stringify(manifest, null, 2), 'utf8');
     }
 
-    public publishBundle(type: 'applications' | 'connectivity-probes', rawItems: any[]): { revision: number; checksum: string; count: number } {
-        const normalized = this.normalizeItemsWithIds(type, rawItems);
+    public publishBundle(type: GlobalBundleType, rawItems: any): { revision: number; checksum: string; count: number } {
+        const isArrayType = Array.isArray(rawItems);
+        const normalized = isArrayType ? this.normalizeItemsWithIds(type, rawItems) : rawItems;
         const checksum = this.computeChecksum(normalized);
         const manifest = this.getManifest();
         const existingBundle = manifest.bundles.find(b => b.type === type);
         const nextRev = (existingBundle ? existingBundle.revision : 0) + 1;
 
         // Write immutable revision bundle
-        const revFile = path.join(this.globalDir, type, `rev-${nextRev}.json`);
+        const typeDir = path.join(this.globalDir, type);
+        fs.mkdirSync(typeDir, { recursive: true });
+        const revFile = path.join(typeDir, `rev-${nextRev}.json`);
         fs.writeFileSync(revFile, JSON.stringify(normalized, null, 2), 'utf8');
 
         // Bounded retention: keep last 10 revisions
-        const typeDir = path.join(this.globalDir, type);
         const files = fs.readdirSync(typeDir).filter(f => f.startsWith('rev-') && f.endsWith('.json'));
         if (files.length > 10) {
             files.sort((a, b) => {
@@ -253,18 +264,19 @@ export class ProvisioningManager {
 
         // Compute diff against previous published bundle for Leader audit history
         const previousBundle = (existingBundle && existingBundle.revision)
-            ? (this.getPublishedBundle(type, existingBundle.revision) || [])
-            : [];
+            ? (this.getPublishedBundle(type, existingBundle.revision) || null)
+            : null;
         const { diff, summary } = this.computeDiff(type, previousBundle, normalized);
 
         // Update manifest
         const now = new Date().toISOString();
+        const count = isArrayType ? normalized.length : 1;
         const bundleEntry: ProvisioningManifestBundle = {
             type,
             revision: nextRev,
             checksum,
             updatedAt: now,
-            count: normalized.length
+            count
         };
 
         const idx = manifest.bundles.findIndex(b => b.type === type);
@@ -292,8 +304,8 @@ export class ProvisioningManager {
         }
         this.saveState(state);
 
-        log('PROVISIONING', `Published global bundle "${type}" rev ${nextRev} (${normalized.length} items, +${summary.added} -${summary.removed} ~${summary.modified})`);
-        return { revision: nextRev, checksum, count: normalized.length };
+        log('PROVISIONING', `Published global bundle "${type}" rev ${nextRev} (${count} items, +${summary.added} -${summary.removed} ~${summary.modified})`);
+        return { revision: nextRev, checksum, count };
     }
 
     public getPublishedBundle(type: 'applications' | 'connectivity-probes', revision?: number): any[] | null {
@@ -323,13 +335,33 @@ export class ProvisioningManager {
         return null;
     }
 
-    public hasUnpublishedChanges(type: 'applications' | 'connectivity-probes', currentActiveItems: any[]): boolean {
+    public hasUnpublishedChanges(type: GlobalBundleType, currentActiveItems: any): boolean {
         const lastBundle = this.getPublishedBundle(type);
-        if (!lastBundle) return currentActiveItems.length > 0;
-        const currentNormalized = this.normalizeItemsWithIds(type, currentActiveItems);
-        const currentChecksum = this.computeChecksum(currentNormalized);
+        if (!lastBundle) return true;
+        const currentChecksum = this.computeChecksum(currentActiveItems);
         const publishedChecksum = this.computeChecksum(lastBundle);
         return currentChecksum !== publishedChecksum;
+    }
+
+    public getActiveConfigFile(type: GlobalBundleType): string {
+        switch (type) {
+            case 'applications':
+                return path.join(this.configDir, 'applications-config.json');
+            case 'connectivity-probes':
+                return path.join(this.configDir, 'connectivity-custom.json');
+            case 'convergence-sla':
+                return path.join(this.configDir, 'convergence-config.json');
+            case 'prisma-sase':
+                return path.join(this.configDir, 'prisma-sase-config.json');
+            case 'security-config':
+                return path.join(this.configDir, 'security-config.json');
+            case 'voice-config':
+                return path.join(this.configDir, 'voice-config.json');
+            case 'iot-config':
+                return path.join(this.configDir, 'iot-config.json');
+            default:
+                return path.join(this.configDir, `${type}-config.json`);
+        }
     }
 
     // ─── Local Overrides Storage ────────────────────────────────────────────────
@@ -375,63 +407,106 @@ export class ProvisioningManager {
         }
     }
 
-    public computeDiff(type: 'applications' | 'connectivity-probes', oldItems: any[], newItems: any[]): { diff: SyncDiffItem[]; summary: { added: number; removed: number; modified: number } } {
-        const oldMap = new Map<string, any>(oldItems.map(i => [i.id || this.generateDeterministicId(type, i), i]));
-        const newMap = new Map<string, any>(newItems.map(i => [i.id || this.generateDeterministicId(type, i), i]));
+    public computeDiff(type: GlobalBundleType, oldPayload: any, newPayload: any): { diff: SyncDiffItem[]; summary: { added: number; removed: number; modified: number } } {
+        if (!oldPayload) oldPayload = Array.isArray(newPayload) ? [] : {};
 
-        const diff: SyncDiffItem[] = [];
-        let added = 0, removed = 0, modified = 0;
+        if (Array.isArray(newPayload)) {
+            const oldItems = Array.isArray(oldPayload) ? oldPayload : [];
+            const oldMap = new Map<string, any>(oldItems.map(i => [i.id || this.generateDeterministicId(type, i), i]));
+            const newMap = new Map<string, any>(newPayload.map(i => [i.id || this.generateDeterministicId(type, i), i]));
 
-        for (const [id, newItem] of newMap.entries()) {
-            const oldItem = oldMap.get(id);
-            const displayName = newItem.name || newItem.domain || id;
+            const diff: SyncDiffItem[] = [];
+            let added = 0, removed = 0, modified = 0;
 
-            if (!oldItem) {
-                added++;
-                const desc = type === 'applications' ? `${newItem.domain} (weight: ${newItem.weight})` : `${newItem.type || 'PING'} ➔ ${newItem.target || ''}`;
-                diff.push({ id, name: displayName, action: 'added', details: desc });
-            } else {
-                const changes: string[] = [];
-                if (type === 'applications') {
-                    if (oldItem.weight !== newItem.weight) changes.push(`weight: ${oldItem.weight} ➔ ${newItem.weight}`);
-                    if (oldItem.endpoint !== newItem.endpoint) changes.push(`endpoint: ${oldItem.endpoint} ➔ ${newItem.endpoint}`);
-                    if (oldItem.category !== newItem.category) changes.push(`category: ${oldItem.category} ➔ ${newItem.category}`);
+            for (const [id, newItem] of newMap.entries()) {
+                const oldItem = oldMap.get(id);
+                const displayName = newItem.name || newItem.domain || id;
+
+                if (!oldItem) {
+                    added++;
+                    const desc = type === 'applications' ? `${newItem.domain} (weight: ${newItem.weight})` : `${newItem.type || 'PING'} ➔ ${newItem.target || ''}`;
+                    diff.push({ id, name: displayName, action: 'added', details: desc });
                 } else {
-                    if (oldItem.target !== newItem.target) changes.push(`target: ${oldItem.target} ➔ ${newItem.target}`);
-                    if (oldItem.timeout !== newItem.timeout) changes.push(`timeout: ${oldItem.timeout}ms ➔ ${newItem.timeout}ms`);
-                    if (oldItem.frequency !== newItem.frequency) changes.push(`freq: ${oldItem.frequency}s ➔ ${newItem.frequency}s`);
-                    if (oldItem.enabled !== newItem.enabled) changes.push(`enabled: ${oldItem.enabled} ➔ ${newItem.enabled}`);
+                    const changes: string[] = [];
+                    if (type === 'applications') {
+                        if (oldItem.weight !== newItem.weight) changes.push(`weight: ${oldItem.weight} ➔ ${newItem.weight}`);
+                        if (oldItem.endpoint !== newItem.endpoint) changes.push(`endpoint: ${oldItem.endpoint} ➔ ${newItem.endpoint}`);
+                        if (oldItem.category !== newItem.category) changes.push(`category: ${oldItem.category} ➔ ${newItem.category}`);
+                    } else {
+                        if (oldItem.target !== newItem.target) changes.push(`target: ${oldItem.target} ➔ ${newItem.target}`);
+                        if (oldItem.timeout !== newItem.timeout) changes.push(`timeout: ${oldItem.timeout}ms ➔ ${newItem.timeout}ms`);
+                        if (oldItem.frequency !== newItem.frequency) changes.push(`freq: ${oldItem.frequency}s ➔ ${newItem.frequency}s`);
+                        if (oldItem.enabled !== newItem.enabled) changes.push(`enabled: ${oldItem.enabled} ➔ ${newItem.enabled}`);
+                    }
+                    if (changes.length > 0) {
+                        modified++;
+                        diff.push({ id, name: displayName, action: 'modified', details: changes.join(', ') });
+                    }
                 }
+            }
+
+            for (const [id, oldItem] of oldMap.entries()) {
+                if (!newMap.has(id)) {
+                    removed++;
+                    const displayName = oldItem.name || oldItem.domain || id;
+                    diff.push({ id, name: displayName, action: 'removed' });
+                }
+            }
+
+            return { diff, summary: { added, removed, modified } };
+        } else {
+            // Object payload diff
+            const oldObj = typeof oldPayload === 'object' && oldPayload !== null ? oldPayload : {};
+            const newObj = typeof newPayload === 'object' && newPayload !== null ? newPayload : {};
+            const diff: SyncDiffItem[] = [];
+            const changes: string[] = [];
+
+            if (type === 'convergence-sla') {
+                if (oldObj.good !== newObj.good) changes.push(`good: ${oldObj.good || '—'} ➔ ${newObj.good || '—'}`);
+                if (oldObj.degraded !== newObj.degraded) changes.push(`degraded: ${oldObj.degraded || '—'} ➔ ${newObj.degraded || '—'}`);
+                if (oldObj.critical !== newObj.critical) changes.push(`critical: ${oldObj.critical || '—'} ➔ ${newObj.critical || '—'}`);
                 if (changes.length > 0) {
-                    modified++;
-                    diff.push({ id, name: displayName, action: 'modified', details: changes.join(', ') });
+                    diff.push({ id: 'sla', name: 'Convergence SLA Thresholds', action: 'modified', details: changes.join(', ') });
+                }
+            } else if (type === 'prisma-sase') {
+                if (oldObj.tsg_id !== newObj.tsg_id) changes.push(`TSG ID: ${oldObj.tsg_id || '—'} ➔ ${newObj.tsg_id || '—'}`);
+                if (oldObj.client_id !== newObj.client_id) changes.push(`Client ID updated`);
+                if (changes.length > 0) {
+                    diff.push({ id: 'prisma', name: 'Prisma SASE Credentials', action: 'modified', details: changes.join(', ') });
+                }
+            } else if (type === 'voice-config') {
+                if (oldObj.max_calls !== newObj.max_calls) changes.push(`max_calls: ${oldObj.max_calls || '—'} ➔ ${newObj.max_calls || '—'}`);
+                if (oldObj.inter_call_delay !== newObj.inter_call_delay) changes.push(`inter_call_delay: ${oldObj.inter_call_delay || '—'} ➔ ${newObj.inter_call_delay || '—'}`);
+                if (changes.length > 0) {
+                    diff.push({ id: 'voice', name: 'Voice Simulation Settings', action: 'modified', details: changes.join(', ') });
+                }
+            } else if (type === 'security-config') {
+                if (oldObj.url_schedule_minutes !== newObj.url_schedule_minutes) changes.push(`URL Schedule: ${oldObj.url_schedule_minutes || '—'}m ➔ ${newObj.url_schedule_minutes || '—'}m`);
+                if (oldObj.dns_schedule_minutes !== newObj.dns_schedule_minutes) changes.push(`DNS Schedule: ${oldObj.dns_schedule_minutes || '—'}m ➔ ${newObj.dns_schedule_minutes || '—'}m`);
+                if (changes.length > 0) {
+                    diff.push({ id: 'security', name: 'Security Policy & Schedules', action: 'modified', details: changes.join(', ') });
                 }
             }
-        }
 
-        for (const [id, oldItem] of oldMap.entries()) {
-            if (!newMap.has(id)) {
-                removed++;
-                const displayName = oldItem.name || oldItem.domain || id;
-                diff.push({ id, name: displayName, action: 'removed' });
-            }
+            return {
+                diff,
+                summary: { added: 0, removed: 0, modified: diff.length > 0 ? 1 : 0 }
+            };
         }
-
-        return { diff, summary: { added, removed, modified } };
     }
 
     // ─── Merge & Atomic Apply ───────────────────────────────────────────────────
 
-    public applyGlobalBundle(type: 'applications' | 'connectivity-probes', revision: number, checksum: string, globalItems: any[]): boolean {
+    public applyGlobalBundle(type: GlobalBundleType, revision: number, checksum: string, globalPayload: any): boolean {
         const state = this.getState();
-        const activeFile = type === 'applications'
-            ? path.join(this.configDir, 'applications-config.json')
-            : path.join(this.configDir, 'connectivity-custom.json');
+        const activeFile = this.getActiveConfigFile(type);
 
         try {
-            // 1. Normalize items and verify bundle integrity
-            const normalizedGlobal = this.normalizeItemsWithIds(type, globalItems);
+            // 1. Verify bundle integrity
+            const isArrayType = Array.isArray(globalPayload);
+            const normalizedGlobal = isArrayType ? this.normalizeItemsWithIds(type as any, globalPayload) : globalPayload;
             const computedChecksum = this.computeChecksum(normalizedGlobal);
+
             if (computedChecksum !== checksum) {
                 log('PROVISIONING', `Checksum mismatch for ${type} rev ${revision}. Expected ${checksum}, got ${computedChecksum}`, 'error');
                 state.appliedRevisions[type] = {
@@ -446,31 +521,49 @@ export class ProvisioningManager {
             }
 
             // 2. Cache global bundle locally
-            const cacheFile = path.join(this.globalDir, type, `rev-${revision}.json`);
-            fs.writeFileSync(cacheFile, JSON.stringify(globalItems, null, 2), 'utf8');
+            const typeDir = path.join(this.globalDir, type);
+            fs.mkdirSync(typeDir, { recursive: true });
+            const cacheFile = path.join(typeDir, `rev-${revision}.json`);
+            fs.writeFileSync(cacheFile, JSON.stringify(globalPayload, null, 2), 'utf8');
 
             // 3. Load previous active items to calculate diff
-            let oldEffective: any[] = [];
+            let oldEffective: any = null;
             if (fs.existsSync(activeFile)) {
                 try {
-                    if (type === 'applications') {
-                        const raw = JSON.parse(fs.readFileSync(activeFile, 'utf8'));
-                        oldEffective = raw.applications || [];
-                    } else {
-                        oldEffective = JSON.parse(fs.readFileSync(activeFile, 'utf8'));
-                    }
+                    oldEffective = JSON.parse(fs.readFileSync(activeFile, 'utf8'));
+                    if (type === 'applications' && oldEffective.applications) oldEffective = oldEffective.applications;
                 } catch {}
             }
 
-            // Load local overrides & compute effective merged list
-            const merged = this.buildEffectiveItems(type, globalItems);
-            const { diff, summary } = this.computeDiff(type, oldEffective, merged);
+            // 4. Compute merged result & apply
+            let mergedPayload: any = normalizedGlobal;
 
-            // 4. Atomic write to active flat config file
-            this.atomicWriteActiveFile(type, activeFile, merged);
+            if (type === 'applications' || type === 'connectivity-probes') {
+                mergedPayload = this.buildEffectiveItems(type, globalPayload);
+                this.atomicWriteActiveFile(type, activeFile, mergedPayload);
+            } else if (type === 'voice-config') {
+                // Safeguard: keep local peer's egress_interface / interface intact!
+                let localVoiceConfig: any = {};
+                if (fs.existsSync(activeFile)) {
+                    try { localVoiceConfig = JSON.parse(fs.readFileSync(activeFile, 'utf8')); } catch {}
+                }
+                mergedPayload = {
+                    ...normalizedGlobal,
+                    egress_interface: localVoiceConfig.egress_interface || localVoiceConfig.interface || normalizedGlobal.egress_interface || normalizedGlobal.interface
+                };
+                fs.writeFileSync(activeFile, JSON.stringify(mergedPayload, null, 2), 'utf8');
+            } else {
+                // SLA, Prisma SASE, Security, IoT objects/arrays
+                fs.writeFileSync(activeFile, JSON.stringify(normalizedGlobal, null, 2), 'utf8');
+            }
 
-            // 5. Update state & history log
-            const orphanIds = merged.filter((x: any) => x._source === 'orphaned').map((x: any) => x.id);
+            // 5. Calculate diff & record history
+            const { diff, summary } = this.computeDiff(type, oldEffective, mergedPayload);
+
+            const orphanIds = isArrayType && Array.isArray(mergedPayload)
+                ? mergedPayload.filter((x: any) => x._source === 'orphaned').map((x: any) => x.id)
+                : [];
+
             state.appliedRevisions[type] = {
                 revision,
                 checksum,
@@ -493,8 +586,7 @@ export class ProvisioningManager {
             }
 
             this.saveState(state);
-
-            log('PROVISIONING', `Successfully applied ${type} rev ${revision} (${merged.length} effective items, ${orphanIds.length} orphans)`);
+            log('PROVISIONING', `Successfully applied ${type} rev ${revision}`);
             return true;
         } catch (e: any) {
             log('PROVISIONING', `Failed to apply ${type} rev ${revision}: ${e.message}`, 'error');

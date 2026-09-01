@@ -625,8 +625,8 @@ export class RegistryManager {
             if (needsSync) {
                 log('PROVISIONING', `[SYNC] Pulling global bundle "${bundle.type}" rev ${bundle.revision} from Leader (current status: ${currentApplied?.status || 'none'}, local rev: ${currentApplied?.revision || 0})...`);
                 const bundleItems = await this.client.fetchProvisioningBundle(bundle.type, bundle.revision);
-                if (bundleItems && Array.isArray(bundleItems)) {
-                    const success = this.provisioningManager.applyGlobalBundle(bundle.type, bundle.revision, bundle.checksum, bundleItems);
+                if (bundleItems !== null && bundleItems !== undefined) {
+                    const success = this.provisioningManager.applyGlobalBundle(bundle.type as any, bundle.revision, bundle.checksum, bundleItems);
                     log('PROVISIONING', `[SYNC] Bundle "${bundle.type}" rev ${bundle.revision} apply result: ${success ? 'SUCCESS' : 'FAILED'}`);
                 } else {
                     log('PROVISIONING', `[SYNC] Failed to fetch bundle items for "${bundle.type}" rev ${bundle.revision}`, 'error');

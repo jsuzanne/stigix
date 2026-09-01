@@ -10115,15 +10115,30 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     const pureCustom = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
     const rawProbes = [...mergedEnvProbes, ...pureCustom];
 
+    const readJson = (file: string, fallback: any = {}) => {
+        try { if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+        return fallback;
+    };
+
     const appsPending = provisioningManager.hasUnpublishedChanges('applications', rawApps);
     const probesPending = provisioningManager.hasUnpublishedChanges('connectivity-probes', rawProbes);
+    const slaPending = provisioningManager.hasUnpublishedChanges('convergence-sla', readJson(CONVERGENCE_CONFIG_FILE));
+    const prismaPending = provisioningManager.hasUnpublishedChanges('prisma-sase', readJson(PRISMA_CONFIG_FILE));
+    const securityPending = provisioningManager.hasUnpublishedChanges('security-config', readJson(path.join(APP_CONFIG.configDir, 'security-config.json')));
+    const voicePending = provisioningManager.hasUnpublishedChanges('voice-config', readJson(path.join(APP_CONFIG.configDir, 'voice-config.json')));
+    const iotPending = provisioningManager.hasUnpublishedChanges('iot-config', readJson(path.join(APP_CONFIG.configDir, 'iot-config.json')));
 
     res.json({
         state: provisioningManager.getState(),
         manifest: provisioningManager.getManifest(),
         pending: {
             applications: appsPending,
-            connectivityProbes: probesPending
+            connectivityProbes: probesPending,
+            convergenceSla: slaPending,
+            prismaSase: prismaPending,
+            securityConfig: securityPending,
+            voiceConfig: voicePending,
+            iotConfig: iotPending
         }
     });
 });
@@ -10138,20 +10153,25 @@ app.post('/api/provisioning/config', authenticateToken, (req, res) => {
 });
 
 app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
-    const type = req.params.type as 'applications' | 'connectivity-probes';
-    if (type !== 'applications' && type !== 'connectivity-probes') {
+    const type = req.params.type as GlobalBundleType;
+    const validTypes: GlobalBundleType[] = [
+        'applications', 'connectivity-probes', 'convergence-sla',
+        'prisma-sase', 'security-config', 'voice-config', 'iot-config'
+    ];
+    if (!validTypes.includes(type)) {
         return res.status(400).json({ error: 'invalid_bundle_type' });
     }
 
-    let items: any[] = [];
+    let payload: any = null;
     if (type === 'applications') {
         if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
             try {
                 const parsed = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
-                items = parsed.applications || [];
+                payload = parsed.applications || [];
             } catch {}
         }
-    } else {
+        if (!payload) payload = [];
+    } else if (type === 'connectivity-probes') {
         const envProbes = getEnvConnectivityEndpoints();
         const rawCustom = getCustomConnectivityEndpoints();
         const mergedEnvProbes = envProbes.map((p: any) => {
@@ -10159,10 +10179,16 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
             return override ? { ...p, ...override } : p;
         });
         const pureCustom = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-        items = [...mergedEnvProbes, ...pureCustom];
+        payload = [...mergedEnvProbes, ...pureCustom];
+    } else {
+        const file = provisioningManager.getActiveConfigFile(type);
+        if (fs.existsSync(file)) {
+            try { payload = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+        }
+        if (!payload) payload = {};
     }
 
-    const pub = provisioningManager.publishBundle(type, items);
+    const pub = provisioningManager.publishBundle(type, payload);
     res.json({ success: true, published: pub, manifest: provisioningManager.getManifest() });
 });
 
