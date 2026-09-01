@@ -259,14 +259,24 @@ export class ProvisioningManager {
 
     public getPublishedBundle(type: 'applications' | 'connectivity-probes', revision?: number): any[] | null {
         try {
+            const state = this.getState();
+            const revToLoad = revision || state.appliedRevisions[type]?.revision;
+            
+            if (revToLoad) {
+                const revFile = path.join(this.globalDir, type, `rev-${revToLoad}.json`);
+                if (fs.existsSync(revFile)) {
+                    return JSON.parse(fs.readFileSync(revFile, 'utf8'));
+                }
+            }
+
+            // Fallback: check manifest (Leader mode)
             const manifest = this.getManifest();
             const b = manifest.bundles.find(x => x.type === type);
-            if (!b) return null;
-
-            const revToLoad = revision ?? b.revision;
-            const revFile = path.join(this.globalDir, type, `rev-${revToLoad}.json`);
-            if (fs.existsSync(revFile)) {
-                return JSON.parse(fs.readFileSync(revFile, 'utf8'));
+            if (b) {
+                const manifestRevFile = path.join(this.globalDir, type, `rev-${b.revision}.json`);
+                if (fs.existsSync(manifestRevFile)) {
+                    return JSON.parse(fs.readFileSync(manifestRevFile, 'utf8'));
+                }
             }
         } catch (e: any) {
             log('PROVISIONING', `Failed to read published bundle ${type}: ${e.message}`, 'warn');
@@ -491,8 +501,12 @@ export class ProvisioningManager {
             globalItems = this.getPublishedBundle(type) || [];
         }
 
-        if (globalItems.length === 0 && !state.enabled) {
-            return rawItems || [];
+        if (globalItems.length === 0) {
+            if (rawItems && rawItems.length > 0) {
+                globalItems = rawItems;
+            } else {
+                return rawItems || [];
+            }
         }
 
         const effective = this.buildEffectiveItems(type, globalItems);
