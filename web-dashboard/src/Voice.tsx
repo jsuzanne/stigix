@@ -510,12 +510,30 @@ export default function Voice(props: VoiceProps) {
     };
 
     const sortedHistory = React.useMemo(() => {
+        const cleanTerm = searchTerm.trim().toLowerCase().replace(/^#/, '');
         return [...calls]
             .filter(c => ['start', 'end', 'skipped'].includes(c.event))
             .filter(c => {
-                const matchSearch = c.call_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    c.target.toLowerCase().includes(searchTerm.toLowerCase());
-                if (!matchSearch) return false;
+                if (cleanTerm) {
+                    const siteName = targetNameMap.get(c.target) || '';
+                    const srcPort = deriveSourcePort(c.call_id);
+                    const isLive = c.event === 'start' && activeCalls.some(ac => ac.call_id === c.call_id);
+                    const statusText = isLive ? 'live active' : c.event;
+
+                    const haystack = [
+                        c.call_id,
+                        c.target,
+                        siteName,
+                        srcPort,
+                        statusText,
+                        c.event,
+                        c.loss_pct !== undefined ? `${c.loss_pct}%` : '',
+                        c.mos_score !== undefined ? `MOS:${c.mos_score}` : '',
+                        c.avg_rtt_ms !== undefined ? `${c.avg_rtt_ms}ms` : ''
+                    ];
+                    const matched = haystack.some(h => h !== undefined && h !== null && String(h).toLowerCase().includes(cleanTerm));
+                    if (!matched) return false;
+                }
                 if (qualityFilter !== 'all' && c.event === 'end') {
                     return qualityOf(c.loss_pct || 0, c.avg_rtt_ms || 0) === qualityFilter;
                 }
@@ -528,7 +546,7 @@ export default function Voice(props: VoiceProps) {
                 if (av > bv) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
             });
-    }, [calls, searchTerm, qualityFilter, sortConfig]);
+    }, [calls, searchTerm, qualityFilter, sortConfig, targetNameMap, activeCalls]);
 
     // ════════════════════════════════════════════════
     // Render
@@ -1288,16 +1306,30 @@ export default function Voice(props: VoiceProps) {
                                     return ingressSessions
                                         .filter(s => {
                                             if (!searchTerm) return true;
-                                            const term = searchTerm.toLowerCase();
-                                            const siteName = getResolvedSiteName(s.src_ip, (s as any).src_site);
-                                            return (s.id || '').toLowerCase().includes(term) ||
-                                                   (s.src_ip || '').toLowerCase().includes(term) ||
-                                                   siteName.toLowerCase().includes(term) ||
-                                                   (s.type || '').toLowerCase().includes(term) ||
-                                                   (s.label || '').toLowerCase().includes(term) ||
-                                                   (s.status || '').toLowerCase().includes(term) ||
-                                                   String(s.dest_port || '').includes(term) ||
-                                                   String(s.src_port || '').includes(term);
+                                            const cleanTerm = searchTerm.trim().toLowerCase().replace(/^#/, '');
+                                            if (!cleanTerm) return true;
+
+                                            const rawPayloadSite = (s as any).src_site || '';
+                                            const siteName = getResolvedSiteName(s.src_ip, rawPayloadSite);
+                                            const derivedPort = deriveSourcePort(s.id);
+                                            const statusLabel = s.status === 'active' ? 'live active' : 'completed';
+
+                                            const haystack = [
+                                                s.id,
+                                                s.src_ip,
+                                                rawPayloadSite,
+                                                siteName,
+                                                s.src_port,
+                                                derivedPort,
+                                                s.dest_port,
+                                                statusLabel,
+                                                s.type,
+                                                s.label,
+                                                s.packet_count ? `${s.packet_count} pkts` : '',
+                                                s.packet_count
+                                            ];
+
+                                            return haystack.some(h => h !== undefined && h !== null && String(h).toLowerCase().includes(cleanTerm));
                                         })
                                         .map((session, idx) => {
                                             const siteName = getResolvedSiteName(session.src_ip, (session as any).src_site);
