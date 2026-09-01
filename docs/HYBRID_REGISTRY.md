@@ -64,6 +64,10 @@ When a new Stigix instance joins the site:
 3. It immediately receives the full list of shared targets from the Leader.
 4. Total "Zero-Touch" deployment is achieved.
 
+## 6. Centralized Global Provisioning & Direct Onboarding
+For full details on **Direct Controller Peer Onboarding** (`curl | bash`), **Centralized Global Configuration Provisioning** (Applications & Connectivity Probes), **Pull-Mode Revision Distribution**, and **Local Field Overrides**, see the dedicated guide:
+👉 **[Global Provisioning & Peer Onboarding Guide](GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md)**
+
 ## Troubleshooting
 - **Local Leader Unreachable**: If a Peer shows "Falling back to Cloudflare", it means it found a Leader IP but could not reach port `8080` (check Firewalls/Security Groups on the Hub).
 - **Manual Forced Role**: You can instantly force a node's role via the **Target Controller Dashboard** in the Web UI without restarting any containers. This overrides any `.env` configuration.
