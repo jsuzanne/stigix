@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     RefreshCw, Download, AlertCircle, CheckCircle, Clock, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
-    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers, X,
+    Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers, X, Radio,
     Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy
 } from 'lucide-react';
 import {
@@ -4085,7 +4085,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                             </div>
 
                             {/* ── Site Name Inline Editor ── */}
-                            <div className="bg-card/60 border border-border rounded-xl p-3 space-y-2">
+                            <div className="bg-card/60 border border-border rounded-xl p-3 space-y-2 max-w-md">
                                 <div className="flex items-center gap-2">
                                     <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Site Name</span>
                                     {siteNameSaved && (
@@ -4209,6 +4209,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                             </div>
                         </div>
 
+                    {/* ── Section Header for Discovered / Remote Targets ── */}
+                    <div className="pt-6 border-t border-border/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                            <h3 className="text-xs font-black text-text-primary uppercase tracking-wider flex items-center gap-2">
+                                <Radio size={14} className="text-blue-500" />
+                                Discovered & Remote Target Endpoints
+                            </h3>
+                            <p className="text-[10px] text-text-muted opacity-70 tracking-tight mt-0.5">
+                                Target nodes learned dynamically from the Target Controller Leader or created manually.
+                            </p>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold text-text-muted bg-card-secondary px-2.5 py-1 rounded-lg border border-border shrink-0 self-start sm:self-auto">
+                            {targets.length} {targets.length === 1 ? 'target' : 'targets'}
+                        </span>
+                    </div>
+
                     {/* ── Targets List ── */}
                     <div className="space-y-3">
                         {targets.length === 0 && (
@@ -4216,7 +4232,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                 No targets defined yet. Add one above.
                             </div>
                         )}
-                        {targets.map(t => (
+                        {targets.map(t => {
+                            const isSelf = t.meta?.self || (registryStatus?.detected_ip && t.host.toLowerCase().trim() === registryStatus.detected_ip.toLowerCase().trim());
+                            return (
                             <div
                                 key={t.id}
                                 className={cn(
@@ -4225,11 +4243,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                 )}
                             >
                                 <div className="flex items-center gap-4 min-w-0">
-                                    <div className="w-10 h-10 rounded-xl bg-emerald-600/10 text-emerald-500 flex items-center justify-center shrink-0">
+                                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", isSelf ? "bg-emerald-600/10 text-emerald-500" : "bg-blue-600/10 text-blue-500")}>
                                         <MapPin size={18} />
                                     </div>
                                     <div className="min-w-0">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             {targetReachability[t.id] === 'loading' || targetReachability[t.id] === undefined ? (
                                                 <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
                                             ) : targetReachability[t.id] ? (
@@ -4241,6 +4259,18 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
                                             )}
                                             <span className="text-[11px] font-black text-text-primary tracking-tight">{t.name}</span>
+
+                                            {/* Local Node vs Remote Peer Distinction Tag */}
+                                            {isSelf ? (
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-sm" title="This is your local Stigix instance">
+                                                    <Globe size={8} /> Local Node
+                                                </span>
+                                            ) : (
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-purple-500/10 text-purple-400 border border-purple-500/30 flex items-center gap-1 shadow-sm" title="Remote peer instance in the Stigix mesh network">
+                                                    <Radio size={8} /> Remote Peer
+                                                </span>
+                                            )}
+
                                             {t.meta?.local_config && (
                                                 <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30" title="This target is saved in a local component configuration file">
                                                     Static
@@ -4291,7 +4321,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         </>
                                 </div>
                             </div>
-                        ))}
+                        );
+                    })}
                     </div>
                 </div>
                 )}
