@@ -81,7 +81,7 @@ def handle_port(ip, port, active_sessions, lock):
                         call_num = addr[1] - 30000
                         detected_id = f"CALL-{call_num:04d}"
                     elif addr[1] > 0:
-                        detected_id = f"CALL-P{addr[1]}"
+                        detected_id = f"RAW-P{addr[1]}"
 
                 with lock:
                     # Use Test ID as key for Convergence to handle IP/Port change during failover

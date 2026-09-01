@@ -181,6 +181,11 @@ if __name__ == "__main__":
 
     # ── Create UDP socket ─────────────────────────────────────────────────────
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    except AttributeError:
+        pass
 
     # DSCP Expedited Forwarding (EF, DSCP 46) = TOS 184 = 0b10111000
     if not is_debug_mode:
