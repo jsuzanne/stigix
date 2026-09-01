@@ -5342,6 +5342,11 @@ app.post('/api/config/interfaces', authenticateToken, (req, res) => {
             iotManager.setInterface(interfaces[0]);
         }
 
+        // Re-detect private IP for registry and trigger heartbeat re-registration
+        if (typeof registryManager?.refreshIp === 'function') {
+            registryManager.refreshIp().catch(e => log('REGISTRY', `Failed to refresh IP on interface change: ${e}`, 'warn'));
+        }
+
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: 'Write failed', details: err });
@@ -10116,6 +10121,23 @@ app.post('/api/registry/site-name', authenticateToken, async (req, res) => {
         res.json({ success: true, siteName: siteName.trim() });
     } catch (e: any) {
         res.status(500).json({ error: 'Failed to update site name', detail: e.message });
+    }
+});
+
+app.get('/api/registry/capabilities', authenticateToken, (_req, res) => {
+    res.json(registryManager.getNodeCapabilities());
+});
+
+app.post('/api/registry/capabilities', authenticateToken, async (req, res) => {
+    try {
+        const { capabilities } = req.body;
+        if (!capabilities || typeof capabilities !== 'object') {
+            return res.status(400).json({ error: 'capabilities object required' });
+        }
+        await registryManager.setNodeCapabilities(capabilities);
+        res.json({ success: true, capabilities: registryManager.getNodeCapabilities() });
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to update node capabilities', detail: e.message });
     }
 });
 

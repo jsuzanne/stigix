@@ -94,16 +94,19 @@ export class TargetsManager {
         const updatedTarget = idx !== -1 ? (targets[idx] = { ...targets[idx], ...data, id, source: 'managed' }) : null;
         let result = updatedTarget;
 
-        if (!result && synthTarget) {
-            const promoted: TargetDefinition = {
-                ...synthTarget,
-                ...data,
-                id: makeId(), // Assign a new managed ID
-                source: 'managed'
-            };
-            delete promoted.meta;
-            targets.push(promoted);
-            result = promoted;
+        if (!result) {
+            const synthTarget = this.getMergedTargets().find(t => t.id === id);
+            if (synthTarget) {
+                const promoted: TargetDefinition = {
+                    ...synthTarget,
+                    ...data,
+                    id: makeId(), // Assign a new managed ID
+                    source: 'managed'
+                };
+                delete promoted.meta;
+                targets.push(promoted);
+                result = promoted;
+            }
         }
 
         if (result) {
@@ -111,7 +114,9 @@ export class TargetsManager {
             // If editing our own node's target, propagate capabilities to node-capabilities.json & heartbeat
             const ownIp = typeof this.registryManager?.getStatus === 'function' ? this.registryManager.getStatus()?.detected_ip : null;
             if (data.capabilities && ownIp && result.host.toLowerCase().trim() === ownIp.toLowerCase().trim()) {
-                this.registryManager.setNodeCapabilities(data.capabilities);
+                if (typeof this.registryManager?.setNodeCapabilities === 'function') {
+                    this.registryManager.setNodeCapabilities(data.capabilities);
+                }
             }
             return result;
         }
@@ -412,16 +417,16 @@ export class TargetsManager {
         const sharedTargetsList = typeof this.registryManager.getSharedTargets === 'function' 
             ? this.registryManager.getSharedTargets() : [];
 
-        const sharedTgtDefs: TargetDefinition[] = sharedTargetsList.map((t: any) => ({
-            ...t,
-            id: `reg-shared-${t.id || t.host}`,
-            source: 'synthesized' as const,
-            meta: {
-                ...(t.meta || {}),
-                registry: true,
-                leader_provided: true
-            }
-        }));
+        const sharedTgtDefs: TargetDefinition[] = sharedTargetsList.map((t: any) => {
+            const meta = { ...(t.meta || {}), registry: true, leader_provided: true };
+            delete meta.self; // Strip self flag so remote peers don't mark leader as local node
+            return {
+                ...t,
+                id: `reg-shared-${t.id || t.host}`,
+                source: 'synthesized' as const,
+                meta
+            };
+        });
 
         return [...(selfTarget ? [selfTarget] : []), ...peerTargets, ...sharedTgtDefs];
     }
@@ -458,7 +463,6 @@ export class TargetsManager {
                 // Merge capabilities (for managed targets, respect user's explicit capability choices)
                 if (existing.source === 'managed') {
                     existing.capabilities = {
-                        ...t.capabilities,
                         ...existing.capabilities
                     };
                 } else {

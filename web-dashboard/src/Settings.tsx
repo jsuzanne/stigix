@@ -4075,7 +4075,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                             </div>
                         )}
                         {targets.map(t => {
-                            const isSelf = t.meta?.self || (registryStatus?.detected_ip && t.host.toLowerCase().trim() === registryStatus.detected_ip.toLowerCase().trim());
+                            const isSelf = !!(registryStatus?.detected_ip && t.host.toLowerCase().trim() === registryStatus.detected_ip.toLowerCase().trim());
                             return (
                             <div
                                 key={t.id}

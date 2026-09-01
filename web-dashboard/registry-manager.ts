@@ -502,7 +502,16 @@ export class RegistryManager {
         await this.performHeartbeat();
     }
 
+    public async refreshIp(): Promise<string> {
+        this.currentIp = this.detectPrivateIp(this.configDir);
+        log('REGISTRY', `Refreshed detected IP: ${this.currentIp}`);
+        await this.performHeartbeat();
+        return this.currentIp;
+    }
+
     private async performHeartbeat() {
+        // Dynamically update private IP in case interfaces.txt or network configuration changed
+        this.currentIp = this.detectPrivateIp(this.configDir);
         const config = this.client.getConfig();
         const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
 
