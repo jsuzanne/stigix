@@ -170,14 +170,13 @@ if __name__ == "__main__":
 
     # ── Build payload ─────────────────────────────────────────────────────────
     payload_padding = os.urandom(payload_size)  # fast, no loop needed
+    call_id_tag   = f"CID:{args.get('call_id', 'NONE')}:".encode()
+    final_payload = (call_id_tag + payload_padding)[:payload_size]
     if is_debug_mode:
-        final_payload = payload_padding[:payload_size]
-        print(f"[DEBUG MODE] stream={stream_type} | tos=0 | port=RANDOM | payload=pure random",
+        print(f"[DEBUG MODE] stream={stream_type} | call_id={args.get('call_id')} | tos=0 | port=RANDOM | payload=tagged",
               file=sys.stderr)
     else:
-        call_id_tag   = f"CID:{args.get('call_id', 'NONE')}:".encode()
-        final_payload = (call_id_tag + payload_padding)[:payload_size]
-        print(f"[NORMAL MODE] stream={stream_type} | tos=184 (EF) | port=30000+N | payload=tagged",
+        print(f"[NORMAL MODE] stream={stream_type} | call_id={args.get('call_id')} | tos=184 (EF) | port=30000+N | payload=tagged",
               file=sys.stderr)
 
     # ── Create UDP socket ─────────────────────────────────────────────────────

@@ -494,7 +494,10 @@ export default function Voice(props: VoiceProps) {
     const targetNameMap = React.useMemo(() => {
         const map = new Map<string, string>();
         targetRows.forEach(r => {
-            if (!r.isManual && r.name) map.set(`${r.host}:${r.port}`, r.name);
+            if (!r.isManual && r.name) {
+                map.set(`${r.host}:${r.port}`, r.name);
+                map.set(r.host, r.name);
+            }
         });
         return map;
     }, [targetRows]);
@@ -1241,7 +1244,7 @@ export default function Voice(props: VoiceProps) {
                                                (s.type || '').toLowerCase().includes(term);
                                     })
                                     .map((session, idx) => {
-                                        const siteName = registryVoiceTargets.find((t: any) => t.host === session.src_ip)?.name || session.src_ip;
+                                        const siteName = targetNameMap.get(session.src_ip) || registryVoiceTargets.find((t: any) => t.host === session.src_ip)?.name || session.src_ip;
                                         const isActive = session.status === 'active';
                                         const startTime = session.start_time ? new Date(session.start_time * 1000) : new Date();
                                         return (

@@ -96,19 +96,27 @@ def handle_port(ip, port, active_sessions, lock):
         s.close()
 
 INGRESS_FILE = "/tmp/ingress-voice-sessions.json"
+completed_ingress_history = []
 
 def export_ingress_sessions(active_sessions, lock):
+    global completed_ingress_history
     try:
         now = time.time()
-        sessions_list = []
+        sessions_map = {}
+        
+        for item in completed_ingress_history:
+            key = f"{item['id']}-{item['src_ip']}-{item['start_time']}"
+            sessions_map[key] = item
+
         with lock:
             for key, session in active_sessions.items():
                 last_seen_diff = now - session.get('last_seen', now)
                 status = "active" if last_seen_diff <= 5.0 else "completed"
-                
                 addr_info = session.get('last_addr', ('Unknown', 0))
-                sessions_list.append({
-                    "id": session.get('id', 'Unknown'),
+                id_val = session.get('id', 'Unknown')
+                
+                item = {
+                    "id": id_val,
                     "type": session.get('type', 'Voice'),
                     "label": session.get('label', ''),
                     "src_ip": addr_info[0],
@@ -119,9 +127,13 @@ def export_ingress_sessions(active_sessions, lock):
                     "last_seen": session.get('last_seen', now),
                     "duration": int(now - session.get('start_time', now)),
                     "status": status
-                })
-        
+                }
+                m_key = f"{id_val}-{addr_info[0]}-{session.get('start_time', now)}"
+                sessions_map[m_key] = item
+
+        sessions_list = list(sessions_map.values())
         sessions_list.sort(key=lambda x: x['start_time'], reverse=True)
+        sessions_list = sessions_list[:100]
         
         temp_file = INGRESS_FILE + ".tmp"
         with open(temp_file, 'w') as f:
@@ -152,6 +164,23 @@ def maintenance(active_sessions, lock):
                     to_remove.append(key)
             
             for key in to_remove:
+                session = active_sessions[key]
+                addr_info = session.get('last_addr', ('Unknown', 0))
+                completed_ingress_history.append({
+                    "id": session.get('id', 'Unknown'),
+                    "type": session.get('type', 'Voice'),
+                    "label": session.get('label', ''),
+                    "src_ip": addr_info[0],
+                    "src_port": addr_info[1],
+                    "dest_port": session.get('port', 6100),
+                    "packet_count": session.get('packet_count', 0),
+                    "start_time": session.get('start_time', now),
+                    "last_seen": session.get('last_seen', now),
+                    "duration": int(now - session['start_time']),
+                    "status": "completed"
+                })
+                if len(completed_ingress_history) > 100:
+                    completed_ingress_history.pop(0)
                 del active_sessions[key]
 
 if __name__ == "__main__":
