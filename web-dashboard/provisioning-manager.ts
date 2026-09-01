@@ -251,6 +251,12 @@ export class ProvisioningManager {
             }
         }
 
+        // Compute diff against previous published bundle for Leader audit history
+        const previousBundle = (existingBundle && existingBundle.revision)
+            ? (this.getPublishedBundle(type, existingBundle.revision) || [])
+            : [];
+        const { diff, summary } = this.computeDiff(type, previousBundle, normalized);
+
         // Update manifest
         const now = new Date().toISOString();
         const bundleEntry: ProvisioningManifestBundle = {
@@ -270,7 +276,23 @@ export class ProvisioningManager {
         manifest.updatedAt = now;
         this.saveManifest(manifest);
 
-        log('PROVISIONING', `Published global bundle "${type}" rev ${nextRev} (${normalized.length} items, ${checksum.substring(0, 15)}...)`);
+        // Save history entry on Leader
+        const state = this.getState();
+        if (!state.history) state.history = [];
+        state.history.unshift({
+            id: `${type}-rev-${nextRev}-${Date.now()}`,
+            type,
+            revision: nextRev,
+            timestamp: now,
+            diff,
+            summary
+        });
+        if (state.history.length > 20) {
+            state.history = state.history.slice(0, 20);
+        }
+        this.saveState(state);
+
+        log('PROVISIONING', `Published global bundle "${type}" rev ${nextRev} (${normalized.length} items, +${summary.added} -${summary.removed} ~${summary.modified})`);
         return { revision: nextRev, checksum, count: normalized.length };
     }
 

@@ -3870,26 +3870,111 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                 </div>
 
                                 {provisioningData?.state?.enabled ? (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                                        <div className="bg-card-secondary/30 border border-border/50 rounded-xl p-3 flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <Globe size={14} className="text-emerald-500" />
-                                                <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Applications Sync</span>
+                                    <>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                                            <div className="bg-card-secondary/30 border border-border/50 rounded-xl p-3 flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <Globe size={14} className="text-emerald-500" />
+                                                    <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Applications Sync</span>
+                                                </div>
+                                                <span className="font-mono text-[10px] font-bold text-emerald-400">
+                                                    rev {provisioningData?.state?.appliedRevisions?.['applications']?.revision || 0} ({provisioningData?.state?.appliedRevisions?.['applications']?.status || 'pending'})
+                                                </span>
                                             </div>
-                                            <span className="font-mono text-[10px] font-bold text-emerald-400">
-                                                rev {provisioningData?.state?.appliedRevisions?.['applications']?.revision || 0} ({provisioningData?.state?.appliedRevisions?.['applications']?.status || 'pending'})
-                                            </span>
-                                        </div>
-                                        <div className="bg-card-secondary/30 border border-border/50 rounded-xl p-3 flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <Zap size={14} className="text-cyan-500" />
-                                                <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Probes Sync</span>
+                                            <div className="bg-card-secondary/30 border border-border/50 rounded-xl p-3 flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <Zap size={14} className="text-cyan-500" />
+                                                    <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Probes Sync</span>
+                                                </div>
+                                                <span className="font-mono text-[10px] font-bold text-cyan-400">
+                                                    rev {provisioningData?.state?.appliedRevisions?.['connectivity-probes']?.revision || 0} ({provisioningData?.state?.appliedRevisions?.['connectivity-probes']?.status || 'pending'})
+                                                </span>
                                             </div>
-                                            <span className="font-mono text-[10px] font-bold text-cyan-400">
-                                                rev {provisioningData?.state?.appliedRevisions?.['connectivity-probes']?.revision || 0} ({provisioningData?.state?.appliedRevisions?.['connectivity-probes']?.status || 'pending'})
-                                            </span>
                                         </div>
-                                    </div>
+
+                                        {/* Collapsible Sync Audit History & Diff Log */}
+                                        <div className="mt-4 border-t border-border/40 pt-4">
+                                            <button
+                                                onClick={() => setHistoryExpanded(!historyExpanded)}
+                                                className="w-full flex items-center justify-between p-2.5 rounded-xl bg-card-secondary/30 hover:bg-card-secondary/60 border border-border/50 text-[10px] font-black uppercase tracking-widest text-text-muted hover:text-text-primary transition-all select-none"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <History size={14} className="text-blue-400" />
+                                                    <span>Sync Audit History & Diff Log</span>
+                                                    {provisioningData?.state?.history && provisioningData.state.history.length > 0 && (
+                                                        <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[9px]">
+                                                            {provisioningData.state.history.length} entries
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <span className="text-[9px] opacity-70 font-mono">{historyExpanded ? 'Hide' : 'Expand'}</span>
+                                                    {historyExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                                </div>
+                                            </button>
+
+                                            {historyExpanded && (
+                                                <div className="mt-3 space-y-3 max-h-72 overflow-y-auto pr-1 animate-in slide-in-from-top-2 duration-200">
+                                                    {(!provisioningData?.state?.history || provisioningData.state.history.length === 0) ? (
+                                                        <div className="p-4 text-center text-[10px] text-text-muted font-bold opacity-60 bg-card/40 rounded-xl border border-dashed border-border/50">
+                                                            No sync revision history recorded yet.
+                                                        </div>
+                                                    ) : (
+                                                        provisioningData.state.history.map((entry: any) => (
+                                                            <div key={entry.id} className="p-3 bg-card-secondary/50 border border-border/60 rounded-xl space-y-2 text-[10px]">
+                                                                <div className="flex items-center justify-between border-b border-border/30 pb-2">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={cn(
+                                                                            "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest",
+                                                                            entry.type === 'applications' ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
+                                                                        )}>
+                                                                            {entry.type === 'applications' ? 'Apps' : 'Probes'} rev {entry.revision}
+                                                                        </span>
+                                                                        <span className="text-[9px] font-mono text-text-muted opacity-70">
+                                                                            {new Date(entry.timestamp).toLocaleTimeString()} • {new Date(entry.timestamp).toLocaleDateString()}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2 font-mono text-[9px]">
+                                                                        {entry.summary?.added > 0 && <span className="text-emerald-400 font-bold">+{entry.summary.added} added</span>}
+                                                                        {entry.summary?.removed > 0 && <span className="text-red-400 font-bold">-{entry.summary.removed} removed</span>}
+                                                                        {entry.summary?.modified > 0 && <span className="text-amber-400 font-bold">~{entry.summary.modified} modified</span>}
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="space-y-1 pl-1 pt-1 font-mono text-[9.5px]">
+                                                                    {(!entry.diff || entry.diff.length === 0) ? (
+                                                                        <p className="text-text-muted opacity-50 text-[9px]">No items changed in this revision.</p>
+                                                                    ) : (
+                                                                        entry.diff.map((item: any, idx: number) => (
+                                                                            <div key={idx} className="flex items-center gap-2 leading-relaxed">
+                                                                                {item.action === 'added' && (
+                                                                                    <span className="px-1 py-0.2 bg-emerald-500/10 text-emerald-400 rounded text-[8px] font-black uppercase">
+                                                                                        + ADDED
+                                                                                    </span>
+                                                                                )}
+                                                                                {item.action === 'removed' && (
+                                                                                    <span className="px-1 py-0.2 bg-red-500/10 text-red-400 rounded text-[8px] font-black uppercase">
+                                                                                        - REMOVED
+                                                                                    </span>
+                                                                                )}
+                                                                                {item.action === 'modified' && (
+                                                                                    <span className="px-1 py-0.2 bg-amber-500/10 text-amber-400 rounded text-[8px] font-black uppercase">
+                                                                                        ~ MODIFIED
+                                                                                    </span>
+                                                                                )}
+                                                                                <span className="font-bold text-text-primary">{item.name}</span>
+                                                                                {item.details && <span className="text-text-muted opacity-75 text-[9px]">({item.details})</span>}
+                                                                            </div>
+                                                                        ))
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
                                 ) : (
                                     <div className="p-3 bg-card-secondary/20 border border-border/40 rounded-xl text-[9px] font-bold text-text-muted opacity-60">
                                         Global provisioning is OFF. Your local active configuration is preserved and unmanaged by the Leader. Enable to auto-sync with Leader publications.
