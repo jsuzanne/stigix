@@ -225,6 +225,14 @@ def start_call(server, interface):
     control = load_control()
     source_port_mode = control.get('source_port_mode', 'call_id')
     site_name = os.environ.get('SITE_NAME') or os.environ.get('NODE_NAME', '')
+    if not site_name:
+        try:
+            import socket
+            h = socket.gethostname()
+            if h and h != 'localhost':
+                site_name = h
+        except Exception:
+            pass
 
     cmd = [
         "python3", "rtp.py",

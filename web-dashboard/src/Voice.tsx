@@ -1256,18 +1256,30 @@ export default function Voice(props: VoiceProps) {
                                     const getResolvedSiteName = (ip: string, payloadSite?: string) => {
                                         if (payloadSite && payloadSite.trim()) return payloadSite.trim();
                                         if (!ip) return 'Unknown';
-                                        const regMatch = allRegistryTargets.find((t: any) => t.host === ip || t.ip === ip);
+                                        const cleanIp = ip.split(':')[0];
+
+                                        const matchTarget = (t: any) => {
+                                            const h = (t.host || t.ip || '').split(':')[0];
+                                            return h === cleanIp;
+                                        };
+
+                                        const regMatch = allRegistryTargets.find(matchTarget);
                                         if (regMatch?.name && !/^[\d.]+$/.test(regMatch.name)) return regMatch.name;
 
-                                        const rowMatch = targetRows.find((r: any) => r.host === ip || r.ip === ip);
+                                        const rowMatch = targetRows.find(matchTarget);
                                         if (rowMatch?.name && !/^[\d.]+$/.test(rowMatch.name)) return rowMatch.name;
 
-                                        const ipPrefix = ip.split('.').slice(0, 3).join('.');
+                                        const ipPrefix = cleanIp.split('.').slice(0, 3).join('.');
                                         const subnetMatch = allRegistryTargets.find((t: any) => {
-                                            const targetIp = t.host || t.ip;
+                                            const targetIp = (t.host || t.ip || '').split(':')[0];
                                             if (!targetIp) return false;
                                             return targetIp.split('.').slice(0, 3).join('.') === ipPrefix && t.name && !/^[\d.]+$/.test(t.name);
+                                        }) || targetRows.find((r: any) => {
+                                            const targetIp = (r.host || r.ip || '').split(':')[0];
+                                            if (!targetIp) return false;
+                                            return targetIp.split('.').slice(0, 3).join('.') === ipPrefix && r.name && !/^[\d.]+$/.test(r.name);
                                         });
+
                                         if (subnetMatch?.name) return subnetMatch.name;
 
                                         return ip;
