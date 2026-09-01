@@ -468,26 +468,57 @@ export class ProvisioningManager {
                 if (oldObj.good !== newObj.good) changes.push(`good: ${oldObj.good || '—'} ➔ ${newObj.good || '—'}`);
                 if (oldObj.degraded !== newObj.degraded) changes.push(`degraded: ${oldObj.degraded || '—'} ➔ ${newObj.degraded || '—'}`);
                 if (oldObj.critical !== newObj.critical) changes.push(`critical: ${oldObj.critical || '—'} ➔ ${newObj.critical || '—'}`);
+                if (changes.length === 0 && JSON.stringify(oldObj) !== JSON.stringify(newObj)) changes.push(`SLA Thresholds updated`);
                 if (changes.length > 0) {
                     diff.push({ id: 'sla', name: 'Convergence SLA Thresholds', action: 'modified', details: changes.join(', ') });
                 }
             } else if (type === 'prisma-sase') {
                 if (oldObj.tsg_id !== newObj.tsg_id) changes.push(`TSG ID: ${oldObj.tsg_id || '—'} ➔ ${newObj.tsg_id || '—'}`);
                 if (oldObj.client_id !== newObj.client_id) changes.push(`Client ID updated`);
+                if (changes.length === 0 && JSON.stringify(oldObj) !== JSON.stringify(newObj)) changes.push(`Prisma Credentials updated`);
                 if (changes.length > 0) {
                     diff.push({ id: 'prisma', name: 'Prisma SASE Credentials', action: 'modified', details: changes.join(', ') });
                 }
             } else if (type === 'voice-config') {
                 if (oldObj.max_calls !== newObj.max_calls) changes.push(`max_calls: ${oldObj.max_calls || '—'} ➔ ${newObj.max_calls || '—'}`);
                 if (oldObj.inter_call_delay !== newObj.inter_call_delay) changes.push(`inter_call_delay: ${oldObj.inter_call_delay || '—'} ➔ ${newObj.inter_call_delay || '—'}`);
+                if (changes.length === 0 && JSON.stringify(oldObj) !== JSON.stringify(newObj)) changes.push(`Voice parameters updated`);
                 if (changes.length > 0) {
                     diff.push({ id: 'voice', name: 'Voice Simulation Settings', action: 'modified', details: changes.join(', ') });
                 }
             } else if (type === 'security-config') {
-                if (oldObj.url_schedule_minutes !== newObj.url_schedule_minutes) changes.push(`URL Schedule: ${oldObj.url_schedule_minutes || '—'}m ➔ ${newObj.url_schedule_minutes || '—'}m`);
-                if (oldObj.dns_schedule_minutes !== newObj.dns_schedule_minutes) changes.push(`DNS Schedule: ${oldObj.dns_schedule_minutes || '—'}m ➔ ${newObj.dns_schedule_minutes || '—'}m`);
+                const oldUrlSched = oldObj.url_filtering?.schedule_minutes ?? oldObj.url_schedule_minutes;
+                const newUrlSched = newObj.url_filtering?.schedule_minutes ?? newObj.url_schedule_minutes;
+                if (oldUrlSched !== newUrlSched && newUrlSched !== undefined) changes.push(`URL Schedule: ${oldUrlSched || '—'}m ➔ ${newUrlSched}m`);
+
+                const oldDnsSched = oldObj.dns_security?.schedule_minutes ?? oldObj.dns_schedule_minutes;
+                const newDnsSched = newObj.dns_security?.schedule_minutes ?? newObj.dns_schedule_minutes;
+                if (oldDnsSched !== newDnsSched && newDnsSched !== undefined) changes.push(`DNS Schedule: ${oldDnsSched || '—'}m ➔ ${newDnsSched}m`);
+
+                const oldThreatSched = oldObj.threat_prevention?.schedule_minutes ?? oldObj.threat_schedule_minutes;
+                const newThreatSched = newObj.threat_prevention?.schedule_minutes ?? newObj.threat_schedule_minutes;
+                if (oldThreatSched !== newThreatSched && newThreatSched !== undefined) changes.push(`Threat Schedule: ${oldThreatSched || '—'}m ➔ ${newThreatSched}m`);
+
+                const oldUrlCats = oldObj.url_filtering?.enabled_categories || oldObj.url_categories || [];
+                const newUrlCats = newObj.url_filtering?.enabled_categories || newObj.url_categories || [];
+                if (JSON.stringify(oldUrlCats) !== JSON.stringify(newUrlCats)) changes.push(`URL Categories: ${oldUrlCats.length} ➔ ${newUrlCats.length} active`);
+
+                const oldDnsDom = oldObj.dns_security?.enabled_domains || oldObj.dns_domains || [];
+                const newDnsDom = newObj.dns_security?.enabled_domains || newObj.dns_domains || [];
+                if (JSON.stringify(oldDnsDom) !== JSON.stringify(newDnsDom)) changes.push(`DNS Domains: ${oldDnsDom.length} ➔ ${newDnsDom.length} active`);
+
+                const oldEicar = oldObj.threat_prevention?.eicar_endpoints || oldObj.eicar_targets || [];
+                const newEicar = newObj.threat_prevention?.eicar_endpoints || newObj.eicar_targets || [];
+                if (JSON.stringify(oldEicar) !== JSON.stringify(newEicar)) changes.push(`EICAR Targets: ${oldEicar.length} ➔ ${newEicar.length} active`);
+
+                if (changes.length === 0 && JSON.stringify(oldObj) !== JSON.stringify(newObj)) changes.push(`Security Policy configuration updated`);
+
                 if (changes.length > 0) {
                     diff.push({ id: 'security', name: 'Security Policy & Schedules', action: 'modified', details: changes.join(', ') });
+                }
+            } else {
+                if (JSON.stringify(oldObj) !== JSON.stringify(newObj)) {
+                    diff.push({ id: type, name: `${type} configuration`, action: 'modified', details: 'Configuration updated' });
                 }
             }
 

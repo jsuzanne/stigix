@@ -743,6 +743,18 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         });
     };
 
+    const toggleEicarTarget = (targetUrl: string) => {
+        if (!targetUrl) return;
+        const isSelected = selectedEicarTargets.includes(targetUrl);
+        const next = isSelected ? selectedEicarTargets.filter(u => u !== targetUrl) : [...selectedEicarTargets, targetUrl];
+        setSelectedEicarTargets(next);
+        if (config) {
+            saveConfig({
+                threat_prevention: { ...config.threat_prevention, eicar_endpoints: next }
+            });
+        }
+    };
+
     const toggleAllURLCategories = () => {
         if (!config) return;
         const visibleCats = securityProfile.url_filtering.items.filter(cat =>
@@ -2125,7 +2137,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                 <div
                                                     onClick={() => {
                                                         if (disabled) return;
-                                                        setSelectedEicarTargets(prev => isSelected ? prev.filter(u => u !== cloudEicarUrl) : [...prev, cloudEicarUrl]);
+                                                        toggleEicarTarget(cloudEicarUrl);
                                                     }}
                                                     className={`bg-card border px-4 py-3 rounded-xl group transition-all flex items-center gap-3 shadow-sm ${
                                                         disabled
@@ -2218,9 +2230,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                             return (
                                                 <div
                                                     key={`tgt-${t.id}`}
-                                                    onClick={() => {
-                                                        setSelectedEicarTargets(prev => isSelected ? prev.filter(u => u !== url) : [...prev, url]);
-                                                    }}
+                                                    onClick={() => toggleEicarTarget(url)}
                                                     className={`bg-card border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-blue-500/50 bg-blue-500/5' : 'border-border'}`}
                                                 >
                                                     <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
