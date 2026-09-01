@@ -108,10 +108,42 @@ export class ProvisioningManager {
 
     public normalizeItemsWithIds(type: 'applications' | 'connectivity-probes', items: any[]): any[] {
         if (!Array.isArray(items)) return [];
-        return items.map(item => ({
-            ...item,
-            id: this.generateDeterministicId(type, item)
-        }));
+        const result: any[] = [];
+        let currentCategory = 'Uncategorized';
+
+        for (const item of items) {
+            if (type === 'applications') {
+                if (typeof item === 'string') {
+                    const line = item.trim();
+                    if (!line) continue;
+                    if (line.startsWith('#')) {
+                        const comment = line.substring(1).trim();
+                        if (!comment.toLowerCase().startsWith('format:') && !comment.toLowerCase().startsWith('weight:')) {
+                            currentCategory = comment;
+                        }
+                        continue;
+                    }
+                    const parts = line.split('|');
+                    if (parts.length >= 2) {
+                        const domain = parts[0].trim();
+                        const weight = parseInt(parts[1], 10) || 50;
+                        const endpoint = parts[2] ? parts[2].trim() : '/';
+                        const obj = { domain, weight, endpoint, category: currentCategory };
+                        const id = this.generateDeterministicId('applications', obj);
+                        result.push({ ...obj, id });
+                    }
+                } else if (item && typeof item === 'object' && item.domain) {
+                    const id = this.generateDeterministicId('applications', item);
+                    result.push({ ...item, id });
+                }
+            } else {
+                if (item && typeof item === 'object') {
+                    const id = this.generateDeterministicId('connectivity-probes', item);
+                    result.push({ ...item, id });
+                }
+            }
+        }
+        return result;
     }
 
     private computeChecksum(data: any): string {

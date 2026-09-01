@@ -1876,8 +1876,23 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                         {isCloud ? <Globe size={24} /> : isDiscovery ? <Shield size={24} /> : <Activity size={24} />}
                                                     </div>
                                                     <div>
-                                                        <div className="flex items-center gap-2">
+                                                        <div className="flex items-center gap-2 flex-wrap">
                                                             <h4 className="text-[12px] font-black text-text-primary tracking-tight">{probe.name}</h4>
+                                                            {(probe as any)._source === 'global' && (
+                                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm" title="Global provisioned probe from Leader">
+                                                                    🌐 Global
+                                                                </span>
+                                                            )}
+                                                            {(probe as any)._source === 'overridden' && (
+                                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-sm" title="Global probe with local field override">
+                                                                    ✏️ Overridden
+                                                                </span>
+                                                            )}
+                                                            {(probe as any)._source === 'orphaned' && (
+                                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-red-500/10 text-red-400 border border-red-500/20 shadow-sm" title="Global parent deleted on Leader">
+                                                                    ⚠️ Orphaned
+                                                                </span>
+                                                            )}
                                                             <span className={cn(
                                                                 "text-[8px] px-2 py-0.5 rounded-full font-black tracking-widest uppercase",
                                                                 isCloud ? "bg-purple-600/10 text-purple-500" : isDiscovery ? "bg-indigo-600/10 text-indigo-500" : "bg-amber-600/10 text-amber-500"

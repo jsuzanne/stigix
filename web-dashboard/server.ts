@@ -3639,7 +3639,7 @@ app.get('/api/config/apps', extractUserMiddleware, (req, res) => {
                     });
                 }
             }
-        } else if (typeof item === 'object' && item !== null) {
+        } else if (typeof item === 'object' && item !== null && item.domain) {
             // Already an object, use its category if it exists
             const app = item;
             const appCategory = app.category || 'Uncategorized';
@@ -3650,8 +3650,9 @@ app.get('/api/config/apps', extractUserMiddleware, (req, res) => {
             }
 
             currentApps.push({
+                ...app,
                 domain: app.domain,
-                weight: app.weight,
+                weight: app.weight !== undefined ? app.weight : 50,
                 endpoint: app.endpoint || '/'
             });
         }
@@ -10128,11 +10129,15 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
             } catch {}
         }
     } else {
-        if (fs.existsSync(CUSTOM_CONNECTIVITY_FILE)) {
-            try {
-                items = JSON.parse(fs.readFileSync(CUSTOM_CONNECTIVITY_FILE, 'utf8'));
-            } catch {}
-        }
+        const envProbes = getEnvConnectivityEndpoints();
+        const rawCustom = getCustomConnectivityEndpoints();
+        const custom = provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom);
+        const mergedEnvProbes = envProbes.map((p: any) => {
+            const override = custom.find((cp: any) => cp.name === p.name);
+            return override ? { ...p, ...override } : p;
+        });
+        const pureCustom = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+        items = [...mergedEnvProbes, ...pureCustom];
     }
 
     const pub = provisioningManager.publishBundle(type, items);
