@@ -907,10 +907,33 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         }
     };
 
+    const copyToClipboard = (text: string) => {
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+                document.body.appendChild(ta);
+                ta.focus(); ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            });
+        } else {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+    };
+
     const handleCopyPeerCommand = () => {
         const installScriptUrl = 'https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh';
-        const cmd = `curl -fsSL ${installScriptUrl} | sudo bash -s -- --controller ${peerInstallLeaderUrl || '<leader-url>'}`;
-        navigator.clipboard.writeText(cmd).catch(() => {});
+        const leaderUrl = peerInstallLeaderUrl || (registryStatus?.detected_ip ? `http://${registryStatus.detected_ip}:8080` : '<leader-url>');
+        const cmd = `curl -fsSL ${installScriptUrl} | sudo bash -s -- --controller ${leaderUrl}`;
+        copyToClipboard(cmd);
         setPeerCommandCopied(true);
         setTimeout(() => setPeerCommandCopied(false), 2000);
     };
@@ -3596,7 +3619,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                 <div id="cloud-target-security" className="space-y-5">
                                     <div className="flex items-center gap-2">
                                         <Lock size={14} className="text-blue-500 opacity-60" />
-                                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Cloud Target Security (Cloudflare Probe Signing)</span>
+                                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Cloud Probe Signing — Master Key &amp; Worker URL</span>
+                                        <span className="text-[8px] text-text-muted opacity-50 font-bold tracking-widest">Required for Cloudflare-backed synthetic probes (SaaS / Download / Security)</span>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
@@ -3670,7 +3694,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         <div className="p-4 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl flex gap-3 items-start">
                                             <Info size={14} className="text-blue-500 mt-0.5 shrink-0" />
                                             <p className="text-[10px] font-bold text-text-muted leading-relaxed opacity-80">
-                                                The Master Key signs Synthetic Cloud Probes (Slow SaaS, download/large, etc.) before they reach your Cloudflare Worker, preventing unauthorized access. If you remove Cloudflare from your setup, this section can be ignored.
+                                                The The Master Key signs Synthetic Cloud Probes (Slow SaaS, Download, Security) before they reach your Cloudflare Worker. This is separate from peer-to-peer discovery — removing Cloudflare as a registry bootstrap does not affect cloud probe signing.
                                             </p>
                                         </div>
                                     </div>
