@@ -3600,12 +3600,23 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                     <div key={entry.id} className="p-3 bg-card-secondary/50 border border-border/60 rounded-xl space-y-2 text-[10px]">
                                                         <div className="flex items-center justify-between border-b border-border/30 pb-2">
                                                             <div className="flex items-center gap-2">
-                                                                <span className={cn(
-                                                                    "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest",
-                                                                    entry.type === 'applications' ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
-                                                                )}>
-                                                                    {entry.type === 'applications' ? 'Apps' : 'Probes'} rev {entry.revision}
-                                                                </span>
+                                                                    {(() => {
+                                                                    const tagMap: Record<string, { label: string; cls: string }> = {
+                                                                        'applications': { label: 'Apps', cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+                                                                        'connectivity-probes': { label: 'Probes', cls: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' },
+                                                                        'convergence-sla': { label: 'SLA', cls: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
+                                                                        'prisma-sase': { label: 'Prisma SASE', cls: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+                                                                        'security-config': { label: 'Security', cls: 'bg-red-500/10 text-red-400 border-red-500/20' },
+                                                                        'voice-config': { label: 'Voice', cls: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
+                                                                        'iot-config': { label: 'IoT', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+                                                                    };
+                                                                    const tag = tagMap[entry.type] || { label: entry.type, cls: 'bg-gray-500/10 text-gray-400 border-gray-500/20' };
+                                                                    return (
+                                                                        <span className={cn("px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border", tag.cls)}>
+                                                                            {tag.label} rev {entry.revision}
+                                                                        </span>
+                                                                    );
+                                                                })()}
                                                                 <span className="text-[9px] font-mono text-text-muted opacity-70">
                                                                     {new Date(entry.timestamp).toLocaleTimeString()} • {new Date(entry.timestamp).toLocaleDateString()}
                                                                 </span>
@@ -3897,25 +3908,32 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
 
                                 {provisioningData?.state?.enabled ? (
                                     <>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                                            <div className="bg-card-secondary/30 border border-border/50 rounded-xl p-3 flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <Globe size={14} className="text-emerald-500" />
-                                                    <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Applications Sync</span>
-                                                </div>
-                                                <span className="font-mono text-[10px] font-bold text-emerald-400">
-                                                    rev {provisioningData?.state?.appliedRevisions?.['applications']?.revision || 0} ({provisioningData?.state?.appliedRevisions?.['applications']?.status || 'pending'})
-                                                </span>
-                                            </div>
-                                            <div className="bg-card-secondary/30 border border-border/50 rounded-xl p-3 flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <Zap size={14} className="text-cyan-500" />
-                                                    <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Probes Sync</span>
-                                                </div>
-                                                <span className="font-mono text-[10px] font-bold text-cyan-400">
-                                                    rev {provisioningData?.state?.appliedRevisions?.['connectivity-probes']?.revision || 0} ({provisioningData?.state?.appliedRevisions?.['connectivity-probes']?.status || 'pending'})
-                                                </span>
-                                            </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+                                            {[
+                                                { key: 'applications', label: 'Applications Sync', icon: Globe, color: 'emerald' },
+                                                { key: 'connectivity-probes', label: 'Probes Sync', icon: Zap, color: 'cyan' },
+                                                { key: 'convergence-sla', label: 'SLA Sync', icon: Activity, color: 'purple' },
+                                                { key: 'prisma-sase', label: 'Prisma SASE Sync', icon: Lock, color: 'blue' },
+                                                { key: 'security-config', label: 'Security Sync', icon: Shield, color: 'red' },
+                                                { key: 'voice-config', label: 'Voice Sync', icon: PhoneCall, color: 'indigo' },
+                                                { key: 'iot-config', label: 'IoT Sync', icon: Radio, color: 'amber' },
+                                            ].map(b => {
+                                                const Icon = b.icon;
+                                                const bState = provisioningData?.state?.appliedRevisions?.[b.key];
+                                                const rev = bState?.revision || 0;
+                                                const status = bState?.status || 'pending';
+                                                return (
+                                                    <div key={b.key} className="bg-card-secondary/30 border border-border/50 rounded-xl p-3 flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <Icon size={14} className="text-blue-500" />
+                                                            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{b.label}</span>
+                                                        </div>
+                                                        <span className="font-mono text-[10px] font-bold text-emerald-400">
+                                                            rev {rev} ({status})
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
 
                                         {/* Collapsible Sync Audit History & Diff Log */}
@@ -3950,11 +3968,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                             <div key={entry.id} className="p-3 bg-card-secondary/50 border border-border/60 rounded-xl space-y-2 text-[10px]">
                                                                 <div className="flex items-center justify-between border-b border-border/30 pb-2">
                                                                     <div className="flex items-center gap-2">
-                                                                        <span className={cn(
-                                                                            "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest",
-                                                                            entry.type === 'applications' ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
-                                                                        )}>
-                                                                            {entry.type === 'applications' ? 'Apps' : 'Probes'} rev {entry.revision}
+                                                                        <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                                                            {entry.type === 'applications' ? 'Apps' : entry.type === 'connectivity-probes' ? 'Probes' : entry.type === 'convergence-sla' ? 'SLA' : entry.type === 'prisma-sase' ? 'Prisma SASE' : entry.type === 'security-config' ? 'Security' : entry.type === 'voice-config' ? 'Voice' : 'IoT'} rev {entry.revision}
                                                                         </span>
                                                                         <span className="text-[9px] font-mono text-text-muted opacity-70">
                                                                             {new Date(entry.timestamp).toLocaleTimeString()} • {new Date(entry.timestamp).toLocaleDateString()}

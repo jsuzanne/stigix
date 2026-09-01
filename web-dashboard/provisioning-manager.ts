@@ -337,8 +337,11 @@ export class ProvisioningManager {
 
     public hasUnpublishedChanges(type: GlobalBundleType, currentActiveItems: any): boolean {
         const lastBundle = this.getPublishedBundle(type);
-        if (!lastBundle) return true;
-        const currentChecksum = this.computeChecksum(currentActiveItems);
+        if (!lastBundle) return currentActiveItems && (Array.isArray(currentActiveItems) ? currentActiveItems.length > 0 : Object.keys(currentActiveItems).length > 0);
+
+        const isArray = Array.isArray(currentActiveItems);
+        const normalized = isArray ? this.normalizeItemsWithIds(type as any, currentActiveItems) : currentActiveItems;
+        const currentChecksum = this.computeChecksum(normalized);
         const publishedChecksum = this.computeChecksum(lastBundle);
         return currentChecksum !== publishedChecksum;
     }
@@ -352,13 +355,13 @@ export class ProvisioningManager {
             case 'convergence-sla':
                 return path.join(this.configDir, 'convergence-config.json');
             case 'prisma-sase':
-                return path.join(this.configDir, 'prisma-sase-config.json');
+                return path.join(this.configDir, 'prisma-config.json');
             case 'security-config':
                 return path.join(this.configDir, 'security-config.json');
             case 'voice-config':
                 return path.join(this.configDir, 'voice-config.json');
             case 'iot-config':
-                return path.join(this.configDir, 'iot-config.json');
+                return path.join(this.configDir, 'iot-devices.json');
             default:
                 return path.join(this.configDir, `${type}-config.json`);
         }

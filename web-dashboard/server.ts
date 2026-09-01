@@ -10126,7 +10126,7 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     const prismaPending = provisioningManager.hasUnpublishedChanges('prisma-sase', readJson(PRISMA_CONFIG_FILE));
     const securityPending = provisioningManager.hasUnpublishedChanges('security-config', readJson(path.join(APP_CONFIG.configDir, 'security-config.json')));
     const voicePending = provisioningManager.hasUnpublishedChanges('voice-config', readJson(path.join(APP_CONFIG.configDir, 'voice-config.json')));
-    const iotPending = provisioningManager.hasUnpublishedChanges('iot-config', readJson(path.join(APP_CONFIG.configDir, 'iot-config.json')));
+    const iotPending = provisioningManager.hasUnpublishedChanges('iot-config', readJson(IOT_DEVICES_FILE));
 
     res.json({
         state: provisioningManager.getState(),
