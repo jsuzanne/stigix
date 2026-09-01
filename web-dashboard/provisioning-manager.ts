@@ -147,7 +147,20 @@ export class ProvisioningManager {
     }
 
     private computeChecksum(data: any): string {
-        const str = JSON.stringify(data);
+        const normalized = Array.isArray(data)
+            ? data.map(item => {
+                if (typeof item !== 'object' || item === null) return item;
+                const keys = Object.keys(item).sort();
+                const sortedObj: any = {};
+                for (const k of keys) {
+                    if (k !== '_source' && k !== '_wasGlobal') {
+                        sortedObj[k] = item[k];
+                    }
+                }
+                return sortedObj;
+            })
+            : data;
+        const str = JSON.stringify(normalized);
         return 'sha256:' + crypto.createHash('sha256').update(str).digest('hex');
     }
 
@@ -313,8 +326,9 @@ export class ProvisioningManager {
             : path.join(this.configDir, 'connectivity-custom.json');
 
         try {
-            // 1. Verify bundle integrity
-            const computedChecksum = this.computeChecksum(globalItems);
+            // 1. Normalize items and verify bundle integrity
+            const normalizedGlobal = this.normalizeItemsWithIds(type, globalItems);
+            const computedChecksum = this.computeChecksum(normalizedGlobal);
             if (computedChecksum !== checksum) {
                 log('PROVISIONING', `Checksum mismatch for ${type} rev ${revision}. Expected ${checksum}, got ${computedChecksum}`, 'error');
                 state.appliedRevisions[type] = {
