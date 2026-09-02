@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-09-02
+
+### Added / Changed
+- **Custom TCP Apps Smart Merge** 🔄: Pulling global provisioning bundles from the Leader now automatically preserves local peer targets, local application profiles, and instance identities configured on the peer node without overwriting them.
+- **Global Provisioning Resilient Checksums** 🛡️: Implemented multi-algorithm backward-compatible checksum validation (modern sanitized, legacy sorted-key, and raw payload hashes) resolving sync checksum mismatches on legacy published revisions.
+- **Navigation & Settings Refinement** 🧭: Renamed "IoT Simulation" to "IoT", repositioned "Custom Apps" directly after "Voice" in the main navigation bar, and ordered tabs in Settings (`Synthetic Probes` ➔ `Custom TCP Apps` ➔ `Failover`).
+- **Workload & Server Behaviors Reference** 📚: Added comprehensive reference tables and deep-dive documentation for all 5 client traffic patterns and 8 server simulation behaviors in [`docs/CUSTOM_TCP_APPS.md`](./docs/CUSTOM_TCP_APPS.md).
+
+---
+
 ## [2.0.1] - 2026-09-02
 
 ### Fixed
