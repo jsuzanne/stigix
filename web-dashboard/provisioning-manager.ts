@@ -172,21 +172,52 @@ export class ProvisioningManager {
         return result;
     }
 
-    private computeChecksum(data: any): string {
-        const normalized = Array.isArray(data)
-            ? data.map(item => {
-                if (typeof item !== 'object' || item === null) return item;
-                const keys = Object.keys(item).sort();
-                const sortedObj: any = {};
-                for (const k of keys) {
-                    if (k !== '_source' && k !== '_wasGlobal') {
-                        sortedObj[k] = item[k];
-                    }
+    public sanitizeForProvisioning(data: any): any {
+        if (data === null || data === undefined) return data;
+
+        if (Array.isArray(data)) {
+            return data.map(item => this.sanitizeForProvisioning(item));
+        }
+
+        if (typeof data === 'object') {
+            const result: any = {};
+            const EXCLUDED_KEYS = new Set([
+                '_source',
+                '_wasGlobal',
+                'last_run_time',
+                'next_run_time',
+                'last_run',
+                'last_execution_ts',
+                'last_executed',
+                'last_status',
+                'last_check',
+                'last_seen',
+                'last_sync',
+                'token_expiry',
+                'updatedAt',
+                'createdAt',
+                'timestamp',
+                'statistics',
+                'test_history',
+                'status_history',
+                'current_loop_state'
+            ]);
+
+            const keys = Object.keys(data).sort();
+            for (const k of keys) {
+                if (!EXCLUDED_KEYS.has(k)) {
+                    result[k] = this.sanitizeForProvisioning(data[k]);
                 }
-                return sortedObj;
-            })
-            : data;
-        const str = JSON.stringify(normalized);
+            }
+            return result;
+        }
+
+        return data;
+    }
+
+    private computeChecksum(data: any): string {
+        const sanitized = this.sanitizeForProvisioning(data);
+        const str = JSON.stringify(sanitized);
         return 'sha256:' + crypto.createHash('sha256').update(str).digest('hex');
     }
 
@@ -411,10 +442,12 @@ export class ProvisioningManager {
     }
 
     public computeDiff(type: GlobalBundleType, oldPayload: any, newPayload: any): { diff: SyncDiffItem[]; summary: { added: number; removed: number; modified: number } } {
+        const cleanOld = this.sanitizeForProvisioning(oldPayload);
+        const cleanNew = this.sanitizeForProvisioning(newPayload);
         if (!oldPayload) oldPayload = Array.isArray(newPayload) ? [] : {};
 
-        if (Array.isArray(newPayload)) {
-            const oldItems = Array.isArray(oldPayload) ? oldPayload : [];
+        if (Array.isArray(cleanNew)) {
+            const oldItems = Array.isArray(cleanOld) ? cleanOld : [];
             const oldMap = new Map<string, any>(oldItems.map(i => [i.id || this.generateDeterministicId(type, i), i]));
             const newMap = new Map<string, any>(newPayload.map(i => [i.id || this.generateDeterministicId(type, i), i]));
 
@@ -459,8 +492,8 @@ export class ProvisioningManager {
             return { diff, summary: { added, removed, modified } };
         } else {
             // Object payload diff
-            const oldObj = typeof oldPayload === 'object' && oldPayload !== null ? oldPayload : {};
-            const newObj = typeof newPayload === 'object' && newPayload !== null ? newPayload : {};
+            const oldObj = typeof cleanOld === 'object' && cleanOld !== null ? cleanOld : {};
+            const newObj = typeof cleanNew === 'object' && cleanNew !== null ? cleanNew : {};
             const diff: SyncDiffItem[] = [];
             const changes: string[] = [];
 
