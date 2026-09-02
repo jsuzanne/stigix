@@ -66,6 +66,7 @@ COPY web-dashboard/registry-manager.ts ./
 COPY web-dashboard/stigix-registry-client.ts ./
 COPY web-dashboard/local-registry-server.ts ./
 COPY web-dashboard/provisioning-manager.ts ./
+COPY web-dashboard/underlay-topology-manager.ts ./
 COPY web-dashboard/shared ./shared
 COPY web-dashboard/utils ./utils
 COPY web-dashboard/src/types ./src/types
