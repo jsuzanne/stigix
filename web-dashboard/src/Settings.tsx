@@ -4466,53 +4466,76 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                             </div>
 
                             <div className="pt-4 border-t border-border space-y-2">
-                                <h4 className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Test Links</h4>
-                                <div className="grid grid-cols-1 gap-1.5">
-                                    {[
-                                        { label: 'Health Check (Clean Flow)', path: '/ok', color: 'emerald' },
-                                        { label: 'WAN Brownout (Simulated Delay)', path: '/slow', color: 'amber' },
-                                        { label: 'Security Block (IPS/AV Test)', path: '/eicar.com.txt', color: 'red' }
-                                    ].map(({ label, path, color }) => {
-                                        const fullUrl = `http://${window.location.hostname}:8082${path}`;
-                                        return (
-                                            <div
-                                                key={path}
-                                                className="flex flex-col gap-1 p-2 rounded-lg bg-card/30 border border-border hover:border-emerald-500/30 transition-all group"
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className={`w-1 h-1 rounded-full bg-${color}-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]`} />
-                                                        <span className="text-[10px] font-bold text-text-muted group-hover:text-text-primary">{label}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <button
-                                                            onClick={() => {
-                                                                copyToClipboard(fullUrl);
-                                                                toast.success('Link copied!');
-                                                            }}
-                                                            className="p-1 hover:bg-emerald-500/10 text-text-muted hover:text-emerald-500 rounded transition-colors"
-                                                            title="Copy URL"
-                                                        >
-                                                            <Clipboard size={10} />
-                                                        </button>
-                                                        <a
-                                                            href={fullUrl}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="p-1 hover:bg-emerald-500/10 text-text-muted hover:text-emerald-500 rounded transition-colors"
-                                                            title="Open in new tab"
-                                                        >
-                                                            <ExternalLink size={10} />
-                                                        </a>
-                                                    </div>
-                                                </div>
-                                                <div className="text-[9px] font-mono text-emerald-500/70 truncate px-1">
-                                                    {fullUrl}
-                                                </div>
+                                {(() => {
+                                    const inbandHost = (() => {
+                                        if (interfaces && interfaces.length > 0 && systemInfo?.interfaceIps) {
+                                            for (const iface of interfaces) {
+                                                const ip = systemInfo.interfaceIps[iface];
+                                                if (ip && ip !== '127.0.0.1' && !ip.startsWith('172.17.') && !ip.startsWith('172.18.')) {
+                                                    return ip;
+                                                }
+                                            }
+                                        }
+                                        if (registryStatus?.detected_ip) {
+                                            return registryStatus.detected_ip;
+                                        }
+                                        if (systemInfo?.interfaceIps) {
+                                            for (const [iface, ip] of Object.entries(systemInfo.interfaceIps as Record<string, string>)) {
+                                                if (ip && ip !== '127.0.0.1' && !iface.startsWith('docker') && !iface.startsWith('br-') && !iface.startsWith('veth') && !iface.startsWith('lo')) {
+                                                    return ip;
+                                                }
+                                            }
+                                        }
+                                        return window.location.hostname;
+                                    })();
+
+                                    return (
+                                        <>
+                                            <div className="flex items-center justify-between">
+                                                <h4 className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Test Links</h4>
+                                                <span className="text-[8.5px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                                    Inband Target: {inbandHost}
+                                                </span>
                                             </div>
-                                        );
-                                    })}
-                                </div>
+                                            <div className="grid grid-cols-1 gap-1.5">
+                                                {[
+                                                    { label: 'Health Check (Clean Flow)', path: '/ok', color: 'emerald' },
+                                                    { label: 'WAN Brownout (Simulated Delay)', path: '/slow', color: 'amber' },
+                                                    { label: 'Security Block (IPS/AV Test)', path: '/eicar.com.txt', color: 'red' }
+                                                ].map(({ label, path, color }) => {
+                                                    const fullUrl = `http://${inbandHost}:8082${path}`;
+                                                    return (
+                                                        <div
+                                                            key={path}
+                                                            className="flex flex-col gap-1 p-2 rounded-lg bg-card/30 border border-border hover:border-emerald-500/30 transition-all group"
+                                                        >
+                                                            <div className="flex items-center justify-between">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className={`w-1 h-1 rounded-full bg-${color}-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]`} />
+                                                                    <span className="text-[10px] font-bold text-text-muted group-hover:text-text-primary">{label}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <a
+                                                                        href={fullUrl}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="p-1 hover:bg-emerald-500/10 text-text-muted hover:text-emerald-500 rounded transition-colors"
+                                                                        title="Open in new tab"
+                                                                    >
+                                                                        <ExternalLink size={10} />
+                                                                    </a>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-[9px] font-mono text-emerald-500/70 truncate px-1">
+                                                                {fullUrl}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </>
+                                    );
+                                })()}
                             </div>
                         </div>
 
