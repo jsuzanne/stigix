@@ -138,8 +138,9 @@
       <button class="faq-tab-btn"           data-tab="topology" role="tab" aria-selected="false" aria-controls="panel-topology">Topology</button>
       <button class="faq-tab-btn"           data-tab="ops"      role="tab" aria-selected="false" aria-controls="panel-ops">Operations</button>
       <button class="faq-tab-btn"           data-tab="cli"      role="tab" aria-selected="false" aria-controls="panel-cli">Stigix CLI</button>
-      <button class="faq-tab-btn"           data-tab="mcp"      role="tab" aria-selected="false" aria-controls="panel-mcp">MCP Server</button>
-      <button class="faq-tab-btn"           data-tab="registry" role="tab" aria-selected="false" aria-controls="panel-registry">Targets &amp; Registry</button>
+      <button class="faq-tab-btn"           data-tab="custom-tcp"   role="tab" aria-selected="false" aria-controls="panel-custom-tcp">Custom TCP Apps <span class="faq-badge faq-badge--new">V2</span></button>
+      <button class="faq-tab-btn"           data-tab="provisioning" role="tab" aria-selected="false" aria-controls="panel-provisioning">Global Provisioning <span class="faq-badge faq-badge--new">V2</span></button>
+      <button class="faq-tab-btn"           data-tab="registry"     role="tab" aria-selected="false" aria-controls="panel-registry">Targets &amp; Registry</button>
     </div>
 
     <div class="faq-panels">
@@ -1858,6 +1859,144 @@ docker compose restart</pre>
         </div>
 
       </div><!-- /panel-registry -->
+
+
+      <!-- ═══════════════════════════════════════════════════
+           CUSTOM TCP APPLICATIONS (V2)
+      ═══════════════════════════════════════════════════ -->
+      <div class="faq-panel" id="panel-custom-tcp" role="tabpanel">
+
+        <div class="faq-item is-open">
+          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">What are Custom TCP Applications and why are they needed?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Traditional network testing tools (like <strong>iPerf</strong> or raw HTTP GET loops) do not accurately reflect real enterprise application dynamics:</p>
+            <ul>
+              <li><strong>iPerf</strong> generates continuous, unidirectional saturation floods to measure maximum link throughput.</li>
+              <li><strong>Ping / ICMP</strong> tests Layer 3 reachability but ignores application sockets, TCP 3-way handshakes, and application-level response delays.</li>
+            </ul>
+            <p>Real enterprise applications (<strong>SAP ERP, Oracle, POS cash registers, core banking, database sync, industrial SCADA</strong>) rely on <strong>persistent, long-lived TCP connections</strong> with paced request/reply transactions and server-side compute delays. Stigix Custom TCP Apps lets you build faithful digital replicas of your business applications to evaluate SD-WAN path selection, QoS enforcement, and failover behavior under realistic application traffic.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does the Dual-Role (Server Listener + Client Workload) architecture work?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Every Stigix application profile contains two functional components:</p>
+            <ul>
+              <li><strong>Server Role (Listener &amp; Server Behavior):</strong> Binds a TCP port on the host (e.g. <code>:8443</code>) and responds to incoming requests according to its response mode (Echo, Fixed Delay, Looping Delay, Drop, Error).</li>
+              <li><strong>Client Role (Workload Generator &amp; Peers):</strong> Emits structured requests toward remote target peers at configured pacing intervals and payload sizes.</li>
+            </ul>
+            <p><strong>Who executes what?</strong></p>
+            <ul>
+              <li>On a <strong>Client-only Branch node</strong>: The client executes its workload settings and targets remote peers. Its local <code>Server Behavior</code> remains dormant.</li>
+              <li>On the <strong>Target Server node (e.g. DC)</strong>: The <code>Server Behavior</code> configured on that remote server executes to reply to branch requests (e.g. injecting database processing time or error frames).</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the 8 server simulation and chaos injection modes?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix provides 8 realistic server response modes:</p>
+            <ol>
+              <li><code>echo</code> — Immediate full payload reflection without delay.</li>
+              <li><code>acknowledge</code> — Ultra-compact ACK reply (12 bytes, zero payload) for high-frequency transactions.</li>
+              <li><code>fixed_delay</code> — Constant server-side latency injection (e.g. 150 ms simulating remote database query).</li>
+              <li><code>random_delay</code> — Jittered delay between configurable Min and Max bounds (e.g. 50–300 ms).</li>
+              <li><code>looping_delay</code> — Cycles periodically between normal latency (e.g. 10 ms for 60s) and slow latency (e.g. 1500 ms for 60s) — perfect for validating SD-WAN SLA-based failover without pulling cables.</li>
+              <li><code>drop_response</code> — Silently drops responses with configurable probability while keeping the TCP socket open (simulating application freeze/timeout).</li>
+              <li><code>close_connection</code> — Abruptly closes the TCP connection after N requests (simulating server crash).</li>
+              <li><code>error_response</code> — Replies with an application error frame carrying custom error codes (e.g. <code>SIMULATED_DB_ERROR</code>).</li>
+            </ol>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does State Persistence preserve Custom TCP state across reboots?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In <strong>Settings &rarr; State Persistence</strong>, the <code>auto_restart_custom_tcp</code> toggle (enabled by default) ensures that your Custom TCP applications restore their exact runtime state upon restart:</p>
+            <ul>
+              <li><strong>Listeners:</strong> Host ports that were listening before shutdown resume listening automatically.</li>
+              <li><strong>Client Workloads:</strong> Workload streams that were actively transmitting traffic before reboot resume their test cycles immediately.</li>
+            </ul>
+            <p>Whenever you click <strong>Start / Stop Listener</strong> or <strong>Start / Stop Client Workload</strong> in the UI, the state is persisted automatically to disk.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How are RTT percentiles (p50/p95) and Health Scores calculated?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix tracks round-trip time across a rolling sample buffer, calculating min, avg, max, <strong>$p50$ (median)</strong>, and <strong>$p95$ (95th percentile)</strong> latency.</p>
+            <p>The <strong>0–100 Health Score</strong> synthesizes operational quality across 4 weighted factors:</p>
+            <pre>Health Score = Listener Active (25 pts) + Sessions Established (35 pts) + Success Rate (25 pts) + Latency SLA (15 pts)</pre>
+            <ul>
+              <li><strong>90–100 [OPTIMAL]:</strong> Port open, all streams connected, RTT &lt; 50ms.</li>
+              <li><strong>75–89 [HEALTHY]:</strong> Nominal operation, low latency.</li>
+              <li><strong>50–74 [DEGRADED]:</strong> Elevated latency or partial reconnects.</li>
+              <li><strong>0–49 [CRITICAL]:</strong> Remote peer unreachable or port blocked by firewall.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-custom-tcp -->
+
+
+      <!-- ═══════════════════════════════════════════════════
+           GLOBAL PROVISIONING & ZERO-TOUCH (V2)
+      ═══════════════════════════════════════════════════ -->
+      <div class="faq-panel" id="panel-provisioning" role="tabpanel">
+
+        <div class="faq-item is-open">
+          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">What is Central Global Provisioning and how does it work?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Central Global Provisioning</strong> allows a central Stigix Leader node to distribute configuration bundles across all registered branch peers in an automated pull-mode cycle (<code style="font-family:var(--mono);font-size:0.8em;color:var(--teal)">30s</code> interval).</p>
+            <p>When an administrator creates or edits applications, probes, or policies on the Leader, the Leader generates an atomic revision (e.g. <code>rev-3.json</code>). Connected branch peers detect the new revision, pull the updated bundle, and <strong>hot-apply</strong> the changes without restarting containers or interrupting other services.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Which 8 configuration bundles are supported by Global Provisioning?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Global Provisioning manages 8 independent configuration bundles:</p>
+            <ol>
+              <li><strong>SaaS Applications:</strong> 67 pre-configured SaaS application profiles and traffic weights.</li>
+              <li><strong>Synthetic Connectivity Probes:</strong> HTTP, ICMP, and TCP endpoint monitoring probes.</li>
+              <li><strong>SLA &amp; Digital Experience Targets:</strong> Performance threshold targets and health rules.</li>
+              <li><strong>Security Validation Policies:</strong> URL filtering, DNS security, and threat testing suites.</li>
+              <li><strong>Voice Simulation Servers:</strong> RTP voice server targets and codec profiles.</li>
+              <li><strong>IoT Simulation Profiles:</strong> Virtual IoT device profiles and attack scenarios.</li>
+              <li><strong>Prisma SD-WAN API Credentials:</strong> SASE tenant API integration parameters.</li>
+              <li><strong>Custom TCP Applications:</strong> Multi-application East-West definitions, listeners, and peer lists.</li>
+            </ol>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Zero-Touch Direct Controller Onboarding work for remote branch nodes?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>To join a remote Linux box, VM, or Raspberry Pi to a Stigix Leader, run the one-line onboarding command on the remote host:</p>
+            <pre>curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- --controller http://&lt;LEADER_IP&gt;:8080</pre>
+            <p>The script automatically:</p>
+            <ul>
+              <li>Installs Docker if needed and pulls the Stigix container image.</li>
+              <li>Configures <code>STIGIX_CONTROLLER_URL</code> and activates Direct Controller Mode.</li>
+              <li>Registers the peer with the Leader and immediately begins pulling published Global Provisioning bundles.</li>
+              <li>The Leader automatically discovers the new peer and synthesizes active target definitions on its dashboard.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can branch nodes maintain local overrides, and how do rollbacks work?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Local Overrides &amp; Orphan Protection:</strong></p>
+            <p>Branch nodes can locally enable or disable specific items without breaking central synchronization. If a centrally provisioned item is modified locally, Stigix marks it with an override badge to preserve local operational choices.</p>
+            <p><strong>Instant Rollback:</strong></p>
+            <p>In <strong>Settings &rarr; Global Provisioning</strong> (or via CLI <code>stigix-cli --exec "provision rollback custom-tcp-apps 2"</code>), the Leader can roll back any bundle to a previous revision. All branch peers immediately pull and apply the restored revision within 30 seconds.</p>
+          </div></div></div>
+        </div>
+
+      </div><!-- /panel-provisioning -->
 
     </div><!-- /faq-panels -->
   </div><!-- /wrap -->
