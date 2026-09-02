@@ -111,8 +111,9 @@ jobs:
             echo "tags=$TAG_LIST" >> $GITHUB_OUTPUT
             echo "version=$VERSION" >> $GITHUB_OUTPUT
           elif [[ $GITHUB_REF == refs/heads/main ]]; then
+            BASELINE=$(cat VERSION 2>/dev/null || echo "2.0.0")
             echo "tags=${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:stable,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA" >> $GITHUB_OUTPUT
-            echo "version=latest" >> $GITHUB_OUTPUT
+            echo "version=$BASELINE" >> $GITHUB_OUTPUT
           elif [[ $GITHUB_REF == refs/heads/v2 ]]; then
             BASELINE=$(cat VERSION 2>/dev/null || echo "2.0.0-dev")
             BASELINE_CLEAN=${BASELINE%-dev}
