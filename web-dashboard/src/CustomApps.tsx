@@ -6,7 +6,8 @@ import React, { useState, useEffect } from 'react';
 import {
     Play, Square, RefreshCw, Server, Globe, Activity, Plus,
     Copy, Trash2, Edit3, Shield, AlertTriangle, CheckCircle2,
-    Clock, Cpu, ArrowDownRight, ArrowUpRight, Zap, ExternalLink
+    Clock, Cpu, ArrowDownRight, ArrowUpRight, Zap, ExternalLink,
+    Layers
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type {
@@ -23,6 +24,7 @@ interface CustomAppsProps {
 
 export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const [applications, setApplications] = useState<CustomTcpApplicationConfig[]>([]);
+    const [allAppSummaries, setAllAppSummaries] = useState<Record<string, any>>({});
     const [instanceInfo, setInstanceInfo] = useState<{ instanceId: string; siteName: string; hostname: string } | null>(null);
     const [selectedAppId, setSelectedAppId] = useState<string>('');
     const [metrics, setMetrics] = useState<AppRuntimeMetrics | null>(null);
@@ -72,6 +74,20 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         }
     };
 
+    const loadAllSummaries = async () => {
+        try {
+            const res = await fetch('/api/custom-tcp-apps/summary/all', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (res.ok) {
+                const data = await res.json();
+                const map: Record<string, any> = {};
+                (data.applications || []).forEach((app: any) => {
+                    map[app.id] = app;
+                });
+                setAllAppSummaries(map);
+            }
+        } catch {}
+    };
+
     const loadAppStatus = async (appId: string) => {
         try {
             const [statusRes, inRes, outRes] = await Promise.all([
@@ -92,9 +108,88 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                 const outData = await outRes.json();
                 setOutgoingSessions(outData.sessions || []);
             }
+            loadAllSummaries();
         } catch (err) {
             // Background refresh error ignored
         }
+    };
+
+    const calculateHealthScore = () => {
+        if (!currentApp) return { score: 100, label: 'HEALTHY', color: 'emerald', reason: 'Ready' };
+        let score = 0;
+        const isListening = metrics?.listenerState === 'listening';
+        const hasPeers = (currentApp.peers || []).length > 0;
+        const isClientRunning = metrics?.clientWorkloadRunning;
+
+        // 1. Listener Availability (25 pts)
+        if (isListening) score += 25;
+
+        // 2. Client Connectivity (35 pts)
+        if (!hasPeers) {
+            if (isListening) score += 35;
+        } else if (isClientRunning) {
+            const totalSessions = outgoingSessions.length || (currentApp.peers.length * (currentApp.clientDefaults?.connectionsPerPeer || 1));
+            const connectedSessions = outgoingSessions.filter(s => s.state === 'connected').length;
+            if (totalSessions > 0) {
+                score += Math.round((connectedSessions / totalSessions) * 35);
+            }
+        } else {
+            score += 15;
+        }
+
+        // 3. Request/Reply Success Rate (25 pts)
+        const totalReqs = (metrics?.totalRequests || 0);
+        const timeouts = (metrics?.totalTimeouts || 0);
+        const errors = (metrics?.totalErrors || 0);
+        const drops = (metrics?.totalSimulatedDrops || 0);
+        if (totalReqs > 0) {
+            const badRatio = (timeouts + errors + drops) / totalReqs;
+            score += Math.max(0, Math.round((1 - badRatio) * 25));
+        } else {
+            score += 25;
+        }
+
+        // 4. Latency SLA (15 pts)
+        const avgRtt = metrics?.avgRttMs || 0;
+        if (avgRtt > 0 && avgRtt < 50) score += 15;
+        else if (avgRtt >= 50 && avgRtt < 150) score += 10;
+        else if (avgRtt >= 150 && avgRtt < 300) score += 5;
+        else if (avgRtt === 0) score += 10;
+
+        // Status classification
+        let label = 'OPTIMAL';
+        let color = 'emerald';
+        let reason = 'Listener active & traffic nominal';
+
+        if (hasPeers && isClientRunning && outgoingSessions.length > 0 && outgoingSessions.every(s => s.state !== 'connected')) {
+            score = Math.min(score, 25);
+            label = 'CRITICAL';
+            color = 'rose';
+            reason = 'All outbound peers unreachable (Reconnecting)';
+        } else if (!isListening) {
+            score = Math.min(score, 45);
+            label = 'LISTENER DOWN';
+            color = 'amber';
+            reason = 'TCP port not listening';
+        } else if (score >= 90) {
+            label = 'OPTIMAL';
+            color = 'emerald';
+            reason = 'Listener active & all peers connected';
+        } else if (score >= 75) {
+            label = 'HEALTHY';
+            color = 'emerald';
+            reason = 'Good performance';
+        } else if (score >= 50) {
+            label = 'DEGRADED';
+            color = 'amber';
+            reason = 'Partial reconnects or high latency';
+        } else {
+            label = 'CRITICAL';
+            color = 'rose';
+            reason = 'Service degraded or peer errors';
+        }
+
+        return { score, label, color, reason };
     };
 
     const handleToggleListener = async () => {
@@ -236,6 +331,40 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                 )}
             </div>
 
+            {/* Multi-App Global Overview Matrix */}
+            {applications.length > 1 && (
+                <div className="bg-[#0b1329]/70 border border-slate-800/80 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-md">
+                    <div className="flex items-center gap-2 text-slate-300 font-semibold">
+                        <Layers size={15} className="text-indigo-400" />
+                        <span>Active Multi-App Matrix ({applications.length} apps configured):</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {applications.map(app => {
+                            const sum = allAppSummaries[app.id];
+                            const isL = sum?.listener?.state === 'listening';
+                            const isC = sum?.clientWorkload?.state === 'running';
+                            const isSel = app.id === selectedAppId;
+                            return (
+                                <button
+                                    key={app.id}
+                                    onClick={() => setSelectedAppId(app.id)}
+                                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-2 transition-all ${
+                                        isSel
+                                            ? 'bg-indigo-600/30 border-indigo-500 text-white shadow-sm'
+                                            : 'bg-slate-900/80 hover:bg-slate-800 border-slate-800 text-slate-400 hover:text-slate-200'
+                                    }`}
+                                >
+                                    <span className={`w-2 h-2 rounded-full ${isL ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                                    <span>{app.name}</span>
+                                    <span className="text-[10px] text-amber-300 font-mono">:{app.listener?.port}</span>
+                                    {isC && <span className="text-[9px] px-1 bg-emerald-500/20 text-emerald-400 rounded font-mono">TX</span>}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
             {/* Application Selector & Control Header */}
             <div className="bg-[#0b1329]/90 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-4 flex-1 min-w-[300px]">
@@ -246,34 +375,49 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             onChange={e => setSelectedAppId(e.target.value)}
                             className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-medium focus:outline-none focus:border-indigo-500 shadow-inner"
                         >
-                            {applications.map(app => (
-                                <option key={app.id} value={app.id}>
-                                    {app.name} (Port :{app.listener?.port})
-                                </option>
-                            ))}
+                            {applications.map(app => {
+                                const sum = allAppSummaries[app.id];
+                                const isL = sum?.listener?.state === 'listening';
+                                return (
+                                    <option key={app.id} value={app.id}>
+                                        {isL ? '🟢' : '⚪'} {app.name} (Port :{app.listener?.port})
+                                    </option>
+                                );
+                            })}
                         </select>
                     </div>
 
-                    {metrics && (
-                        <div className="flex items-center gap-2 pt-5">
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${
-                                metrics.health === 'healthy'
-                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                                    : metrics.health === 'degraded'
-                                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                                    : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
-                            }`}>
-                                <span className={`w-2 h-2 rounded-full ${
-                                    metrics.health === 'healthy' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
-                                }`} />
-                                {metrics.health.toUpperCase()}
-                            </span>
+                    {metrics && (() => {
+                        const health = calculateHealthScore();
+                        return (
+                            <div className="flex items-center gap-2.5 pt-5">
+                                <div
+                                    title={health.reason}
+                                    className={`px-3.5 py-1.5 rounded-xl text-xs font-black border flex items-center gap-2 cursor-help transition-all shadow-sm ${
+                                        health.color === 'emerald'
+                                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
+                                            : health.color === 'amber'
+                                            ? 'bg-amber-500/10 border-amber-500/40 text-amber-400'
+                                            : 'bg-rose-500/15 border-rose-500/50 text-rose-400 animate-pulse'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-1.5 font-mono">
+                                        <span className="text-[13px]">{health.score}</span>
+                                        <span className="text-[10px] opacity-70">/100</span>
+                                    </div>
+                                    <span className="text-[11px] uppercase tracking-wider font-extrabold">{health.label}</span>
+                                </div>
 
-                            <span className="text-xs text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1 rounded-lg">
-                                Listener: <strong className="text-white uppercase">{metrics.listenerState}</strong>
-                            </span>
-                        </div>
-                    )}
+                                <span className="text-xs text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                                    <Server size={13} className={metrics.listenerState === 'listening' ? 'text-emerald-400' : 'text-slate-500'} />
+                                    <span>Listener:</span>
+                                    <strong className={`uppercase ${metrics.listenerState === 'listening' ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                        {metrics.listenerState}
+                                    </strong>
+                                </span>
+                            </div>
+                        );
+                    })()}
                 </div>
 
                 {/* Control Action Buttons */}
@@ -521,11 +665,22 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-800/60">
-                                    {outgoingSessions.map(s => (
-                                        <tr key={s.sessionId} className="hover:bg-slate-900/50 transition-colors">
-                                            <td className="py-2.5 font-semibold text-white">
-                                                {s.peerName}
-                                            </td>
+                                    {outgoingSessions.map(s => {
+                                        const peerSessions = outgoingSessions.filter(x => x.peerId === s.peerId || x.peerName === s.peerName);
+                                        const sessionIndex = peerSessions.findIndex(x => x.sessionId === s.sessionId) + 1;
+                                        const streamBadge = peerSessions.length > 1 ? `Stream #${sessionIndex}` : null;
+                                        return (
+                                            <tr key={s.sessionId} className="hover:bg-slate-900/50 transition-colors">
+                                                <td className="py-2.5 font-semibold text-white">
+                                                    <div className="flex items-center gap-2">
+                                                        <span>{s.peerName}</span>
+                                                        {streamBadge && (
+                                                            <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded text-[9px] font-mono font-bold">
+                                                                {streamBadge}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
                                             <td className="py-2.5 font-mono text-slate-300 text-[11px]">
                                                 {s.peerHost}:{s.peerPort}
                                             </td>
@@ -563,7 +718,8 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                 </button>
                                             </td>
                                         </tr>
-                                    ))}
+                                    );
+                                })}
                                 </tbody>
                             </table>
                         )}

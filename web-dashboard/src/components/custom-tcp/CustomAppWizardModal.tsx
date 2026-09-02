@@ -87,6 +87,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
     });
 
     const [allowCidrsInput, setAllowCidrsInput] = useState('');
+    const [discoveredTargets, setDiscoveredTargets] = useState<Array<{ id: string; name: string; host: string; isLocal?: boolean }>>([]);
     const [newPeer, setNewPeer] = useState<Partial<PeerConfig>>({
         name: '',
         siteName: '',
@@ -95,6 +96,55 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
         enabled: true,
         tags: []
     });
+
+    useEffect(() => {
+        if (isOpen) {
+            fetch('/api/targets', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
+                .then(r => r.json())
+                .then(data => {
+                    const list = Array.isArray(data) ? data : (data.targets || []);
+                    setDiscoveredTargets(list);
+                })
+                .catch(() => {});
+        }
+    }, [isOpen, token]);
+
+    const handleAddDiscoveredTarget = (t: { name: string; host: string }) => {
+        const port = formData.listener.port || 8443;
+        const exists = formData.peers.some(p => p.host === t.host && p.port === port);
+        if (exists) return;
+        const peer: PeerConfig = {
+            id: `peer-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+            name: t.name || t.host,
+            siteName: t.name || t.host,
+            host: t.host,
+            port,
+            enabled: true,
+            tags: ['discovered']
+        };
+        setFormData(prev => ({ ...prev, peers: [...prev.peers, peer] }));
+    };
+
+    const handleAddAllDiscovered = () => {
+        const port = formData.listener.port || 8443;
+        const newPeers: PeerConfig[] = [...formData.peers];
+        for (const t of discoveredTargets) {
+            if (t.isLocal) continue;
+            const exists = newPeers.some(p => p.host === t.host && p.port === port);
+            if (!exists && t.host) {
+                newPeers.push({
+                    id: `peer-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+                    name: t.name || t.host,
+                    siteName: t.name || t.host,
+                    host: t.host,
+                    port,
+                    enabled: true,
+                    tags: ['discovered']
+                });
+            }
+        }
+        setFormData(prev => ({ ...prev, peers: newPeers }));
+    };
 
     useEffect(() => {
         if (editingApp) {
@@ -646,6 +696,50 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                 <h3 className="text-sm font-semibold text-indigo-300 flex items-center justify-between">
                                     <span className="flex items-center gap-2"><Globe size={16} /> Remote Peer Stigix Instances ({formData.peers.length})</span>
                                 </h3>
+
+                                {/* Quick Pick Discovered Stigix Endpoints */}
+                                <div className="p-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-300">
+                                            <Cpu size={14} className="text-indigo-400" />
+                                            <span>Discovered Stigix Endpoints ({discoveredTargets.filter(t => !t.isLocal).length})</span>
+                                        </div>
+                                        {discoveredTargets.filter(t => !t.isLocal).length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={handleAddAllDiscovered}
+                                                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all shadow-sm"
+                                            >
+                                                <Plus size={12} /> Add All Discovered Nodes
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5 pt-1">
+                                        {discoveredTargets.filter(t => !t.isLocal).map(t => {
+                                            const isAdded = formData.peers.some(p => p.host === t.host && p.port === (formData.listener.port || 8443));
+                                            return (
+                                                <button
+                                                    key={t.id || t.host}
+                                                    type="button"
+                                                    onClick={() => handleAddDiscoveredTarget(t)}
+                                                    disabled={isAdded}
+                                                    className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 border transition-all ${
+                                                        isAdded
+                                                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 opacity-60 cursor-default'
+                                                            : 'bg-slate-900 hover:bg-indigo-900/50 border-slate-700 hover:border-indigo-500 text-slate-200 hover:text-white'
+                                                    }`}
+                                                >
+                                                    {isAdded ? <CheckCircle2 size={12} className="text-emerald-400" /> : <Plus size={12} className="text-indigo-400" />}
+                                                    <span>{t.name || t.host}</span>
+                                                    <span className="text-[10px] text-slate-400 font-mono">({t.host})</span>
+                                                </button>
+                                            );
+                                        })}
+                                        {discoveredTargets.filter(t => !t.isLocal).length === 0 && (
+                                            <span className="text-xs text-slate-500 italic">No remote Stigix targets discovered yet. Use manual input below.</span>
+                                        )}
+                                    </div>
+                                </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
                                     <input
