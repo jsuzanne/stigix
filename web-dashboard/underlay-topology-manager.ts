@@ -63,6 +63,20 @@ export type UnderlayResolution = {
     diagnostic?: string;
 };
 
+export type UnderlayRouterSummary = {
+    id: string;
+    name: string;
+    host: string;
+    location?: string | null;
+    status?: string | null;
+    interfaces: {
+        name: string;
+        description?: string | null;
+        address: string[];
+        status: string;
+    }[];
+};
+
 export type UnderlayPayload = {
     available: boolean;
     vyosConfigAvailable: boolean;
@@ -74,6 +88,7 @@ export type UnderlayPayload = {
         wanIpUnavailable: number;
     };
     resolutions: UnderlayResolution[];
+    routers?: UnderlayRouterSummary[];
 };
 
 // ─── Internal Types ───────────────────────────────────────────────────────────
@@ -374,6 +389,27 @@ export class UnderlayTopologyManager {
                 }
             }
 
+            // Extract safe router list for underlay topology rendering
+            let safeRouters: UnderlayRouterSummary[] = [];
+            try {
+                const rawCfg = JSON.parse(fs.readFileSync(this.vyosConfigFile, 'utf8'));
+                safeRouters = (rawCfg.routers || []).filter((r: any) => r.enabled !== false).map((r: any) => ({
+                    id: r.id || r.name,
+                    name: r.name || r.id,
+                    host: r.host,
+                    location: r.location || null,
+                    status: r.status || 'up',
+                    interfaces: (r.interfaces || []).map((i: any) => ({
+                        name: i.name,
+                        description: i.description || null,
+                        address: Array.isArray(i.address) ? i.address : [],
+                        status: i.status || 'up'
+                    }))
+                }));
+            } catch {
+                safeRouters = [];
+            }
+
             log('UNDERLAY', `Resolution complete: ${matched} matched, ${noMatch} no-match, ${ambiguous} ambiguous, ${wanIpUnavailable} wan-ip-unavailable out of ${allWanInterfaces.length} WAN interfaces`);
 
             return {
@@ -387,6 +423,7 @@ export class UnderlayTopologyManager {
                     wanIpUnavailable,
                 },
                 resolutions,
+                routers: safeRouters,
             };
 
         } catch (e: any) {
