@@ -84,6 +84,21 @@ export class TcpAppManager extends EventEmitter {
         return this.configStore.sanitizeForClient(config);
     }
 
+    public async updateSiteName(newSiteName: string): Promise<void> {
+        const trimmed = newSiteName.trim();
+        if (!trimmed) return;
+        await this.configStore.updateSiteName(trimmed);
+        const config = this.getConfig();
+        if (config && config.instance) {
+            config.instance.siteName = trimmed;
+            config.instance.displayName = trimmed;
+            for (const [, ctx] of this.appInstances.entries()) {
+                if (ctx.serverRuntime) ctx.serverRuntime.updateIdentity(config.instance);
+                if (ctx.clientRuntime) ctx.clientRuntime.updateIdentity(config.instance);
+            }
+        }
+    }
+
     public async saveApplication(app: CustomTcpApplicationConfig): Promise<void> {
         const file = this.getConfig();
         const validation = validateApplicationConfig(app, file.applications);

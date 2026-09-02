@@ -13,25 +13,59 @@ import {
 } from './types.js';
 
 export class CustomTcpConfigStore {
+    private readonly configDir: string;
     private readonly filePath: string;
     private cachedConfig: CustomTcpApplicationsFile | null = null;
 
     constructor(configDir: string) {
+        this.configDir = configDir;
         this.filePath = path.join(configDir, 'custom-tcp-applications.json');
+    }
+
+    /**
+     * Resolves the active site name from:
+     * 1. Direct override parameter
+     * 2. Persisted site-name.json (from Stigix Targets UI / API)
+     * 3. Environment variable STIGIX_SITE_NAME
+     * 4. OS hostname fallback
+     */
+    public getResolvedSiteName(siteNameOverride?: string): string {
+        if (siteNameOverride && siteNameOverride.trim()) {
+            return siteNameOverride.trim();
+        }
+        try {
+            const siteNameFile = path.join(this.configDir, 'site-name.json');
+            if (fs.existsSync(siteNameFile)) {
+                const data = JSON.parse(fs.readFileSync(siteNameFile, 'utf8'));
+                if (data.siteName && typeof data.siteName === 'string' && data.siteName.trim()) {
+                    return data.siteName.trim();
+                }
+            }
+        } catch {}
+        if (process.env.STIGIX_SITE_NAME && process.env.STIGIX_SITE_NAME.trim()) {
+            return process.env.STIGIX_SITE_NAME.trim();
+        }
+        return os.hostname();
     }
 
     /**
      * Loads the configuration from disk or creates default template.
      */
     public async load(defaultSiteName?: string): Promise<CustomTcpApplicationsFile> {
+        const resolvedSiteName = this.getResolvedSiteName(defaultSiteName);
+
         if (fs.existsSync(this.filePath)) {
             try {
                 const data = await fs.promises.readFile(this.filePath, 'utf8');
                 const parsed = JSON.parse(data) as CustomTcpApplicationsFile;
                 if (parsed && parsed.version && Array.isArray(parsed.applications)) {
-                    // Ensure instance identity exists
+                    // Ensure instance identity exists and matches the current resolved target site name
                     if (!parsed.instance || !parsed.instance.instanceId) {
-                        parsed.instance = this.generateDefaultIdentity(defaultSiteName);
+                        parsed.instance = this.generateDefaultIdentity(resolvedSiteName);
+                        await this.save(parsed);
+                    } else if (parsed.instance.siteName !== resolvedSiteName) {
+                        parsed.instance.siteName = resolvedSiteName;
+                        parsed.instance.displayName = resolvedSiteName;
                         await this.save(parsed);
                     }
                     this.cachedConfig = parsed;
@@ -47,7 +81,7 @@ export class CustomTcpConfigStore {
         // Initialize default configuration
         const initialConfig: CustomTcpApplicationsFile = {
             version: 1,
-            instance: this.generateDefaultIdentity(defaultSiteName),
+            instance: this.generateDefaultIdentity(resolvedSiteName),
             applications: [this.generateDefaultSampleApp()]
         };
 
@@ -68,7 +102,27 @@ export class CustomTcpConfigStore {
         this.cachedConfig = config;
     }
 
+    /**
+     * Updates the site name in the cached configuration and persists to disk.
+     */
+    public async updateSiteName(newSiteName: string): Promise<void> {
+        const trimmed = newSiteName.trim();
+        if (!trimmed) return;
+        if (this.cachedConfig && this.cachedConfig.instance) {
+            this.cachedConfig.instance.siteName = trimmed;
+            this.cachedConfig.instance.displayName = trimmed;
+            await this.save(this.cachedConfig);
+        }
+    }
+
     public getCached(): CustomTcpApplicationsFile | null {
+        if (this.cachedConfig && this.cachedConfig.instance) {
+            const currentSiteName = this.getResolvedSiteName(this.cachedConfig.instance.siteName);
+            if (this.cachedConfig.instance.siteName !== currentSiteName) {
+                this.cachedConfig.instance.siteName = currentSiteName;
+                this.cachedConfig.instance.displayName = currentSiteName;
+            }
+        }
         return this.cachedConfig;
     }
 
@@ -77,6 +131,9 @@ export class CustomTcpConfigStore {
      */
     public sanitizeForClient(config: CustomTcpApplicationsFile): any {
         const copy: CustomTcpApplicationsFile = JSON.parse(JSON.stringify(config));
+        if (copy.instance) {
+            copy.instance.siteName = this.getResolvedSiteName(copy.instance.siteName);
+        }
         for (const app of copy.applications) {
             if (app.listener?.auth?.token) {
                 app.listener.auth.token = '********';
@@ -91,11 +148,12 @@ export class CustomTcpConfigStore {
     }
 
     private generateDefaultIdentity(siteName?: string): InstanceIdentityConfig {
+        const resolved = this.getResolvedSiteName(siteName);
         return {
             instanceId: crypto.randomUUID(),
-            siteName: (siteName || os.hostname()).toUpperCase(),
+            siteName: resolved,
             hostname: os.hostname(),
-            displayName: siteName || os.hostname()
+            displayName: resolved
         };
     }
 

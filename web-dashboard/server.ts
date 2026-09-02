@@ -10320,6 +10320,7 @@ app.post('/api/registry/site-name', authenticateToken, async (req, res) => {
     }
     try {
         await registryManager.setSiteName(siteName.trim());
+        await tcpAppManager.updateSiteName(siteName.trim());
         log('SYSTEM', `Site name changed to "${siteName.trim()}" via UI`);
         res.json({ success: true, siteName: siteName.trim() });
     } catch (e: any) {
@@ -10862,7 +10863,8 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
 
     // Initialize Custom TCP Applications Manager
     const autoRestartCustomTcp = sysSettings.auto_restart_custom_tcp !== false;
-    tcpAppManager.init(APP_CONFIG.siteName, autoRestartCustomTcp).catch(e => log('CUSTOM_TCP', `Failed to initialize Custom TCP Manager: ${e.message}`, 'error'));
+    const initialSiteName = registryManager.getSiteName();
+    tcpAppManager.init(initialSiteName, autoRestartCustomTcp).catch(e => log('CUSTOM_TCP', `Failed to initialize Custom TCP Manager: ${e.message}`, 'error'));
 
     // Delayed Prisma SD-WAN auto-discovery sync
     setTimeout(async () => {

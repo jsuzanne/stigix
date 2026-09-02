@@ -320,7 +320,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                     <div className="flex items-center gap-3 bg-card-secondary border border-border px-4 py-2 rounded-xl text-xs shadow-sm">
                         <div>
                             <span className="text-text-muted">Local Site:</span>{' '}
-                            <span className="font-bold text-text-primary uppercase">{instanceInfo.siteName}</span>
+                            <span className="font-bold text-text-primary">{instanceInfo.siteName}</span>
                         </div>
                         <div className="text-border">|</div>
                         <div>

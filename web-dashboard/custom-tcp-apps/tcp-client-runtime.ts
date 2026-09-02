@@ -65,6 +65,11 @@ export class TcpClientRuntime extends EventEmitter {
         this.appConfig = newConfig;
     }
 
+    public updateIdentity(newIdentity: InstanceIdentityConfig): void {
+        this.localIdentity.siteName = newIdentity.siteName;
+        this.localIdentity.displayName = newIdentity.displayName;
+    }
+
     public async start(targetPeerIds?: string[]): Promise<void> {
         if (this.isRunning) return;
         this.isRunning = true;

@@ -64,6 +64,11 @@ export class TcpServerRuntime extends EventEmitter {
         this.appConfig = newConfig;
     }
 
+    public updateIdentity(newIdentity: InstanceIdentityConfig): void {
+        this.localIdentity.siteName = newIdentity.siteName;
+        this.localIdentity.displayName = newIdentity.displayName;
+    }
+
     public async start(): Promise<void> {
         if (this.isRunning) return;
 
