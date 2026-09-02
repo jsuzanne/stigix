@@ -219,8 +219,17 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
 
     const handleToggleClient = async () => {
         if (!selectedAppId || isActionLoading) return;
-        setIsActionLoading(true);
         const isRunning = metrics?.clientWorkloadRunning;
+
+        if (!isRunning && (!currentApp?.peers || currentApp.peers.length === 0)) {
+            toast.error('No target peers configured for this application. Please click "Edit Profile" or "Add Target Peer" to configure remote endpoints.', {
+                icon: '⚠️',
+                duration: 4500
+            });
+            return;
+        }
+
+        setIsActionLoading(true);
         const action = isRunning ? 'stop' : 'start';
 
         try {
@@ -438,7 +447,8 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
 
                         <button
                             onClick={handleToggleClient}
-                            disabled={isActionLoading || !currentApp?.peers?.length}
+                            disabled={isActionLoading}
+                            title={!currentApp?.peers?.length ? 'No target peers configured — click to configure peers' : ''}
                             className={`h-[38px] px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm ${
                                 metrics?.clientWorkloadRunning
                                     ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40'
@@ -649,10 +659,25 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
 
                     <div className="overflow-x-auto mt-4 flex-1">
                         {outgoingSessions.length === 0 ? (
-                            <div className="py-14 text-center text-xs text-text-muted italic">
-                                {metrics?.clientWorkloadRunning
-                                    ? 'Connecting to configured peers...'
-                                    : 'Client workload is currently stopped. Click "Start Client Workload" above.'}
+                            <div className="py-12 text-center text-xs text-text-muted">
+                                {metrics?.clientWorkloadRunning ? (
+                                    <div className="italic">Connecting to configured peers...</div>
+                                ) : (!currentApp?.peers || currentApp.peers.length === 0) ? (
+                                    <div className="space-y-3">
+                                        <p className="text-text-muted">No remote target peers configured for this application.</p>
+                                        <button
+                                            onClick={() => {
+                                                setEditingApp(currentApp || null);
+                                                setIsWizardOpen(true);
+                                            }}
+                                            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-sm"
+                                        >
+                                            <Plus size={14} /> Add Target Peer
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="italic">Client workload is currently stopped. Click "Start Client Workload" above.</div>
+                                )}
                             </div>
                         ) : (
                             <table className="w-full text-left text-xs border-collapse">
