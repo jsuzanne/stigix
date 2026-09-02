@@ -278,6 +278,34 @@ Query Palo Alto Networks SASE Prisma SD-WAN Flow Browser for path and bandwidth 
 
 ---
 
+### 13. Target Controller & Leader Registry (`controller`)
+Manage the central Target Controller, Leader registration, static leader connection, and peer nodes.
+
+*   `controller status` — Show node role (Hybrid Leader vs Remote Peer), site name, detected LAN IP, active Leader, and registered peer count.
+*   `controller peers` — List all connected remote branch nodes with their IP, capabilities, last seen timestamp, and online status.
+*   `controller set-leader <ip|url>` — Point this node to a central Leader IP or URL with automatic connectivity testing.
+*   `controller autodiscover` — Revert to Cloudflare dynamic peer autodiscovery (unset static leader).
+*   `controller test <url>` — Test HTTP connectivity and latency to a remote Leader before switching.
+*   `controller site-name [name]` — View or update the local node site name in the registry.
+*   `controller onboard-command` — Output the copy-paste curl one-liner to onboard remote Linux peer nodes.
+*(Note: `registry` and `leader` are supported as aliases for `controller`)*
+
+---
+
+### 14. Central Global Provisioning (`provision`)
+Enable and manage Central Global Provisioning to synchronize application catalogues, probes, SLA, security policies, VoIP, IoT, and Prisma credentials across all peer nodes.
+
+*   `provision status` — View whether Global Provisioning is enabled, along with a table of all 7 configuration bundles, published revisions, applied local revisions, and unpublished changes.
+*   `provision enable` / `provision on` — Turn ON Global Provisioning on this node.
+*   `provision disable` / `provision off` — Turn OFF Global Provisioning.
+*   `provision publish [type|all]` — Publish local modifications for a specific bundle type (e.g. `applications`, `probes`, `sla`, `security`, `voice`, `iot`, `prisma`) or `all` to all connected peers.
+*   `provision rollback <type> <revision>` — Rollback a bundle to an earlier revision.
+*   `provision history` — Display the audit log of recent global provisioning distributions.
+*   `provision pending` — Check for local bundle modifications that have not yet been published to peers.
+*(Note: `provisioning` and `prov` are supported as aliases for `provision`)*
+
+---
+
 ## 📊 Command Output Examples
 
 Here are some examples of CLI commands run via Docker against a live Stigix instance:

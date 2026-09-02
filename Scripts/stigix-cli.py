@@ -612,6 +612,24 @@ def cmd_status(args):
     if ip:
         rows.append(("Public IP", f"{ip.get('ip', ip)}"))
 
+    # 9. Target Controller / Global Provisioning
+    reg = api_get("/api/registry/status", suppress_err=True)
+    if reg:
+        is_leader = reg.get("is_leader", False)
+        site_name = reg.get("site_name")
+        leader_info = reg.get("active_leader") or {}
+        leader_ip = leader_info.get("ip") or "Self"
+        if is_leader:
+            peers_cnt = len(reg.get("peers", []))
+            rows.append(("Controller", f"👑 Leader ({peers_cnt} peers connected)"))
+        else:
+            rows.append(("Controller", f"🔗 Peer (Leader: {leader_ip})"))
+
+    prov = api_get("/api/provisioning/config", suppress_err=True)
+    if prov:
+        is_prov = prov.get("state", {}).get("enabled", False)
+        rows.append(("Provisioning", "🟢 ON (Sync active)" if is_prov else "⚪ OFF (Standalone)"))
+
     # Print the beautiful card
     max_label_len = max(len(r[0]) for r in rows if r is not None)
     card_width = 64
@@ -2290,6 +2308,378 @@ def cmd_peer(args):
         ])
         dim("  Flags for add: --name  --host  --voice {true,false}  --failover {true,false}")
         dim("                 --xfr {true,false}  --security {true,false}  --connectivity {true,false}")
+
+
+def cmd_provision(args):
+    """Manage Central Global Provisioning (Application catalogues, probes, SLA, security policies)."""
+    if not require_auth(): return
+    sub = args[0] if args else "status"
+
+    if sub in ("status", "info"):
+        r = api_get("/api/provisioning/config")
+        if not r: return
+        state = r.get("state", {})
+        manifest = r.get("manifest", {})
+        pending = r.get("pending", {})
+        is_enabled = state.get("enabled", False)
+
+        hdr("━━ GLOBAL PROVISIONING STATUS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        status_text = c("1;32", "🟢 ENABLED") if is_enabled else c("1;31", "🔴 DISABLED")
+        print(f"  Status       : {status_text}")
+        
+        applied_revs = state.get("appliedRevisions", {})
+        bundles = manifest.get("bundles", [])
+        bundle_dict = {b.get("type"): b for b in bundles}
+
+        bundle_types = [
+            ("applications",         "Applications Catalogue",   "applications"),
+            ("connectivity-probes",  "Synthetic Probes",         "connectivityProbes"),
+            ("convergence-sla",      "Convergence SLA",          "convergenceSla"),
+            ("security-config",      "Security Policies",        "securityConfig"),
+            ("voice-config",         "Voice (VoIP) Settings",    "voiceConfig"),
+            ("iot-config",           "IoT Emulation Config",     "iotConfig"),
+            ("prisma-sase",          "Prisma SASE Credentials",  "prismaSase"),
+        ]
+
+        rows = []
+        for b_type, label, pending_key in bundle_types:
+            pub_bundle = bundle_dict.get(b_type, {})
+            pub_rev = pub_bundle.get("revision", "-")
+            item_count = pub_bundle.get("itemCount", "-")
+            
+            applied = applied_revs.get(b_type, {})
+            app_rev = applied.get("revision", "-") if isinstance(applied, dict) else (applied if applied else "-")
+            
+            has_pending = pending.get(pending_key, False)
+            pending_str = c("1;33", "⚠ Modified (Unpublished)") if has_pending else c("2;37", "None")
+            
+            if pub_rev != "-" and app_rev != "-" and str(pub_rev) == str(app_rev):
+                sync_badge = c("1;32", f"✓ rev {app_rev}")
+            elif app_rev != "-":
+                sync_badge = c("1;36", f"rev {app_rev} (pub: {pub_rev})")
+            else:
+                sync_badge = c("2;37", "—")
+
+            rows.append([
+                label,
+                str(pub_rev) if pub_rev != "-" else "—",
+                str(item_count) if item_count != "-" else "—",
+                sync_badge,
+                pending_str
+            ])
+
+        table(["Bundle", "Published Rev", "Items", "Local Applied", "Pending on Leader"], rows)
+
+        if not is_enabled:
+            dim("\n  Tip: Enable provisioning with 'provision enable' or 'provision on'")
+        elif any(pending.values()):
+            dim("\n  Tip: Publish modified bundles to all connected peers with 'provision publish <type|all>'")
+
+    elif sub in ("on", "enable", "start"):
+        r = api_post("/api/provisioning/config", {"enabled": True})
+        if r:
+            ok("Global Provisioning ENABLED — connected peers will automatically pull published bundles")
+
+    elif sub in ("off", "disable", "stop"):
+        r = api_post("/api/provisioning/config", {"enabled": False})
+        if r:
+            ok("Global Provisioning DISABLED — peers will use standalone local configurations")
+
+    elif sub == "publish":
+        target_type = args[1] if len(args) > 1 else None
+        
+        type_map = {
+            "applications": "applications",
+            "apps": "applications",
+            "app": "applications",
+            "probes": "connectivity-probes",
+            "probe": "connectivity-probes",
+            "connectivity-probes": "connectivity-probes",
+            "sla": "convergence-sla",
+            "convergence": "convergence-sla",
+            "convergence-sla": "convergence-sla",
+            "security": "security-config",
+            "security-config": "security-config",
+            "voice": "voice-config",
+            "voice-config": "voice-config",
+            "iot": "iot-config",
+            "iot-config": "iot-config",
+            "prisma": "prisma-sase",
+            "prisma-sase": "prisma-sase",
+        }
+
+        if not target_type or target_type.lower() == "all":
+            # Publish all bundle types
+            types_to_publish = [
+                "applications", "connectivity-probes", "convergence-sla",
+                "security-config", "voice-config", "iot-config", "prisma-sase"
+            ]
+            success_count = 0
+            for t in types_to_publish:
+                res = api_post(f"/api/provisioning/publish/{t}", {})
+                if res and res.get("success"):
+                    pub = res.get("published", {})
+                    rev = pub.get("revision", "?")
+                    cnt = pub.get("itemCount", 0)
+                    summary = pub.get("summary", {})
+                    diff_str = f"(+{summary.get('added',0)} -{summary.get('removed',0)} ~{summary.get('modified',0)})"
+                    ok(f"Published {t:<22} rev {rev:<3} ({cnt} items {diff_str})")
+                    success_count += 1
+                else:
+                    err(f"Failed to publish {t}")
+            if success_count > 0:
+                ok(f"Successfully published {success_count} bundles to peer registry.")
+        else:
+            mapped_type = type_map.get(target_type.lower())
+            if not mapped_type:
+                err(f"Unknown bundle type '{target_type}'. Valid types: applications, probes, sla, security, voice, iot, prisma, all")
+                return
+            res = api_post(f"/api/provisioning/publish/{mapped_type}", {})
+            if res and res.get("success"):
+                pub = res.get("published", {})
+                rev = pub.get("revision", "?")
+                cnt = pub.get("itemCount", 0)
+                summary = pub.get("summary", {})
+                diff_str = f"(+{summary.get('added',0)} -{summary.get('removed',0)} ~{summary.get('modified',0)})"
+                ok(f"Published '{mapped_type}' rev {rev} ({cnt} items {diff_str}) successfully!")
+            else:
+                err(f"Failed to publish '{mapped_type}': {res.get('error', 'unknown error') if res else 'request failed'}")
+
+    elif sub == "rollback":
+        if len(args) < 3:
+            err("Usage: provision rollback <type> <revision>")
+            info("  Example: provision rollback applications 2")
+            return
+        raw_type = args[1]
+        rev_str = args[2]
+        
+        type_map = {
+            "applications": "applications", "apps": "applications",
+            "probes": "connectivity-probes", "connectivity-probes": "connectivity-probes",
+            "sla": "convergence-sla", "convergence-sla": "convergence-sla",
+            "security": "security-config", "security-config": "security-config",
+            "voice": "voice-config", "voice-config": "voice-config",
+            "iot": "iot-config", "iot-config": "iot-config",
+            "prisma": "prisma-sase", "prisma-sase": "prisma-sase"
+        }
+        mapped_type = type_map.get(raw_type.lower(), raw_type)
+        res = api_post(f"/api/provisioning/rollback/{mapped_type}/{rev_str}", {})
+        if res and res.get("success"):
+            new_rev = res.get("newPublished", {}).get("revision", "?")
+            ok(f"Rolled back '{mapped_type}' to rev {rev_str} (re-published as rev {new_rev})")
+        else:
+            err(f"Rollback failed: {res.get('error', 'revision not found or invalid') if res else 'request failed'}")
+
+    elif sub in ("history", "log", "logs"):
+        r = api_get("/api/provisioning/config")
+        if not r: return
+        history = r.get("state", {}).get("history", [])
+        if not history:
+            dim("  No provisioning distribution history recorded yet")
+            return
+        rows = []
+        for h in reversed(history[-20:]):
+            ts = h.get("timestamp", "")
+            if "T" in ts:
+                ts = ts.split("T")[0] + " " + ts.split("T")[1][:8]
+            summary = h.get("summary", {})
+            diff = f"+{summary.get('added',0)} -{summary.get('removed',0)} ~{summary.get('modified',0)}"
+            rows.append([
+                ts,
+                h.get("type", ""),
+                f"rev {h.get('revision', '-')}",
+                str(h.get("itemCount", "-")),
+                diff,
+                h.get("publishedBy", "local")
+            ])
+        table(["Timestamp", "Bundle Type", "Revision", "Items", "Diff", "Published By"], rows)
+
+    elif sub in ("pending", "diff"):
+        r = api_get("/api/provisioning/config")
+        if not r: return
+        pending = r.get("pending", {})
+        has_any = any(pending.values())
+        if not has_any:
+            ok("All local configurations match the published global revisions — zero pending changes.")
+        else:
+            warn("The following local bundles have unpublished changes on this Leader:")
+            for k, v in pending.items():
+                if v:
+                    info(f"  • {k} (Run 'provision publish {k}' to push to peers)")
+
+    else:
+        _help_section("GLOBAL PROVISIONING", [
+            ("provision status",                 "Show provisioning state and bundle revisions"),
+            ("provision enable / on",            "Enable Global Provisioning pull mode"),
+            ("provision disable / off",          "Disable Global Provisioning"),
+            ("provision publish [type|all]",     "Publish local bundle(s) to all peers"),
+            ("provision rollback <type> <rev>",  "Rollback a bundle to an earlier revision"),
+            ("provision history",                "Show recent provisioning audit trail"),
+            ("provision pending",                "Check for unpublished local changes"),
+        ])
+
+
+def cmd_controller(args):
+    """Manage Target Controller, Leader registration, static leader connection, and peer nodes."""
+    if not require_auth(): return
+    sub = args[0] if args else "status"
+
+    if sub in ("status", "info"):
+        reg = api_get("/api/registry/status")
+        if not reg: return
+
+        site_name = reg.get("site_name", "Unknown Site")
+        detected_ip = reg.get("detected_ip", "Unknown")
+        is_leader = reg.get("is_leader", False)
+        mode = reg.get("mode", "dynamic")
+        static_url = reg.get("static_leader_url")
+        active_leader = reg.get("active_leader") or {}
+        leader_ip = active_leader.get("ip") or ("Self (This Node)" if is_leader else "None")
+        leader_status = active_leader.get("status", "connected" if is_leader else "standby")
+        peers = reg.get("peers", [])
+
+        hdr("━━ TARGET CONTROLLER / REGISTRY STATUS ━━━━━━━━━━━━━━━━")
+        print(f"  Local Site Name   : {c('1;36', site_name)}")
+        print(f"  Detected LAN IP   : {c('1;37', detected_ip)}")
+        role_badge = c("1;33", "👑 HYBRID LEADER") if is_leader else c("1;34", "🔗 REMOTE PEER / BRANCH")
+        print(f"  Node Role         : {role_badge}")
+        mode_str = c("1;35", "Static Controller") if static_url else c("1;36", "Cloudflare Autodiscovery")
+        print(f"  Discovery Mode    : {mode_str}")
+        if static_url:
+            print(f"  Static Leader URL : {c('1;37', static_url)}")
+        print(f"  Active Leader     : {c('1;32' if leader_status == 'connected' else '1;33', f'{leader_ip} ({leader_status.upper()})')}")
+        print(f"  Registered Peers  : {c('1;36', str(len(peers)))} remote nodes")
+
+        if is_leader and peers:
+            print()
+            dim("  Connected Remote Peers (use 'controller peers' for full list):")
+            rows = []
+            for p in peers[:5]:
+                rows.append([
+                    p.get("site_name") or p.get("hostname") or "Unknown",
+                    p.get("ip", ""),
+                    p.get("mode", "managed"),
+                    p.get("last_seen", "just now")
+                ])
+            table(["Site Name", "IP Address", "Mode", "Last Heartbeat"], rows)
+
+    elif sub in ("peers", "list", "nodes"):
+        reg = api_get("/api/registry/status")
+        if not reg: return
+        peers = reg.get("peers", [])
+        if not peers:
+            dim("  No remote peers currently registered with this Leader.")
+            info("  Tip: Onboard a remote peer with 'controller onboard-command'")
+            return
+        rows = []
+        for p in peers:
+            caps = p.get("capabilities", {})
+            caps_list = [k for k, v in caps.items() if v]
+            caps_str = ", ".join(caps_list) if caps_list else "default"
+            rows.append([
+                p.get("site_name") or p.get("hostname") or "Unknown",
+                p.get("ip", ""),
+                p.get("role", "peer"),
+                caps_str,
+                p.get("last_seen", "just now"),
+                status_badge("running" if p.get("online", True) else "down")
+            ])
+        table(["Site Name", "IP Address", "Role", "Capabilities", "Last Seen", "Status"], rows)
+
+    elif sub in ("set-leader", "connect", "join"):
+        if len(args) < 2:
+            err("Usage: controller set-leader <url_or_ip>")
+            info("  Example: controller set-leader 192.168.203.100")
+            info("  Example: controller set-leader http://192.168.203.100:8080/api/registry")
+            return
+        raw_url = args[1].strip()
+        if not raw_url.startswith("http://") and not raw_url.startswith("https://"):
+            if ":" in raw_url:
+                raw_url = f"http://{raw_url}"
+            else:
+                raw_url = f"http://{raw_url}:8080"
+        if not raw_url.endswith("/api/registry"):
+            raw_url = raw_url.rstrip("/") + "/api/registry"
+
+        info(f"Connecting to Leader at {raw_url}...")
+        # First test connectivity
+        test_res = api_post("/api/registry/test-connectivity", {"url": raw_url})
+        if test_res and test_res.get("status") == "ok":
+            ok("Reachability and API handshake verified!")
+        else:
+            warn(f"Warning: Controller test returned: {test_res.get('error', 'unreachable') if test_res else 'failed'}")
+            if sys.stdin.isatty():
+                try:
+                    c_conf = input("Do you want to save this leader configuration anyway? [y/N]: ").strip().lower()
+                    if c_conf != 'y': return
+                except (KeyboardInterrupt, EOFError):
+                    return
+
+        res = api_post("/api/registry/static-leader", {"url": raw_url})
+        if res:
+            ok(f"Static Leader configured successfully: {raw_url}")
+            info("This node will now register and sync with the Leader.")
+
+    elif sub in ("unset-leader", "autodiscover", "reset"):
+        res = api_post("/api/registry/static-leader", {"url": None})
+        if res:
+            ok("Reverted to Cloudflare dynamic peer autodiscovery (Static leader unset)")
+
+    elif sub in ("test", "ping", "check"):
+        if len(args) < 2:
+            err("Usage: controller test <url_or_ip>")
+            return
+        target = args[1].strip()
+        if not target.startswith("http"): target = f"http://{target}"
+        if not target.endswith("/api/registry"): target = target.rstrip("/") + "/api/registry"
+        
+        info(f"Testing connectivity to {target}...")
+        res = api_post("/api/registry/test-connectivity", {"url": target})
+        if res and res.get("status") == "ok":
+            ok(f"Connection successful! Latency: {res.get('latencyMs', '?')}ms")
+            if res.get("siteName"):
+                info(f"Remote Leader Site Name: {res.get('siteName')}")
+        else:
+            err(f"Connection test failed: {res.get('error', 'Unreachable or invalid endpoint') if res else 'request failed'}")
+
+    elif sub in ("site-name", "name", "rename"):
+        if len(args) > 1:
+            new_name = " ".join(args[1:]).strip()
+            res = api_post("/api/registry/site-name", {"siteName": new_name})
+            if res:
+                ok(f"Local node site name updated to: '{new_name}'")
+        else:
+            reg = api_get("/api/registry/status")
+            if reg:
+                print(f"Current Site Name: {c('1;36', reg.get('site_name', 'Unknown'))}")
+
+    elif sub in ("onboard-command", "onboard", "install-cmd"):
+        reg = api_get("/api/registry/status")
+        leader_ip = reg.get("detected_ip") if reg else None
+        if not leader_ip:
+            leader_ip = "<LEADER_IP>"
+        leader_url = f"http://{leader_ip}:8080"
+        
+        install_cmd = f"curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- --controller {leader_url}"
+        
+        hdr("━━ REMOTE PEER ONBOARDING COMMAND ━━━━━━━━━━━━━━━━━━━━━━━")
+        info("Run this single command on any remote Linux machine to join this Leader:")
+        print()
+        print(c("1;32", f"  {install_cmd}"))
+        print()
+        dim("  The remote node will be provisioned in Target Site mode and automatically")
+        dim("  register with this Leader, pulling all published global configurations.")
+
+    else:
+        _help_section("TARGET CONTROLLER / LEADER", [
+            ("controller status",                "Show Leader role, site name, and peer stats"),
+            ("controller peers",                 "List registered remote branch nodes"),
+            ("controller set-leader <ip|url>",   "Point this node to a central Leader"),
+            ("controller autodiscover",          "Revert to Cloudflare dynamic autodiscovery"),
+            ("controller test <url>",            "Test reachability to a remote Leader"),
+            ("controller site-name [name]",      "Get or update local node site name"),
+            ("controller onboard-command",       "Generate peer onboarding curl one-liner"),
+        ])
 
 
 def cmd_speedtest(args):
@@ -4285,6 +4675,24 @@ def cmd_help(args):
     target export [file]   Export targets to JSON
     target import <file>   Import targets from JSON
 
+  {c('1','TARGET CONTROLLER / LEADER')}
+    controller status      Show node role, site name, and peer stats
+    controller peers       List registered remote branch nodes
+    controller set-leader  Point this node to a central Leader (<ip|url>)
+    controller autodiscover Revert to Cloudflare dynamic autodiscovery
+    controller test <url>  Test reachability to a remote Leader
+    controller site-name   Get or update local node site name
+    controller onboard     Generate peer onboarding curl one-liner
+
+  {c('1','GLOBAL PROVISIONING')}
+    provision status       Show provisioning state and bundle revisions
+    provision enable / on  Enable Global Provisioning pull mode
+    provision disable / off Disable Global Provisioning
+    provision publish      Publish local bundle(s) to all peers ([type|all])
+    provision rollback     Rollback a bundle to an earlier revision
+    provision history      Show recent provisioning audit trail
+    provision pending      Check for unpublished local changes
+
   {c('1','SPEEDTEST / XFR BANDWIDTH')}
     speedtest list         Show past speedtest jobs
     speedtest run <host>   Run speedtest (--port --protocol --direction)
@@ -4475,29 +4883,35 @@ class StigixCompleter(Completer):
 
 
 DISPATCH = {
-    "auth":        cmd_auth,
-    "status":      cmd_status,
-    "traffic":     cmd_traffic,
-    "security":    cmd_security,
-    "experience":  cmd_experience,
-    "probes":      cmd_experience,
-    "probe":       cmd_experience,
-    "target":      cmd_peer,
-    "peer":        cmd_peer,
-    "speedtest":   cmd_speedtest,
-    "failover":    cmd_failover,
-    "convergence": cmd_failover,
-    "vyos":        cmd_vyos,
-    "voice":       cmd_voice,
-    "flows":       cmd_flows,
-    "iot":         cmd_iot,
-    "system":      cmd_system,
-    "connect":     cmd_connect,
-    "history":     cmd_history,
-    "autocomplete": cmd_autocomplete,
+    "auth":           cmd_auth,
+    "status":         cmd_status,
+    "traffic":        cmd_traffic,
+    "security":       cmd_security,
+    "experience":     cmd_experience,
+    "probes":         cmd_experience,
+    "probe":          cmd_experience,
+    "target":         cmd_peer,
+    "peer":           cmd_peer,
+    "controller":     cmd_controller,
+    "registry":       cmd_controller,
+    "leader":         cmd_controller,
+    "provision":      cmd_provision,
+    "provisioning":   cmd_provision,
+    "prov":           cmd_provision,
+    "speedtest":      cmd_speedtest,
+    "failover":       cmd_failover,
+    "convergence":    cmd_failover,
+    "vyos":           cmd_vyos,
+    "voice":          cmd_voice,
+    "flows":          cmd_flows,
+    "iot":            cmd_iot,
+    "system":         cmd_system,
+    "connect":        cmd_connect,
+    "history":        cmd_history,
+    "autocomplete":   cmd_autocomplete,
     "autocompletion": cmd_autocomplete,
-    "help":        cmd_help,
-    "?":           cmd_help,
+    "help":           cmd_help,
+    "?":              cmd_help,
 }
 
 COMPLETER_TREE = {
@@ -4575,6 +4989,102 @@ COMPLETER_TREE = {
                  "--xfr": {"true", "false"},
                  "--security": {"true", "false"},
                  "--connectivity": {"true", "false"}},
+    },
+    "controller": {
+        "status": None, "info": None, "peers": None, "list": None, "nodes": None,
+        "set-leader": None, "connect": None, "join": None,
+        "unset-leader": None, "autodiscover": None, "reset": None,
+        "test": None, "ping": None, "check": None,
+        "site-name": None, "name": None, "rename": None,
+        "onboard-command": None, "onboard": None, "install-cmd": None
+    },
+    "registry": {
+        "status": None, "info": None, "peers": None, "list": None, "nodes": None,
+        "set-leader": None, "connect": None, "join": None,
+        "unset-leader": None, "autodiscover": None, "reset": None,
+        "test": None, "ping": None, "check": None,
+        "site-name": None, "name": None, "rename": None,
+        "onboard-command": None, "onboard": None, "install-cmd": None
+    },
+    "leader": {
+        "status": None, "info": None, "peers": None, "list": None, "nodes": None,
+        "set-leader": None, "connect": None, "join": None,
+        "unset-leader": None, "autodiscover": None, "reset": None,
+        "test": None, "ping": None, "check": None,
+        "site-name": None, "name": None, "rename": None,
+        "onboard-command": None, "onboard": None, "install-cmd": None
+    },
+    "provision": {
+        "status": None, "info": None,
+        "on": None, "off": None, "enable": None, "disable": None, "start": None, "stop": None,
+        "publish": {
+            "applications": None, "apps": None,
+            "probes": None, "connectivity-probes": None,
+            "sla": None, "convergence-sla": None,
+            "security": None, "security-config": None,
+            "voice": None, "voice-config": None,
+            "iot": None, "iot-config": None,
+            "prisma": None, "prisma-sase": None,
+            "all": None
+        },
+        "rollback": {
+            "applications": None, "apps": None,
+            "probes": None, "connectivity-probes": None,
+            "sla": None, "convergence-sla": None,
+            "security": None, "security-config": None,
+            "voice": None, "voice-config": None,
+            "iot": None, "iot-config": None,
+            "prisma": None, "prisma-sase": None
+        },
+        "history": None, "logs": None, "pending": None, "diff": None
+    },
+    "provisioning": {
+        "status": None, "info": None,
+        "on": None, "off": None, "enable": None, "disable": None, "start": None, "stop": None,
+        "publish": {
+            "applications": None, "apps": None,
+            "probes": None, "connectivity-probes": None,
+            "sla": None, "convergence-sla": None,
+            "security": None, "security-config": None,
+            "voice": None, "voice-config": None,
+            "iot": None, "iot-config": None,
+            "prisma": None, "prisma-sase": None,
+            "all": None
+        },
+        "rollback": {
+            "applications": None, "apps": None,
+            "probes": None, "connectivity-probes": None,
+            "sla": None, "convergence-sla": None,
+            "security": None, "security-config": None,
+            "voice": None, "voice-config": None,
+            "iot": None, "iot-config": None,
+            "prisma": None, "prisma-sase": None
+        },
+        "history": None, "logs": None, "pending": None, "diff": None
+    },
+    "prov": {
+        "status": None, "info": None,
+        "on": None, "off": None, "enable": None, "disable": None, "start": None, "stop": None,
+        "publish": {
+            "applications": None, "apps": None,
+            "probes": None, "connectivity-probes": None,
+            "sla": None, "convergence-sla": None,
+            "security": None, "security-config": None,
+            "voice": None, "voice-config": None,
+            "iot": None, "iot-config": None,
+            "prisma": None, "prisma-sase": None,
+            "all": None
+        },
+        "rollback": {
+            "applications": None, "apps": None,
+            "probes": None, "connectivity-probes": None,
+            "sla": None, "convergence-sla": None,
+            "security": None, "security-config": None,
+            "voice": None, "voice-config": None,
+            "iot": None, "iot-config": None,
+            "prisma": None, "prisma-sase": None
+        },
+        "history": None, "logs": None, "pending": None, "diff": None
     },
     "speedtest":   {
         "list": None, "history": None,
