@@ -32,6 +32,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
     const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
     const [isSaving, setIsSaving] = useState(false);
     const [isValidating, setIsValidating] = useState(false);
+    const [isCurrentAppPort, setIsCurrentAppPort] = useState(false);
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
     const [portAvailable, setPortAvailable] = useState<boolean | null>(null);
@@ -257,6 +258,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
             setValidationErrors(data.errors || []);
             setValidationWarnings(data.warnings || []);
             setPortAvailable(data.portAvailable);
+            setIsCurrentAppPort(!!data.isCurrentAppPort);
         } catch (e: any) {
             setValidationErrors([e.message || 'Validation request failed']);
         } finally {
@@ -838,7 +840,9 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                     <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
                                         <div className="text-slate-500">Host Port Status</div>
                                         <div className="font-bold mt-1">
-                                            {portAvailable === true ? (
+                                            {isCurrentAppPort ? (
+                                                <span className="text-cyan-400 flex items-center gap-1"><CheckCircle2 size={13} /> Active (Live Update)</span>
+                                            ) : portAvailable === true ? (
                                                 <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 size={13} /> Available</span>
                                             ) : portAvailable === false ? (
                                                 <span className="text-rose-400 flex items-center gap-1"><AlertTriangle size={13} /> Port Occupied</span>

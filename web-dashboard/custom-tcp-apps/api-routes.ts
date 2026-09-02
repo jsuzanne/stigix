@@ -43,11 +43,16 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
             const file = tcpAppManager.getConfig();
             const validation = validateApplicationConfig(app, file.applications);
             let portAvailable = true;
+            let isCurrentAppPort = false;
 
-            if (app.listener?.port && validation.valid) {
+            const existingApp = file.applications.find(a => a.id === app.id);
+            if (existingApp && existingApp.listener?.port === app.listener?.port) {
+                isCurrentAppPort = true;
+                portAvailable = true;
+            } else if (app.listener?.port && validation.valid) {
                 portAvailable = await checkHostPortAvailable(app.listener.port, app.listener.bindAddress);
                 if (!portAvailable) {
-                    validation.errors.push(`Port ${app.listener.port} is currently occupied on the host network.`);
+                    validation.errors.push(`Port ${app.listener.port} is currently occupied by another service on the host network.`);
                     validation.valid = false;
                 }
             }
@@ -55,6 +60,7 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
             res.json({
                 valid: validation.valid,
                 portAvailable,
+                isCurrentAppPort,
                 errors: validation.errors,
                 warnings: validation.warnings
             });

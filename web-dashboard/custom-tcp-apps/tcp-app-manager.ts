@@ -101,21 +101,30 @@ export class TcpAppManager extends EventEmitter {
         // Update runtime instance
         const ctx = this.appInstances.get(app.id);
         if (ctx) {
-            // If port changed and listener was running, restart it
             const portChanged = prevApp && prevApp.listener?.port !== app.listener?.port;
-            if (portChanged && ctx.metrics.listenerState === 'listening') {
+            const wasListening = ctx.metrics.listenerState === 'listening';
+
+            if (portChanged) {
+                // If port changed, stop old listener and cleanly migrate to new port
                 await ctx.serverRuntime.stop();
                 this.registerAppInstance(app, file.instance);
-                await this.startListener(app.id);
+                if (wasListening || (app.enabled && app.startup?.startListener !== false)) {
+                    await this.startListener(app.id).catch(err => {
+                        console.error(`[CUSTOM_TCP_MGR] Failed to restart listener on new port ${app.listener?.port}:`, err.message);
+                    });
+                }
             } else {
+                // Seamless hot-update of behavior, peers, and timeouts without port restart
                 ctx.config = app;
                 ctx.metrics.appName = app.name;
                 ctx.metrics.port = app.listener.port;
+                ctx.serverRuntime.updateConfig(app);
+                ctx.clientRuntime.updateConfig(app);
             }
         } else {
             this.registerAppInstance(app, file.instance);
-            if (app.enabled && app.startup?.startListener) {
-                await this.startListener(app.id);
+            if (app.enabled && app.startup?.startListener !== false) {
+                await this.startListener(app.id).catch(() => {});
             }
         }
 

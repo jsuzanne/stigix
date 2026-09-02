@@ -41,7 +41,7 @@ interface TrackedIncomingClient {
 }
 
 export class TcpServerRuntime extends EventEmitter {
-    public readonly appConfig: CustomTcpApplicationConfig;
+    public appConfig: CustomTcpApplicationConfig;
     private readonly localIdentity: InstanceIdentityConfig;
     private readonly metricsTracker: AppMetricsTracker;
 
@@ -58,6 +58,10 @@ export class TcpServerRuntime extends EventEmitter {
         this.appConfig = appConfig;
         this.localIdentity = localIdentity;
         this.metricsTracker = metricsTracker;
+    }
+
+    public updateConfig(newConfig: CustomTcpApplicationConfig): void {
+        this.appConfig = newConfig;
     }
 
     public async start(): Promise<void> {
