@@ -10210,6 +10210,17 @@ app.post('/api/provisioning/config', authenticateToken, (req, res) => {
     res.json({ success: true, state });
 });
 
+app.post('/api/provisioning/sync', authenticateToken, async (req, res) => {
+    try {
+        if (registryManager) {
+            await registryManager.syncProvisioning();
+        }
+        res.json({ success: true, state: provisioningManager.getState() });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     const type = req.params.type as GlobalBundleType;
     const validTypes: GlobalBundleType[] = [

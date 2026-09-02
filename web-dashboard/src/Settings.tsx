@@ -981,6 +981,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     } | null>(null);
     const [publishingType, setPublishingType] = useState<string | null>(null);
     const [provisioningToggling, setProvisioningToggling] = useState(false);
+    const [isSyncingPeer, setIsSyncingPeer] = useState(false);
     const [historyExpanded, setHistoryExpanded] = useState(false);
     const lastToastedRevs = useRef<{ [bundleType: string]: number }>({});
 
@@ -1053,6 +1054,27 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
             toast.error('Publish network request failed');
         } finally {
             setPublishingType(null);
+        }
+    };
+
+    const handleSyncNow = async () => {
+        setIsSyncingPeer(true);
+        try {
+            const res = await fetch('/api/provisioning/sync', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success('Provisioning sync completed successfully!');
+                fetchProvisioningData();
+            } else {
+                toast.error(data.error || 'Failed to sync with Leader');
+            }
+        } catch {
+            toast.error('Sync network request failed');
+        } finally {
+            setIsSyncingPeer(false);
         }
     };
 
@@ -3910,18 +3932,30 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                             <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Automatically pull shared application catalogues and probes published by your Leader</p>
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={() => handleToggleProvisioning(!provisioningData?.state?.enabled)}
-                                        disabled={provisioningToggling}
-                                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border shadow-sm ${
-                                            provisioningData?.state?.enabled
-                                                ? "bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/30"
-                                                : "bg-card-secondary text-text-muted border-border hover:border-emerald-500/30"
-                                        }`}
-                                    >
-                                        {provisioningToggling ? <RefreshCw size={12} className="animate-spin" /> : <Power size={12} />}
-                                        {provisioningData?.state?.enabled ? 'Global Provisioning: ON' : 'Global Provisioning: OFF'}
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        {provisioningData?.state?.enabled && (
+                                            <button
+                                                onClick={handleSyncNow}
+                                                disabled={isSyncingPeer}
+                                                className="px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-500 text-white transition-all flex items-center gap-2 shadow-sm"
+                                            >
+                                                <RefreshCw size={12} className={isSyncingPeer ? "animate-spin" : ""} />
+                                                Sync Now
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => handleToggleProvisioning(!provisioningData?.state?.enabled)}
+                                            disabled={provisioningToggling}
+                                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border shadow-sm ${
+                                                provisioningData?.state?.enabled
+                                                    ? "bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/30"
+                                                    : "bg-card-secondary text-text-muted border-border hover:border-emerald-500/30"
+                                            }`}
+                                        >
+                                            {provisioningToggling ? <RefreshCw size={12} className="animate-spin" /> : <Power size={12} />}
+                                            {provisioningData?.state?.enabled ? 'Global Provisioning: ON' : 'Global Provisioning: OFF'}
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {provisioningData?.state?.enabled ? (
