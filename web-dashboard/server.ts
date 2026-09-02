@@ -2812,7 +2812,7 @@ app.get('/api/topology', authenticateToken, async (req, res) => {
             console.error(`[TOPO-STDERR] ${d.toString().trim()}`);
         });
 
-        proc.on('close', (code) => {
+        proc.on('close', async (code) => {
             if (code === 0) {
                 try {
                     const data = JSON.parse(stdout);
