@@ -1002,54 +1002,6 @@ function TopologyContent({ token }: TopologyProps) {
                 </div>
             ) : (
                 <>
-                    {/* Top Bar Navigation Area Included Normally Above reactFlow */}
-                    <div className="absolute top-4 left-4 right-4 z-50 flex justify-between items-start pointer-events-none">
-                        <div className="bg-card/80 backdrop-blur-md border border-white/5 rounded-2xl px-6 py-4 shadow-2xl pointer-events-auto">
-                            <h2 className="text-sm font-black text-text-primary tracking-widest uppercase">Site Topology</h2>
-                            <p className="text-[10px] text-text-muted font-bold tracking-widest mt-1 uppercase opacity-60">
-                                {topology?.sites?.length || 0} Sites Detected
-                            </p>
-                        </div>
-
-                        <div className="flex gap-2 pointer-events-auto">
-                            <button
-                                onClick={handleRefresh}
-                                className="bg-card/80 backdrop-blur-md border border-white/5 hover:bg-card hover:border-blue-500/50 text-text-muted hover:text-blue-400 p-3 rounded-xl transition-all shadow-xl group flex items-center justify-center"
-                                title="Force Refresh Topology"
-                            >
-                                <RefreshCw size={18} className={cn("transition-transform duration-500", loading ? "animate-spin" : "group-hover:rotate-180")} />
-                            </button>
-                            <button
-                                onClick={() => setShowFilter(!showFilter)}
-                                className={cn(
-                                    "bg-card/80 backdrop-blur-md border border-white/5 hover:bg-card hover:border-blue-500/50 p-3 rounded-xl transition-all shadow-xl group flex items-center justify-center relative",
-                                    (visibleSiteIds !== null && topology && visibleSiteIds.length !== topology.sites.length) ? "text-blue-400 border-blue-500/30" : "text-text-muted"
-                                )}
-                                title="Filter visible sites"
-                            >
-                                <Filter size={18} className="transition-transform group-hover:scale-110" />
-                                {visibleSiteIds !== null && topology && visibleSiteIds.length !== topology.sites.length && (
-                                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-background">
-                                        {visibleSiteIds.length}
-                                    </span>
-                                )}
-                            </button>
-                            <button
-                                onClick={handleExportCsv}
-                                className="bg-card/80 backdrop-blur-md border border-white/5 hover:bg-card hover:border-blue-500/50 text-text-muted hover:text-blue-400 p-3 rounded-xl transition-all shadow-xl group flex items-center justify-center"
-                                title="Export details to CSV"
-                            >
-                                <FileText size={18} className="transition-transform group-hover:scale-110" />
-                            </button>
-                            <button
-                                onClick={handleExportPng}
-                                className="bg-card/80 backdrop-blur-md border border-white/5 hover:bg-card hover:border-blue-500/50 text-text-muted hover:text-blue-400 p-3 rounded-xl transition-all shadow-xl group flex items-center justify-center"
-                                title="Export diagram to PNG"
-                            >
-                                <Download size={18} className="transition-transform group-hover:scale-110" />
-                            </button>
-                        </div>
-                    </div>
 
                     {/* Filter Panel Overlay */}
                     {showFilter && topology && (
@@ -1227,6 +1179,23 @@ function TopologyContent({ token }: TopologyProps) {
                                 >
                                     <Server size={12} />
                                     BG as Hub
+                                </button>
+                                <button
+                                    onClick={() => setShowFilter(!showFilter)}
+                                    className={cn(
+                                        "p-2 rounded-xl transition-all group flex items-center justify-center relative",
+                                        (visibleSiteIds !== null && topology && visibleSiteIds.length !== topology.sites.length) 
+                                            ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" 
+                                            : "hover:bg-card-secondary text-text-muted hover:text-text-primary"
+                                    )}
+                                    title="Filter visible sites"
+                                >
+                                    <Filter size={16} />
+                                    {visibleSiteIds !== null && topology && visibleSiteIds.length !== topology.sites.length && (
+                                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-background">
+                                            {visibleSiteIds.length}
+                                        </span>
+                                    )}
                                 </button>
                                 <div className="h-4 w-px bg-border mx-1" />
 
