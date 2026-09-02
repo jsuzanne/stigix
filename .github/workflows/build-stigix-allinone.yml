@@ -9,19 +9,24 @@ on:
   push:
     branches:
       - main
+      - v2
       - 'v*'
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       version_to_stable:
-        description: 'Version to promote to stable (e.g. 1.1.0-patch.25)'
+        description: 'Version to promote to stable (e.g. 2.0.0)'
         required: false
         default: ''
       build_full:
         description: 'Build for ALL platforms (AMD64 + ARM64)? Slow!'
         type: boolean
         default: false
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: docker.io
@@ -57,11 +62,17 @@ jobs:
           file: stigix-all-in-one/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.IMAGE_NAME }}:stable,${{ env.IMAGE_NAME }}:${{ github.event.inputs.version_to_stable }}
+          tags: ${{ env.IMAGE_NAME }}:stable,${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:${{ github.event.inputs.version_to_stable }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
             VERSION=${{ github.event.inputs.version_to_stable }}
+          labels: |
+            org.opencontainers.image.title=Stigix All-in-One
+            org.opencontainers.image.description=Stigix SD-WAN & SASE Simulation and Testing Environment
+            org.opencontainers.image.source=https://github.com/jsuzanne/stigix
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.event.inputs.version_to_stable }}
 
   build:
     name: Build Stigix Image
@@ -88,25 +99,35 @@ jobs:
       - name: Determine Tags
         id: tags
         run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/v}
-            echo "tags=${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:$VERSION" >> $GITHUB_OUTPUT
+            TAG_LIST="${{ env.IMAGE_NAME }}:$VERSION,${{ env.IMAGE_NAME }}:v$VERSION,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA"
+            if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              MAJOR=$(echo $VERSION | cut -d. -f1)
+              MINOR=$(echo $VERSION | cut -d. -f2)
+              TAG_LIST="$TAG_LIST,${{ env.IMAGE_NAME }}:$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:v$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:$MAJOR,${{ env.IMAGE_NAME }}:v$MAJOR,${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:stable"
+            fi
+            echo "tags=$TAG_LIST" >> $GITHUB_OUTPUT
             echo "version=$VERSION" >> $GITHUB_OUTPUT
           elif [[ $GITHUB_REF == refs/heads/main ]]; then
-            echo "tags=${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
+            echo "tags=${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:stable,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA" >> $GITHUB_OUTPUT
             echo "version=latest" >> $GITHUB_OUTPUT
+          elif [[ $GITHUB_REF == refs/heads/v2 ]]; then
+            BASELINE=$(cat VERSION 2>/dev/null || echo "2.0.0-dev")
+            BASELINE_CLEAN=${BASELINE%-dev}
+            COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
+            DEV_VERSION="$BASELINE_CLEAN.dev$COMMIT_COUNT"
+            echo "tags=${{ env.IMAGE_NAME }}:v2,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA,${{ env.IMAGE_NAME }}:$DEV_VERSION" >> $GITHUB_OUTPUT
+            echo "version=$DEV_VERSION" >> $GITHUB_OUTPUT
           else
             BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')
             BASELINE=$(cat VERSION 2>/dev/null || echo "dev")
             BASELINE_CLEAN=${BASELINE%-dev}
             COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
-            if [[ "$BASELINE_CLEAN" == *"$BRANCH_NAME"* ]]; then
-              VERSION_STRING="$BASELINE_CLEAN.dev$COMMIT_COUNT"
-            else
-              VERSION_STRING="$BASELINE_CLEAN-$BRANCH_NAME.dev$COMMIT_COUNT"
-            fi
-            echo "tags=${{ env.IMAGE_NAME }}:$BRANCH_NAME,${{ env.IMAGE_NAME }}:$VERSION_STRING" >> $GITHUB_OUTPUT
-            echo "version=$VERSION_STRING" >> $GITHUB_OUTPUT
+            DEV_VERSION="$BASELINE_CLEAN-$BRANCH_NAME.dev$COMMIT_COUNT"
+            echo "tags=${{ env.IMAGE_NAME }}:$BRANCH_NAME,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA,${{ env.IMAGE_NAME }}:$DEV_VERSION" >> $GITHUB_OUTPUT
+            echo "version=$DEV_VERSION" >> $GITHUB_OUTPUT
           fi
 
       - name: Determine Platforms
@@ -141,6 +162,12 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             VERSION=${{ steps.tags.outputs.version }}
+          labels: |
+            org.opencontainers.image.title=Stigix All-in-One
+            org.opencontainers.image.description=Stigix SD-WAN & SASE Simulation and Testing Environment
+            org.opencontainers.image.source=https://github.com/jsuzanne/stigix
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.tags.outputs.version }}
 
   create-release:
     name: Create GitHub Release
@@ -160,22 +187,23 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: Release ${{ steps.version.outputs.version }}
+          name: Release v${{ steps.version.outputs.version }}
           body: |
-            ## Stigix All-in-One ${{ steps.version.outputs.version }}
+            ## Stigix All-in-One v${{ steps.version.outputs.version }}
             
-            ### Docker Image
+            ### Docker Images
             ```bash
             docker pull jsuzanne/stigix:${{ steps.version.outputs.version }}
+            docker pull jsuzanne/stigix:latest
             ```
             
-            ### Deployment
+            ### Fast Deployment
             ```bash
             curl -sSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | bash
             ```
             
             ### What's Changed
-            See [CHANGELOG.md](https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md) for details.
+            See [CHANGELOG.md](https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md) for full release details.
           generate_release_notes: true
           draft: false
-          prerelease: ${{ contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'alpha') }}
+          prerelease: ${{ contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'dev') }}

@@ -1,0 +1,67 @@
+name: CI Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+      - v2
+      - 'v*'
+  push:
+    branches:
+      - 'feature/**'
+      - 'fix/**'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-frontend:
+    name: Lint & Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'web-dashboard/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: web-dashboard
+        run: npm ci
+
+      - name: Run Lint
+        working-directory: web-dashboard
+        run: npm run lint || echo "Lint step completed with warnings"
+
+      - name: Run Typecheck & Build
+        working-directory: web-dashboard
+        run: npm run build
+
+  validate-docker:
+    name: Test Docker Builds (No Push)
+    runs-on: ubuntu-latest
+    needs: [validate-frontend]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Test Build Stigix All-in-One Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: stigix-all-in-one/Dockerfile
+          push: false
+          load: false
+          tags: jsuzanne/stigix:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=ci-test

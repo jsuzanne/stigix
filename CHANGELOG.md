@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-09-02 — Stigix V2 Official Release
+
+### Summary of Major V2 Capabilities
+* **Custom TCP Inter-Site Applications** 🔄: Multi-application East-West simulation engine, binary length-prefixed protocol, 8 server simulation modes, 5 client workload patterns with exponential backoff & jitter, live session inspectors, and rolling RTT percentiles ($p50/p95$).
+* **Central Global Provisioning & Config Bundles** 🌐: Leader-to-peer distribution of 8 configuration bundles (Custom Apps, Applications, Probes, SLA Thresholds, Security Schedules, Voice, IoT, Prisma SASE Credentials) with fine-grained diff tracking, instant hot-reload, and CLI management.
+* **Direct Controller Peer Onboarding** 🔗: Single-command Linux onboarding (`--controller <URL>`) bypassing third-party discovery, dynamic target synthesis on Leader nodes, and robust heartbeat resilience.
+* **Physical Underlay & Multi-Router VyOS Chassis** 🖧: High-density chassis canvas component, direct 1:1 port cable wiring, anti-crossing spatial interface alignment, and floating link trace inspector drawer.
+* **stigix-cli V2 Management Suite** 🎛️: Added interactive `tcp-app`, `provision`, and `controller` command suites with full tab completion.
+* **Refreshed Global Showcase & FAQ Portal** 🌍: Modernized [stigix.io](https://stigix.io) with V2 architecture, enterprise use cases, onboarding quickstart, and comprehensive FAQ documentation.
+
+---
+
 ## [v1.4.1-patch.43] - 2026-09-02
 ### Added / Changed
 - **Stigix Custom TCP Inter-Site Applications** 🔄:
