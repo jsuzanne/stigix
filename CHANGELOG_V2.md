@@ -4,9 +4,17 @@ All notable changes made specifically on the `v2` branch are documented in this 
 
 ---
 
-## [v2-dev] - 2026-09-02 — Underlay Topology Chassis & CLI Global Provisioning
-
+## [v2-dev] - 2026-09-02 — Custom TCP Inter-Site Applications & Underlay Topology
+ 
 ### Added
+- **Stigix Custom TCP Inter-Site Applications** 🔄:
+  - **Dual Server / Client Architecture**: Multi-application engine supporting simultaneous host TCP listeners and outbound client workload generation.
+  - **4-Byte Length-Prefixed Stream Protocol**: Robust `UInt32BE` framing with 5s handshake timeout and optional pre-shared token validation.
+  - **Rich Simulation Behaviors**: 8 server modes (`echo`, `acknowledge`, `fixed_delay`, `random_delay`, `looping_delay`, `drop_response`, `close_connection`, `error_response`) and 5 client workload modes.
+  - **Dedicated UI View & Wizard**: Top-level "Custom Apps" dashboard view, live metrics, incoming/outgoing session inspectors, and a 4-step wizard with non-destructive host port testing.
+  - **Settings & CLI**: Settings profile manager tab and full `stigix-cli` suite (`tcp-app` / `custom-app` / `app`).
+  - **Technical Documentation**: Comprehensive guide in [`docs/CUSTOM_TCP_APPS.md`](file:///Users/jsuzanne/Github/stigix/docs/CUSTOM_TCP_APPS.md).
+
 - **Underlay Topology & Multi-Router Physical Chassis** 🖧:
   - **`VyOSRouterNode` Canvas Component**: Renders active VyOS backbone routers on the topology canvas with top-row DC/Hub uplinks, bottom-row Branch/Spoke downlinks, and center management banner (hostname, management IP, live online status, and circuit count).
   - **Direct 1:1 Port Cable Wiring** 🔌: React Flow handles on individual port chips (`vyos-port:ethX`) connect directly to Prisma SD-WAN WAN circuit blocks with animated amber edges.

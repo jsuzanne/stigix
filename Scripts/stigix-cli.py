@@ -4176,6 +4176,227 @@ def cmd_iot(args):
         ])
 
 
+def _print_app_status(aid):
+    r = api_get(f"/api/custom-tcp-apps/{aid}/status")
+    if not r or not r.get("success"):
+        err(f"Application '{aid}' not found or unreachable")
+        return
+    app = r.get("app", {})
+    lst = r.get("listener", {})
+    cli = r.get("clientWorkload", {})
+    m = r.get("metrics", {})
+    hdr(f"━━ Custom TCP App: {app.get('name', aid)} ({aid}) ━━━━━━━━━━━━━━━━━━")
+    lst_state = lst.get("state", "stopped")
+    cli_state = cli.get("state", "stopped")
+    port = lst.get("port") or app.get("listener", {}).get("port", "?")
+    print(f"  Listener State   : {status_badge(lst_state)} on port {port} ({lst.get('activeConnections', 0)} active conns)")
+    print(f"  Server Mode      : {app.get('serverBehavior', {}).get('mode', 'echo')}")
+    print(f"  Client State     : {status_badge(cli_state)} towards {len(app.get('peers', []))} peers ({cli.get('activeSessions', 0)} active sessions)")
+    cli_defs = app.get("clientDefaults", {})
+    print(f"  Workload Mode    : {cli_defs.get('mode', 'persistent_request_reply')} ({cli_defs.get('connectionsPerPeer', 1)} conn/peer @ {cli_defs.get('intervalMs', 1000)}ms)")
+    
+    rtt = m.get("rtt", {})
+    if rtt and rtt.get("count", 0) > 0:
+        print(f"  RTT Latency      : avg={rtt.get('avg', 0):.2f}ms | p50={rtt.get('p50', 0):.2f}ms | p95={rtt.get('p95', 0):.2f}ms | min={rtt.get('min', 0):.2f}ms | max={rtt.get('max', 0):.2f}ms")
+    else:
+        print(f"  RTT Latency      : No samples yet")
+    
+    tput = m.get("throughput", {})
+    print(f"  Traffic (Tx/Rx)  : {m.get('txPackets', 0)} sent ({m.get('txBytes', 0)} B) / {m.get('rxPackets', 0)} rcvd ({m.get('rxBytes', 0)} B)")
+    print(f"  Bitrate          : Tx {tput.get('txKbps', 0):.2f} Kbps | Rx {tput.get('rxKbps', 0):.2f} Kbps")
+    print(f"  Errors / Timeouts: {m.get('errors', 0)} errors, {m.get('timeouts', 0)} timeouts, {m.get('rejectedHandshakes', 0)} rejected")
+    print()
+
+
+def cmd_custom_tcp_app(args):
+    if not require_auth(): return
+    sub = args[0] if args else "list"
+
+    if sub == "list":
+        r = api_get("/api/custom-tcp-apps")
+        if r:
+            apps = r.get("applications", []) if isinstance(r, dict) else r
+            rows = []
+            for app in apps:
+                aid = app.get("id", "?")
+                name = app.get("name", "?")
+                port = str(app.get("listener", {}).get("port", "?"))
+                srv_mode = app.get("serverBehavior", {}).get("mode", "echo")
+                cli_mode = app.get("clientDefaults", {}).get("mode", "persistent")
+                peers_cnt = str(len(app.get("peers", [])))
+                status_res = api_get(f"/api/custom-tcp-apps/{aid}/status")
+                lst_status = "STOPPED"
+                cli_status = "STOPPED"
+                if status_res and status_res.get("success"):
+                    lst_state = status_res.get("listener", {}).get("state", "stopped")
+                    lst_status = "RUNNING" if lst_state == "running" else lst_state.upper()
+                    cli_state = status_res.get("clientWorkload", {}).get("state", "stopped")
+                    cli_status = "RUNNING" if cli_state == "running" else cli_state.upper()
+                rows.append([
+                    aid[:16], name[:20], port, srv_mode, cli_mode, peers_cnt,
+                    status_badge(lst_status), status_badge(cli_status)
+                ])
+            hdr("━━ Custom TCP Inter-Site Applications ━━━━━━━━━━━━━━━━━━━━━━━━━")
+            table(["ID", "Name", "Port", "Server Mode", "Client Mode", "Peers", "Listener", "Client"], rows)
+
+    elif sub in ("status", "info"):
+        aid = args[1] if len(args) > 1 else None
+        if not aid:
+            r = api_get("/api/custom-tcp-apps")
+            if not r: return
+            apps = r.get("applications", []) if isinstance(r, dict) else r
+            if not apps:
+                info("No Custom TCP Applications configured.")
+                return
+            for app in apps:
+                _print_app_status(app.get("id"))
+        else:
+            _print_app_status(aid)
+
+    elif sub in ("start-listener", "listen"):
+        aid = args[1] if len(args) > 1 else None
+        if not aid:
+            err("Usage: tcp-app start-listener <app-id>")
+            return
+        r = api_post(f"/api/custom-tcp-apps/{aid}/listener/start")
+        if r and r.get("success"):
+            ok(f"TCP Listener for application '{aid}' started successfully on port {r.get('port', '')}")
+        else:
+            err(f"Failed to start listener: {r.get('error', 'Unknown error') if r else 'Unknown error'}")
+
+    elif sub in ("stop-listener", "unlisten"):
+        aid = args[1] if len(args) > 1 else None
+        if not aid:
+            err("Usage: tcp-app stop-listener <app-id>")
+            return
+        r = api_post(f"/api/custom-tcp-apps/{aid}/listener/stop")
+        if r and r.get("success"):
+            ok(f"TCP Listener for application '{aid}' stopped")
+        else:
+            err(f"Failed to stop listener: {r.get('error', 'Unknown error') if r else 'Unknown error'}")
+
+    elif sub in ("start-client", "start"):
+        aid = args[1] if len(args) > 1 else None
+        if not aid:
+            err("Usage: tcp-app start-client <app-id>")
+            return
+        r = api_post(f"/api/custom-tcp-apps/{aid}/client/start")
+        if r and r.get("success"):
+            ok(f"Client workload for application '{aid}' started towards peers")
+        else:
+            err(f"Failed to start client workload: {r.get('error', 'Unknown error') if r else 'Unknown error'}")
+
+    elif sub in ("stop-client", "stop"):
+        aid = args[1] if len(args) > 1 else None
+        if not aid:
+            err("Usage: tcp-app stop-client <app-id>")
+            return
+        r = api_post(f"/api/custom-tcp-apps/{aid}/client/stop")
+        if r and r.get("success"):
+            ok(f"Client workload for application '{aid}' stopped")
+        else:
+            err(f"Failed to stop client workload: {r.get('error', 'Unknown error') if r else 'Unknown error'}")
+
+    elif sub == "test":
+        aid = args[1] if len(args) > 1 else None
+        if not aid:
+            err("Usage: tcp-app test <app-id> [peer-id]")
+            return
+        peer_id = args[2] if len(args) > 2 else None
+        if peer_id:
+            info(f"Testing TCP handshake & roundtrip for app '{aid}' -> peer '{peer_id}'...")
+            r = api_post(f"/api/custom-tcp-apps/{aid}/test-peer/{peer_id}")
+            if r:
+                if r.get("success"):
+                    ok(f"Handshake successful! Latency: {r.get('latencyMs', 0):.2f} ms")
+                    info(f"  Peer response site ID: {r.get('peerSiteId', 'N/A')}, App ID: {r.get('peerAppId', 'N/A')}")
+                else:
+                    err(f"Handshake failed: {r.get('error', 'Unknown error')}")
+        else:
+            app_res = api_get(f"/api/custom-tcp-apps/{aid}")
+            if not app_res or not app_res.get("app"):
+                err(f"Application '{aid}' not found")
+                return
+            peers = app_res["app"].get("peers", [])
+            if not peers:
+                warn(f"No peers configured for app '{aid}'")
+                return
+            for p in peers:
+                pid = p.get("id")
+                pname = p.get("name")
+                phost = p.get("host")
+                pport = p.get("port")
+                info(f"Testing peer '{pname}' ({phost}:{pport})...")
+                r = api_post(f"/api/custom-tcp-apps/{aid}/test-peer/{pid}")
+                if r and r.get("success"):
+                    ok(f"  ✓ {pname}: Success ({r.get('latencyMs', 0):.2f} ms, site={r.get('peerSiteId', 'N/A')})")
+                else:
+                    err(f"  ✗ {pname}: {r.get('error', 'Failed') if r else 'Failed'}")
+
+    elif sub == "sessions":
+        aid = args[1] if len(args) > 1 else None
+        if not aid:
+            err("Usage: tcp-app sessions <app-id>")
+            return
+        r = api_get(f"/api/custom-tcp-apps/{aid}/status")
+        if r and r.get("success"):
+            hdr(f"━━ Active Sessions for '{aid}' ━━━━━━━━━━━━━━━━━━━━━━━━━")
+            inbound = r.get("inboundSessions", [])
+            outbound = r.get("outboundSessions", [])
+            print(c("1;36", "\n  Incoming Client Connections:"))
+            in_rows = []
+            for s in inbound:
+                in_rows.append([
+                    s.get("sessionId", "?")[:12],
+                    s.get("remoteAddress", "?"),
+                    s.get("clientSiteId", "N/A"),
+                    s.get("handshakeState", "?"),
+                    str(s.get("requestsHandled", 0)),
+                    str(s.get("bytesReceived", 0)),
+                    str(s.get("bytesSent", 0))
+                ])
+            table(["Session ID", "Remote Socket IP", "Declared Site", "Handshake", "Reqs", "Rx Bytes", "Tx Bytes"], in_rows)
+
+            print(c("1;36", "\n  Outgoing Workload Sessions:"))
+            out_rows = []
+            for s in outbound:
+                rtt = f"{s.get('lastRttMs', 0):.1f} ms" if s.get("lastRttMs") is not None else "-"
+                out_rows.append([
+                    s.get("peerName", "?"),
+                    s.get("remoteHost", "?"),
+                    s.get("state", "?"),
+                    rtt,
+                    str(s.get("requestsSent", 0)),
+                    str(s.get("responsesReceived", 0)),
+                    str(s.get("timeouts", 0))
+                ])
+            table(["Peer Name", "Remote Host", "State", "Last RTT", "Tx Reqs", "Rx Resps", "Timeouts"], out_rows)
+
+    elif sub == "reset-metrics":
+        aid = args[1] if len(args) > 1 else None
+        if not aid:
+            err("Usage: tcp-app reset-metrics <app-id>")
+            return
+        r = api_post(f"/api/custom-tcp-apps/{aid}/metrics/reset")
+        if r and r.get("success"):
+            ok(f"Metrics reset for application '{aid}'")
+        else:
+            err(f"Failed to reset metrics: {r.get('error', 'Unknown') if r else 'Failed'}")
+
+    else:
+        _help_section("CUSTOM TCP INTER-SITE APPLICATIONS", [
+            ("tcp-app list",               "List configured Custom TCP Applications"),
+            ("tcp-app status [id]",        "Show comprehensive status & metrics"),
+            ("tcp-app start-listener <id>","Start local TCP listener"),
+            ("tcp-app stop-listener <id>", "Stop local TCP listener"),
+            ("tcp-app start-client <id>",  "Start client workload generator"),
+            ("tcp-app stop-client <id>",   "Stop client workload generator"),
+            ("tcp-app test <id> [peerId]", "Run instant handshake latency test"),
+            ("tcp-app sessions <id>",      "List live incoming/outgoing sessions"),
+            ("tcp-app reset-metrics <id>", "Reset metrics counters"),
+        ])
+
+
 def cmd_system(args):
     if not require_auth(): return
     sub = args[0] if args else "info"
@@ -4729,6 +4950,17 @@ def cmd_help(args):
     iot import <file>      Import config/CSV
     iot export [file]      Export config to JSON
 
+  {c('1','CUSTOM TCP APPS')}
+    tcp-app list           List configured Custom TCP Applications
+    tcp-app status [id]    Show operational status & RTT metrics
+    tcp-app start-listener <id> Start host TCP listener
+    tcp-app stop-listener <id>  Stop host TCP listener
+    tcp-app start-client <id>   Start outbound client workload
+    tcp-app stop-client <id>    Stop outbound client workload
+    tcp-app test <id> [peerId]  Instant handshake latency test
+    tcp-app sessions <id>  Inspect active inbound & outbound sessions
+    tcp-app reset-metrics <id>  Reset metrics counters
+
   {c('1','SD-WAN FLOWS')}
     flows query            Query SD-WAN Flow Browser (interactive or flags)
 
@@ -4905,6 +5137,10 @@ DISPATCH = {
     "voice":          cmd_voice,
     "flows":          cmd_flows,
     "iot":            cmd_iot,
+    "tcp-app":        cmd_custom_tcp_app,
+    "custom-app":     cmd_custom_tcp_app,
+    "app":            cmd_custom_tcp_app,
+    "custom-apps":    cmd_custom_tcp_app,
     "system":         cmd_system,
     "connect":        cmd_connect,
     "history":        cmd_history,
@@ -5108,6 +5344,21 @@ COMPLETER_TREE = {
         "status": None, "stop": None, "stats": None, "start": None,
     },
     "iot":         {"list": None, "start": None, "stop": None, "stats": None, "vulns": None, "import": None, "export": None},
+    "tcp-app":     {
+        "list": None, "status": None, "start-listener": None, "stop-listener": None,
+        "start-client": None, "stop-client": None, "test": None, "sessions": None,
+        "reset-metrics": None
+    },
+    "custom-app":  {
+        "list": None, "status": None, "start-listener": None, "stop-listener": None,
+        "start-client": None, "stop-client": None, "test": None, "sessions": None,
+        "reset-metrics": None
+    },
+    "app":         {
+        "list": None, "status": None, "start-listener": None, "stop-listener": None,
+        "start-client": None, "stop-client": None, "test": None, "sessions": None,
+        "reset-metrics": None
+    },
     "system":      {"info": None, "interfaces": None, "logs": None, "restart": None, "upgrade": None},
     "help":        None,
     "?":           None,

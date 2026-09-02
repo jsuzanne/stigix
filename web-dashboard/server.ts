@@ -30,6 +30,8 @@ import { RegistryManager } from './registry-manager.js';
 import { LocalRegistryServer } from './local-registry-server.js';
 import { ProvisioningManager } from './provisioning-manager.js';
 import { UnderlayTopologyManager } from './underlay-topology-manager.js';
+import { TcpAppManager } from './custom-tcp-apps/tcp-app-manager.js';
+import { createCustomTcpApiRouter } from './custom-tcp-apps/api-routes.js';
 
 import { Server } from 'socket.io';
 import multer from 'multer';
@@ -10125,6 +10127,7 @@ app.delete('/api/iot/devices/:id', authenticateToken, (req, res) => {
 // --- Local Registry API & Provisioning Engine (Hybrid Leader) ---
 const provisioningManager = new ProvisioningManager(APP_CONFIG.configDir);
 const underlayTopologyManager = new UnderlayTopologyManager(APP_CONFIG.configDir);
+const tcpAppManager = new TcpAppManager(APP_CONFIG.configDir);
 const localRegistryServer = new LocalRegistryServer();
 registryManager.setLocalRegistryServer(localRegistryServer);
 registryManager.setProvisioningManager(provisioningManager);
@@ -10136,6 +10139,10 @@ app.use('/api/registry', (req, res, next) => {
     next();
 });
 log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry (Dynamic Mode)`);
+
+// --- Custom TCP Inter-Site Applications API ---
+app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
+log('CUSTOM_TCP', `🖧 Custom TCP Applications API mounted at /api/custom-tcp-apps`);
 
 // --- Global Provisioning Management APIs ---
 app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
@@ -10827,6 +10834,9 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
 
     // Start Registry Service only after server is listening
     registryManager.start().catch(e => log('REGISTRY', `Failed to start: ${e.message}`, 'error'));
+
+    // Initialize Custom TCP Applications Manager
+    tcpAppManager.init(APP_CONFIG.siteName).catch(e => log('CUSTOM_TCP', `Failed to initialize Custom TCP Manager: ${e.message}`, 'error'));
 
     // Delayed Prisma SD-WAN auto-discovery sync
     setTimeout(async () => {

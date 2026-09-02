@@ -12,7 +12,8 @@ import Vyos from './Vyos';
 import Speedtest from './Speedtest';
 import Topology from './Topology';
 import LiveEvents from './LiveEvents';
-import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders } from 'lucide-react';
+import { CustomApps } from './CustomApps';
+import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Toaster } from 'react-hot-toast';
@@ -54,7 +55,7 @@ interface SiteInfo {
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
-  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events'>(
+  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps'>(
     (localStorage.getItem('activeView') as any) || 'performance'
   );
 
@@ -955,6 +956,16 @@ export default function App() {
           <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Track blackout and packet loss during failover</span>
         </button>
         <button
+          onClick={() => setView('custom_apps')}
+          className={cn(
+            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
+            view === 'custom_apps' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
+          )}
+        >
+          <Layers size={18} /> Custom Apps <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 ml-1">New</span>
+          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Simulate East-West Custom TCP Inter-Site Applications</span>
+        </button>
+        <button
           onClick={() => setView('topology')}
           className={cn(
             "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
@@ -1562,6 +1573,7 @@ export default function App() {
       {view === 'voice' && <Voice token={token!} externalStatus={globalVoiceStatus} />}
       {(view === 'failover' || view === 'convergence') && <Failover token={token!} externalStatus={globalConvStatus} />}
       {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} initialTab={initialSettingsTab} />}
+      {view === 'custom_apps' && <CustomApps token={token!} />}
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
     </div>

@@ -13,6 +13,7 @@ import { clsx } from 'clsx';
 import { Favicon } from './components/Favicon';
 import { twMerge } from 'tailwind-merge';
 import { toast } from 'react-hot-toast';
+import { CustomTcpSettingsTab } from './components/custom-tcp/CustomTcpSettingsTab';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -383,9 +384,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     token: string, 
     uiConfig?: { maxCaptures: number; globalScoreTypes?: string[] },
     onUpdateUIConfig?: () => void,
-    initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata'
+    initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp'
 }) {
-    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata'>(initialTab || 'distribution');
+    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp'>(initialTab || 'distribution');
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -1628,6 +1629,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         { id: 'distribution', label: 'Traffic Distribution' },
         { id: 'probes', label: 'Synthetic Probes' },
         { id: 'convergence', label: 'Failover' },
+        { id: 'custom-tcp', label: 'Custom TCP Apps', beta: true },
         { id: 'system', label: 'System Info' },
         ...(systemInfo?.beta ? [{ id: 'maintenance', label: 'System Maintenance', beta: true }] : []),
         { id: 'targets', label: 'Stigix Targets' },
@@ -5002,6 +5004,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                         </div>
                     )}
                 </div>
+            )}
+
+            {activeTab === 'custom-tcp' && (
+                <CustomTcpSettingsTab token={token} />
             )}
             </div>
         );

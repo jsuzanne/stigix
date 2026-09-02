@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.43] - 2026-09-02
+### Added / Changed
+- **Stigix Custom TCP Inter-Site Applications** 🔄:
+  - **Dual Server / Client Architecture**: Every Stigix instance can run multiple custom TCP application workloads simultaneously, acting both as a host TCP listener and an outbound client workload generator.
+  - **4-Byte Length-Prefixed Streaming Protocol**: Binary `UInt32BE` length framing parsing frames reliably through stream fragmentation, buffer splitting, and concatenation.
+  - **Server Chaos & Behavior Simulation**: Implemented 8 rich server simulation modes (`echo`, `acknowledge`, `fixed_delay`, `random_delay`, `looping_delay`, `drop_response`, `close_connection`, `error_response`).
+  - **Client Workload Modes**: 5 workload generation modes (`persistent_request_reply`, `transactional`, `heartbeat`, `bulk_burst`, `continuous_stream`) with bounded exponential backoff & full jitter (1s–30s).
+  - **Security & Access Control**: IPv4 CIDR allowlisting (`allowCidrs`), mandatory 5s handshake timeout (`CLIENT_HELLO` $\rightarrow$ `SERVER_HELLO`), and pre-shared token authentication.
+  - **Dedicated "Custom Apps" Navigation View & Operational Control Center**: Real-time traffic overview cards, rolling RTT percentile metrics ($p50, p95, \text{min}, \text{avg}, \text{max}$), live incoming client sessions table (Declared Site ID vs Socket Remote IP), and outgoing workload monitor.
+  - **4-Step Application Creation & Edition Wizard**: Interactive modal wizard covering Identity & Listener, Server Simulation, Client Workload & Peers, and Review with non-destructive live host port availability test.
+  - **Settings Configuration Tab**: Added Custom TCP Apps tab under Settings for full application profile lifecycle management (CRUD, duplicate, JSON export/import).
+  - **stigix-cli Support (`tcp-app` / `custom-app` / `app`)**: Comprehensive CLI commands for `list`, `status`, `start-listener`, `stop-listener`, `start-client`, `stop-client`, `test`, `sessions`, and `reset-metrics`.
+  - **Complete Technical Documentation**: Added [`docs/CUSTOM_TCP_APPS.md`](file:///Users/jsuzanne/Github/stigix/docs/CUSTOM_TCP_APPS.md).
+
 ## [v1.4.1-patch.42] - 2026-09-02
 ### Added / Changed
 - **Underlay Topology & Multi-Router Physical Chassis** 🖧:
