@@ -507,90 +507,146 @@ const VyOSRouterNode = ({ data }: any) => {
     const { router, connectedCount = 0, resolutions = [], onSelectResolution } = data;
     const isOnline = router.status !== 'down';
 
-    return (
-        <div className="bg-slate-900/95 backdrop-blur-2xl border-2 border-amber-500/50 hover:border-amber-400 rounded-3xl p-5 shadow-2xl shadow-amber-500/10 min-w-[340px] max-w-[440px] transition-all group relative">
-            <Handle type="target" position={Position.Top} id="target-top" className="!opacity-0" />
-            <Handle type="target" position={Position.Bottom} id="target-bottom" className="!opacity-0" />
+    // Group resolutions into Hub-connected and Spoke-connected
+    const hubResolutions = resolutions.filter((r: any) => r.isHub);
+    const spokeResolutions = resolutions.filter((r: any) => !r.isHub);
 
-            {/* Router Rack Top Header */}
-            <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/10">
+    // Identify interfaces for this router
+    const allIfaces = router.interfaces || [];
+
+    // Separate into top (Hub) and bottom (Spoke) interfaces
+    const hubIfaces = allIfaces.filter((iface: any) => 
+        hubResolutions.some((r: any) => r.vyos?.interfaceName === iface.name)
+    );
+
+    const spokeIfaces = allIfaces.filter((iface: any) => 
+        spokeResolutions.some((r: any) => r.vyos?.interfaceName === iface.name)
+    );
+
+    // Fallback: if not categorized, show all interfaces in bottom row
+    const displayTopIfaces = hubIfaces;
+    const displayBottomIfaces = spokeIfaces.length > 0 ? spokeIfaces : (hubIfaces.length === 0 ? allIfaces : []);
+
+    const renderPortChip = (iface: any, isTop: boolean) => {
+        const matchedRes = resolutions.find((r: any) => r.vyos?.interfaceName === iface.name);
+        const isConnected = !!matchedRes;
+        const isIfaceUp = iface.status !== 'down';
+
+        return (
+            <div
+                key={iface.name}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    if (matchedRes && onSelectResolution) {
+                        onSelectResolution(matchedRes);
+                    }
+                }}
+                className={cn(
+                    "relative px-3 py-2 rounded-2xl border text-[11px] transition-all flex flex-col justify-between group/port min-w-[145px] max-w-[175px]",
+                    isConnected 
+                        ? "bg-slate-900/90 border-amber-500/50 hover:border-amber-400 hover:bg-slate-900 shadow-md shadow-amber-500/10 cursor-pointer" 
+                        : "bg-slate-950/40 border-slate-800/60 text-text-muted opacity-40 cursor-default"
+                )}
+                title={matchedRes ? `Connected to ${matchedRes.prismaWan.siteName} (${matchedRes.prismaWan.interfaceName}) · Click to inspect` : (iface.description || iface.name)}
+            >
+                {/* Dedicated ReactFlow Handle for direct 1:1 cable termination */}
+                <Handle
+                    type="target"
+                    position={isTop ? Position.Top : Position.Bottom}
+                    id={`vyos-port:${iface.name}`}
+                    className="!w-3 !h-1.5 !bg-amber-400 !border !border-slate-900 !rounded-sm"
+                />
+
+                <div className="flex items-center justify-between pb-1 border-b border-white/5">
+                    <span className="font-mono font-black text-amber-400 flex items-center gap-1.5">
+                        <span className={cn("w-2 h-2 rounded-full", isConnected ? (isIfaceUp ? "bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]" : "bg-red-400") : "bg-slate-600")} />
+                        {iface.name}
+                    </span>
+                    {isConnected && (
+                        <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-green-500/20 text-green-300 border border-green-500/30 truncate max-w-[75px]">
+                            {matchedRes.prismaWan.siteName}
+                        </span>
+                    )}
+                </div>
+
+                <div className="flex items-center justify-between font-mono mt-1 text-[10px]">
+                    <span className="text-text-primary font-bold truncate max-w-[95px]">
+                        {iface.address?.[0] || iface.ipCidr || matchedRes?.vyos?.ipCidr || '—'}
+                    </span>
+                </div>
+
+                {iface.description && (
+                    <div className="text-[8px] text-text-muted truncate font-mono mt-0.5">
+                        {iface.description}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    return (
+        <div className="bg-slate-950/95 backdrop-blur-2xl border-2 border-amber-500/50 hover:border-amber-400 rounded-[36px] p-6 shadow-2xl shadow-amber-500/20 transition-all group relative flex flex-col gap-4">
+            
+            {/* TOP ROW: Hub-facing Physical Ports (Facing DCs at top) */}
+            {displayTopIfaces.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between text-[9px] font-black text-amber-400/80 uppercase tracking-wider px-1">
+                        <span>▲ DC & Hub Uplinks ({displayTopIfaces.length})</span>
+                        <span className="font-mono text-text-muted">Top Transit</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        {displayTopIfaces.map((iface: any) => renderPortChip(iface, true))}
+                    </div>
+                </div>
+            )}
+
+            {/* CENTER CHASSIS BANNER */}
+            <div className="flex items-center justify-between gap-4 p-4 bg-slate-900/90 border border-amber-500/30 rounded-2xl shadow-inner">
                 <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-gradient-to-br from-amber-500/30 to-amber-600/10 border border-amber-500/40 rounded-2xl text-amber-400 shadow-lg shadow-amber-500/20">
-                        <Server size={22} />
+                    <div className="p-3 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl text-slate-950 shadow-lg shadow-amber-500/30 font-black">
+                        <Server size={24} />
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
-                            <span className="text-sm font-black text-text-primary tracking-tight uppercase">{router.name}</span>
+                            <span className="text-base font-black text-text-primary tracking-tight uppercase">{router.name}</span>
                             <span className={cn(
-                                "w-2 h-2 rounded-full",
+                                "w-2.5 h-2.5 rounded-full",
                                 isOnline ? "bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]" : "bg-red-400"
                             )} />
+                            <span className="text-[9px] font-bold text-green-400 uppercase tracking-widest">
+                                {isOnline ? 'ONLINE' : 'OFFLINE'}
+                            </span>
                         </div>
-                        <div className="text-[10px] text-text-muted font-mono">{router.host}</div>
+                        <div className="text-xs text-amber-400 font-mono font-bold mt-0.5">
+                            Mgmt IP: {router.host}
+                        </div>
                     </div>
                 </div>
 
                 <div className="text-right">
-                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        {connectedCount} Circuits
-                    </span>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-black uppercase tracking-wider">
+                        <span>{connectedCount} Circuits</span>
+                    </div>
                     {router.location && (
-                        <div className="text-[9px] text-text-muted/70 truncate max-w-[130px] mt-0.5" title={router.location}>
+                        <div className="text-[10px] text-text-muted mt-1 font-mono">
                             {router.location}
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Ports Matrix */}
-            <div className="mt-3">
-                <div className="text-[9px] font-black text-text-muted uppercase tracking-wider mb-2 flex items-center justify-between">
-                    <span>Physical Ports ({router.interfaces?.length || 0})</span>
-                    <span className="text-amber-400 font-mono text-[9px]">VyOS Underlay Next-Hops</span>
+            {/* BOTTOM ROW: Spoke-facing Physical Ports (Facing Branches at bottom) */}
+            {displayBottomIfaces.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between text-[9px] font-black text-amber-400/80 uppercase tracking-wider px-1">
+                        <span>▼ Branch & Spoke Downlinks ({displayBottomIfaces.length})</span>
+                        <span className="font-mono text-text-muted">Bottom Transit</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        {displayBottomIfaces.map((iface: any) => renderPortChip(iface, false))}
+                    </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-1.5 max-h-[180px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-border">
-                    {router.interfaces?.map((iface: any) => {
-                        const matchedRes = resolutions.find((r: any) => r.vyos?.routerName === router.name && r.vyos?.interfaceName === iface.name);
-                        const isConnected = !!matchedRes;
-                        const isIfaceUp = iface.status !== 'down';
-
-                        return (
-                            <div
-                                key={iface.name}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (matchedRes && onSelectResolution) {
-                                        onSelectResolution(matchedRes);
-                                    }
-                                }}
-                                className={cn(
-                                    "p-1.5 rounded-xl border text-[10px] transition-all flex flex-col justify-between group/port",
-                                    isConnected 
-                                        ? "bg-amber-500/10 border-amber-500/40 text-text-primary hover:bg-amber-500/20 hover:border-amber-400 shadow-sm cursor-pointer" 
-                                        : "bg-card-secondary/20 border-white/5 text-text-muted opacity-50 cursor-default"
-                                )}
-                                title={matchedRes ? `Matched with ${matchedRes.prismaWan.siteName} (${matchedRes.prismaWan.interfaceName}) · Click to inspect` : (iface.description || iface.name)}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <span className="font-mono font-bold text-amber-400 flex items-center gap-1">
-                                        <span className={cn("w-1.5 h-1.5 rounded-full", isConnected ? (isIfaceUp ? "bg-green-400" : "bg-red-400") : "bg-slate-600")} />
-                                        {iface.name}
-                                    </span>
-                                    {isConnected && (
-                                        <span className="text-[8px] font-black px-1 rounded bg-green-500/20 text-green-300">
-                                            {matchedRes.prismaWan.siteName}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="text-[8px] text-text-muted truncate font-mono mt-0.5">
-                                    {iface.address?.[0] || iface.description || 'no ip'}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
+            )}
         </div>
     );
 };
@@ -820,30 +876,115 @@ function TopologyContent({ token }: TopologyProps) {
         // --- NODES ARE ALWAYS IN THE SAME POSITION ---
         layoutRow(hubs, HUB_Y, 'HUB');
 
-        // Middle Tier: Clouds in Overlay Mode (Underlay mode uses dedicated peer gateway nodes aligned with each site)
-        if (!logicalViewSiteId && topologyViewMode === 'overlay') {
-            const INTERNET_X = -200;
-            if (publicWanNetworks.size > 0) {
-                newNodes.push({
-                    id: `cloud:INTERNET`,
-                    type: 'cloud',
-                    position: { x: INTERNET_X, y: CLOUD_Y },
-                    origin: [0.5, 0.5],
-                    data: { name: 'INTERNET' },
+        // Middle Tier:
+        // - Overlay Mode: Public & Private WAN Clouds (Internet, MPLS)
+        // - Underlay Mode: Active VyOS Routers (filtered to only routers with active WAN circuits) + External Cloud
+        if (!logicalViewSiteId) {
+            if (topologyViewMode === 'underlay') {
+                const resolutions = underlayData?.resolutions || [];
+                const allRouters = underlayData?.routers || [];
+
+                const resolvedWithHub = resolutions.map((r: any) => ({
+                    ...r,
+                    isHub: hubs.some((h: any) => h.site_name === r.prismaWan?.siteName)
+                }));
+
+                // Find distinct active VyOS router names that actually have matched WAN circuits
+                const activeRouterNames = Array.from(new Set(
+                    resolvedWithHub
+                        .filter((r: any) => r.status === 'matched' && r.vyos?.routerName)
+                        .map((r: any) => r.vyos.routerName)
+                ));
+
+                // Construct active router objects
+                const activeRouters = activeRouterNames.map(routerName => {
+                    const fromPayload = allRouters.find((r: any) => r.name === routerName);
+                    const routerResolutions = resolvedWithHub.filter((r: any) => r.status === 'matched' && r.vyos?.routerName === routerName);
+
+                    // Build comprehensive interfaces list
+                    const ifaceMap = new Map<string, any>();
+                    fromPayload?.interfaces?.forEach((i: any) => ifaceMap.set(i.name, i));
+                    routerResolutions.forEach((res: any) => {
+                        if (res.vyos?.interfaceName && !ifaceMap.has(res.vyos.interfaceName)) {
+                            ifaceMap.set(res.vyos.interfaceName, {
+                                name: res.vyos.interfaceName,
+                                description: res.vyos.description,
+                                address: [res.vyos.ipCidr || res.vyos.ip],
+                                status: 'up'
+                            });
+                        }
+                    });
+
+                    return {
+                        id: fromPayload?.id || routerName,
+                        name: routerName,
+                        host: fromPayload?.host || routerResolutions[0]?.vyos?.routerId || '192.168.122.254',
+                        location: fromPayload?.location || 'VyOS Underlay Backbone',
+                        status: fromPayload?.status || 'up',
+                        interfaces: Array.from(ifaceMap.values()),
+                        resolutions: routerResolutions,
+                        connectedCount: routerResolutions.length
+                    };
+                });
+
+                const ROUTER_BASE_WIDTH = 580;
+                const ROUTER_GAP = 120;
+                const totalRoutersWidth = Math.max(1, activeRouters.length) * ROUTER_BASE_WIDTH + Math.max(0, activeRouters.length - 1) * ROUTER_GAP;
+                let currentRouterX = -totalRoutersWidth / 2;
+
+                activeRouters.forEach((r: any) => {
+                    const x = currentRouterX + ROUTER_BASE_WIDTH / 2;
+                    currentRouterX += ROUTER_BASE_WIDTH + ROUTER_GAP;
+
+                    newNodes.push({
+                        id: `vyos:${r.id || r.name}`,
+                        type: 'vyosRouter',
+                        position: { x, y: CLOUD_Y },
+                        origin: [0.5, 0.5],
+                        data: {
+                            router: r,
+                            connectedCount: r.connectedCount,
+                            resolutions: r.resolutions,
+                            onSelectResolution: (res: any) => setUnderlayDrawerResolution(res)
+                        }
+                    });
+                });
+
+                // If there are unmatched circuits, add cloud:EXTERNAL to the right
+                const unmatchedCount = resolvedWithHub.filter((r: any) => r.status !== 'matched').length;
+                if (unmatchedCount > 0 || activeRouters.length === 0) {
+                    newNodes.push({
+                        id: `cloud:EXTERNAL`,
+                        type: 'cloud',
+                        position: { x: activeRouters.length > 0 ? (totalRoutersWidth / 2) + 260 : 0, y: CLOUD_Y },
+                        origin: [0.5, 0.5],
+                        data: { name: 'EXTERNAL / UNMAPPED' }
+                    });
+                }
+            } else {
+                const INTERNET_X = -200;
+                if (publicWanNetworks.size > 0) {
+                    newNodes.push({
+                        id: `cloud:INTERNET`,
+                        type: 'cloud',
+                        position: { x: INTERNET_X, y: CLOUD_Y },
+                        origin: [0.5, 0.5],
+                        data: { name: 'INTERNET' },
+                    });
+                }
+
+                const privates = Array.from(privateWanNetworks);
+                privates.forEach((cloudName, i) => {
+                    const x = 200 + (i * 250);
+                    newNodes.push({
+                        id: `cloud:${cloudName}`,
+                        type: 'cloud',
+                        position: { x, y: CLOUD_Y },
+                        origin: [0.5, 0.5],
+                        data: { name: cloudName },
+                    });
                 });
             }
-
-            const privates = Array.from(privateWanNetworks);
-            privates.forEach((cloudName, i) => {
-                const x = 200 + (i * 250);
-                newNodes.push({
-                    id: `cloud:${cloudName}`,
-                    type: 'cloud',
-                    position: { x, y: CLOUD_Y },
-                    origin: [0.5, 0.5],
-                    data: { name: cloudName },
-                });
-            });
         }
 
         layoutRow(spokes, SPOKE_Y, 'SPOKE');
@@ -916,75 +1057,43 @@ function TopologyContent({ token }: TopologyProps) {
                 });
             });
         } else if (topologyViewMode === 'underlay') {
-            // mode UNDERLAY: Generate Peer Underlay Gateway Nodes in direct vertical alignment (No cable crossing)
+            // mode UNDERLAY: Draw direct cables from each Prisma WAN interface directly to the respective port chip on the VyOS router
             filteredSites.forEach((site: any) => {
                 const isHub = hubs.includes(site);
-                const siteX = sitePositions.get(site.site_id) || 0;
+                site.devices?.forEach((device: any) => {
+                    device.wan_interfaces?.forEach((wan: any) => {
+                        const res = (underlayData?.resolutions || []).find((r: any) => 
+                            r.prismaWan.siteName === site.site_name && 
+                            r.prismaWan.elementName === device.device_name && 
+                            r.prismaWan.interfaceName === wan.name
+                        );
 
-                // Collect all WAN circuits for this site in deterministic order
-                const wanCircuits: any[] = [];
-                site.devices?.forEach((dev: any) => {
-                    dev.wan_interfaces?.forEach((wan: any) => {
-                        wanCircuits.push({
-                            ...wan,
-                            devName: dev.device_name,
-                            elementId: dev.element_id
+                        const isMatched = Boolean(res && res.status === 'matched' && res.vyos);
+                        const targetId = (isMatched && res?.vyos) ? `vyos:${res.vyos.routerId || res.vyos.routerName}` : `cloud:EXTERNAL`;
+                        const targetHandle = (isMatched && res?.vyos) ? `vyos-port:${res.vyos.interfaceName}` : (isHub ? 'target-top' : 'target-bottom');
+
+                        newEdges.push({
+                            id: `underlay-edge:${site.site_id}:${device.device_name}:${wan.name}`,
+                            type: 'site',
+                            source: `site:${site.site_id}`,
+                            target: targetId,
+                            sourceHandle: `circuit:${device.device_name}:${wan.name}`,
+                            targetHandle: targetHandle,
+                            animated: isMatched,
+                            style: {
+                                stroke: isMatched ? '#f59e0b' : '#64748b',
+                                strokeWidth: isMatched ? 3 : 1.5,
+                                strokeDasharray: isMatched ? undefined : '4 4'
+                            },
+                            data: {
+                                ...wan,
+                                site_name: site.site_name,
+                                device_name: device.device_name,
+                                hideLabel: true,
+                                resolution: res,
+                                isUnderlayEdge: true
+                            }
                         });
-                    });
-                });
-
-                const circuitCount = wanCircuits.length;
-
-                wanCircuits.forEach((w: any, idx: number) => {
-                    // Match exact circuit block X offset from SiteNode
-                    const blockX = siteX + (idx - (circuitCount - 1) / 2) * 154;
-                    // Position peer gateway block facing the circuit: Hub peer at Y=-330, Spoke peer at Y=330
-                    const peerY = isHub ? (HUB_Y + 370) : (SPOKE_Y - 370);
-                    const peerGatewayId = `peer-gateway:${site.site_id}:${w.devName}:${w.name}`;
-
-                    const res = (underlayData?.resolutions || []).find((r: any) => 
-                        r.prismaWan.siteName === site.site_name && 
-                        r.prismaWan.elementName === w.devName && 
-                        r.prismaWan.interfaceName === w.name
-                    );
-
-                    const isMatched = Boolean(res && res.status === 'matched' && res.vyos);
-
-                    // Add Peer Gateway Node
-                    newNodes.push({
-                        id: peerGatewayId,
-                        type: 'underlayGateway',
-                        position: { x: blockX, y: peerY },
-                        origin: [0.5, 0.5],
-                        data: {
-                            resolution: res,
-                            isHubPeer: isHub,
-                            onInspect: (r: any) => setUnderlayDrawerResolution(r)
-                        }
-                    });
-
-                    // Add Direct Straight Edge
-                    newEdges.push({
-                        id: `underlay-peer-edge:${site.site_id}:${w.devName}:${w.name}`,
-                        type: 'site',
-                        source: `site:${site.site_id}`,
-                        target: peerGatewayId,
-                        sourceHandle: `circuit:${w.devName}:${w.name}`,
-                        targetHandle: 'target-peer',
-                        animated: isMatched,
-                        style: {
-                            stroke: isMatched ? '#f59e0b' : '#64748b',
-                            strokeWidth: isMatched ? 3.5 : 1.5,
-                            strokeDasharray: isMatched ? undefined : '4 4'
-                        },
-                        data: {
-                            ...w,
-                            site_name: site.site_name,
-                            device_name: w.devName,
-                            hideLabel: true,
-                            resolution: res,
-                            isUnderlayEdge: true
-                        }
                     });
                 });
             });
