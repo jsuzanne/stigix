@@ -18,6 +18,8 @@ FROM public.ecr.aws/docker/library/node:20-slim
 
 WORKDIR /app
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
