@@ -4,6 +4,41 @@ All notable changes made specifically on the `v2` branch are documented in this 
 
 ---
 
+## [v2-dev] - 2026-09-02 — Underlay Topology Chassis & CLI Global Provisioning
+
+### Added
+- **Underlay Topology & Multi-Router Physical Chassis** 🖧:
+  - **`VyOSRouterNode` Canvas Component**: Renders active VyOS backbone routers on the topology canvas with top-row DC/Hub uplinks, bottom-row Branch/Spoke downlinks, and center management banner (hostname, management IP, live online status, and circuit count).
+  - **Direct 1:1 Port Cable Wiring** 🔌: React Flow handles on individual port chips (`vyos-port:ethX`) connect directly to Prisma SD-WAN WAN circuit blocks with animated amber edges.
+  - **Anti-Cable-Crossing Spatial Alignment** 📐: Automatic left-to-right sorting of router ports matching the horizontal X coordinates of connected sites (DC1, DC2, BR1, BR2, BR3) and link types (INET before MPLS), ensuring clean, untangled parallel cables.
+  - **Full IP/CIDR Visibility** 🏷️: Every VyOS port chip displays its complete IPv4 CIDR alongside the port identifier (`ethX`), status LED, connected site badge, and description.
+  - **Interactive Floating Link Trace Inspector** 🔍: Clicking any port chip or underlay cable triggers a floating comparison drawer showing Prisma ION circuit parameters, transit CIDR subnet, and VyOS next-hop IP with a one-click button to open the full diagnostics side panel.
+  - **Light & Dark Theme Harmonization** 🌓: Seamless contrast across all underlay widgets, port chips, and inspector drawers adapting cleanly to both light and dark modes.
+  - **External Cloud Spacing** ☁️: Dynamic router width calculation ensures `cloud:EXTERNAL` is positioned safely without overlapping chassis elements.
+- **stigix-cli Central Global Provisioning (`provision` / `provisioning` / `prov`)** 🌐:
+  - `provision on / off / enable / disable`: Turn Global Provisioning pull mode on or off.
+  - `provision status`: View Global Provisioning state and a table of all 7 configuration bundles (Applications, Probes, SLA, Security Policies, Voice, IoT, Prisma SASE) with published revisions, locally applied revisions, item counts, and pending diffs.
+  - `provision publish [type|all]`: Publish local configurations to all registered peers with change summaries (`+added -removed ~modified`).
+  - `provision rollback <type> <revision>`: Rollback a bundle to an earlier revision and redistribute.
+  - `provision history` & `provision pending`: Audit trail of distributions and list of unpublished local changes.
+- **stigix-cli Target Controller & Leader Registry (`controller` / `registry` / `leader`)** 🎛️:
+  - `controller status`: View node role (👑 Hybrid Leader vs 🔗 Remote Peer), site name, detected IP, discovery mode, active Leader, and registered peer count.
+  - `controller peers`: List all connected remote branch nodes with IP, capabilities, last heartbeat, and status.
+  - `controller set-leader <ip|url>`: Point node to a central Leader with automatic HTTP handshake testing.
+  - `controller autodiscover`: Revert to Cloudflare dynamic peer autodiscovery.
+  - `controller test <url>`: Test connectivity and latency to a remote Leader.
+  - `controller site-name [name]`: View or update local node site name in the registry.
+  - `controller onboard-command`: Output ready-to-run curl one-liner to onboard remote Linux peer nodes.
+- **stigix-cli Status Enhancement** 📊:
+  - Integrated Controller role and Global Provisioning state directly into the `status` overview card.
+  - Full tab auto-completion support for all new commands and sub-verbs.
+- **Documentation Updates** 📖:
+  - [`docs/UNDERLAY_TOPOLOGY.md`](file:///Users/jsuzanne/Github/stigix/docs/UNDERLAY_TOPOLOGY.md): Comprehensive guide to VyOS chassis architecture, direct port wiring, and link trace inspection.
+  - [`docs/STIGIX_CLI.md`](file:///Users/jsuzanne/Github/stigix/docs/STIGIX_CLI.md): Added reference sections for `controller` and `provision` commands.
+  - [`README.md`](file:///Users/jsuzanne/Github/stigix/README.md): Added Underlay Topology highlights to Features and What's New.
+
+---
+
 ## [v2-dev] - 2026-08-31 — Direct Controller Peer Installation MVP
 
 ### Added

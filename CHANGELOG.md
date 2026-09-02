@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1-patch.42] - 2026-09-02
+### Added / Changed
+- **Underlay Topology & Multi-Router Physical Chassis** 🖧:
+  - **`VyOSRouterNode` Component**: Multi-tier chassis layout on topology canvas with DC/Hub uplinks on top row, Branch/Spoke downlinks on bottom row, and management banner (hostname, management IP, live status, circuit count).
+  - **Direct 1:1 Port Cable Wiring** 🔌: React Flow handles on individual port chips (`vyos-port:ethX`) connect directly to Prisma SD-WAN WAN circuits with animated amber edges.
+  - **Anti-Cable-Crossing Spatial Routing** 📐: Interfaces sorted dynamically by connected site X-coordinates (left-to-right matching DC1, DC2, BR1, BR2, BR3) and link types (INET before MPLS) for straight, parallel cables.
+  - **Full IP CIDR Visibility** 🏷️: Port chips show complete IP CIDR alongside interface name, status LED, site badge, and description.
+  - **Interactive Floating Link Trace Drawer** 🔍: Side-by-side verification comparing Prisma ION circuit parameters, transit CIDR subnet, and VyOS next-hop IP with a one-click button to open the full diagnostics side panel.
+  - **Theme Support** 🌓: Full light and dark mode styling across all chassis cards, port chips, and inspector drawers.
+  - **Dynamic External Cloud Spacing** ☁️: Dynamic router width calculation ensures `cloud:EXTERNAL` is positioned safely without overlapping chassis elements.
+- **stigix-cli Central Global Provisioning (`provision` / `provisioning` / `prov`)** 🌐:
+  - `provision on / off / enable / disable`: Turn Global Provisioning pull mode on or off.
+  - `provision status`: View Global Provisioning state and a table of all 7 configuration bundles (Applications, Probes, SLA, Security Policies, Voice, IoT, Prisma SASE) with published revisions, locally applied revisions, item counts, and pending diffs.
+  - `provision publish [type|all]`: Publish local configurations to all registered peers with change summaries (`+added -removed ~modified`).
+  - `provision rollback <type> <revision>`: Rollback a bundle to an earlier revision and redistribute.
+  - `provision history` & `provision pending`: Audit trail of distributions and list of unpublished local changes.
+- **stigix-cli Target Controller & Leader Registry (`controller` / `registry` / `leader`)** 🎛️:
+  - `controller status`: View node role (👑 Hybrid Leader vs 🔗 Remote Peer), site name, detected IP, discovery mode, active Leader, and registered peer count.
+  - `controller peers`: List all connected remote branch nodes with IP, capabilities, last heartbeat, and status.
+  - `controller set-leader <ip|url>`: Point node to a central Leader with automatic HTTP handshake testing.
+  - `controller autodiscover`: Revert to Cloudflare dynamic peer autodiscovery.
+  - `controller test <url>`: Test connectivity and latency to a remote Leader.
+  - `controller site-name [name]`: View or update local node site name in the registry.
+  - `controller onboard-command`: Output ready-to-run curl one-liner to onboard remote Linux peer nodes.
+- **stigix-cli Status Enhancement** 📊:
+  - Integrated Controller role and Global Provisioning state directly into the `status` overview card.
+  - Full tab auto-completion support for all new commands and sub-verbs.
+- **Documentation Updates** 📖:
+  - [`docs/UNDERLAY_TOPOLOGY.md`](file:///Users/jsuzanne/Github/stigix/docs/UNDERLAY_TOPOLOGY.md), [`docs/STIGIX_CLI.md`](file:///Users/jsuzanne/Github/stigix/docs/STIGIX_CLI.md), and [`README.md`](file:///Users/jsuzanne/Github/stigix/README.md) updated.
+
 ## [v1.4.1-patch.41] - 2026-08-05
 ### Added / Changed
 - **Security.tsx** 🛡️ **Inline EICAR Verdict Badges**: Added `getEicarResult` helper and inline status badges (`✓ Blocked` / `⊗ Allowed` / `⚠ Unreachable`) directly inside each EICAR target card row and custom URL section.
