@@ -1936,6 +1936,12 @@ docker compose restart</pre>
               <li><strong>0–49 [CRITICAL]:</strong> Remote peer unreachable or port blocked by firewall.</li>
             </ul>
           </div></div></div>
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Zero-Touch Auto-Start generate synthetic traffic automatically?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In the Custom Application Creation/Edition Wizard (Step 3), enabling <strong>Zero-Touch Auto-Start Traffic</strong> (<code>startup.startClientWorkload: true</code>) instructs peer nodes across your SD-WAN fabric to automatically begin generating synthetic client sessions upon syncing the configuration bundle from the Leader.</p>
+            <p>This delivers true zero-touch orchestration: central network architects can define an application on the Datacenter Leader, target 50 remote branch offices, publish the revision, and immediately observe live East-West traffic flows and latency statistics without manually interacting with any individual branch dashboard.</p>
+          </div></div></div>
         </div>
 
       </div><!-- /panel-custom-tcp -->

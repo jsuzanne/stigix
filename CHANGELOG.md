@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] - 2026-09-02
+
+### Added / Changed
+- **Zero-Touch Provisioning (ZTP) Client Auto-Start** ⚡: Added an automated `startup.startClientWorkload` toggle in the Custom Application Wizard (Step 3 & 4). When enabled on the central Leader, remote peer branches immediately start generating synthetic client traffic against configured datacenter servers upon syncing or booting without requiring any manual intervention.
+- **Target Capability `custom_app`** 🏷️: Added official `custom_app` capability to Stigix node heartbeat advertisements, merged target synthesis, and Target cards, allowing automatic tagging of nodes capable of hosting and answering Custom TCP workloads.
+- **Interactive On-Demand Target Connection Test** 📡: Added a quick diagnostic test action (`Activity` button) on all target cards in Settings, running real-time multi-protocol diagnostics (ICMP Ping RTT, HTTP Stigix Node detection & site info, and active service reachability) with instant visual badges and notifications.
+- **Documentation & Website Portal Refresh** 🌐: Updated `stigix.io` FAQ and `CUSTOM_TCP_APPS.md` with Zero-Touch Auto-Start architecture, orchestration guidelines, and automated workflow recipes.
+
+---
+
 ## [2.0.2] - 2026-09-02
 
 ### Added / Changed

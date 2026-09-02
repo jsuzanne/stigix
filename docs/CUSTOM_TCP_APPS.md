@@ -203,8 +203,13 @@ Navigate to **Custom Apps** in the top navigation bar to open the Operational Co
 Click **Create Application** (or **Edit** in Settings $\rightarrow$ Custom TCP Apps):
 1. **Identity & Listener**: Define App Name, ID, host TCP port (1024–65535), and optional CIDR allowlists.
 2. **Server Behavior**: Choose simulation mode (`echo`, `fixed_delay`, `random_delay`, `looping_delay`, `drop_response`, `error_response`).
-3. **Client Behavior & Peers**: Configure workload cadence, concurrency per peer, payload size, and remote peer IP addresses.
+3. **Client Behavior, Peers & Zero-Touch Auto-Start**: Configure workload cadence, concurrency per peer, payload size, remote peer IP addresses, and toggle **Zero-Touch Auto-Start** (`startup.startClientWorkload: true`) to automatically generate traffic upon peer synchronization or boot.
 4. **Review & Validate**: Run real-time host port availability test and persist configuration.
+
+### 3. Zero-Touch Provisioning (ZTP) Client Auto-Start
+When deploying applications from a central **Leader** node via Global Provisioning:
+- **Default Behavior (`startup.startClientWorkload: false`)**: Peers pull the application and open their host listeners, leaving client workload in `IDLE` state for manual on-demand triggering.
+- **Auto-Start Enabled (`startup.startClientWorkload: true`)**: As soon as branch peers pull the configuration bundle, the client workload automatically transitions to `RUNNING` and generates continuous synthetic traffic against configured peer servers (e.g. Datacenter hosts) without requiring any manual action on the branch nodes.
 
 ---
 
