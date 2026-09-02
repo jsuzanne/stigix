@@ -3814,8 +3814,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                                <div className="md:col-span-8 space-y-2">
+                            <div className="space-y-4">
+                                <div className="space-y-2">
                                     <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Leader IP / FQDN / URL</label>
                                     <div className="relative group">
                                         <input
@@ -3840,11 +3840,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         <p className="text-[9px] text-text-muted pl-1 font-mono opacity-50">→ {previewControllerUrl(staticLeaderUrl)}</p>
                                     )}
                                 </div>
-                                <div className="md:col-span-4 flex gap-2">
+
+                                <div className="flex items-center justify-end gap-3 pt-1">
+                                    {registryStatus?.is_static_leader && (
+                                        <button
+                                            onClick={() => { setStaticLeaderUrl(''); handleSaveStaticLeader(null); }}
+                                            className="px-3.5 py-2 bg-card hover:bg-red-500/10 border border-border hover:border-red-500/30 rounded-xl text-text-muted hover:text-red-500 transition-all flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest"
+                                            title="Reset to Auto-Discovery"
+                                        >
+                                            <Trash2 size={13} />
+                                            <span>Reset</span>
+                                        </button>
+                                    )}
                                     <button
                                         onClick={handleTestConnectivity}
                                         disabled={isTestingConnectivity || !staticLeaderUrl}
-                                        className="flex-1 bg-card hover:bg-card-hover border border-border rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all hover:border-blue-500/30 disabled:opacity-50 flex items-center justify-center gap-2"
+                                        className="bg-card hover:bg-card-hover border border-border rounded-xl px-5 py-2 text-[10px] font-black uppercase tracking-widest transition-all hover:border-blue-500/30 disabled:opacity-50 flex items-center justify-center gap-2"
                                     >
                                         {isTestingConnectivity ? <RefreshCw className="animate-spin" size={12} /> : <Zap size={12} className="text-blue-500" />}
                                         Test
@@ -3852,19 +3863,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                     <button
                                         onClick={() => handleSaveStaticLeader(staticLeaderUrl)}
                                         disabled={saving || !staticLeaderUrl}
-                                        className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(37,99,235,0.2)] disabled:opacity-50"
+                                        className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-6 py-2 text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(37,99,235,0.2)] disabled:opacity-50 flex items-center justify-center gap-2"
                                     >
                                         {saving ? <RefreshCw size={12} className="animate-spin" /> : 'Save'}
                                     </button>
-                                    {registryStatus?.is_static_leader && (
-                                        <button
-                                            onClick={() => { setStaticLeaderUrl(''); handleSaveStaticLeader(null); }}
-                                            className="p-2.5 bg-card hover:bg-red-500/10 border border-border hover:border-red-500/30 rounded-xl text-text-muted hover:text-red-500 transition-all"
-                                            title="Reset to Auto-Discovery"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    )}
                                 </div>
                             </div>
 
