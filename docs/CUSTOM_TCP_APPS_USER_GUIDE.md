@@ -67,6 +67,10 @@ Chaque instance Stigix (qu'elle soit déployée dans un Datacenter, en Cloud Het
 * **Le Client (Workload Generator)** : Émet des paquets vers les cibles configurées (Peers) à intervalle régulier et calcule les statistiques de performance (RTT minimum, moyen, $p50$, $p95$, maximum, reconnexions).
 * **Protocole Binaire Fiable** : Tous les échanges utilisent un préfixe binaire 4-octets (`UInt32BE`) garantissant qu'aucune trame n'est corrompue par la fragmentation des paquets IP sur les tunnels SD-WAN.
 
+> 💡 **Règle d'or : Qui exécute quoi ?**
+> * **Sur un nœud purement Client (ex: Agence / Branch)** : Le client n'utilise que la section **Client Defaults** et la liste des **Peers**. Le `Server Behavior` configuré sur l'agence reste dormant tant qu'aucun autre nœud ne se connecte à elle.
+> * **Sur le nœud Serveur (ex: Data Center / Hub)** : C'est le `Server Behavior` configuré sur ce serveur distant qui s'exécute pour répondre aux requêtes de l'agence (ex: c'est le DC qui injecte la latence ou les erreurs de base de données).
+
 ---
 
 ## 3. Les 3 Schémas de Déploiement Réseau

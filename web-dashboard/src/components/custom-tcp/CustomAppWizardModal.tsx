@@ -442,6 +442,18 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                     {/* STEP 2: SERVER BEHAVIOR */}
                     {step === 2 && (
                         <div className="space-y-4 animate-fadeIn">
+                            {/* Role Clarification Banner */}
+                            <div className="p-3.5 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex items-start gap-3 text-xs">
+                                <Server size={18} className="text-indigo-600 dark:text-indigo-400 flex-shrink-0 mt-0.5" />
+                                <div>
+                                    <span className="font-bold text-text-primary">Rôle Serveur / Inbound (Réponse aux requêtes reçues)</span>
+                                    <p className="text-text-muted mt-0.5 leading-relaxed">
+                                        Ce comportement s'applique lorsque <strong>ce nœud reçoit</strong> des requêtes sur son port d'écoute (:{formData.listener.port}).
+                                        <em> Si ce nœud agit uniquement comme client émetteur vers un Data Center, ce réglage reste dormant localement (c'est le comportement configuré sur le serveur distant qui sera exécuté).</em>
+                                    </p>
+                                </div>
+                            </div>
+
                             <div>
                                 <label className="block text-xs font-semibold text-text-secondary mb-2">Server Response Simulation Mode</label>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -623,6 +635,17 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                     {/* STEP 3: CLIENT BEHAVIOR & PEERS */}
                     {step === 3 && (
                         <div className="space-y-4 animate-fadeIn">
+                            {/* Role Clarification Banner */}
+                            <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-start gap-3 text-xs">
+                                <Play size={18} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                                <div>
+                                    <span className="font-bold text-text-primary">Rôle Client / Outbound (Génération de charge vers les pairs)</span>
+                                    <p className="text-text-muted mt-0.5 leading-relaxed">
+                                        Ce générateur définit le trafic émis par <strong>ce nœud vers les sites distants (Peers)</strong>. Le comportement de réponse (latence, écho, erreurs) sera celui exécuté par le serveur distant qui reçoit vos requêtes.
+                                    </p>
+                                </div>
+                            </div>
+
                             <div className="p-4 bg-card-secondary/40 border border-border rounded-2xl space-y-4">
                                 <h3 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
                                     <Play size={16} /> Client Workload Generation Defaults

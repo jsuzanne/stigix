@@ -107,7 +107,7 @@ This project is my way to turn all that lab and demo experience into an open-sou
 - **Docker-based** - Pre-built multi-platform images (AMD64 + ARM64).
 - **Export/Import config capability** - to clone appplications, probes, IOT , Vyos configurations
 - **One-Click Upgrade (Beta)** - Built-in maintenance UI to pull latest images and restart services with a single click.
-- **State Persistence** - Per-service toggle (Settings → System Info) to preserve the running state of Traffic, Probes, IoT, and Voice across reboots and upgrades. Each service resumes exactly its pre-reboot state — only services that were running before the restart will come back up.
+- **State Persistence** - Per-service toggle (Settings → State Persistence) to preserve the running state of Traffic, Probes, Custom TCP Apps, IoT, and Voice across reboots and upgrades. Each service resumes exactly its pre-reboot state — only services that were running before the restart will come back up.
 
   
 ### 🔒 Production Ready
