@@ -276,22 +276,20 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
         } finally {
             setIsSaving(false);
         }
-    };
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
-            <div className="bg-[#0b1329] border border-slate-700/80 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden text-slate-100">
+    };    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+            <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden text-text-primary">
                 {/* Header */}
-                <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+                <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-card-secondary/50">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-indigo-400">
+                        <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
                             <Layers size={20} />
                         </div>
                         <div>
-                            <h2 className="text-lg font-bold text-white tracking-wide">
+                            <h2 className="text-lg font-bold text-text-primary tracking-wide">
                                 {editingApp ? `Edit Application: ${editingApp.name}` : 'Create Custom TCP Application'}
                             </h2>
-                            <p className="text-xs text-slate-400">
+                            <p className="text-xs text-text-muted">
                                 Step {step} of 4 — {
                                     step === 1 ? 'Identity & Listener' :
                                     step === 2 ? 'Server Behavior' :
@@ -300,13 +298,13 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                             </p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                    <button onClick={onClose} className="text-text-muted hover:text-text-primary p-1.5 rounded-lg hover:bg-card-hover transition-colors">
                         <X size={20} />
                     </button>
                 </div>
 
                 {/* Stepper Bar */}
-                <div className="grid grid-cols-4 border-b border-slate-800 text-xs font-semibold bg-slate-950/40">
+                <div className="grid grid-cols-4 border-b border-border text-xs font-semibold bg-card-secondary/30">
                     {[
                         { num: 1, label: '1. Identity & Listener' },
                         { num: 2, label: '2. Server Behavior' },
@@ -321,8 +319,8 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                             }}
                             className={`py-3 px-4 text-center border-b-2 transition-all ${
                                 step === s.num
-                                    ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
-                                    : 'border-transparent text-slate-500 hover:text-slate-300'
+                                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-500/5'
+                                    : 'border-transparent text-text-muted hover:text-text-primary'
                             }`}
                         >
                             {s.label}
@@ -337,53 +335,53 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                         <div className="space-y-4 animate-fadeIn">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-300 mb-1">Application Name *</label>
+                                    <label className="block text-xs font-semibold text-text-secondary mb-1.5">Application Name *</label>
                                     <input
                                         type="text"
                                         value={formData.name}
                                         onChange={e => {
-                                            const val = e.target.value;
-                                            setFormData((prev: CustomTcpApplicationConfig) => ({
-                                                ...prev,
-                                                name: val,
-                                                id: prev.id || val.toLowerCase().replace(/[^a-z0-9-_]/g, '-')
-                                            }));
+                                             const val = e.target.value;
+                                             setFormData((prev: CustomTcpApplicationConfig) => ({
+                                                 ...prev,
+                                                 name: val,
+                                                 id: prev.id || val.toLowerCase().replace(/[^a-z0-9-_]/g, '-')
+                                             }));
                                         }}
                                         placeholder="e.g. ERP-TCP, POS-Checkout, DB-Sync"
-                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                        className="w-full bg-card-secondary border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary focus:outline-none focus:border-indigo-500 shadow-sm"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-300 mb-1">Application ID</label>
+                                    <label className="block text-xs font-semibold text-text-secondary mb-1.5">Application ID</label>
                                     <input
                                         type="text"
                                         value={formData.id}
                                         onChange={e => setFormData((prev: CustomTcpApplicationConfig) => ({ ...prev, id: e.target.value.trim() }))}
                                         placeholder="e.g. erp-tcp"
-                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 font-mono focus:outline-none focus:border-indigo-500"
+                                        className="w-full bg-card-secondary border border-border rounded-xl px-3.5 py-2 text-sm text-text-secondary font-mono focus:outline-none focus:border-indigo-500 shadow-sm"
                                     />
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-xs font-medium text-slate-300 mb-1">Description (Optional)</label>
+                                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Description (Optional)</label>
                                 <input
                                     type="text"
                                     value={formData.description || ''}
                                     onChange={e => setFormData((prev: CustomTcpApplicationConfig) => ({ ...prev, description: e.target.value }))}
                                     placeholder="e.g. Core ERP transactional workload between Branch and DC"
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                    className="w-full bg-card-secondary border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary focus:outline-none focus:border-indigo-500 shadow-sm"
                                 />
                             </div>
 
-                            <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-4">
-                                <h3 className="text-sm font-semibold text-indigo-300 flex items-center gap-2">
+                            <div className="p-4 bg-card-secondary/40 border border-border rounded-2xl space-y-4">
+                                <h3 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
                                     <Server size={16} /> Local Host TCP Listener Settings
                                 </h3>
 
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-300 mb-1">TCP Port (Host) *</label>
+                                        <label className="block text-xs font-semibold text-text-secondary mb-1.5">TCP Port (Host) *</label>
                                         <input
                                             type="number"
                                             value={formData.listener.port}
@@ -393,12 +391,12 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                             }))}
                                             min={1024}
                                             max={65535}
-                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-amber-300 font-mono focus:outline-none focus:border-indigo-500"
+                                            className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-amber-600 dark:text-amber-400 font-mono font-bold focus:outline-none focus:border-indigo-500 shadow-sm"
                                         />
-                                        <span className="text-[10px] text-slate-500">Must be non-privileged (1024-65535)</span>
+                                        <span className="text-[10px] text-text-muted mt-1 block">Must be non-privileged (1024-65535)</span>
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-300 mb-1">Bind Address</label>
+                                        <label className="block text-xs font-semibold text-text-secondary mb-1.5">Bind Address</label>
                                         <input
                                             type="text"
                                             value={formData.listener.bindAddress}
@@ -407,11 +405,11 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                 listener: { ...prev.listener, bindAddress: e.target.value.trim() }
                                             }))}
                                             placeholder="0.0.0.0"
-                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
+                                            className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary font-mono focus:outline-none focus:border-indigo-500 shadow-sm"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-300 mb-1">Max Connections</label>
+                                        <label className="block text-xs font-semibold text-text-secondary mb-1.5">Max Connections</label>
                                         <input
                                             type="number"
                                             value={formData.listener.maxConnections}
@@ -421,21 +419,21 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                             }))}
                                             min={1}
                                             max={500}
-                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                            className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary focus:outline-none focus:border-indigo-500 shadow-sm"
                                         />
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-300 mb-1">CIDR Allowlist (Optional)</label>
+                                    <label className="block text-xs font-semibold text-text-secondary mb-1.5">CIDR Allowlist (Optional)</label>
                                     <input
                                         type="text"
                                         value={allowCidrsInput}
                                         onChange={e => handleAllowCidrsChange(e.target.value)}
                                         placeholder="e.g. 10.0.0.0/8, 192.168.0.0/16 (Leave empty for open lab access)"
-                                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
+                                        className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary font-mono focus:outline-none focus:border-indigo-500 shadow-sm"
                                     />
-                                    <span className="text-[10px] text-slate-500">Comma-separated IPv4 subnets or IPs authorized to connect.</span>
+                                    <span className="text-[10px] text-text-muted mt-1 block">Comma-separated IPv4 subnets or IPs authorized to connect.</span>
                                 </div>
                             </div>
                         </div>
@@ -445,7 +443,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                     {step === 2 && (
                         <div className="space-y-4 animate-fadeIn">
                             <div>
-                                <label className="block text-xs font-medium text-slate-300 mb-2">Server Response Simulation Mode</label>
+                                <label className="block text-xs font-semibold text-text-secondary mb-2">Server Response Simulation Mode</label>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                     {[
                                         { id: 'echo', label: 'Echo', desc: 'Replies back with exact payload' },
@@ -464,28 +462,28 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                 ...prev,
                                                 serverBehavior: { ...prev.serverBehavior, mode: m.id as ServerBehaviorMode }
                                             }))}
-                                            className={`p-3 rounded-xl border text-left transition-all ${
+                                            className={`p-3.5 rounded-2xl border text-left transition-all ${
                                                 formData.serverBehavior.mode === m.id
-                                                    ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-md'
-                                                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                                                    ? 'bg-indigo-500/10 border-indigo-500 text-text-primary shadow-sm'
+                                                    : 'bg-card-secondary border-border text-text-muted hover:border-border hover:bg-card-hover'
                                             }`}
                                         >
-                                            <div className="font-semibold text-xs text-indigo-300">{m.label}</div>
-                                            <div className="text-[11px] text-slate-500 mt-1 leading-tight">{m.desc}</div>
+                                            <div className="font-bold text-xs text-indigo-600 dark:text-indigo-400">{m.label}</div>
+                                            <div className="text-[11px] text-text-muted mt-1 leading-tight">{m.desc}</div>
                                         </button>
                                     ))}
                                 </div>
                             </div>
 
                             {/* Mode Specific Parameters */}
-                            <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-4">
-                                <h3 className="text-sm font-semibold text-indigo-300 flex items-center gap-2">
+                            <div className="p-4 bg-card-secondary/40 border border-border rounded-2xl space-y-4">
+                                <h3 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
                                     <Cpu size={16} /> Simulation Parameters ({formData.serverBehavior.mode})
                                 </h3>
 
                                 {formData.serverBehavior.mode === 'fixed_delay' && (
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-300 mb-1">Fixed Delay (ms)</label>
+                                        <label className="block text-xs font-semibold text-text-secondary mb-1.5">Fixed Delay (ms)</label>
                                         <input
                                             type="number"
                                             value={formData.serverBehavior.fixedDelayMs}
@@ -495,7 +493,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                             }))}
                                             min={10}
                                             max={10000}
-                                            className="w-48 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                            className="w-48 bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
                                         />
                                     </div>
                                 )}
@@ -503,7 +501,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                 {formData.serverBehavior.mode === 'random_delay' && (
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-xs font-medium text-slate-300 mb-1">Min Delay (ms)</label>
+                                            <label className="block text-xs font-semibold text-text-secondary mb-1.5">Min Delay (ms)</label>
                                             <input
                                                 type="number"
                                                 value={formData.serverBehavior.randomDelayMinMs}
@@ -511,11 +509,11 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                     ...prev,
                                                     serverBehavior: { ...prev.serverBehavior, randomDelayMinMs: parseInt(e.target.value, 10) || 100 }
                                                 }))}
-                                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                                className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-medium text-slate-300 mb-1">Max Delay (ms)</label>
+                                            <label className="block text-xs font-semibold text-text-secondary mb-1.5">Max Delay (ms)</label>
                                             <input
                                                 type="number"
                                                 value={formData.serverBehavior.randomDelayMaxMs}
@@ -523,7 +521,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                     ...prev,
                                                     serverBehavior: { ...prev.serverBehavior, randomDelayMaxMs: parseInt(e.target.value, 10) || 1000 }
                                                 }))}
-                                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                                className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
                                             />
                                         </div>
                                     </div>
@@ -532,7 +530,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                 {formData.serverBehavior.mode === 'looping_delay' && (
                                     <div className="grid grid-cols-3 gap-4">
                                         <div>
-                                            <label className="block text-xs font-medium text-slate-300 mb-1">Normal Phase (sec)</label>
+                                            <label className="block text-xs font-semibold text-text-secondary mb-1.5">Normal Phase (sec)</label>
                                             <input
                                                 type="number"
                                                 value={formData.serverBehavior.loopingNormalSec}
@@ -540,11 +538,11 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                     ...prev,
                                                     serverBehavior: { ...prev.serverBehavior, loopingNormalSec: parseInt(e.target.value, 10) || 60 }
                                                 }))}
-                                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                                className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-medium text-slate-300 mb-1">Slow Phase (sec)</label>
+                                            <label className="block text-xs font-semibold text-text-secondary mb-1.5">Slow Phase (sec)</label>
                                             <input
                                                 type="number"
                                                 value={formData.serverBehavior.loopingSlowSec}
@@ -552,11 +550,11 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                     ...prev,
                                                     serverBehavior: { ...prev.serverBehavior, loopingSlowSec: parseInt(e.target.value, 10) || 60 }
                                                 }))}
-                                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                                className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-medium text-slate-300 mb-1">Slow Delay (ms)</label>
+                                            <label className="block text-xs font-semibold text-text-secondary mb-1.5">Slow Delay (ms)</label>
                                             <input
                                                 type="number"
                                                 value={formData.serverBehavior.loopingSlowDelayMs}
@@ -564,7 +562,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                     ...prev,
                                                     serverBehavior: { ...prev.serverBehavior, loopingSlowDelayMs: parseInt(e.target.value, 10) || 1500 }
                                                 }))}
-                                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                                className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
                                             />
                                         </div>
                                     </div>
@@ -572,7 +570,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
 
                                 {formData.serverBehavior.mode === 'drop_response' && (
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-300 mb-1">Drop Probability (%)</label>
+                                        <label className="block text-xs font-semibold text-text-secondary mb-1.5">Drop Probability (%)</label>
                                         <input
                                             type="number"
                                             value={formData.serverBehavior.dropProbability}
@@ -582,16 +580,16 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                             }))}
                                             min={1}
                                             max={100}
-                                            className="w-48 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-rose-400 font-bold"
+                                            className="w-48 bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-rose-500 font-bold shadow-sm"
                                         />
-                                        <span className="text-[10px] text-slate-500 block mt-1">Simulates packet/response loss while keeping TCP session open.</span>
+                                        <span className="text-[10px] text-text-muted block mt-1">Simulates packet/response loss while keeping TCP session open.</span>
                                     </div>
                                 )}
 
                                 {formData.serverBehavior.mode === 'error_response' && (
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-xs font-medium text-slate-300 mb-1">Error Probability (%)</label>
+                                            <label className="block text-xs font-semibold text-text-secondary mb-1.5">Error Probability (%)</label>
                                             <input
                                                 type="number"
                                                 value={formData.serverBehavior.errorProbability}
@@ -601,11 +599,11 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                 }))}
                                                 min={1}
                                                 max={100}
-                                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-rose-400 font-bold"
+                                                className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-rose-500 font-bold shadow-sm"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-medium text-slate-300 mb-1">Error Code</label>
+                                            <label className="block text-xs font-semibold text-text-secondary mb-1.5">Error Code</label>
                                             <input
                                                 type="text"
                                                 value={formData.serverBehavior.errorCode || 'SIMULATED_DB_ERROR'}
@@ -613,7 +611,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                     ...prev,
                                                     serverBehavior: { ...prev.serverBehavior, errorCode: e.target.value }
                                                 }))}
-                                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono"
+                                                className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary font-mono shadow-sm"
                                             />
                                         </div>
                                     </div>
@@ -625,21 +623,21 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                     {/* STEP 3: CLIENT BEHAVIOR & PEERS */}
                     {step === 3 && (
                         <div className="space-y-4 animate-fadeIn">
-                            <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-4">
-                                <h3 className="text-sm font-semibold text-indigo-300 flex items-center gap-2">
+                            <div className="p-4 bg-card-secondary/40 border border-border rounded-2xl space-y-4">
+                                <h3 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
                                     <Play size={16} /> Client Workload Generation Defaults
                                 </h3>
 
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-300 mb-1">Workload Mode</label>
+                                        <label className="block text-xs font-semibold text-text-secondary mb-1.5">Workload Mode</label>
                                         <select
                                             value={formData.clientDefaults.mode}
                                             onChange={e => setFormData((prev: CustomTcpApplicationConfig) => ({
                                                 ...prev,
                                                 clientDefaults: { ...prev.clientDefaults, mode: e.target.value as ClientWorkloadMode }
                                             }))}
-                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                            className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
                                         >
                                             <option value="persistent_request_reply">Persistent Sessions</option>
                                             <option value="transactional">Transactional</option>
@@ -649,7 +647,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-300 mb-1">Connections / Peer</label>
+                                        <label className="block text-xs font-semibold text-text-secondary mb-1.5">Connections / Peer</label>
                                         <input
                                             type="number"
                                             value={formData.clientDefaults.connectionsPerPeer}
@@ -659,11 +657,11 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                             }))}
                                             min={1}
                                             max={50}
-                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                            className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-300 mb-1">Cadence / Interval (ms)</label>
+                                        <label className="block text-xs font-semibold text-text-secondary mb-1.5">Cadence / Interval (ms)</label>
                                         <input
                                             type="number"
                                             value={formData.clientDefaults.intervalMs}
@@ -673,11 +671,11 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                             }))}
                                             min={50}
                                             step={100}
-                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                            className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-300 mb-1">Payload Size (Bytes)</label>
+                                        <label className="block text-xs font-semibold text-text-secondary mb-1.5">Payload Size (Bytes)</label>
                                         <input
                                             type="number"
                                             value={formData.clientDefaults.payloadBytes}
@@ -687,30 +685,30 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                             }))}
                                             min={64}
                                             max={1048576}
-                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                            className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
                                         />
                                     </div>
                                 </div>
                             </div>
 
                             {/* Peers Table */}
-                            <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-4">
-                                <h3 className="text-sm font-semibold text-indigo-300 flex items-center justify-between">
+                            <div className="p-4 bg-card-secondary/40 border border-border rounded-2xl space-y-4">
+                                <h3 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 flex items-center justify-between">
                                     <span className="flex items-center gap-2"><Globe size={16} /> Remote Peer Stigix Instances ({formData.peers.length})</span>
                                 </h3>
 
                                 {/* Quick Pick Discovered Stigix Endpoints */}
-                                <div className="p-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl space-y-2">
+                                <div className="p-3.5 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl space-y-2.5">
                                     <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-300">
-                                            <Cpu size={14} className="text-indigo-400" />
+                                        <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                                            <Cpu size={14} className="text-indigo-500" />
                                             <span>Discovered Stigix Endpoints ({discoveredTargets.filter(t => !t.isLocal).length})</span>
                                         </div>
                                         {discoveredTargets.filter(t => !t.isLocal).length > 0 && (
                                             <button
                                                 type="button"
                                                 onClick={handleAddAllDiscovered}
-                                                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all shadow-sm"
+                                                className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[11px] font-bold flex items-center gap-1 transition-all shadow-sm"
                                             >
                                                 <Plus size={12} /> Add All Discovered Nodes
                                             </button>
@@ -725,75 +723,75 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                     type="button"
                                                     onClick={() => handleAddDiscoveredTarget(t)}
                                                     disabled={isAdded}
-                                                    className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 border transition-all ${
+                                                    className={`px-3 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1.5 border transition-all ${
                                                         isAdded
-                                                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 opacity-60 cursor-default'
-                                                            : 'bg-slate-900 hover:bg-indigo-900/50 border-slate-700 hover:border-indigo-500 text-slate-200 hover:text-white'
+                                                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 opacity-60 cursor-default'
+                                                            : 'bg-card hover:bg-indigo-500/10 border-border hover:border-indigo-500 text-text-secondary hover:text-text-primary shadow-sm'
                                                     }`}
                                                 >
-                                                    {isAdded ? <CheckCircle2 size={12} className="text-emerald-400" /> : <Plus size={12} className="text-indigo-400" />}
+                                                    {isAdded ? <CheckCircle2 size={12} className="text-emerald-500" /> : <Plus size={12} className="text-indigo-500" />}
                                                     <span>{t.name || t.host}</span>
-                                                    <span className="text-[10px] text-slate-400 font-mono">({t.host})</span>
+                                                    <span className="text-[10px] text-text-muted font-mono">({t.host})</span>
                                                 </button>
                                             );
                                         })}
                                         {discoveredTargets.filter(t => !t.isLocal).length === 0 && (
-                                            <span className="text-xs text-slate-500 italic">No remote Stigix targets discovered yet. Use manual input below.</span>
+                                            <span className="text-xs text-text-muted italic">No remote Stigix targets discovered yet. Use manual input below.</span>
                                         )}
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5 bg-card-secondary/60 p-3 rounded-xl border border-border">
                                     <input
                                         type="text"
                                         value={newPeer.name}
                                         onChange={e => setNewPeer((prev: Partial<PeerConfig>) => ({ ...prev, name: e.target.value, siteName: prev.siteName || e.target.value }))}
                                         placeholder="Peer Name (e.g. DC-LYON)"
-                                        className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+                                        className="bg-card border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary shadow-sm"
                                     />
                                     <input
                                         type="text"
                                         value={newPeer.host}
                                         onChange={e => setNewPeer((prev: Partial<PeerConfig>) => ({ ...prev, host: e.target.value }))}
                                         placeholder="Host IP / FQDN (e.g. 10.20.30.40)"
-                                        className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+                                        className="bg-card border border-border rounded-lg px-3 py-1.5 text-xs text-text-primary shadow-sm"
                                     />
                                     <input
                                         type="number"
                                         value={newPeer.port}
                                         onChange={e => setNewPeer((prev: Partial<PeerConfig>) => ({ ...prev, port: parseInt(e.target.value, 10) || 8443 }))}
                                         placeholder="Port (8443)"
-                                        className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-amber-300 font-mono"
+                                        className="bg-card border border-border rounded-lg px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400 font-mono font-bold shadow-sm"
                                     />
                                     <button
                                         type="button"
                                         onClick={handleAddPeer}
                                         disabled={!newPeer.name || !newPeer.host}
-                                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
                                     >
                                         <Plus size={14} /> Add Peer
                                     </button>
                                 </div>
 
                                 {formData.peers.length === 0 ? (
-                                    <div className="text-center py-4 text-xs text-slate-500 italic">
+                                    <div className="text-center py-4 text-xs text-text-muted italic">
                                         No remote peers declared yet. Application will operate in Server-only mode until peers are added.
                                     </div>
                                 ) : (
-                                    <div className="divide-y divide-slate-800 border border-slate-800 rounded-lg overflow-hidden">
+                                    <div className="divide-y divide-border border border-border rounded-xl overflow-hidden bg-card-secondary/20">
                                         {formData.peers.map((p: PeerConfig) => (
-                                            <div key={p.id} className="p-3 flex items-center justify-between bg-slate-900/40 text-xs">
+                                            <div key={p.id} className="p-3 flex items-center justify-between hover:bg-card-secondary/40 transition-colors text-xs">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                                                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                                                     <div>
-                                                        <div className="font-semibold text-white">{p.name} <span className="text-slate-500 font-mono text-[10px]">({p.siteName})</span></div>
-                                                        <div className="text-slate-400 font-mono text-[11px]">{p.host}:{p.port}</div>
+                                                        <div className="font-semibold text-text-primary">{p.name} <span className="text-text-muted font-mono text-[10px]">({p.siteName})</span></div>
+                                                        <div className="text-text-secondary font-mono text-[11px]">{p.host}:{p.port}</div>
                                                     </div>
                                                 </div>
                                                 <button
                                                     type="button"
                                                     onClick={() => handleRemovePeer(p.id)}
-                                                    className="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800 transition-colors"
+                                                    className="text-text-muted hover:text-rose-500 p-1.5 rounded-lg hover:bg-card-hover transition-colors"
                                                 >
                                                     <Trash2 size={14} />
                                                 </button>
@@ -808,46 +806,46 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                     {/* STEP 4: REVIEW & VALIDATE */}
                     {step === 4 && (
                         <div className="space-y-4 animate-fadeIn">
-                            <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-4">
-                                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <div className="p-4 bg-card-secondary/40 border border-border rounded-2xl space-y-4">
+                                <div className="flex items-center justify-between border-b border-border pb-3">
                                     <div>
-                                        <h3 className="text-base font-bold text-white">{formData.name || 'Unnamed Application'}</h3>
-                                        <p className="text-xs text-slate-400 font-mono">ID: {formData.id} | TCP Port: :{formData.listener.port}</p>
+                                        <h3 className="text-base font-bold text-text-primary">{formData.name || 'Unnamed Application'}</h3>
+                                        <p className="text-xs text-text-muted font-mono">ID: {formData.id} | TCP Port: :{formData.listener.port}</p>
                                     </div>
                                     <button
                                         type="button"
                                         onClick={runValidation}
                                         disabled={isValidating}
-                                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                                        className="px-3.5 py-2 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
                                     >
                                         <RefreshCw size={14} className={isValidating ? 'animate-spin' : ''} /> Test Port Availability
                                     </button>
                                 </div>
 
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                                        <div className="text-slate-500">Server Mode</div>
-                                        <div className="font-bold text-indigo-400 mt-1 capitalize">{formData.serverBehavior.mode.replace('_', ' ')}</div>
+                                    <div className="bg-card-secondary/60 p-3.5 rounded-xl border border-border">
+                                        <div className="text-text-muted">Server Mode</div>
+                                        <div className="font-bold text-indigo-600 dark:text-indigo-400 mt-1 capitalize">{formData.serverBehavior.mode.replace('_', ' ')}</div>
                                     </div>
-                                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                                        <div className="text-slate-500">Client Workload</div>
-                                        <div className="font-bold text-emerald-400 mt-1 capitalize">{formData.clientDefaults.mode.replace(/_/g, ' ')}</div>
+                                    <div className="bg-card-secondary/60 p-3.5 rounded-xl border border-border">
+                                        <div className="text-text-muted">Client Workload</div>
+                                        <div className="font-bold text-emerald-600 dark:text-emerald-400 mt-1 capitalize">{formData.clientDefaults.mode.replace(/_/g, ' ')}</div>
                                     </div>
-                                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                                        <div className="text-slate-500">Configured Peers</div>
-                                        <div className="font-bold text-white mt-1">{formData.peers.length} remote nodes</div>
+                                    <div className="bg-card-secondary/60 p-3.5 rounded-xl border border-border">
+                                        <div className="text-text-muted">Configured Peers</div>
+                                        <div className="font-bold text-text-primary mt-1">{formData.peers.length} remote nodes</div>
                                     </div>
-                                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                                        <div className="text-slate-500">Host Port Status</div>
+                                    <div className="bg-card-secondary/60 p-3.5 rounded-xl border border-border">
+                                        <div className="text-text-muted">Host Port Status</div>
                                         <div className="font-bold mt-1">
                                             {isCurrentAppPort ? (
-                                                <span className="text-cyan-400 flex items-center gap-1"><CheckCircle2 size={13} /> Active (Live Update)</span>
+                                                <span className="text-cyan-600 dark:text-cyan-400 flex items-center gap-1"><CheckCircle2 size={13} /> Active (Live Update)</span>
                                             ) : portAvailable === true ? (
-                                                <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 size={13} /> Available</span>
+                                                <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><CheckCircle2 size={13} /> Available</span>
                                             ) : portAvailable === false ? (
-                                                <span className="text-rose-400 flex items-center gap-1"><AlertTriangle size={13} /> Port Occupied</span>
+                                                <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1"><AlertTriangle size={13} /> Port Occupied</span>
                                             ) : (
-                                                <span className="text-slate-400">Untested</span>
+                                                <span className="text-text-muted">Untested</span>
                                             )}
                                         </div>
                                     </div>
@@ -855,7 +853,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
 
                                 {/* Errors & Warnings Display */}
                                 {validationErrors.length > 0 && (
-                                    <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-rose-300 text-xs space-y-1">
+                                    <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-600 dark:text-rose-300 text-xs space-y-1">
                                         <div className="font-bold flex items-center gap-1.5"><AlertTriangle size={14} /> Validation Errors:</div>
                                         {validationErrors.map((e, idx) => (
                                             <div key={idx} className="ml-5 list-disc">• {e}</div>
@@ -864,7 +862,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                 )}
 
                                 {validationWarnings.length > 0 && (
-                                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 text-xs space-y-1">
+                                    <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-600 dark:text-amber-300 text-xs space-y-1">
                                         <div className="font-bold flex items-center gap-1.5"><HelpCircle size={14} /> Warnings:</div>
                                         {validationWarnings.map((w, idx) => (
                                             <div key={idx} className="ml-5 list-disc">• {w}</div>
@@ -877,12 +875,12 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                 </div>
 
                 {/* Footer Controls */}
-                <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-between bg-slate-900/50">
+                <div className="px-6 py-4 border-t border-border flex items-center justify-between bg-card-secondary/50">
                     <button
                         type="button"
                         onClick={() => setStep(prev => Math.max(1, prev - 1) as any)}
                         disabled={step === 1}
-                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 rounded-lg text-xs font-semibold transition-colors"
+                        className="px-4 py-2 bg-card-secondary hover:bg-card-hover disabled:opacity-30 text-text-secondary rounded-xl text-xs font-semibold border border-border transition-colors"
                     >
                         Back
                     </button>
@@ -895,7 +893,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                     if (step === 3) runValidation();
                                     setStep(prev => Math.min(4, prev + 1) as any);
                                 }}
-                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-colors"
+                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm"
                             >
                                 Next Step
                             </button>
@@ -904,7 +902,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                 type="button"
                                 onClick={handleFinish}
                                 disabled={isSaving || validationErrors.length > 0}
-                                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors shadow-lg shadow-emerald-600/20"
+                                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors shadow-sm"
                             >
                                 {isSaving ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                                 {editingApp ? 'Save Changes' : 'Create Application'}
