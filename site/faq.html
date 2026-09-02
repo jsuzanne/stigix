@@ -1978,6 +1978,30 @@ docker compose restart</pre>
         </div>
 
         <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the polling frequency and how does pull-mode sync operate?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Pull-mode synchronization operates on two synchronized cadences:</p>
+            <ul>
+              <li><strong>Adaptive Heartbeat Sync (Every 60s):</strong> Connected branch peers query the Leader's <code>/provisioning/manifest</code> endpoint at each heartbeat cycle. If a revision or checksum mismatch is detected, the peer pulls and hot-applies only the changed bundle.</li>
+              <li><strong>Instant On-Demand Sync (0s):</strong> Clicking <strong>SYNC NOW</strong> in <strong>Settings &rarr; Central Global Provisioning</strong> (or running <code>stigix-cli provision sync</code>) immediately triggers an out-of-band pull without waiting for the background timer.</li>
+              <li><strong>Container Boot / Restart:</strong> When any branch node boots up, it pulls the latest published revisions from the Leader immediately during startup.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Stigix guarantee bundle integrity and prevent sync corruption?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Every published revision includes an atomic <strong>SHA-256 cryptographic checksum</strong> generated over the normalized payload. When a branch peer pulls a bundle:</p>
+            <ul>
+              <li>It verifies the SHA-256 hash before applying the configuration to disk.</li>
+              <li>Hot-reload engines update in-memory state and disk files atomically.</li>
+              <li>If a checksum mismatch occurs, the peer safely rejects the corrupted payload and retains its active configuration, reporting an error state back to the Leader.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Zero-Touch Direct Controller Onboarding work for remote branch nodes?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p>To join a remote Linux box, VM, or Raspberry Pi to a Stigix Leader, run the one-line onboarding command on the remote host:</p>
@@ -2040,9 +2064,17 @@ tabBtns.forEach(btn => {
   btn.addEventListener('click', () => {
     const t = btn.dataset.tab;
     tabBtns.forEach(b => { b.classList.remove('is-active'); b.setAttribute('aria-selected','false'); });
-    panels.forEach(p  => p.classList.remove('is-active'));
+    panels.forEach(p  => {
+      p.classList.remove('is-active');
+      p.style.display = '';
+    });
     btn.classList.add('is-active'); btn.setAttribute('aria-selected','true');
-    document.getElementById('panel-'+t).classList.add('is-active');
+    const targetPanel = document.getElementById('panel-'+t);
+    if (targetPanel) {
+      targetPanel.classList.add('is-active');
+      targetPanel.style.display = '';
+      targetPanel.querySelectorAll('.faq-item').forEach(item => { item.style.display = ''; });
+    }
   });
 });
 document.querySelectorAll('.faq-item__btn').forEach(btn => {
