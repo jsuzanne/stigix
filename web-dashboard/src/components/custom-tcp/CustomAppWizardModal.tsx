@@ -88,7 +88,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
     });
 
     const [allowCidrsInput, setAllowCidrsInput] = useState('');
-    const [discoveredTargets, setDiscoveredTargets] = useState<Array<{ id: string; name: string; host: string; isLocal?: boolean }>>([]);
+    const [discoveredTargets, setDiscoveredTargets] = useState<Array<{ id: string; name: string; host: string; isLocal?: boolean; capabilities?: any }>>([]);
     const [newPeer, setNewPeer] = useState<Partial<PeerConfig>>({
         name: '',
         siteName: '',
@@ -740,6 +740,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                     <div className="flex flex-wrap gap-1.5 pt-1">
                                         {discoveredTargets.filter(t => !t.isLocal).map(t => {
                                             const isAdded = formData.peers.some(p => p.host === t.host && p.port === (formData.listener.port || 8443));
+                                            const hasCustomApp = t.capabilities?.custom_app !== false;
                                             return (
                                                 <button
                                                     key={t.id || t.host}
@@ -755,6 +756,11 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                     {isAdded ? <CheckCircle2 size={12} className="text-emerald-500" /> : <Plus size={12} className="text-indigo-500" />}
                                                     <span>{t.name || t.host}</span>
                                                     <span className="text-[10px] text-text-muted font-mono">({t.host})</span>
+                                                    {hasCustomApp && (
+                                                        <span className="px-1 py-0.2 rounded text-[7.5px] font-black uppercase tracking-widest bg-teal-500/10 text-teal-500 border border-teal-500/20 ml-0.5">
+                                                            TCP
+                                                        </span>
+                                                    )}
                                                 </button>
                                             );
                                         })}

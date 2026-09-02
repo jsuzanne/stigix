@@ -7,6 +7,7 @@
 export type TargetCapability = {
     voice: boolean; // UDP echo on ports.voice (default 6100)
     convergence: boolean; // UDP echo on ports.convergence (default 6200)
+    custom_app?: boolean; // Custom TCP Inter-Site Applications
     xfr: boolean; // iperf3/xfr on ports.xfr (default 5201)
     security: boolean; // HTTP app-sim / EICAR on ports.http (default 8082)
     connectivity: boolean; // Generic HTTP/PING/DNS connectivity probe

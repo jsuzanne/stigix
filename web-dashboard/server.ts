@@ -4666,6 +4666,113 @@ app.delete('/api/targets/:id', authenticateToken, (req, res) => {
     }
 });
 
+/** POST /api/targets/:id/test or POST /api/targets/test — on-demand multi-protocol target diagnostic */
+app.post(['/api/targets/:id/test', '/api/targets/test'], authenticateToken, async (req, res) => {
+    try {
+        const id = req.params.id;
+        const hostParam = req.body?.host;
+        let target: any = null;
+
+        if (id) {
+            const allTargets = targetsManager.getMergedTargets();
+            target = allTargets.find(t => t.id === id);
+        }
+        if (!target && hostParam) {
+            const allTargets = targetsManager.getMergedTargets();
+            target = allTargets.find(t => t.host.toLowerCase().trim() === hostParam.toLowerCase().trim()) || {
+                id: 'custom',
+                name: hostParam,
+                host: hostParam
+            };
+        }
+
+        if (!target) {
+            return res.status(404).json({ error: 'Target not found' });
+        }
+
+        const targetHost = target.host.trim();
+        const convPort = target.ports?.convergence || 6200;
+
+        // 1. ICMP Ping probe (with timeout)
+        const pingPromise = new Promise<{ reachable: boolean; rtt_ms?: number }>((resolve) => {
+            exec(`ping -c 2 -W 1 "${targetHost}"`, { timeout: 2500 }, (err, stdout) => {
+                if (err || !stdout) return resolve({ reachable: false });
+                const match = stdout.match(/(?:avg|min\/avg\/max[^\/]*)\s*=\s*[^\/]+\/([0-9.]+)/i);
+                const rtt = match ? parseFloat(match[1]) : undefined;
+                resolve({ reachable: true, rtt_ms: rtt });
+            });
+        });
+
+        // 2. HTTP Stigix Node Info probe
+        const httpPromise = (async () => {
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 1500);
+                const resp = await fetch(`http://${targetHost}:8080/api/version`, { signal: controller.signal });
+                clearTimeout(timeout);
+                if (resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    return { reachable: true, isStigix: true, version: data.version || data.current, siteName: data.siteName || data.site };
+                }
+                return { reachable: true, isStigix: false, status: resp.status };
+            } catch {
+                return { reachable: false, isStigix: false };
+            }
+        })();
+
+        // 3. UDP Failover / Convergence probe
+        const udpPromise = new Promise<boolean>((resolve) => {
+            const client = dgram.createSocket('udp4');
+            let answered = false;
+            client.on('message', () => { if (!answered) { answered = true; client.close(); resolve(true); } });
+            client.on('error', () => { if (!answered) { answered = true; client.close(); resolve(false); } });
+            const payload = Buffer.from(`CONV:PING:DiagnosticTest:1:${Date.now()}`);
+            client.send(payload, convPort, targetHost, (err) => {
+                if (err && !answered) { answered = true; client.close(); resolve(false); }
+            });
+            setTimeout(() => { if (!answered) { answered = true; client.close(); resolve(false); } }, 1200);
+        });
+
+        // 4. TCP Port probe (Custom App default :8443 / :8083)
+        const tcpPromise = new Promise<boolean>((resolve) => {
+            const sock = new net.Socket();
+            sock.setTimeout(1200);
+            sock.on('connect', () => { sock.destroy(); resolve(true); });
+            sock.on('error', () => { sock.destroy(); resolve(false); });
+            sock.on('timeout', () => { sock.destroy(); resolve(false); });
+            sock.connect(8443, targetHost);
+        });
+
+        const [pingRes, httpRes, udpRes, tcpRes] = await Promise.all([
+            pingPromise,
+            httpPromise,
+            udpPromise,
+            tcpPromise
+        ]);
+
+        const overallReachable = pingRes.reachable || httpRes.reachable || udpRes || tcpRes;
+
+        res.json({
+            success: true,
+            target: {
+                id: target.id,
+                name: target.name,
+                host: targetHost
+            },
+            reachable: overallReachable,
+            ping: pingRes,
+            http: httpRes,
+            services: {
+                convergence: udpRes,
+                custom_tcp: tcpRes
+            },
+            timestamp: new Date().toISOString()
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to test target', detail: e.message });
+    }
+});
+
 app.get('/api/icons', async (req, res) => {
     const domain = req.query.domain as string;
     if (!domain) return res.status(400).json({ error: 'Domain required' });

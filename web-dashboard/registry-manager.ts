@@ -481,9 +481,9 @@ export class RegistryManager {
         this.heartbeatInterval = setInterval(() => this.performHeartbeat(), heartbeatMs);
     }
 
-    public getNodeCapabilities(): { voice: boolean; convergence: boolean; xfr: boolean; security: boolean; connectivity: boolean } {
+    public getNodeCapabilities(): { voice: boolean; convergence: boolean; custom_app: boolean; xfr: boolean; security: boolean; connectivity: boolean } {
         const file = path.join(this.configDir, 'node-capabilities.json');
-        const defaultCaps = { voice: true, convergence: true, xfr: true, security: true, connectivity: true };
+        const defaultCaps = { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true };
         try {
             if (fs.existsSync(file)) {
                 const data = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -493,7 +493,7 @@ export class RegistryManager {
         return defaultCaps;
     }
 
-    public async setNodeCapabilities(caps: Partial<{ voice: boolean; convergence: boolean; xfr: boolean; security: boolean; connectivity: boolean }>): Promise<void> {
+    public async setNodeCapabilities(caps: Partial<{ voice: boolean; convergence: boolean; custom_app: boolean; xfr: boolean; security: boolean; connectivity: boolean }>): Promise<void> {
         const file = path.join(this.configDir, 'node-capabilities.json');
         const current = this.getNodeCapabilities();
         const updated = { ...current, ...caps };

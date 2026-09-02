@@ -87,6 +87,7 @@ interface UpgradeStatus {
 type TargetCapability = {
     voice: boolean;
     convergence: boolean;
+    custom_app?: boolean;
     xfr: boolean;
     security: boolean;
     connectivity: boolean;
@@ -126,7 +127,7 @@ interface TargetServiceStatus {
 }
 
 const EMPTY_TARGET_CAPS: TargetCapability = {
-    voice: true, convergence: true, xfr: true, security: true, connectivity: true,
+    voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true,
 };
 
 const EMPTY_TARGET: Omit<TargetDefinition, 'id' | 'source'> = {
@@ -509,6 +510,48 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const authHeaders = {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
+    };
+
+    const [testingTargetId, setTestingTargetId] = useState<string | null>(null);
+    const [targetTestResults, setTargetTestResults] = useState<Record<string, any>>({});
+
+    const handleTestTarget = async (t: TargetDefinition) => {
+        setTestingTargetId(t.id);
+        setTargetReachability(prev => ({ ...prev, [t.id]: 'loading' }));
+        try {
+            const res = await fetch(`/api/targets/${encodeURIComponent(t.id)}/test`, {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ host: t.host })
+            });
+            const data = await res.json();
+            setTargetTestResults(prev => ({ ...prev, [t.id]: data }));
+            setTargetReachability(prev => ({ ...prev, [t.id]: !!data.reachable }));
+
+            if (data.reachable) {
+                const parts: string[] = [];
+                if (data.ping?.rtt_ms !== undefined) parts.push(`⚡ RTT: ${data.ping.rtt_ms.toFixed(1)}ms`);
+                if (data.http?.isStigix) parts.push(`📡 Stigix Node (${data.http.siteName || t.name} v${data.http.version || '2.0.2'})`);
+                else if (data.http?.reachable) parts.push(`🌐 HTTP 200 OK`);
+                if (data.services?.convergence) parts.push(`🔀 Failover OK`);
+                if (data.services?.custom_tcp) parts.push(`🔄 TCP Apps OK`);
+
+                toast.success(
+                    `Target ${t.name} (${t.host}) is REACHABLE!\n${parts.join(' • ')}`,
+                    { duration: 5000 }
+                );
+            } else {
+                toast.error(
+                    `Target ${t.name} (${t.host}) is UNREACHABLE (Timeout / Refused)`,
+                    { duration: 5000 }
+                );
+            }
+        } catch (err: any) {
+            setTargetReachability(prev => ({ ...prev, [t.id]: false }));
+            toast.error(`Test failed for ${t.name}: ${err.message}`);
+        } finally {
+            setTestingTargetId(null);
+        }
     };
 
     const [cloudScenarios, setCloudScenarios] = useState<any[]>([]);
@@ -1644,6 +1687,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const CAP_LABELS: { key: keyof TargetCapability; label: string; color: string }[] = [
         { key: 'voice', label: 'Voice', color: 'blue' },
         { key: 'convergence', label: 'Failover', color: 'purple' },
+        { key: 'custom_app', label: 'Custom Apps', color: 'teal' },
         { key: 'xfr', label: 'Speedtest', color: 'cyan' },
         { key: 'security', label: 'Security', color: 'red' },
         { key: 'connectivity', label: 'Connectivity', color: 'green' },
@@ -4665,7 +4709,21 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                 </span>
                                             )}
                                         </div>
-                                        <div className="text-[10px] text-text-muted font-mono tracking-tighter opacity-70">{t.host}</div>
+                                        <div className="text-[10px] text-text-muted font-mono tracking-tighter opacity-70 flex items-center gap-2">
+                                            <span>{t.host}</span>
+                                            {targetTestResults[t.id] && (
+                                                <span className={cn(
+                                                    "text-[9px] font-mono px-1.5 py-0.2 rounded border font-bold",
+                                                    targetTestResults[t.id].reachable
+                                                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                                        : "bg-red-500/10 text-red-400 border-red-500/20"
+                                                )}>
+                                                    {targetTestResults[t.id].reachable
+                                                        ? `${targetTestResults[t.id].ping?.rtt_ms !== undefined ? `${targetTestResults[t.id].ping.rtt_ms.toFixed(1)}ms` : 'Reachable'}${targetTestResults[t.id].http?.isStigix ? ` • v${targetTestResults[t.id].http.version}` : ''}`
+                                                        : 'Unreachable'}
+                                                </span>
+                                            )}
+                                        </div>
                                         <div className="flex flex-wrap gap-1 mt-1.5">
                                             {CAP_LABELS.filter(c => t.capabilities[c.key]).map(({ key, label, color }) => (
                                                 <span key={key} className={`px-1.5 py-0.5 rounded text-[8px] font-black tracking-widest bg-${color}-500/10 text-${color}-500 border border-${color}-500/20`}>
@@ -4677,6 +4735,19 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                 </div>
                                 <div className="flex gap-1.5 px-2 shrink-0">
                                         <>
+                                            <button
+                                                onClick={() => handleTestTarget(t)}
+                                                disabled={testingTargetId === t.id}
+                                                className={cn(
+                                                    "p-2 rounded-xl transition-all",
+                                                    testingTargetId === t.id
+                                                        ? "text-amber-400 bg-amber-500/10"
+                                                        : "text-text-muted hover:text-amber-400 hover:bg-amber-500/10"
+                                                )}
+                                                title="Test Target Reachability & Services"
+                                            >
+                                                {testingTargetId === t.id ? <RefreshCw size={14} className="animate-spin" /> : <Activity size={14} />}
+                                            </button>
                                             <button
                                                 onClick={() => toggleTargetEnabled(t)}
                                                 className={cn(

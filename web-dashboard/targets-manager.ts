@@ -23,6 +23,7 @@ import { TargetDefinition, TargetCapability } from './src/types/targets.js';
 const EMPTY_CAPS: TargetCapability = {
     voice: false,
     convergence: false,
+    custom_app: false,
     xfr: false,
     security: false,
     connectivity: false,
@@ -375,6 +376,7 @@ export class TargetsManager {
             capabilities: {
                 voice: !!p.capabilities?.voice,
                 convergence: !!p.capabilities?.convergence,
+                custom_app: p.capabilities?.custom_app !== undefined ? !!p.capabilities?.custom_app : true,
                 xfr: !!p.capabilities?.xfr,
                 security: !!p.capabilities?.security,
                 connectivity: !!p.capabilities?.connectivity,
@@ -395,7 +397,7 @@ export class TargetsManager {
 
         const ownCaps = typeof this.registryManager.getNodeCapabilities === 'function' 
             ? this.registryManager.getNodeCapabilities() 
-            : { voice: true, convergence: true, xfr: true, security: true, connectivity: true };
+            : { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true };
 
         let selfTarget: TargetDefinition | null = null;
         if (ownSiteName && ownIp && ownIp !== '127.0.0.1') {
