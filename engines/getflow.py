@@ -1243,7 +1243,17 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                             op_st = op_ip_map.get((el_id, intf.get('name')), {})
                             op_ips = op_st.get('ips', []) if isinstance(op_st, dict) else op_st
                             if op_ips:
-                                wan_ip = op_ips[0].split('/')[0]
+                                raw_op_ip = op_ips[0]
+                                if '/' in raw_op_ip:
+                                    # Operational status includes CIDR — preserve it for underlay matching
+                                    try:
+                                        op_iface = ipaddress.IPv4Interface(raw_op_ip)
+                                        wan_ip = str(op_iface.ip)
+                                        wan_network = str(op_iface.network)
+                                    except Exception:
+                                        wan_ip = raw_op_ip.split('/')[0]
+                                else:
+                                    wan_ip = raw_op_ip
                             else:
                                 wan_ip = 'DHCP (Lease Pending)' if cfg_type == 'dhcp' else 'PPPoE (Lease Pending)'
                         break
@@ -1323,6 +1333,36 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                             'debug_peer_ip': vlink_peer_ip or 'N/A',
                         })
 
+                # Normalize WAN IP/CIDR for underlay resolver (additive fields, do not break existing contract)
+                wan_ip_cidr = None
+                wan_ip_only = None
+                wan_network_cidr = None
+                wan_ip_type = 'unknown'
+                is_dhcp_pending = isinstance(wan_ip, str) and ('Pending' in wan_ip or 'Lease' in wan_ip)
+
+                if wan_ip and not is_dhcp_pending:
+                    if wan_network:
+                        # We have both IP and network (static or DHCP with CIDR from operational status)
+                        try:
+                            prefix_len = wan_network.split('/')[1] if '/' in wan_network else None
+                            if prefix_len:
+                                iface_obj = ipaddress.IPv4Interface(f"{wan_ip}/{prefix_len}")
+                                wan_ip_cidr = str(iface_obj)           # "192.168.190.1/24"
+                                wan_ip_only = str(iface_obj.ip)        # "192.168.190.1"
+                                wan_network_cidr = str(iface_obj.network)  # "192.168.190.0/24"
+                                wan_ip_type = 'static_with_cidr'
+                        except Exception:
+                            pass
+                    else:
+                        # IP available but no CIDR (DHCP without prefix in operational status)
+                        # Underlay resolver will attempt host-in-vyos-network matching
+                        try:
+                            ipaddress.IPv4Address(wan_ip)  # Validate it's a real IPv4
+                            wan_ip_only = wan_ip
+                            wan_ip_type = 'dhcp_ip_only'
+                        except Exception:
+                            pass
+
                 wan_interface_details.append({
                     'wan_if_id': wan_if_id,
                     'name': wan_name,
@@ -1335,6 +1375,15 @@ def build_full_topology(sdk: API, sites_data: dict, debug: bool = False, debug_t
                     'admin_up': wan_admin_up,
                     'link_up': wan_link_up,
                     'connections': connections_out,
+                    # Underlay-ready fields (additive)
+                    'wan_ip_cidr': wan_ip_cidr,
+                    'wan_ip_only': wan_ip_only,
+                    'wan_network_cidr': wan_network_cidr,
+                    'wan_ip_type': wan_ip_type,
+                    'element_id': el_id,
+                    'element_name': el_name,
+                    'site_id': site_id,
+                    'site_name': site_name,
                 })
 
             # --- Shell device detection ---

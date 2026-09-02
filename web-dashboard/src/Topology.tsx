@@ -41,7 +41,13 @@ import {
     CheckSquare,
     ChevronRight,
     LayoutGrid,
-    Layers
+    Layers,
+    MapPin,
+    Router,
+    GitBranch,
+    ShieldCheck,
+    HelpCircle,
+    AlertTriangle
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { clsx } from 'clsx';
@@ -50,6 +56,33 @@ import { twMerge } from 'tailwind-merge';
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
 }
+
+// --- Underlay types (mirror of server-side UnderlayPayload) ---
+type UnderlayResolutionStatus = 'matched' | 'no_match' | 'ambiguous' | 'wan_ip_unavailable' | 'vyos_unavailable';
+type UnderlayResolution = {
+    id: string;
+    status: UnderlayResolutionStatus;
+    prismaWan: {
+        elementId: string; elementName?: string; siteId?: string; siteName?: string;
+        interfaceId?: string; interfaceName?: string; ipCidr?: string | null;
+        ip?: string | null; network?: string | null; linkType?: string | null; ipType?: string | null;
+    };
+    vyos?: {
+        routerId: string; routerName: string; location?: string | null; interfaceName: string;
+        description?: string | null; ipCidr: string; ip: string; network: string; routerStatus?: string | null;
+    };
+    candidates?: Array<{
+        routerId: string; routerName: string; location?: string | null; interfaceName: string;
+        description?: string | null; ipCidr: string; ip: string; network: string; routerStatus?: string | null;
+    }>;
+    matchMethod?: 'same_subnet'; matchedNetwork?: string; diagnostic?: string;
+};
+type UnderlayPayload = {
+    available: boolean; vyosConfigAvailable: boolean;
+    summary: { wanInterfacesSeen: number; matched: number; noMatch: number; ambiguous: number; wanIpUnavailable: number; };
+    resolutions: UnderlayResolution[];
+};
+
 
 // --- Custom Edge Components ---
 
@@ -171,6 +204,27 @@ const SiteNode = ({ data }: any) => {
     };
     const shortIp = (ip?: string) => ip ? ip.split('/')[0] : '';
 
+    // Underlay badge helpers
+    const underlayMode = data.underlayMode as ('off' | 'badges') | undefined;
+    const underlayResolutionMap = data.underlayResolutionMap as Map<string, any> | undefined;
+    const onInspectUnderlayCircuit = data.onInspectUnderlayCircuit as ((r: any) => void) | undefined;
+
+    const getUnderlayBadge = (wan: any) => {
+        if (underlayMode !== 'badges' || !underlayResolutionMap) return null;
+        const r = underlayResolutionMap.get(wan.wan_if_id);
+        if (!r) return null;
+        const cfg: Record<string, { cls: string; label: string }> = {
+            matched: { cls: 'bg-green-500/80 text-white border-green-400', label: '⬡' },
+            no_match: { cls: 'bg-slate-500/60 text-slate-200 border-slate-400', label: '–' },
+            ambiguous: { cls: 'bg-amber-500/80 text-white border-amber-400', label: '?' },
+            wan_ip_unavailable: { cls: 'bg-slate-600/60 text-slate-300 border-slate-500', label: '?' },
+            vyos_unavailable: { cls: 'bg-slate-600/60 text-slate-300 border-slate-500', label: '!' },
+        };
+        const c = cfg[r.status] || { cls: 'bg-slate-500/40 text-slate-300 border-slate-400', label: '?' };
+        return { r, c };
+    };
+
+
     return (
         <div className={cn(
             "flex flex-col items-center min-w-[400px] gap-6",
@@ -179,37 +233,54 @@ const SiteNode = ({ data }: any) => {
 
             {/* Circuit Blocks Section */}
             <div className="flex gap-6 z-10 relative">
-                {wanCircuits.map((w: any, idx: number) => (
-                    <div key={idx} className="relative flex flex-col items-center">
-                        <div className={cn(
-                            "px-4 py-2 rounded-xl border shadow-2xl backdrop-blur-md flex flex-col items-center justify-center gap-1 min-w-[130px] h-[52px] transition-all hover:scale-105 hover:border-white/40 group",
-                            w.wan_network?.toLowerCase().includes('mpls')
-                                ? "bg-purple-500/10 border-purple-500/30 text-purple-400"
-                                : "bg-blue-500/10 border-blue-500/30 text-blue-400"
-                        )}>
-                            <div className="text-[11px] font-black uppercase tracking-tight overflow-hidden text-ellipsis whitespace-nowrap max-w-[110px]">
-                                {w.circuit_label || w.name}
+                {wanCircuits.map((w: any, idx: number) => {
+                    const badge = getUnderlayBadge(w);
+                    return (
+                        <div key={idx} className="relative flex flex-col items-center">
+                            <div
+                                className={cn(
+                                    "px-4 py-2 rounded-xl border shadow-2xl backdrop-blur-md flex flex-col items-center justify-center gap-1 min-w-[130px] h-[52px] transition-all hover:scale-105 hover:border-white/40 group",
+                                    w.wan_network?.toLowerCase().includes('mpls')
+                                        ? "bg-purple-500/10 border-purple-500/30 text-purple-400"
+                                        : "bg-blue-500/10 border-blue-500/30 text-blue-400",
+                                    badge && onInspectUnderlayCircuit ? "cursor-pointer" : ""
+                                )}
+                                onClick={badge && onInspectUnderlayCircuit ? (e) => { e.stopPropagation(); onInspectUnderlayCircuit(badge.r); } : undefined}
+                            >
+                                <div className="text-[11px] font-black uppercase tracking-tight overflow-hidden text-ellipsis whitespace-nowrap max-w-[110px]">
+                                    {w.circuit_label || w.name}
+                                </div>
+                                <div className="text-[9px] font-mono text-text-muted opacity-60">
+                                    {w.ip || 'DHCP...'}
+                                </div>
+                                <Handle
+                                    type="source"
+                                    position={isHub ? Position.Bottom : Position.Top}
+                                    id={`circuit:${w.devName}:${w.name}`}
+                                    className="!w-full !h-1 !opacity-0"
+                                />
+                                {/* Hidden target handle for direct site-to-site overlay edges. Terminate at BOTTOM for Hubs too. */}
+                                <Handle
+                                    type="target"
+                                    position={isHub ? Position.Bottom : Position.Top}
+                                    id={`target-circuit:${w.devName}:${w.name}`}
+                                    className="!w-full !h-1 !opacity-0"
+                                />
+                                {/* Underlay status badge */}
+                                {badge && (
+                                    <div className={cn(
+                                        "absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-black shadow-md z-30 transition-transform group-hover:scale-110",
+                                        badge.c.cls
+                                    )}>
+                                        {badge.c.label}
+                                    </div>
+                                )}
                             </div>
-                            <div className="text-[9px] font-mono text-text-muted opacity-60">
-                                {w.ip || 'DHCP...'}
-                            </div>
-                            <Handle
-                                type="source"
-                                position={isHub ? Position.Bottom : Position.Top}
-                                id={`circuit:${w.devName}:${w.name}`}
-                                className="!w-full !h-1 !opacity-0"
-                            />
-                            {/* Hidden target handle for direct site-to-site overlay edges. Terminate at BOTTOM for Hubs too. */}
-                            <Handle
-                                type="target"
-                                position={isHub ? Position.Bottom : Position.Top}
-                                id={`target-circuit:${w.devName}:${w.name}`}
-                                className="!w-full !h-1 !opacity-0"
-                            />
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
+
 
             {/* Site Rectangle (Physical Box) */}
             <div className={cn(
@@ -453,7 +524,14 @@ function TopologyContent({ token }: TopologyProps) {
 
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-    const { fitView } = useReactFlow();
+    const { fitView, getViewport, setViewport } = useReactFlow();
+
+    // Underlay state
+    const [underlayData, setUnderlayData] = useState<UnderlayPayload | null>(null);
+    const [underlayMode, setUnderlayMode] = useState<'off' | 'badges'>('off');
+    const [showUnderlayPanel, setShowUnderlayPanel] = useState(false);
+    const [underlayPanelResolution, setUnderlayPanelResolution] = useState<UnderlayResolution | null>(null);
+    const [showUnderlayMenu, setShowUnderlayMenu] = useState(false);
 
     // Persist visibility selection
     useEffect(() => {
@@ -696,6 +774,7 @@ function TopologyContent({ token }: TopologyProps) {
             if (data.error) throw new Error(data.error);
             setTopology(data);
             setLastRefresh(new Date());
+            if (data.underlay) setUnderlayData(data.underlay);
             processTopology(data);
         } catch (e: any) {
             setError(e.message);
@@ -732,6 +811,7 @@ function TopologyContent({ token }: TopologyProps) {
             if (data.error) throw new Error(data.error);
             setTopology(data);
             setLastRefresh(new Date());
+            if (data.underlay) setUnderlayData(data.underlay);
             processTopology(data);
         } catch (e: any) {
             setError(e.message);
@@ -783,16 +863,46 @@ function TopologyContent({ token }: TopologyProps) {
         document.body.removeChild(a);
     }, [topology]);
 
+    // Build a lookup: wan_if_id → UnderlayResolution for quick access in SiteNode
+    const underlayResolutionMap = useMemo(() => {
+        if (!underlayData) return new Map<string, UnderlayResolution>();
+        const m = new Map<string, UnderlayResolution>();
+        underlayData.resolutions.forEach(r => {
+            if (r.prismaWan.interfaceId) m.set(r.prismaWan.interfaceId, r);
+        });
+        return m;
+    }, [underlayData]);
+
     const filteredNodes = useMemo(() => {
-        if (!searchQuery) return nodes;
-        return nodes.map(n => ({
-            ...n,
-            style: {
-                ...n.style,
-                opacity: (n.data as any).name.toLowerCase().includes(searchQuery.toLowerCase()) ? 1 : 0.2
-            }
-        }));
-    }, [nodes, searchQuery]);
+        return nodes.map(n => {
+            const nodeData = n.data as any;
+            // Inject underlay data into site nodes
+            const enriched = (n.type === 'site' && underlayData)
+                ? {
+                    ...n,
+                    data: {
+                        ...nodeData,
+                        underlayMode,
+                        underlayResolutionMap,
+                        onInspectUnderlayCircuit: (resolution: UnderlayResolution) => {
+                            setUnderlayPanelResolution(resolution);
+                            setShowUnderlayPanel(true);
+                        }
+                    }
+                }
+                : n;
+
+            if (!searchQuery) return enriched;
+            return {
+                ...enriched,
+                style: {
+                    ...(enriched as any).style,
+                    opacity: nodeData.name?.toLowerCase().includes(searchQuery.toLowerCase()) ? 1 : 0.2
+                }
+            };
+        });
+    }, [nodes, searchQuery, underlayMode, underlayResolutionMap, underlayData]);
+
 
     const filteredEdges = useMemo(() => {
         if (!searchQuery) return edges;
@@ -1120,6 +1230,87 @@ function TopologyContent({ token }: TopologyProps) {
                                 >
                                     <RefreshCw size={16} />
                                 </button>
+
+                                {/* Underlay Inspect Button */}
+                                {underlayData?.available && (
+                                    <>
+                                        <div className="h-4 w-px bg-border" />
+                                        <div className="relative">
+                                            <button
+                                                id="topology-underlay-btn"
+                                                onClick={() => setShowUnderlayMenu(prev => !prev)}
+                                                className={cn(
+                                                    "p-2 rounded-xl transition-all group flex items-center gap-1.5",
+                                                    underlayMode !== 'off'
+                                                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
+                                                        : "hover:bg-card-secondary text-text-muted hover:text-amber-400"
+                                                )}
+                                                title="Underlay Inspect — VyOS WAN next-hop"
+                                            >
+                                                <Layers size={16} />
+                                                {underlayData.summary.matched > 0 && (
+                                                    <span className={cn(
+                                                        "text-[9px] font-black tracking-tight",
+                                                        underlayMode !== 'off' ? "text-amber-300" : "text-text-muted"
+                                                    )}>
+                                                        {underlayData.summary.matched}/{underlayData.summary.wanInterfacesSeen}
+                                                    </span>
+                                                )}
+                                            </button>
+
+                                            {showUnderlayMenu && (
+                                                <div className="absolute top-full right-0 mt-2 w-60 bg-card/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl z-[70] animate-in fade-in slide-in-from-top-2 duration-200">
+                                                    <div className="p-3 border-b border-border">
+                                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest">Underlay Inspect</div>
+                                                        <div className="text-[9px] text-text-muted/60 mt-1">VyOS WAN next-hop matching</div>
+                                                    </div>
+                                                    <div className="p-2 space-y-1">
+                                                        <button
+                                                            onClick={() => { setUnderlayMode(underlayMode === 'badges' ? 'off' : 'badges'); setShowUnderlayMenu(false); }}
+                                                            className={cn(
+                                                                "w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center gap-2",
+                                                                underlayMode === 'badges'
+                                                                    ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                                                    : "text-text-secondary hover:bg-card-secondary hover:text-text-primary"
+                                                            )}
+                                                        >
+                                                            <Layers size={13} />
+                                                            {underlayMode === 'badges' ? 'Hide underlay badges' : 'Show underlay badges'}
+                                                        </button>
+                                                        {underlayMode !== 'off' && (
+                                                            <button
+                                                                onClick={() => { setUnderlayMode('off'); setShowUnderlayMenu(false); setShowUnderlayPanel(false); }}
+                                                                className="w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold text-red-400 hover:bg-red-500/10 transition-all flex items-center gap-2"
+                                                            >
+                                                                <X size={13} /> Exit Underlay Mode
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    <div className="px-3 pb-3 pt-1">
+                                                        <div className="grid grid-cols-2 gap-1 text-[9px] font-bold">
+                                                            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-1.5 text-center text-green-400">
+                                                                <div className="text-[14px] font-black">{underlayData.summary.matched}</div>
+                                                                <div className="opacity-70">Matched</div>
+                                                            </div>
+                                                            <div className="bg-card-secondary border border-border rounded-lg p-1.5 text-center text-text-muted">
+                                                                <div className="text-[14px] font-black">{underlayData.summary.noMatch}</div>
+                                                                <div className="opacity-70">No Match</div>
+                                                            </div>
+                                                            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-1.5 text-center text-amber-400">
+                                                                <div className="text-[14px] font-black">{underlayData.summary.ambiguous}</div>
+                                                                <div className="opacity-70">Ambiguous</div>
+                                                            </div>
+                                                            <div className="bg-slate-500/10 border border-slate-500/20 rounded-lg p-1.5 text-center text-slate-400">
+                                                                <div className="text-[14px] font-black">{underlayData.summary.wanIpUnavailable}</div>
+                                                                <div className="opacity-70">IP Unknown</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </Panel>
 
@@ -1463,6 +1654,123 @@ function TopologyContent({ token }: TopologyProps) {
                                 </div>
                             </div>
                         )}
+                    </div>
+
+                    {/* Underlay Details Side Panel */}
+                    <div className={cn(
+                        "absolute top-4 bottom-4 w-[400px] bg-card/95 backdrop-blur-xl border border-amber-500/20 rounded-3xl shadow-2xl transition-all duration-500 z-[55] overflow-hidden transform",
+                        showUnderlayPanel && underlayPanelResolution
+                            ? "translate-x-0 opacity-100"
+                            : "translate-x-[calc(100%+20px)] opacity-0 pointer-events-none"
+                    )} style={{ right: showUnderlayPanel && underlayPanelResolution && selectedObject ? '474px' : '16px' }}>
+                        {showUnderlayPanel && underlayPanelResolution && (() => {
+                            const r = underlayPanelResolution;
+                            return (
+                                <div className="flex flex-col h-full">
+                                    <div className="p-5 border-b border-border bg-amber-500/5 flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400"><Layers size={18} /></div>
+                                            <div>
+                                                <h3 className="text-sm font-black text-text-primary tracking-tight">Underlay Inspect</h3>
+                                                <p className="text-[10px] text-text-muted font-bold tracking-widest uppercase opacity-60">{r.prismaWan.interfaceName} · {r.prismaWan.siteName}</p>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setShowUnderlayPanel(false)} className="p-1.5 hover:bg-card-secondary rounded-lg text-text-muted transition-colors"><X size={18} /></button>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-5 space-y-5 scrollbar-thin scrollbar-thumb-border">
+                                        {r.status === 'matched' && (
+                                            <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-2xl px-4 py-3">
+                                                <ShieldCheck size={18} className="text-green-400 shrink-0" />
+                                                <div>
+                                                    <div className="text-[10px] font-black text-green-400 uppercase tracking-widest">Confirmed Same-Subnet Match</div>
+                                                    <div className="text-[9px] text-green-400/70 mt-0.5 font-mono">{r.matchedNetwork}</div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {r.status === 'no_match' && (
+                                            <div className="flex items-center gap-2 bg-slate-500/10 border border-slate-500/20 rounded-2xl px-4 py-3">
+                                                <HelpCircle size={18} className="text-slate-400 shrink-0" />
+                                                <div>
+                                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No Match Found</div>
+                                                    <div className="text-[9px] text-slate-400/70 mt-0.5">{r.diagnostic}</div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {r.status === 'ambiguous' && (
+                                            <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-2xl px-4 py-3">
+                                                <AlertTriangle size={18} className="text-amber-400 shrink-0" />
+                                                <div>
+                                                    <div className="text-[10px] font-black text-amber-400 uppercase tracking-widest">Ambiguous — Multiple Candidates</div>
+                                                    <div className="text-[9px] text-amber-400/70 mt-0.5">{r.candidates?.length} VyOS interfaces match this subnet</div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {(r.status === 'wan_ip_unavailable' || r.status === 'vyos_unavailable') && (
+                                            <div className="flex items-center gap-2 bg-slate-500/10 border border-slate-500/20 rounded-2xl px-4 py-3">
+                                                <Info size={18} className="text-slate-400 shrink-0" />
+                                                <div>
+                                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{r.status === 'wan_ip_unavailable' ? 'WAN IP Unavailable' : 'VyOS Unavailable'}</div>
+                                                    <div className="text-[9px] text-slate-400/70 mt-0.5">{r.diagnostic}</div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div className="space-y-2">
+                                            <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2"><GitBranch size={12} /> Prisma SD-WAN Interface</div>
+                                            <div className="bg-card-secondary/30 border border-border/60 rounded-2xl p-4 space-y-2.5">
+                                                <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Site</span><span className="font-black text-text-primary uppercase">{r.prismaWan.siteName}</span></div>
+                                                <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Device</span><span className="font-bold text-text-secondary font-mono">{r.prismaWan.elementName}</span></div>
+                                                <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Interface</span><span className="font-bold text-blue-400 font-mono uppercase">{r.prismaWan.interfaceName}</span></div>
+                                                <div className="flex justify-between items-center text-xs"><span className="text-text-muted">IP</span><span className="font-black text-text-primary font-mono">{r.prismaWan.ipCidr || r.prismaWan.ip || '—'}</span></div>
+                                                {r.prismaWan.linkType && (
+                                                    <div className="flex justify-between items-center text-xs">
+                                                        <span className="text-text-muted">Network</span>
+                                                        <span className={cn("font-black text-[10px] px-2 py-0.5 rounded-full border uppercase tracking-tighter", r.prismaWan.linkType.toLowerCase().includes('mpls') ? "text-purple-400 bg-purple-500/10 border-purple-500/30" : "text-blue-400 bg-blue-500/10 border-blue-500/30")}>{r.prismaWan.linkType}</span>
+                                                    </div>
+                                                )}
+                                                {r.prismaWan.ipType === 'dhcp_ip_only' && (
+                                                    <div className="text-[9px] text-amber-400/80 bg-amber-500/5 border border-amber-500/10 rounded-lg px-2 py-1 mt-1">DHCP — No prefix from Prisma. Matched using VyOS subnet as reference.</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {r.status === 'matched' && r.vyos && (
+                                            <div className="space-y-2">
+                                                <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2"><Router size={12} className="text-amber-400" /> VyOS Next-Hop</div>
+                                                <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 space-y-2.5">
+                                                    <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Router</span><span className="font-black text-text-primary">{r.vyos.routerName}</span></div>
+                                                    {r.vyos.location && <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Location</span><span className="font-bold text-text-secondary flex items-center gap-1"><MapPin size={10} />{r.vyos.location}</span></div>}
+                                                    <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Interface</span><span className="font-bold text-amber-400 font-mono">{r.vyos.interfaceName}</span></div>
+                                                    <div className="flex justify-between items-center text-xs"><span className="text-text-muted">IP (VyOS)</span><span className="font-black text-text-primary font-mono">{r.vyos.ipCidr}</span></div>
+                                                    <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Network</span><span className="font-mono text-green-400 text-[11px]">{r.vyos.network}</span></div>
+                                                    {r.vyos.description && <div className="flex justify-between items-start text-xs gap-2"><span className="text-text-muted shrink-0">Description</span><span className="font-medium text-text-secondary text-right leading-tight">{r.vyos.description}</span></div>}
+                                                    {r.vyos.routerStatus && (
+                                                        <div className="flex justify-between items-center text-xs">
+                                                            <span className="text-text-muted">Status</span>
+                                                            <span className={cn("font-black text-[9px] px-2 py-0.5 rounded-full border uppercase tracking-tighter", r.vyos.routerStatus === 'online' ? "text-green-400 bg-green-500/10 border-green-500/30" : "text-red-400 bg-red-500/10 border-red-500/30")}>{r.vyos.routerStatus}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {r.status === 'ambiguous' && r.candidates && r.candidates.length > 0 && (
+                                            <div className="space-y-2">
+                                                <div className="text-[10px] font-black text-text-muted uppercase tracking-widest">Candidates ({r.candidates.length})</div>
+                                                <div className="space-y-2">
+                                                    {r.candidates.map((c, i) => (
+                                                        <div key={i} className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-3 space-y-1">
+                                                            <div className="flex justify-between text-xs"><span className="font-bold text-text-primary">{c.routerName}</span><span className="font-mono text-amber-400 text-[10px]">{c.interfaceName}</span></div>
+                                                            <div className="text-[10px] font-mono text-text-muted">{c.ipCidr} · {c.network}</div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="p-4 bg-card-secondary/30 border-t border-border">
+                                        <div className="text-[9px] text-text-muted/50 italic text-center">Match method: unique same-subnet IPv4/CIDR — no name inference</div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </>
             )}

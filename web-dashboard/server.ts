@@ -29,6 +29,7 @@ import { TargetManager, TargetScenario } from './target-manager.js';
 import { RegistryManager } from './registry-manager.js';
 import { LocalRegistryServer } from './local-registry-server.js';
 import { ProvisioningManager } from './provisioning-manager.js';
+import { UnderlayTopologyManager } from './underlay-topology-manager.js';
 
 import { Server } from 'socket.io';
 import multer from 'multer';
@@ -2815,8 +2816,16 @@ app.get('/api/topology', authenticateToken, async (req, res) => {
             if (code === 0) {
                 try {
                     const data = JSON.parse(stdout);
-                    topologyCache = { data, timestamp: Date.now() };
-                    res.json(data);
+                    // Enrich with underlay resolution (additive, isolated from topology)
+                    let underlay: any = null;
+                    try {
+                        underlay = await underlayTopologyManager.resolveAll(data);
+                    } catch (ue: any) {
+                        log('UNDERLAY', `Underlay resolution failed (topology unaffected): ${ue.message}`, 'warn');
+                    }
+                    const enrichedData = underlay ? { ...data, underlay } : data;
+                    topologyCache = { data: enrichedData, timestamp: Date.now() };
+                    res.json(enrichedData);
                 } catch (e) {
                     console.error('[TOPO] Failed to parse JSON:', e, 'STDOUT length:', stdout.length);
                     res.status(500).json({ error: 'Failed to parse topology data' });
@@ -10099,6 +10108,7 @@ app.delete('/api/iot/devices/:id', authenticateToken, (req, res) => {
 
 // --- Local Registry API & Provisioning Engine (Hybrid Leader) ---
 const provisioningManager = new ProvisioningManager(APP_CONFIG.configDir);
+const underlayTopologyManager = new UnderlayTopologyManager(APP_CONFIG.configDir);
 const localRegistryServer = new LocalRegistryServer();
 registryManager.setLocalRegistryServer(localRegistryServer);
 registryManager.setProvisioningManager(provisioningManager);
