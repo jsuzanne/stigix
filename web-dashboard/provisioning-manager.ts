@@ -221,10 +221,46 @@ export class ProvisioningManager {
         return data;
     }
 
-    private computeChecksum(data: any): string {
+    public computeChecksum(data: any): string {
         const sanitized = this.sanitizeForProvisioning(data);
         const str = JSON.stringify(sanitized);
         return 'sha256:' + crypto.createHash('sha256').update(str).digest('hex');
+    }
+
+    public computeLegacyChecksum(data: any): string {
+        try {
+            const normalized = Array.isArray(data)
+                ? data.map(item => {
+                    if (typeof item !== 'object' || item === null) return item;
+                    const keys = Object.keys(item).sort();
+                    const sortedObj: any = {};
+                    for (const k of keys) {
+                        if (k !== '_source' && k !== '_wasGlobal') {
+                            sortedObj[k] = item[k];
+                        }
+                    }
+                    return sortedObj;
+                })
+                : (typeof data === 'object' && data !== null
+                    ? Object.keys(data).sort().reduce((acc: any, k) => {
+                        if (k !== '_source' && k !== '_wasGlobal') acc[k] = data[k];
+                        return acc;
+                    }, {})
+                    : data);
+            const str = JSON.stringify(normalized);
+            return 'sha256:' + crypto.createHash('sha256').update(str).digest('hex');
+        } catch {
+            return '';
+        }
+    }
+
+    public computeRawChecksum(data: any): string {
+        try {
+            const str = JSON.stringify(data);
+            return 'sha256:' + crypto.createHash('sha256').update(str).digest('hex');
+        } catch {
+            return '';
+        }
     }
 
     // ─── State Management ────────────────────────────────────────────────────────
@@ -612,12 +648,27 @@ export class ProvisioningManager {
         const activeFile = this.getActiveConfigFile(type);
 
         try {
-            // 1. Verify bundle integrity
+            // 1. Verify bundle integrity (supporting modern sanitized, legacy sorted-key, and raw checksums)
             const isArrayType = Array.isArray(globalPayload);
             const normalizedGlobal = isArrayType ? this.normalizeItemsWithIds(type as any, globalPayload) : globalPayload;
+            
             const computedChecksum = this.computeChecksum(normalizedGlobal);
+            const legacyChecksum = this.computeLegacyChecksum(normalizedGlobal);
+            const rawChecksum = this.computeRawChecksum(normalizedGlobal);
+            const directChecksum = this.computeChecksum(globalPayload);
+            const directLegacyChecksum = this.computeLegacyChecksum(globalPayload);
+            const directRawChecksum = this.computeRawChecksum(globalPayload);
 
-            if (computedChecksum !== checksum) {
+            const checksumMatches = (
+                computedChecksum === checksum ||
+                legacyChecksum === checksum ||
+                rawChecksum === checksum ||
+                directChecksum === checksum ||
+                directLegacyChecksum === checksum ||
+                directRawChecksum === checksum
+            );
+
+            if (!checksumMatches) {
                 log('PROVISIONING', `Checksum mismatch for ${type} rev ${revision}. Expected ${checksum}, got ${computedChecksum}`, 'error');
                 state.appliedRevisions[type] = {
                     revision,
