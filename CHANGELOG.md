@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-09-02
+
+### Fixed
+- **Onboarding & Install URLs** 🔗: Updated all remote peer onboarding commands and quickstart script references across the UI dashboard (`Settings.tsx`), CLI (`stigix-cli.py`), installer (`install.sh`), and website documentation to pull from the official `main` branch instead of `v2`.
+
+---
+
 ## [2.0.0] - 2026-09-02 — Stigix V2 Official Release
 
 ### Summary of Major V2 Capabilities
