@@ -932,7 +932,7 @@ export default function App() {
             view === 'iot' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
-          <Cpu size={18} /> IoT Simulation
+          <Cpu size={18} /> IoT
           <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Emulate IoT device traffic</span>
         </button>
         <button
@@ -946,16 +946,6 @@ export default function App() {
           <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Measure voice quality and MOS</span>
         </button>
         <button
-          onClick={() => setView('convergence')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'convergence' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Zap size={18} /> Failover Monitoring
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Track blackout and packet loss during failover</span>
-        </button>
-        <button
           onClick={() => setView('custom_apps')}
           className={cn(
             "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
@@ -964,6 +954,16 @@ export default function App() {
         >
           <Layers size={18} /> Custom Apps <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 ml-1">New</span>
           <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Simulate East-West Custom TCP Inter-Site Applications</span>
+        </button>
+        <button
+          onClick={() => setView('convergence')}
+          className={cn(
+            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
+            view === 'convergence' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
+          )}
+        >
+          <Zap size={18} /> Failover Monitoring
+          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Track blackout and packet loss during failover</span>
         </button>
         <button
           onClick={() => setView('topology')}

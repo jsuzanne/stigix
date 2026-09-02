@@ -1654,8 +1654,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const tabs = [
         { id: 'distribution', label: 'Traffic Distribution' },
         { id: 'probes', label: 'Synthetic Probes' },
-        { id: 'convergence', label: 'Failover' },
         { id: 'custom-tcp', label: 'Custom TCP Apps', beta: true },
+        { id: 'convergence', label: 'Failover' },
         { id: 'system', label: 'System Info' },
         ...(systemInfo?.beta ? [{ id: 'maintenance', label: 'System Maintenance', beta: true }] : []),
         { id: 'targets', label: 'Stigix Targets' },
