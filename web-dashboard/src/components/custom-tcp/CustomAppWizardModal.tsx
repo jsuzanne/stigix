@@ -446,10 +446,10 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                             <div className="p-3.5 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex items-start gap-3 text-xs">
                                 <Server size={18} className="text-indigo-600 dark:text-indigo-400 flex-shrink-0 mt-0.5" />
                                 <div>
-                                    <span className="font-bold text-text-primary">Rôle Serveur / Inbound (Réponse aux requêtes reçues)</span>
+                                    <span className="font-bold text-text-primary">Server Role / Inbound (Incoming Request Handling)</span>
                                     <p className="text-text-muted mt-0.5 leading-relaxed">
-                                        Ce comportement s'applique lorsque <strong>ce nœud reçoit</strong> des requêtes sur son port d'écoute (:{formData.listener.port}).
-                                        <em> Si ce nœud agit uniquement comme client émetteur vers un Data Center, ce réglage reste dormant localement (c'est le comportement configuré sur le serveur distant qui sera exécuté).</em>
+                                        These settings define how <strong>this node replies</strong> when receiving requests on its local listener port (:{formData.listener.port}).
+                                        <em> If this node only acts as a Client sending traffic to a remote Data Center, this behavior remains dormant locally (the behavior configured on the remote target server will execute).</em>
                                     </p>
                                 </div>
                             </div>
@@ -639,9 +639,9 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                             <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-start gap-3 text-xs">
                                 <Play size={18} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
                                 <div>
-                                    <span className="font-bold text-text-primary">Rôle Client / Outbound (Génération de charge vers les pairs)</span>
+                                    <span className="font-bold text-text-primary">Client Role / Outbound (Workload Generation to Remote Peers)</span>
                                     <p className="text-text-muted mt-0.5 leading-relaxed">
-                                        Ce générateur définit le trafic émis par <strong>ce nœud vers les sites distants (Peers)</strong>. Le comportement de réponse (latence, écho, erreurs) sera celui exécuté par le serveur distant qui reçoit vos requêtes.
+                                        This workload generator defines the traffic emitted from <strong>this node to remote target peers</strong>. The response behavior (latency, echo, error simulation) will be dictated by the remote server answering your requests.
                                     </p>
                                 </div>
                             </div>
