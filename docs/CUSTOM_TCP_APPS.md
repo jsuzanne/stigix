@@ -263,5 +263,13 @@ stigix-cli --exec "tcp-app reset-metrics erp-main"
 | `/api/custom-tcp-apps/:id/test-peer/:peerId`| `POST` | Execute instant one-off TCP handshake test to a peer. |
 | `/api/custom-tcp-apps/:id/metrics/reset` | `POST` | Reset live metrics counters for the application. |
 | `/api/custom-tcp-apps/validate` | `POST` | Validate configuration and check host port availability. |
+
+---
+
+## Related Documentation
+
+- [Network Impairment & SD-WAN Failover Validation Guide](./CUSTOM_TCP_NETWORK_IMPAIRMENTS.md): Deep dive into validating VyOS netem impairments, packet loss, jitter, and sub-second failover recovery using Custom TCP Apps.
+- [Central Global Provisioning Guide](./GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md): Multi-node distribution and Zero-Touch Auto-Start orchestration.
+- [CLI Reference Manual](./STIGIX_CLI.md): Terminal management with `stigix-cli`.
 | `/api/custom-tcp-apps/export/config` | `GET` | Export complete custom TCP applications JSON file. |
 | `/api/custom-tcp-apps/import/config` | `POST` | Import custom TCP applications configuration. |
