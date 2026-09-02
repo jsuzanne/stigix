@@ -262,6 +262,61 @@ export class TcpAppManager extends EventEmitter {
         return this.historyStore.getRecords(appId, limit);
     }
 
+    public async hotReload(newApps?: CustomTcpApplicationConfig[]): Promise<void> {
+        const file = await this.configStore.load();
+        if (newApps && Array.isArray(newApps)) {
+            file.applications = newApps;
+            await this.configStore.save(file);
+        }
+
+        const newAppMap = new Map<string, CustomTcpApplicationConfig>(file.applications.map(a => [a.id, a]));
+
+        // 1. Stop and remove deleted applications
+        for (const [id, ctx] of Array.from(this.appInstances.entries())) {
+            if (!newAppMap.has(id)) {
+                try { await ctx.clientRuntime.stop(); } catch {}
+                try { await ctx.serverRuntime.stop(); } catch {}
+                this.appInstances.delete(id);
+                this.emit('app_deleted', id);
+            }
+        }
+
+        // 2. Update or register new applications
+        for (const app of file.applications) {
+            const ctx = this.appInstances.get(app.id);
+            if (ctx) {
+                const prevPort = ctx.config.listener?.port;
+                const newPort = app.listener?.port;
+                ctx.config = app;
+                ctx.metrics.appName = app.name;
+                ctx.metrics.port = app.listener?.port;
+
+                if (prevPort !== newPort && ctx.metrics.listenerState === 'listening') {
+                    await ctx.serverRuntime.stop();
+                    this.registerAppInstance(app, file.instance);
+                    if (app.enabled && app.startup?.startListener !== false) {
+                        await this.startListener(app.id).catch(() => {});
+                    }
+                }
+            } else {
+                this.registerAppInstance(app, file.instance);
+                if (app.enabled) {
+                    if (app.startup?.startListener !== false) {
+                        this.startListener(app.id).catch(err => {
+                            console.error(`[CUSTOM_TCP_MGR] Hot-reload listener failed for "${app.name}":`, err.message);
+                        });
+                    }
+                    if (app.startup?.startClientWorkload) {
+                        this.startClient(app.id).catch(err => {
+                            console.error(`[CUSTOM_TCP_MGR] Hot-reload client failed for "${app.name}":`, err.message);
+                        });
+                    }
+                }
+            }
+            this.emit('config_updated', app);
+        }
+    }
+
     public async stopAll(): Promise<void> {
         for (const ctx of this.appInstances.values()) {
             try { await ctx.clientRuntime.stop(); } catch {}

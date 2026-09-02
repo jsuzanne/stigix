@@ -663,8 +663,21 @@ export class ProvisioningManager {
                 };
                 fs.writeFileSync(activeFile, JSON.stringify(mergedPayload, null, 2), 'utf8');
             } else if (type === 'custom-tcp-apps') {
+                let localInstance: any = null;
+                if (fs.existsSync(activeFile)) {
+                    try {
+                        const existing = JSON.parse(fs.readFileSync(activeFile, 'utf8'));
+                        if (existing && existing.instance) localInstance = existing.instance;
+                    } catch {}
+                }
+
                 if (Array.isArray(normalizedGlobal)) {
-                    mergedPayload = { version: 1, updatedAt: new Date().toISOString(), applications: normalizedGlobal };
+                    mergedPayload = { version: 1, instance: localInstance || undefined, updatedAt: new Date().toISOString(), applications: normalizedGlobal };
+                } else if (normalizedGlobal && normalizedGlobal.applications) {
+                    mergedPayload = {
+                        ...normalizedGlobal,
+                        instance: localInstance || normalizedGlobal.instance
+                    };
                 } else {
                     mergedPayload = normalizedGlobal;
                 }
