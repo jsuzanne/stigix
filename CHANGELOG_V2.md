@@ -12,7 +12,8 @@ All notable changes made specifically on the `v2` branch are documented in this 
   - **4-Byte Length-Prefixed Stream Protocol**: Robust `UInt32BE` framing with 5s handshake timeout and optional pre-shared token validation.
   - **Rich Simulation Behaviors**: 8 server modes (`echo`, `acknowledge`, `fixed_delay`, `random_delay`, `looping_delay`, `drop_response`, `close_connection`, `error_response`) and 5 client workload modes.
   - **Dedicated UI View & Wizard**: Top-level "Custom Apps" dashboard view, live metrics, incoming/outgoing session inspectors, and a 4-step wizard with non-destructive host port testing.
-  - **Settings & CLI**: Settings profile manager tab and full `stigix-cli` suite (`tcp-app` / `custom-app` / `app`).
+  - **Central Global Provisioning (8th Bundle `custom-tcp-apps`)**: Seamless distribution of applications from the Leader to branch peers with hot reload of TCP listeners and workload generator.
+  - **Settings & CLI**: Settings profile manager tab, Global Provisioning Master Publisher card, and full `stigix-cli` suite (`tcp-app` / `custom-app` / `app`, `provision publish custom-tcp-apps`).
   - **Technical Documentation**: Comprehensive guide in [`docs/CUSTOM_TCP_APPS.md`](file:///Users/jsuzanne/Github/stigix/docs/CUSTOM_TCP_APPS.md).
 
 - **Underlay Topology & Multi-Router Physical Chassis** 🖧:

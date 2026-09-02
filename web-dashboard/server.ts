@@ -10144,6 +10144,15 @@ log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry (Dynamic Mo
 app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
 log('CUSTOM_TCP', `🖧 Custom TCP Applications API mounted at /api/custom-tcp-apps`);
 
+// Hook Global Provisioning sync to hot-reload Custom TCP App runtimes on peers
+provisioningManager.onBundleApplied((type, payload) => {
+    if (type === 'custom-tcp-apps') {
+        const apps = payload?.applications || (Array.isArray(payload) ? payload : []);
+        log('PROVISIONING', `⚡ Hot-reloading ${apps.length} Custom TCP Application(s) on peer...`);
+        tcpAppManager.hotReload(apps);
+    }
+});
+
 // --- Global Provisioning Management APIs ---
 app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     let rawApps: any[] = [];
@@ -10174,6 +10183,7 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     const securityPending = provisioningManager.hasUnpublishedChanges('security-config', readJson(path.join(APP_CONFIG.configDir, 'security-config.json')));
     const voicePending = provisioningManager.hasUnpublishedChanges('voice-config', readJson(path.join(APP_CONFIG.configDir, 'voice-config.json')));
     const iotPending = provisioningManager.hasUnpublishedChanges('iot-config', readJson(IOT_DEVICES_FILE));
+    const customTcpPending = provisioningManager.hasUnpublishedChanges('custom-tcp-apps', readJson(path.join(APP_CONFIG.configDir, 'custom-tcp-applications.json')));
 
     res.json({
         state: provisioningManager.getState(),
@@ -10185,7 +10195,8 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
             prismaSase: prismaPending,
             securityConfig: securityPending,
             voiceConfig: voicePending,
-            iotConfig: iotPending
+            iotConfig: iotPending,
+            customTcpApps: customTcpPending
         }
     });
 });
@@ -10203,7 +10214,8 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     const type = req.params.type as GlobalBundleType;
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
-        'prisma-sase', 'security-config', 'voice-config', 'iot-config'
+        'prisma-sase', 'security-config', 'voice-config', 'iot-config',
+        'custom-tcp-apps'
     ];
     if (!validTypes.includes(type)) {
         return res.status(400).json({ error: 'invalid_bundle_type' });

@@ -2338,6 +2338,7 @@ def cmd_provision(args):
             ("security-config",      "Security Policies",        "securityConfig"),
             ("voice-config",         "Voice (VoIP) Settings",    "voiceConfig"),
             ("iot-config",           "IoT Emulation Config",     "iotConfig"),
+            ("custom-tcp-apps",      "Custom TCP Applications",  "customTcpApps"),
             ("prisma-sase",          "Prisma SASE Credentials",  "prismaSase"),
         ]
 
@@ -2404,6 +2405,10 @@ def cmd_provision(args):
             "voice-config": "voice-config",
             "iot": "iot-config",
             "iot-config": "iot-config",
+            "custom-tcp": "custom-tcp-apps",
+            "custom-tcp-apps": "custom-tcp-apps",
+            "tcp-apps": "custom-tcp-apps",
+            "tcp-app": "custom-tcp-apps",
             "prisma": "prisma-sase",
             "prisma-sase": "prisma-sase",
         }
@@ -2412,7 +2417,7 @@ def cmd_provision(args):
             # Publish all bundle types
             types_to_publish = [
                 "applications", "connectivity-probes", "convergence-sla",
-                "security-config", "voice-config", "iot-config", "prisma-sase"
+                "security-config", "voice-config", "iot-config", "custom-tcp-apps", "prisma-sase"
             ]
             success_count = 0
             for t in types_to_publish:
@@ -5260,6 +5265,7 @@ COMPLETER_TREE = {
             "security": None, "security-config": None,
             "voice": None, "voice-config": None,
             "iot": None, "iot-config": None,
+            "custom-tcp-apps": None, "tcp-apps": None,
             "prisma": None, "prisma-sase": None,
             "all": None
         },
@@ -5270,6 +5276,7 @@ COMPLETER_TREE = {
             "security": None, "security-config": None,
             "voice": None, "voice-config": None,
             "iot": None, "iot-config": None,
+            "custom-tcp-apps": None, "tcp-apps": None,
             "prisma": None, "prisma-sase": None
         },
         "history": None, "logs": None, "pending": None, "diff": None
@@ -5284,6 +5291,7 @@ COMPLETER_TREE = {
             "security": None, "security-config": None,
             "voice": None, "voice-config": None,
             "iot": None, "iot-config": None,
+            "custom-tcp-apps": None, "tcp-apps": None,
             "prisma": None, "prisma-sase": None,
             "all": None
         },
@@ -5294,6 +5302,7 @@ COMPLETER_TREE = {
             "security": None, "security-config": None,
             "voice": None, "voice-config": None,
             "iot": None, "iot-config": None,
+            "custom-tcp-apps": None, "tcp-apps": None,
             "prisma": None, "prisma-sase": None
         },
         "history": None, "logs": None, "pending": None, "diff": None
@@ -5308,6 +5317,7 @@ COMPLETER_TREE = {
             "security": None, "security-config": None,
             "voice": None, "voice-config": None,
             "iot": None, "iot-config": None,
+            "custom-tcp-apps": None, "tcp-apps": None,
             "prisma": None, "prisma-sase": None,
             "all": None
         },
@@ -5318,6 +5328,7 @@ COMPLETER_TREE = {
             "security": None, "security-config": None,
             "voice": None, "voice-config": None,
             "iot": None, "iot-config": None,
+            "custom-tcp-apps": None, "tcp-apps": None,
             "prisma": None, "prisma-sase": None
         },
         "history": None, "logs": None, "pending": None, "diff": None

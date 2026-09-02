@@ -10,7 +10,8 @@ export type GlobalBundleType =
     | 'prisma-sase'
     | 'security-config'
     | 'voice-config'
-    | 'iot-config';
+    | 'iot-config'
+    | 'custom-tcp-apps';
 
 export interface ProvisioningManifestBundle {
     type: GlobalBundleType;
@@ -67,6 +68,7 @@ export class ProvisioningManager {
     private backupsDir: string;
     private stateFile: string;
     private manifestFile: string;
+    private bundleAppliedCallbacks: ((type: GlobalBundleType, payload: any) => void)[] = [];
 
     constructor(configDir: string) {
         this.configDir = configDir;
@@ -78,6 +80,10 @@ export class ProvisioningManager {
         this.manifestFile = path.join(this.stateDir, 'manifest.json');
 
         this.initDirectories();
+    }
+
+    public onBundleApplied(cb: (type: GlobalBundleType, payload: any) => void): void {
+        this.bundleAppliedCallbacks.push(cb);
     }
 
     private initDirectories(): void {
@@ -301,7 +307,10 @@ export class ProvisioningManager {
 
         // Update manifest
         const now = new Date().toISOString();
-        const count = isArrayType ? normalized.length : 1;
+        let count = isArrayType ? normalized.length : 1;
+        if (type === 'custom-tcp-apps') {
+            count = normalized?.applications ? normalized.applications.length : (Array.isArray(normalized) ? normalized.length : 1);
+        }
         const bundleEntry: ProvisioningManifestBundle = {
             type,
             revision: nextRev,
@@ -339,7 +348,7 @@ export class ProvisioningManager {
         return { revision: nextRev, checksum, count };
     }
 
-    public getPublishedBundle(type: 'applications' | 'connectivity-probes', revision?: number): any[] | null {
+    public getPublishedBundle(type: GlobalBundleType, revision?: number): any | null {
         try {
             const state = this.getState();
             const revToLoad = revision || state.appliedRevisions[type]?.revision;
@@ -393,6 +402,8 @@ export class ProvisioningManager {
                 return path.join(this.configDir, 'voice-config.json');
             case 'iot-config':
                 return path.join(this.configDir, 'iot-devices.json');
+            case 'custom-tcp-apps':
+                return path.join(this.configDir, 'custom-tcp-applications.json');
             default:
                 return path.join(this.configDir, `${type}-config.json`);
         }
@@ -549,6 +560,38 @@ export class ProvisioningManager {
                 if (changes.length > 0) {
                     diff.push({ id: 'security', name: 'Security Policy & Schedules', action: 'modified', details: changes.join(', ') });
                 }
+            } else if (type === 'custom-tcp-apps') {
+                const oldApps = Array.isArray(cleanOld) ? cleanOld : (cleanOld?.applications || []);
+                const newApps = Array.isArray(cleanNew) ? cleanNew : (cleanNew?.applications || []);
+                const oldMap = new Map<string, any>(oldApps.map((a: any) => [a.id, a]));
+                const newMap = new Map<string, any>(newApps.map((a: any) => [a.id, a]));
+                let added = 0, removed = 0, modified = 0;
+
+                for (const [id, newApp] of newMap.entries()) {
+                    const oldApp = oldMap.get(id);
+                    if (!oldApp) {
+                        added++;
+                        diff.push({ id, name: newApp.name || id, action: 'added', details: `Port :${newApp.listener?.port || '?'}, Server: ${newApp.serverBehavior?.mode || 'echo'}` });
+                    } else {
+                        const changes: string[] = [];
+                        if (oldApp.name !== newApp.name) changes.push(`name: ${oldApp.name} ➔ ${newApp.name}`);
+                        if (oldApp.listener?.port !== newApp.listener?.port) changes.push(`port: ${oldApp.listener?.port} ➔ ${newApp.listener?.port}`);
+                        if (oldApp.serverBehavior?.mode !== newApp.serverBehavior?.mode) changes.push(`server: ${oldApp.serverBehavior?.mode} ➔ ${newApp.serverBehavior?.mode}`);
+                        if (oldApp.clientDefaults?.mode !== newApp.clientDefaults?.mode) changes.push(`client: ${oldApp.clientDefaults?.mode} ➔ ${newApp.clientDefaults?.mode}`);
+                        if ((oldApp.peers || []).length !== (newApp.peers || []).length) changes.push(`peers: ${(oldApp.peers || []).length} ➔ ${(newApp.peers || []).length}`);
+                        if (changes.length > 0) {
+                            modified++;
+                            diff.push({ id, name: newApp.name || id, action: 'modified', details: changes.join(', ') });
+                        }
+                    }
+                }
+                for (const [id, oldApp] of oldMap.entries()) {
+                    if (!newMap.has(id)) {
+                        removed++;
+                        diff.push({ id, name: oldApp.name || id, action: 'removed' });
+                    }
+                }
+                return { diff, summary: { added, removed, modified } };
             } else {
                 if (JSON.stringify(oldObj) !== JSON.stringify(newObj)) {
                     diff.push({ id: type, name: `${type} configuration`, action: 'modified', details: 'Configuration updated' });
@@ -619,9 +662,25 @@ export class ProvisioningManager {
                     egress_interface: localVoiceConfig.egress_interface || localVoiceConfig.interface || normalizedGlobal.egress_interface || normalizedGlobal.interface
                 };
                 fs.writeFileSync(activeFile, JSON.stringify(mergedPayload, null, 2), 'utf8');
+            } else if (type === 'custom-tcp-apps') {
+                if (Array.isArray(normalizedGlobal)) {
+                    mergedPayload = { version: 1, updatedAt: new Date().toISOString(), applications: normalizedGlobal };
+                } else {
+                    mergedPayload = normalizedGlobal;
+                }
+                fs.writeFileSync(activeFile, JSON.stringify(mergedPayload, null, 2), 'utf8');
             } else {
                 // SLA, Prisma SASE, Security, IoT objects/arrays
                 fs.writeFileSync(activeFile, JSON.stringify(normalizedGlobal, null, 2), 'utf8');
+            }
+
+            // Trigger callbacks (e.g. hot reload in server.ts)
+            for (const cb of this.bundleAppliedCallbacks) {
+                try {
+                    cb(type, mergedPayload);
+                } catch (e: any) {
+                    log('PROVISIONING', `Error in bundle applied callback for ${type}: ${e.message}`, 'warn');
+                }
             }
 
             // 5. Calculate diff & record history

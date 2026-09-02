@@ -976,6 +976,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
             securityConfig?: boolean;
             voiceConfig?: boolean;
             iotConfig?: boolean;
+            customTcpApps?: boolean;
         };
     } | null>(null);
     const [publishingType, setPublishingType] = useState<string | null>(null);
@@ -1000,7 +1001,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         if (provisioningData?.state?.appliedRevisions) {
             const bundleTypes = [
                 'applications', 'connectivity-probes', 'convergence-sla',
-                'prisma-sase', 'security-config', 'voice-config', 'iot-config'
+                'prisma-sase', 'security-config', 'voice-config', 'iot-config',
+                'custom-tcp-apps'
             ];
 
             const updatedToasted: { [k: string]: number } = { ...lastToastedRevs.current };
@@ -1015,7 +1017,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                             : bType === 'convergence-sla' ? 'Convergence SLA'
                             : bType === 'prisma-sase' ? 'Prisma SASE Credentials'
                             : bType === 'security-config' ? 'Security Policy'
-                            : bType === 'voice-config' ? 'Voice Settings' : 'IoT Simulation';
+                            : bType === 'voice-config' ? 'Voice Settings'
+                            : bType === 'custom-tcp-apps' ? 'Custom TCP Apps' : 'IoT Simulation';
 
                         const summaryText = latestHist?.summary
                             ? latestHist.summary.added || latestHist.summary.removed
@@ -3534,6 +3537,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         { key: 'security-config', label: 'Security Policy & Schedules', icon: Shield, color: 'red', actionLabel: 'Publish Security', pending: provisioningData?.pending?.securityConfig },
                                         { key: 'voice-config', label: 'Voice Settings', icon: PhoneCall, color: 'indigo', actionLabel: 'Publish Voice', pending: provisioningData?.pending?.voiceConfig },
                                         { key: 'iot-config', label: 'IoT Simulation', icon: Radio, color: 'amber', actionLabel: 'Publish IoT', pending: provisioningData?.pending?.iotConfig },
+                                        { key: 'custom-tcp-apps', label: 'Custom TCP Apps', icon: Server, color: 'teal', actionLabel: 'Publish TCP Apps', pending: provisioningData?.pending?.customTcpApps },
                                     ].map(b => {
                                         const Icon = b.icon;
                                         const bMeta = provisioningData?.manifest?.bundles?.find((x: any) => x.type === b.key);
@@ -3620,6 +3624,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                                         'security-config': { label: 'Security', cls: 'bg-red-500/10 text-red-400 border-red-500/20' },
                                                                         'voice-config': { label: 'Voice', cls: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
                                                                         'iot-config': { label: 'IoT', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+                                                                        'custom-tcp-apps': { label: 'TCP Apps', cls: 'bg-teal-500/10 text-teal-400 border-teal-500/20' },
                                                                     };
                                                                     const tag = tagMap[entry.type] || { label: entry.type, cls: 'bg-gray-500/10 text-gray-400 border-gray-500/20' };
                                                                     return (
@@ -3930,6 +3935,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                 { key: 'security-config', label: 'Security Sync', icon: Shield, color: 'red' },
                                                 { key: 'voice-config', label: 'Voice Sync', icon: PhoneCall, color: 'indigo' },
                                                 { key: 'iot-config', label: 'IoT Sync', icon: Radio, color: 'amber' },
+                                                { key: 'custom-tcp-apps', label: 'TCP Apps Sync', icon: Server, color: 'teal' },
                                             ].map(b => {
                                                 const Icon = b.icon;
                                                 const bState = provisioningData?.state?.appliedRevisions?.[b.key];
@@ -3982,7 +3988,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                                 <div className="flex items-center justify-between border-b border-border/30 pb-2">
                                                                     <div className="flex items-center gap-2">
                                                                         <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                                                                            {entry.type === 'applications' ? 'Apps' : entry.type === 'connectivity-probes' ? 'Probes' : entry.type === 'convergence-sla' ? 'SLA' : entry.type === 'prisma-sase' ? 'Prisma SASE' : entry.type === 'security-config' ? 'Security' : entry.type === 'voice-config' ? 'Voice' : 'IoT'} rev {entry.revision}
+                                                                            {entry.type === 'applications' ? 'Apps' : entry.type === 'connectivity-probes' ? 'Probes' : entry.type === 'convergence-sla' ? 'SLA' : entry.type === 'prisma-sase' ? 'Prisma SASE' : entry.type === 'security-config' ? 'Security' : entry.type === 'voice-config' ? 'Voice' : entry.type === 'custom-tcp-apps' ? 'TCP Apps' : 'IoT'} rev {entry.revision}
                                                                         </span>
                                                                         <span className="text-[9px] font-mono text-text-muted opacity-70">
                                                                             {new Date(entry.timestamp).toLocaleTimeString()} • {new Date(entry.timestamp).toLocaleDateString()}
