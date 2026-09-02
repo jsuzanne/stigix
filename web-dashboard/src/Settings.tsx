@@ -534,11 +534,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const ALL_PROBE_TYPES = ['HTTP', 'HTTPS', 'PING', 'DNS', 'UDP', 'TCP', 'CLOUD'];
     const [globalScoreTypes, setGlobalScoreTypes] = useState<string[]>(uiConfig?.globalScoreTypes || ALL_PROBE_TYPES);
     // System startup behaviour
-    const [systemSettings, setSystemSettings] = useState<any>({ auto_restart_iot: false, auto_restart_voice: false, auto_restart_traffic: true, auto_restart_probes: true, registry_mode: 'auto' });
+    const [systemSettings, setSystemSettings] = useState<any>({ auto_restart_iot: false, auto_restart_voice: false, auto_restart_traffic: true, auto_restart_probes: true, auto_restart_custom_tcp: true, registry_mode: 'auto' });
     const [savingSystemSettings, setSavingSystemSettings] = useState(false);
     // Config validity for startup behaviour guards
     const [iotHasConfig, setIotHasConfig] = useState<boolean | null>(null);  // null = loading
     const [voiceHasConfig, setVoiceHasConfig] = useState<boolean | null>(null);
+    const [customTcpHasConfig, setCustomTcpHasConfig] = useState<boolean | null>(null);
     // All groups expanded by default; toggled by clicking the group header
     const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
     const toggleCategory = (name: string) =>
@@ -750,6 +751,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                 auto_restart_voice: !!data.auto_restart_voice,
                 auto_restart_probes: data.auto_restart_probes !== false, // default true
                 auto_restart_traffic: data.auto_restart_traffic !== false, // default true
+                auto_restart_custom_tcp: data.auto_restart_custom_tcp !== false, // default true
                 registry_mode: data.registry_mode || 'auto',
             })))
             .catch(() => {});
@@ -772,6 +774,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
             .then(r => r.json())
             .then((cfg: any) => setVoiceHasConfig(typeof cfg?.servers === 'string' && cfg.servers.trim().length > 0))
             .catch(() => setVoiceHasConfig(false));
+
+        // Check if Custom TCP has at least 1 app configured
+        fetch('/api/custom-tcp/config', { headers: authHeaders })
+            .then(r => r.json())
+            .then((cfg: any) => setCustomTcpHasConfig(Array.isArray(cfg?.applications) && cfg.applications.length > 0))
+            .catch(() => setCustomTcpHasConfig(false));
     }, [token]);
 
     // Polling for upgrade status and registry status
@@ -1477,7 +1485,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
 
     if (loading) return <div className="p-8 text-center text-text-muted animate-pulse font-bold tracking-widest text-xs">Loading Settings...</div>;
 
-    const saveSystemSetting = async (key: 'auto_restart_iot' | 'auto_restart_voice' | 'auto_restart_traffic' | 'auto_restart_probes' | 'registry_mode', value: any) => {
+    const saveSystemSetting = async (key: 'auto_restart_iot' | 'auto_restart_voice' | 'auto_restart_traffic' | 'auto_restart_probes' | 'auto_restart_custom_tcp' | 'registry_mode', value: any) => {
         const next = { ...systemSettings, [key]: value };
         setSystemSettings(next);
         setSavingSystemSettings(true);
@@ -3036,8 +3044,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                 </div>
                             </div>
 
-                            {/* 2×2 grid */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border">
+                            {/* Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border">
                                 {([
                                     {
                                         key: 'auto_restart_traffic' as const,
@@ -3056,6 +3064,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         color: 'cyan',
                                         hasConfig: true,
                                         noConfigMsg: '',
+                                    },
+                                    {
+                                        key: 'auto_restart_custom_tcp' as const,
+                                        label: 'Custom TCP Apps',
+                                        desc: 'Resumes active listeners and client workloads across reboots.',
+                                        icon: '⚡',
+                                        color: 'indigo',
+                                        hasConfig: customTcpHasConfig,
+                                        noConfigMsg: 'Create a Custom TCP App first',
                                     },
                                     {
                                         key: 'auto_restart_iot' as const,
@@ -3083,6 +3100,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                     const accentColor = {
                                         violet: { ring: 'group-hover:border-violet-500/40', dot: 'bg-violet-500', bg: 'bg-violet-500/10 text-violet-400' },
                                         cyan:   { ring: 'group-hover:border-cyan-500/40',   dot: 'bg-cyan-500',   bg: 'bg-cyan-500/10 text-cyan-400'   },
+                                        indigo: { ring: 'group-hover:border-indigo-500/40', dot: 'bg-indigo-500', bg: 'bg-indigo-500/10 text-indigo-400' },
                                         green:  { ring: 'group-hover:border-green-500/40',  dot: 'bg-green-500',  bg: 'bg-green-500/10 text-green-400'  },
                                         blue:   { ring: 'group-hover:border-blue-500/40',   dot: 'bg-blue-500',   bg: 'bg-blue-500/10 text-blue-400'   },
                                     }[color];
@@ -3093,9 +3111,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                             onClick={() => !isDisabled && saveSystemSetting(key, !active)}
                                             disabled={isDisabled}
                                             className={cn(
-                                                'group flex items-start gap-3 p-5 text-left w-full transition-all duration-150',
+                                                'group flex items-start gap-3 p-5 text-left w-full transition-all duration-150 bg-card',
                                                 isDisabled
-                                                    ? 'opacity-45 cursor-not-allowed bg-transparent'
+                                                    ? 'opacity-45 cursor-not-allowed'
                                                     : 'cursor-pointer hover:bg-card-secondary/80'
                                             )}
                                         >

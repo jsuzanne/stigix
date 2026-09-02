@@ -41,7 +41,7 @@ export class TcpAppManager extends EventEmitter {
         this.historyStore = new CustomTcpHistoryStore(configDir);
     }
 
-    public async init(defaultSiteName?: string): Promise<void> {
+    public async init(defaultSiteName?: string, autoRestart: boolean = true): Promise<void> {
         if (this.isInitialized) return;
 
         const config = await this.configStore.load(defaultSiteName);
@@ -50,18 +50,22 @@ export class TcpAppManager extends EventEmitter {
             this.registerAppInstance(app, config.instance);
         }
 
-        // Handle auto-start on initialization
-        for (const app of config.applications) {
-            if (app.enabled) {
-                if (app.startup?.startListener) {
-                    this.startListener(app.id).catch(err => {
-                        console.error(`[CUSTOM_TCP_MGR] Failed to autostart listener for "${app.name}":`, err.message);
-                    });
-                }
-                if (app.startup?.startClientWorkload) {
-                    this.startClient(app.id).catch(err => {
-                        console.error(`[CUSTOM_TCP_MGR] Failed to autostart client for "${app.name}":`, err.message);
-                    });
+        // Handle auto-start on initialization if autoRestart is enabled
+        if (autoRestart) {
+            for (const app of config.applications) {
+                if (app.enabled !== false) {
+                    // Start listener if startListener is true (default true)
+                    if (app.startup?.startListener !== false) {
+                        this.startListener(app.id, false).catch(err => {
+                            console.error(`[CUSTOM_TCP_MGR] Failed to autostart listener for "${app.name}":`, err.message);
+                        });
+                    }
+                    // Resume client workload if startClientWorkload was active
+                    if (app.startup?.startClientWorkload === true) {
+                        this.startClient(app.id, undefined, false).catch(err => {
+                            console.error(`[CUSTOM_TCP_MGR] Failed to autostart client for "${app.name}":`, err.message);
+                        });
+                    }
                 }
             }
         }
@@ -109,7 +113,7 @@ export class TcpAppManager extends EventEmitter {
                 await ctx.serverRuntime.stop();
                 this.registerAppInstance(app, file.instance);
                 if (wasListening || (app.enabled && app.startup?.startListener !== false)) {
-                    await this.startListener(app.id).catch(err => {
+                    await this.startListener(app.id, false).catch(err => {
                         console.error(`[CUSTOM_TCP_MGR] Failed to restart listener on new port ${app.listener?.port}:`, err.message);
                     });
                 }
@@ -124,7 +128,7 @@ export class TcpAppManager extends EventEmitter {
         } else {
             this.registerAppInstance(app, file.instance);
             if (app.enabled && app.startup?.startListener !== false) {
-                await this.startListener(app.id).catch(() => {});
+                await this.startListener(app.id, false).catch(() => {});
             }
         }
 
@@ -148,7 +152,7 @@ export class TcpAppManager extends EventEmitter {
         this.emit('app_deleted', appId);
     }
 
-    public async startListener(appId: string): Promise<void> {
+    public async startListener(appId: string, persist: boolean = true): Promise<void> {
         const ctx = this.appInstances.get(appId);
         if (!ctx) throw new Error(`Application ${appId} not registered`);
 
@@ -162,27 +166,54 @@ export class TcpAppManager extends EventEmitter {
         }
 
         await ctx.serverRuntime.start();
+
+        if (persist) {
+            ctx.config.startup = {
+                startListener: true,
+                startClientWorkload: ctx.config.startup?.startClientWorkload ?? false
+            };
+            await this.persistAppStartupState(appId);
+        }
+
         this.emit('state_changed', { appId, type: 'listener_started' });
     }
 
-    public async stopListener(appId: string): Promise<void> {
+    public async stopListener(appId: string, persist: boolean = true): Promise<void> {
         const ctx = this.appInstances.get(appId);
         if (!ctx) throw new Error(`Application ${appId} not registered`);
         await ctx.serverRuntime.stop();
+
+        if (persist) {
+            ctx.config.startup = {
+                startListener: false,
+                startClientWorkload: ctx.config.startup?.startClientWorkload ?? false
+            };
+            await this.persistAppStartupState(appId);
+        }
+
         this.emit('state_changed', { appId, type: 'listener_stopped' });
     }
 
-    public async startClient(appId: string, targetedPeerIds?: string[]): Promise<void> {
+    public async startClient(appId: string, targetedPeerIds?: string[], persist: boolean = true): Promise<void> {
         const ctx = this.appInstances.get(appId);
         if (!ctx) throw new Error(`Application ${appId} not registered`);
 
         ctx.clientRunStartTs = Date.now();
         ctx.clientTargetedPeers = targetedPeerIds;
         await ctx.clientRuntime.start(targetedPeerIds);
+
+        if (persist) {
+            ctx.config.startup = {
+                startListener: ctx.config.startup?.startListener ?? true,
+                startClientWorkload: true
+            };
+            await this.persistAppStartupState(appId);
+        }
+
         this.emit('state_changed', { appId, type: 'client_started' });
     }
 
-    public async stopClient(appId: string): Promise<void> {
+    public async stopClient(appId: string, persist: boolean = true): Promise<void> {
         const ctx = this.appInstances.get(appId);
         if (!ctx) throw new Error(`Application ${appId} not registered`);
 
@@ -224,7 +255,33 @@ export class TcpAppManager extends EventEmitter {
             ctx.clientRunStartTs = undefined;
         }
 
+        if (persist) {
+            ctx.config.startup = {
+                startListener: ctx.config.startup?.startListener ?? true,
+                startClientWorkload: false
+            };
+            await this.persistAppStartupState(appId);
+        }
+
         this.emit('state_changed', { appId, type: 'client_stopped' });
+    }
+
+    private async persistAppStartupState(appId: string): Promise<void> {
+        try {
+            const file = this.configStore.getCached();
+            if (!file) return;
+            const app = file.applications.find(a => a.id === appId);
+            const ctx = this.appInstances.get(appId);
+            if (app && ctx) {
+                app.startup = {
+                    startListener: ctx.config.startup?.startListener ?? true,
+                    startClientWorkload: ctx.config.startup?.startClientWorkload ?? false
+                };
+                await this.configStore.save(file);
+            }
+        } catch (e: any) {
+            console.error(`[CUSTOM_TCP_MGR] Failed to persist startup state for app "${appId}":`, e.message);
+        }
     }
 
     public async testPeer(appId: string, peerId: string): Promise<{

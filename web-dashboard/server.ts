@@ -443,6 +443,7 @@ interface SystemSettings {
     auto_restart_voice: boolean;
     auto_restart_traffic: boolean;
     auto_restart_probes: boolean;
+    auto_restart_custom_tcp: boolean;
     registry_mode?: 'auto' | 'leader' | 'peer';
 }
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
@@ -450,6 +451,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     auto_restart_voice: false,
     auto_restart_traffic: true,   // retrocompat: traffic was always auto-starting
     auto_restart_probes: true,    // retrocompat: probes were always auto-starting
+    auto_restart_custom_tcp: true, // Custom TCP apps state persistence across reboots
     registry_mode: 'auto',
 };
 function getSystemSettings(): SystemSettings {
@@ -10859,7 +10861,8 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
     registryManager.start().catch(e => log('REGISTRY', `Failed to start: ${e.message}`, 'error'));
 
     // Initialize Custom TCP Applications Manager
-    tcpAppManager.init(APP_CONFIG.siteName).catch(e => log('CUSTOM_TCP', `Failed to initialize Custom TCP Manager: ${e.message}`, 'error'));
+    const autoRestartCustomTcp = sysSettings.auto_restart_custom_tcp !== false;
+    tcpAppManager.init(APP_CONFIG.siteName, autoRestartCustomTcp).catch(e => log('CUSTOM_TCP', `Failed to initialize Custom TCP Manager: ${e.message}`, 'error'));
 
     // Delayed Prisma SD-WAN auto-discovery sync
     setTimeout(async () => {
