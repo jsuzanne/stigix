@@ -366,107 +366,109 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
             )}
 
             {/* Application Selector & Control Header */}
-            <div className="bg-card border border-border rounded-2xl p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-4 flex-1 min-w-[300px]">
-                    <div className="w-full max-w-xs">
-                        <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1.5">Select Application</label>
-                        <select
-                            value={selectedAppId}
-                            onChange={e => setSelectedAppId(e.target.value)}
-                            className="w-full bg-card-secondary border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary font-medium focus:outline-none focus:border-indigo-500 shadow-sm"
-                        >
-                            {applications.map(app => {
-                                const sum = allAppSummaries[app.id];
-                                const isL = sum?.listener?.state === 'listening';
-                                return (
-                                    <option key={app.id} value={app.id}>
-                                        {isL ? '🟢' : '⚪'} {app.name} (Port :{app.listener?.port})
-                                    </option>
-                                );
-                            })}
-                        </select>
+            <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+                <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2">Select Application</label>
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[300px]">
+                        <div className="w-full max-w-xs">
+                            <select
+                                value={selectedAppId}
+                                onChange={e => setSelectedAppId(e.target.value)}
+                                className="w-full h-[38px] bg-card-secondary border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary font-medium focus:outline-none focus:border-indigo-500 shadow-sm"
+                            >
+                                {applications.map(app => {
+                                    const sum = allAppSummaries[app.id];
+                                    const isL = sum?.listener?.state === 'listening';
+                                    return (
+                                        <option key={app.id} value={app.id}>
+                                            {isL ? '🟢' : '⚪'} {app.name} (Port :{app.listener?.port})
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                        </div>
+
+                        {metrics && (() => {
+                            const health = calculateHealthScore();
+                            return (
+                                <div className="flex items-center gap-2.5">
+                                    <div
+                                        title={health.reason}
+                                        className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-black border flex items-center gap-2 cursor-help transition-all shadow-sm ${
+                                            health.color === 'emerald'
+                                                ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
+                                                : health.color === 'amber'
+                                                ? 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400'
+                                                : 'bg-rose-500/15 border-rose-500/50 text-rose-600 dark:text-rose-400 animate-pulse'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1.5 font-mono">
+                                            <span className="text-[13px]">{health.score}</span>
+                                            <span className="text-[10px] opacity-70">/100</span>
+                                        </div>
+                                        <span className="text-[11px] uppercase tracking-wider font-extrabold">{health.label}</span>
+                                    </div>
+
+                                    <span className="h-[38px] text-xs text-text-muted bg-card-secondary border border-border px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm">
+                                        <Server size={13} className={metrics.listenerState === 'listening' ? 'text-emerald-500' : 'text-text-muted'} />
+                                        <span>Listener:</span>
+                                        <strong className={`uppercase ${metrics.listenerState === 'listening' ? 'text-emerald-600 dark:text-emerald-400' : 'text-text-muted'}`}>
+                                            {metrics.listenerState}
+                                        </strong>
+                                    </span>
+                                </div>
+                            );
+                        })()}
                     </div>
 
-                    {metrics && (() => {
-                        const health = calculateHealthScore();
-                        return (
-                            <div className="flex items-center gap-2.5 pt-5">
-                                <div
-                                    title={health.reason}
-                                    className={`px-3.5 py-1.5 rounded-xl text-xs font-black border flex items-center gap-2 cursor-help transition-all shadow-sm ${
-                                        health.color === 'emerald'
-                                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
-                                            : health.color === 'amber'
-                                            ? 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400'
-                                            : 'bg-rose-500/15 border-rose-500/50 text-rose-600 dark:text-rose-400 animate-pulse'
-                                    }`}
-                                >
-                                    <div className="flex items-center gap-1.5 font-mono">
-                                        <span className="text-[13px]">{health.score}</span>
-                                        <span className="text-[10px] opacity-70">/100</span>
-                                    </div>
-                                    <span className="text-[11px] uppercase tracking-wider font-extrabold">{health.label}</span>
-                                </div>
+                    {/* Control Action Buttons */}
+                    <div className="flex items-center gap-2.5">
+                        <button
+                            onClick={handleToggleListener}
+                            disabled={isActionLoading}
+                            className={`h-[38px] px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm ${
+                                metrics?.listenerState === 'listening'
+                                    ? 'bg-card-secondary hover:bg-card-hover text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                                    : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                            }`}
+                        >
+                            <Server size={15} />
+                            {metrics?.listenerState === 'listening' ? 'Stop Listener' : 'Start Listener'}
+                        </button>
 
-                                <span className="text-xs text-text-muted bg-card-secondary border border-border px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm">
-                                    <Server size={13} className={metrics.listenerState === 'listening' ? 'text-emerald-500' : 'text-text-muted'} />
-                                    <span>Listener:</span>
-                                    <strong className={`uppercase ${metrics.listenerState === 'listening' ? 'text-emerald-600 dark:text-emerald-400' : 'text-text-muted'}`}>
-                                        {metrics.listenerState}
-                                    </strong>
-                                </span>
-                            </div>
-                        );
-                    })()}
-                </div>
+                        <button
+                            onClick={handleToggleClient}
+                            disabled={isActionLoading || !currentApp?.peers?.length}
+                            className={`h-[38px] px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm ${
+                                metrics?.clientWorkloadRunning
+                                    ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40'
+                                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
+                            }`}
+                        >
+                            {metrics?.clientWorkloadRunning ? <Square size={15} /> : <Play size={15} />}
+                            {metrics?.clientWorkloadRunning ? 'Stop Client Workload' : 'Start Client Workload'}
+                        </button>
 
-                {/* Control Action Buttons */}
-                <div className="flex items-center gap-2.5">
-                    <button
-                        onClick={handleToggleListener}
-                        disabled={isActionLoading}
-                        className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm ${
-                            metrics?.listenerState === 'listening'
-                                ? 'bg-card-secondary hover:bg-card-hover text-amber-600 dark:text-amber-400 border border-amber-500/30'
-                                : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-                        }`}
-                    >
-                        <Server size={15} />
-                        {metrics?.listenerState === 'listening' ? 'Stop Listener' : 'Start Listener'}
-                    </button>
+                        <button
+                            onClick={() => {
+                                setEditingApp(currentApp || null);
+                                setIsWizardOpen(true);
+                            }}
+                            className="h-[38px] px-3.5 py-2 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+                        >
+                            <Edit3 size={15} /> Edit Profile
+                        </button>
 
-                    <button
-                        onClick={handleToggleClient}
-                        disabled={isActionLoading || !currentApp?.peers?.length}
-                        className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm ${
-                            metrics?.clientWorkloadRunning
-                                ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40'
-                                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
-                        }`}
-                    >
-                        {metrics?.clientWorkloadRunning ? <Square size={15} /> : <Play size={15} />}
-                        {metrics?.clientWorkloadRunning ? 'Stop Client Workload' : 'Start Client Workload'}
-                    </button>
-
-                    <button
-                        onClick={() => {
-                            setEditingApp(currentApp || null);
-                            setIsWizardOpen(true);
-                        }}
-                        className="px-3.5 py-2 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
-                    >
-                        <Edit3 size={15} /> Edit Profile
-                    </button>
-
-                    <button
-                        onClick={() => {
-                            setEditingApp(null);
-                            setIsWizardOpen(true);
-                        }}
-                        className="px-3.5 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
-                    >
-                        <Plus size={15} /> New App
-                    </button>
+                        <button
+                            onClick={() => {
+                                setEditingApp(null);
+                                setIsWizardOpen(true);
+                            }}
+                            className="h-[38px] px-3.5 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+                        >
+                            <Plus size={15} /> New App
+                        </button>
+                    </div>
                 </div>
             </div>
 
