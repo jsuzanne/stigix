@@ -1,5 +1,5 @@
 # Build Stage for Web Dashboard
-FROM public.ecr.aws/docker/library/node:20-slim AS builder
+FROM node:20-slim AS builder
 WORKDIR /app
 COPY web-dashboard/package*.json ./
 RUN npm ci
@@ -7,7 +7,7 @@ COPY web-dashboard/ ./
 RUN npm run build
 
 # Final Stage
-FROM public.ecr.aws/docker/library/python:3.12-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 

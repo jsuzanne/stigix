@@ -1,5 +1,5 @@
 # Build Stage
-FROM public.ecr.aws/docker/library/node:20-slim AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ COPY web-dashboard/ ./
 RUN npm run build
 
 # Runtime Stage
-FROM public.ecr.aws/docker/library/node:20-slim
+FROM node:20-slim
 
 WORKDIR /app
 
