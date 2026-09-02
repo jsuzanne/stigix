@@ -553,7 +553,7 @@ const VyOSRouterNode = ({ data }: any) => {
         const matchedRes = resolutions.find((r: any) => r.vyos?.interfaceName === iface.name);
         const isConnected = !!matchedRes;
         const isIfaceUp = iface.status !== 'down';
-        const fullIp = iface.address?.[0] || iface.ipCidr || matchedRes?.vyos?.ipCidr || '—';
+        const fullIp = iface.address?.[0] || iface.ipCidr || iface.ip || matchedRes?.vyos?.ipCidr || matchedRes?.vyos?.ip || '—';
 
         return (
             <div
@@ -565,9 +565,9 @@ const VyOSRouterNode = ({ data }: any) => {
                     }
                 }}
                 className={cn(
-                    "relative px-3.5 py-2.5 rounded-2xl border text-[11px] transition-all flex flex-col justify-between group/port min-w-[170px] max-w-[200px]",
+                    "relative px-3.5 py-2.5 rounded-2xl border text-[11px] transition-all flex flex-col justify-between group/port min-w-[175px] max-w-[210px] gap-1",
                     isConnected 
-                        ? "bg-card border-amber-500/50 hover:border-amber-400 hover:bg-card-hover shadow-md shadow-amber-500/10 cursor-pointer" 
+                        ? "bg-card border-amber-500/50 hover:border-amber-400 hover:bg-card-secondary/70 shadow-md shadow-amber-500/10 cursor-pointer" 
                         : "bg-card-secondary/40 border-border text-text-muted opacity-40 cursor-default"
                 )}
                 title={matchedRes ? `Connected to ${matchedRes.prismaWan.siteName} (${matchedRes.prismaWan.interfaceName}) · Click to inspect` : (iface.description || iface.name)}
@@ -581,7 +581,7 @@ const VyOSRouterNode = ({ data }: any) => {
                 />
 
                 <div className="flex items-center justify-between pb-1.5 border-b border-border/50">
-                    <span className="font-mono font-black text-amber-500 dark:text-amber-400 flex items-center gap-1.5">
+                    <span className="font-mono font-black text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
                         <span className={cn("w-2 h-2 rounded-full", isConnected ? (isIfaceUp ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-red-500") : "bg-slate-400 dark:bg-slate-600")} />
                         {iface.name}
                     </span>
@@ -592,14 +592,14 @@ const VyOSRouterNode = ({ data }: any) => {
                     )}
                 </div>
 
-                <div className="flex items-center justify-between font-mono mt-1.5">
+                <div className="flex items-center justify-between font-mono">
                     <span className="text-text-primary font-black text-[11px] whitespace-nowrap tracking-tight">
                         {fullIp}
                     </span>
                 </div>
 
                 {iface.description && (
-                    <div className="text-[9px] text-text-muted truncate font-mono mt-0.5" title={iface.description}>
+                    <div className="text-[9px] text-text-muted truncate font-mono" title={iface.description}>
                         {iface.description}
                     </div>
                 )}
@@ -932,16 +932,25 @@ function TopologyContent({ token }: TopologyProps) {
                     const fromPayload = allRouters.find((r: any) => r.name === routerName);
                     const routerResolutions = resolvedWithHub.filter((r: any) => r.status === 'matched' && r.vyos?.routerName === routerName);
 
-                    // Build comprehensive interfaces list
+                    // Build comprehensive interfaces list with guaranteed IP and description resolution
                     const ifaceMap = new Map<string, any>();
-                    fromPayload?.interfaces?.forEach((i: any) => ifaceMap.set(i.name, i));
+                    fromPayload?.interfaces?.forEach((i: any) => ifaceMap.set(i.name, { ...i }));
                     routerResolutions.forEach((res: any) => {
-                        if (res.vyos?.interfaceName && !ifaceMap.has(res.vyos.interfaceName)) {
+                        if (res.vyos?.interfaceName) {
+                            const existing = ifaceMap.get(res.vyos.interfaceName) || {};
+                            const ipCidr = res.vyos.ipCidr || res.vyos.ip || existing.ipCidr || existing.address?.[0];
+                            const addresses = (existing.address && existing.address.length > 0 && existing.address[0])
+                                ? existing.address
+                                : (ipCidr ? [ipCidr] : []);
+                            
                             ifaceMap.set(res.vyos.interfaceName, {
+                                ...existing,
                                 name: res.vyos.interfaceName,
-                                description: res.vyos.description,
-                                address: [res.vyos.ipCidr || res.vyos.ip],
-                                status: 'up'
+                                description: existing.description || res.vyos.description,
+                                address: addresses,
+                                ipCidr: ipCidr,
+                                ip: res.vyos.ip || existing.ip || (ipCidr ? ipCidr.split('/')[0] : undefined),
+                                status: existing.status || 'up'
                             });
                         }
                     });
@@ -2567,7 +2576,7 @@ function TopologyContent({ token }: TopologyProps) {
 
             {/* Interactive Physical Link Trace Inspector (Floating Right Drawer) */}
             {underlayDrawerResolution && (
-                <div className="fixed top-24 right-6 z-[70] w-[440px] max-w-[92vw] bg-card/95 dark:bg-slate-950/95 backdrop-blur-2xl border-2 border-amber-500/50 rounded-3xl p-5 shadow-2xl shadow-black/20 dark:shadow-black/90 animate-in fade-in slide-in-from-right-8 duration-300 flex flex-col gap-3.5 text-text-primary">
+                <div className="fixed top-24 right-6 z-[70] w-[440px] max-w-[92vw] bg-card/95 backdrop-blur-2xl border-2 border-amber-500/50 rounded-3xl p-5 shadow-2xl shadow-black/10 dark:shadow-black/60 animate-in fade-in slide-in-from-right-8 duration-300 flex flex-col gap-3.5 text-text-primary">
                     {/* Header */}
                     <div className="flex items-center justify-between pb-3 border-b border-border">
                         <div className="flex items-center gap-2.5">
