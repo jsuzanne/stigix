@@ -159,6 +159,37 @@ Custom TCP Application profiles are persisted in `config/custom-tcp-applications
 
 ---
 
+## Client Workload Modes Reference
+
+The Client Workload Generator simulates realistic application traffic patterns transmitted across the network to target peer listeners:
+
+| Mode | Identifier | Connection Behavior | Cadence & Flow | Primary Use Case & SD-WAN Testing Goal |
+| :--- | :--- | :--- | :--- | :--- |
+| **Persistent Sessions** | `persistent_request_reply` | **Long-lived TCP Sockets**: Opens $N$ concurrent TCP connections per peer. Reuses established sockets without closing. | Periodic request/reply at configurable interval (`intervalMs`). Measures round-trip time ($p50/p95$). | Simulates interactive enterprise apps (SAP, Oracle ERP, POS terminals, Bloomberg/FIX trading). Tests path stability, session affinity, and asymmetric routing. |
+| **Transactional** | `transactional` | **Short-lived TCP Sockets**: For each transaction, performs full TCP 3-way handshake (`SYN` $\rightarrow$ `SYN-ACK` $\rightarrow$ `ACK`), sends request, receives reply, and closes socket (`FIN` / `RST`). | Configurable delay between successive connections. | Simulates REST/RPC APIs without HTTP keep-alive, DNS, and legacy database queries. Tests firewall session setup rate (CPS - Connections Per Second) and NAT table capacity. |
+| **Heartbeat** | `heartbeat` | **Low-footprint Keep-alive**: Opens persistent connection and sends small ping/pong frames (32–64 bytes) at regular cadence (e.g., 5s). | Ultra-low bandwidth footprint ($< 1 \text{ KB/s}$). | Keeps SD-WAN IPsec/NAT translation state alive while continuously monitoring round-trip path latency and jitter. |
+| **Bulk Burst** | `bulk_burst` | **High-Volume Bursts**: Transmits high-density batches of large payload frames (e.g. 64 KB – 1 MB) followed by quiet intervals. | Configurable burst size, payload bytes, and idle sleep intervals (e.g. 5–30s). | Simulates batch database replication, log shipping, and backup jobs. Tests SD-WAN QoS priority queuing, bandwidth policing, and bufferbloat. |
+| **Continuous Stream** | `continuous_stream` | **Back-to-Back Framing**: Sends an uninterrupted back-to-back stream of protocol frames without pause between requests. | Maximum throughput bound only by network bandwidth and TCP window size. | Simulates high-frequency industrial telemetry, video ingestion streams, and live sensor data. Tests WAN link saturation and packet drop behavior under load. |
+
+---
+
+## Server Simulation Behaviors Reference
+
+The Host TCP Listener can emulate diverse application backend characteristics and chaos injection scenarios:
+
+| Behavior Mode | Identifier | Description & Simulation Parameters | Realistic Scenario |
+| :--- | :--- | :--- | :--- |
+| **Echo** | `echo` | Immediately reflects the client's request payload back in the response frame with zero added delay. | Ideal baseline latency and throughput measurement. |
+| **Acknowledge** | `acknowledge` | Returns an ultra-lightweight status ACK response without echoing the client payload. | High-frequency telemetry or transactional database write confirmation. |
+| **Fixed Delay** | `fixed_delay` | Injects an exact deterministic processing delay (`fixedDelayMs`, e.g., 250 ms) before replying. | Simulates heavy backend computation, complex SQL database queries, or legacy mainframe transactions. |
+| **Random Delay** | `random_delay` | Injects uniform random jitter between `randomDelayMinMs` and `randomDelayMaxMs` (e.g., 50–300 ms). | Simulates multi-tenant cloud microservices or variable load on application servers. |
+| **Looping Delay** | `looping_delay` | Cycles through 3 configurable phases: Normal Latency $\rightarrow$ Degraded High Latency $\rightarrow$ Normal Latency. | Tests whether SD-WAN Dynamic Path Selection (DPS) detects transient degradation and reroutes traffic over a cleaner MPLS/Internet link. |
+| **Drop Response** | `drop_response` | Silently discards the request and never sends a response, while keeping the TCP socket open until client timeout. | Simulates application deadlock, unhandled exceptions, or backend service crashes. |
+| **Close Connection** | `close_connection` | Accepts the TCP connection, optionally replies, and abruptly terminates the socket (`closeAfterRequests: N`). | Simulates unstable legacy servers, crash loops, and tests client reconnection backoff. |
+| **Error Response** | `error_response` | Returns application-level error frames (`500 INTERNAL_ERROR`, `503 SERVICE_UNAVAILABLE`) with configurable error rate (0–100%). | Validates application-aware SD-WAN telemetry and SASE DLP/CASB inspection rules. |
+
+---
+
 ## Web Dashboard Usage
 
 ### 1. Dedicated "Custom Apps" Navigation Tab

@@ -664,23 +664,67 @@ export class ProvisioningManager {
                 fs.writeFileSync(activeFile, JSON.stringify(mergedPayload, null, 2), 'utf8');
             } else if (type === 'custom-tcp-apps') {
                 let localInstance: any = null;
+                let localApps: any[] = [];
                 if (fs.existsSync(activeFile)) {
                     try {
                         const existing = JSON.parse(fs.readFileSync(activeFile, 'utf8'));
-                        if (existing && existing.instance) localInstance = existing.instance;
+                        if (existing) {
+                            if (existing.instance) localInstance = existing.instance;
+                            if (Array.isArray(existing.applications)) localApps = existing.applications;
+                        }
                     } catch {}
                 }
 
-                if (Array.isArray(normalizedGlobal)) {
-                    mergedPayload = { version: 1, instance: localInstance || undefined, updatedAt: new Date().toISOString(), applications: normalizedGlobal };
-                } else if (normalizedGlobal && normalizedGlobal.applications) {
-                    mergedPayload = {
-                        ...normalizedGlobal,
-                        instance: localInstance || normalizedGlobal.instance
-                    };
-                } else {
-                    mergedPayload = normalizedGlobal;
+                const incomingApps: any[] = Array.isArray(normalizedGlobal)
+                    ? normalizedGlobal
+                    : (normalizedGlobal?.applications || []);
+
+                const localAppMap = new Map<string, any>(localApps.map((a: any) => [a.id, a]));
+                const incomingIdSet = new Set(incomingApps.map((a: any) => a.id));
+                const mergedApps: any[] = [];
+
+                for (const gApp of incomingApps) {
+                    const localApp = localAppMap.get(gApp.id);
+                    if (localApp) {
+                        // Merge application definition from Leader with local peer configurations
+                        let effectivePeers = localApp.peers ? [...localApp.peers] : [];
+                        if ((!effectivePeers || effectivePeers.length === 0) && gApp.peers && gApp.peers.length > 0) {
+                            effectivePeers = [...gApp.peers];
+                        } else if (gApp.peers && gApp.peers.length > 0) {
+                            // Merge: preserve local peer entries, but add any new global peer from Leader if not present locally
+                            const localPeerKeys = new Set(effectivePeers.map((p: any) => p.id || `${p.host}:${p.port}`));
+                            for (const gp of gApp.peers) {
+                                const gpKey = gp.id || `${gp.host}:${gp.port}`;
+                                if (!localPeerKeys.has(gpKey)) {
+                                    effectivePeers.push(gp);
+                                }
+                            }
+                        }
+
+                        mergedApps.push({
+                            ...gApp,
+                            enabled: localApp.enabled !== undefined ? localApp.enabled : gApp.enabled,
+                            startup: localApp.startup || gApp.startup,
+                            peers: effectivePeers
+                        });
+                    } else {
+                        mergedApps.push(gApp);
+                    }
                 }
+
+                // Preserve any local-only applications created on this node
+                for (const localApp of localApps) {
+                    if (!incomingIdSet.has(localApp.id)) {
+                        mergedApps.push(localApp);
+                    }
+                }
+
+                mergedPayload = {
+                    version: 1,
+                    instance: localInstance || (normalizedGlobal?.instance || undefined),
+                    updatedAt: new Date().toISOString(),
+                    applications: mergedApps
+                };
                 fs.writeFileSync(activeFile, JSON.stringify(mergedPayload, null, 2), 'utf8');
             } else {
                 // SLA, Prisma SASE, Security, IoT objects/arrays
