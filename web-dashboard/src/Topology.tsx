@@ -47,7 +47,10 @@ import {
     GitBranch,
     ShieldCheck,
     HelpCircle,
-    AlertTriangle
+    AlertTriangle,
+    Table,
+    ExternalLink,
+    Eye
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { clsx } from 'clsx';
@@ -532,6 +535,9 @@ function TopologyContent({ token }: TopologyProps) {
     const [showUnderlayPanel, setShowUnderlayPanel] = useState(false);
     const [underlayPanelResolution, setUnderlayPanelResolution] = useState<UnderlayResolution | null>(null);
     const [showUnderlayMenu, setShowUnderlayMenu] = useState(false);
+    const [showUnderlayDiagnostics, setShowUnderlayDiagnostics] = useState(false);
+    const [diagnosticsFilter, setDiagnosticsFilter] = useState<'ALL' | 'matched' | 'no_match' | 'ambiguous' | 'wan_ip_unavailable'>('ALL');
+    const [diagnosticsSearch, setDiagnosticsSearch] = useState('');
 
     // Persist visibility selection
     useEffect(() => {
@@ -774,7 +780,16 @@ function TopologyContent({ token }: TopologyProps) {
             if (data.error) throw new Error(data.error);
             setTopology(data);
             setLastRefresh(new Date());
-            if (data.underlay) setUnderlayData(data.underlay);
+            if (data.underlay) {
+                setUnderlayData(data.underlay);
+            } else {
+                fetch('/api/topology/underlay-debug', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                })
+                .then(r => r.json())
+                .then(d => { if (d?.underlay) setUnderlayData(d.underlay); })
+                .catch(() => {});
+            }
             processTopology(data);
         } catch (e: any) {
             setError(e.message);
@@ -811,7 +826,16 @@ function TopologyContent({ token }: TopologyProps) {
             if (data.error) throw new Error(data.error);
             setTopology(data);
             setLastRefresh(new Date());
-            if (data.underlay) setUnderlayData(data.underlay);
+            if (data.underlay) {
+                setUnderlayData(data.underlay);
+            } else {
+                fetch('/api/topology/underlay-debug', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                })
+                .then(r => r.json())
+                .then(d => { if (d?.underlay) setUnderlayData(d.underlay); })
+                .catch(() => {});
+            }
             processTopology(data);
         } catch (e: any) {
             setError(e.message);
@@ -1231,86 +1255,142 @@ function TopologyContent({ token }: TopologyProps) {
                                     <RefreshCw size={16} />
                                 </button>
 
-                                {/* Underlay Inspect Button */}
-                                {underlayData?.available && (
-                                    <>
-                                        <div className="h-4 w-px bg-border" />
-                                        <div className="relative">
-                                            <button
-                                                id="topology-underlay-btn"
-                                                onClick={() => setShowUnderlayMenu(prev => !prev)}
-                                                className={cn(
-                                                    "p-2 rounded-xl transition-all group flex items-center gap-1.5",
-                                                    underlayMode !== 'off'
-                                                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
-                                                        : "hover:bg-card-secondary text-text-muted hover:text-amber-400"
-                                                )}
-                                                title="Underlay Inspect — VyOS WAN next-hop"
-                                            >
-                                                <Layers size={16} />
-                                                {underlayData.summary.matched > 0 && (
-                                                    <span className={cn(
-                                                        "text-[9px] font-black tracking-tight",
-                                                        underlayMode !== 'off' ? "text-amber-300" : "text-text-muted"
-                                                    )}>
-                                                        {underlayData.summary.matched}/{underlayData.summary.wanInterfacesSeen}
-                                                    </span>
-                                                )}
-                                            </button>
+                                {/* Underlay Inspect Button — Always Visible */}
+                                <div className="h-4 w-px bg-border" />
+                                <div className="relative">
+                                    <button
+                                        id="topology-underlay-btn"
+                                        onClick={() => setShowUnderlayMenu(prev => !prev)}
+                                        className={cn(
+                                            "p-2 rounded-xl transition-all group flex items-center gap-1.5",
+                                            underlayMode !== 'off'
+                                                ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
+                                                : underlayData?.summary?.matched
+                                                    ? "hover:bg-card-secondary text-text-muted hover:text-amber-400"
+                                                    : "hover:bg-card-secondary text-text-muted/60 hover:text-text-primary"
+                                        )}
+                                        title={
+                                            !underlayData 
+                                                ? "Underlay Inspect (Loading/Click to inspect)" 
+                                                : !underlayData.vyosConfigAvailable 
+                                                    ? "Underlay Inspect — VyOS not configured in config/vyos-config.json"
+                                                    : `Underlay Inspect — ${underlayData.summary.matched}/${underlayData.summary.wanInterfacesSeen} matched to VyOS next-hops`
+                                        }
+                                    >
+                                        <Layers size={16} className={cn(underlayData && !underlayData.vyosConfigAvailable ? "text-amber-500/70" : "")} />
+                                        {underlayData?.summary?.matched !== undefined && underlayData.summary.matched > 0 ? (
+                                            <span className={cn(
+                                                "text-[9px] font-black tracking-tight",
+                                                underlayMode !== 'off' ? "text-amber-300" : "text-text-muted"
+                                            )}>
+                                                {underlayData.summary.matched}/{underlayData.summary.wanInterfacesSeen}
+                                            </span>
+                                        ) : underlayData && !underlayData.vyosConfigAvailable ? (
+                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                        ) : null}
+                                    </button>
 
-                                            {showUnderlayMenu && (
-                                                <div className="absolute top-full right-0 mt-2 w-60 bg-card/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl z-[70] animate-in fade-in slide-in-from-top-2 duration-200">
-                                                    <div className="p-3 border-b border-border">
-                                                        <div className="text-[10px] font-black text-text-muted uppercase tracking-widest">Underlay Inspect</div>
-                                                        <div className="text-[9px] text-text-muted/60 mt-1">VyOS WAN next-hop matching</div>
+                                    {showUnderlayMenu && (
+                                        <div className="absolute top-full right-0 mt-2 w-72 bg-card/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl z-[70] animate-in fade-in slide-in-from-top-2 duration-200">
+                                            <div className="p-3 border-b border-border">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-1.5">
+                                                        <Layers size={12} className="text-amber-400" /> Underlay Inspect
                                                     </div>
-                                                    <div className="p-2 space-y-1">
-                                                        <button
-                                                            onClick={() => { setUnderlayMode(underlayMode === 'badges' ? 'off' : 'badges'); setShowUnderlayMenu(false); }}
-                                                            className={cn(
-                                                                "w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center gap-2",
-                                                                underlayMode === 'badges'
-                                                                    ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                                                                    : "text-text-secondary hover:bg-card-secondary hover:text-text-primary"
-                                                            )}
-                                                        >
-                                                            <Layers size={13} />
-                                                            {underlayMode === 'badges' ? 'Hide underlay badges' : 'Show underlay badges'}
-                                                        </button>
-                                                        {underlayMode !== 'off' && (
-                                                            <button
-                                                                onClick={() => { setUnderlayMode('off'); setShowUnderlayMenu(false); setShowUnderlayPanel(false); }}
-                                                                className="w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold text-red-400 hover:bg-red-500/10 transition-all flex items-center gap-2"
-                                                            >
-                                                                <X size={13} /> Exit Underlay Mode
-                                                            </button>
+                                                    {underlayData?.vyosConfigAvailable ? (
+                                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20">VYOS ACTIVE</span>
+                                                    ) : (
+                                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">NO CONFIG</span>
+                                                    )}
+                                                </div>
+                                                <div className="text-[9px] text-text-muted/70 mt-1">
+                                                    {underlayData?.vyosConfigAvailable 
+                                                        ? `${underlayData.summary.matched} of ${underlayData.summary.wanInterfacesSeen} circuits resolved to VyOS next-hops`
+                                                        : "No VyOS routers configured in config/vyos-config.json"}
+                                                </div>
+                                            </div>
+
+                                            <div className="p-2 space-y-1">
+                                                {underlayData?.vyosConfigAvailable && (
+                                                    <button
+                                                        onClick={() => { setUnderlayMode(underlayMode === 'badges' ? 'off' : 'badges'); setShowUnderlayMenu(false); }}
+                                                        className={cn(
+                                                            "w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center gap-2",
+                                                            underlayMode === 'badges'
+                                                                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                                                : "text-text-secondary hover:bg-card-secondary hover:text-text-primary"
                                                         )}
-                                                    </div>
-                                                    <div className="px-3 pb-3 pt-1">
-                                                        <div className="grid grid-cols-2 gap-1 text-[9px] font-bold">
-                                                            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-1.5 text-center text-green-400">
-                                                                <div className="text-[14px] font-black">{underlayData.summary.matched}</div>
-                                                                <div className="opacity-70">Matched</div>
-                                                            </div>
-                                                            <div className="bg-card-secondary border border-border rounded-lg p-1.5 text-center text-text-muted">
-                                                                <div className="text-[14px] font-black">{underlayData.summary.noMatch}</div>
-                                                                <div className="opacity-70">No Match</div>
-                                                            </div>
-                                                            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-1.5 text-center text-amber-400">
-                                                                <div className="text-[14px] font-black">{underlayData.summary.ambiguous}</div>
-                                                                <div className="opacity-70">Ambiguous</div>
-                                                            </div>
-                                                            <div className="bg-slate-500/10 border border-slate-500/20 rounded-lg p-1.5 text-center text-slate-400">
-                                                                <div className="text-[14px] font-black">{underlayData.summary.wanIpUnavailable}</div>
-                                                                <div className="opacity-70">IP Unknown</div>
-                                                            </div>
-                                                        </div>
+                                                    >
+                                                        <Layers size={13} />
+                                                        {underlayMode === 'badges' ? 'Hide map badges' : 'Show map badges (🟢/⬜)'}
+                                                    </button>
+                                                )}
+
+                                                <button
+                                                    onClick={() => { setShowUnderlayDiagnostics(true); setShowUnderlayMenu(false); }}
+                                                    className="w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold text-text-primary hover:bg-card-secondary transition-all flex items-center gap-2"
+                                                >
+                                                    <Table size={13} className="text-blue-400" />
+                                                    Open Diagnostics Table ({underlayData?.resolutions?.length || 0} WANs)
+                                                </button>
+
+                                                <a
+                                                    href="/api/topology/underlay-debug"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold text-text-muted hover:text-text-primary hover:bg-card-secondary transition-all flex items-center justify-between"
+                                                >
+                                                    <span className="flex items-center gap-2 font-mono text-[10px]"><ExternalLink size={12} /> Direct Debug JSON</span>
+                                                    <span className="text-[9px] opacity-60">/api/topology/underlay-debug</span>
+                                                </a>
+
+                                                {underlayMode !== 'off' && (
+                                                    <button
+                                                        onClick={() => { setUnderlayMode('off'); setShowUnderlayMenu(false); setShowUnderlayPanel(false); }}
+                                                        className="w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold text-red-400 hover:bg-red-500/10 transition-all flex items-center gap-2"
+                                                    >
+                                                        <X size={13} /> Exit Underlay Badges Mode
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {underlayData?.summary && (
+                                                <div className="px-3 pb-3 pt-1">
+                                                    <div className="grid grid-cols-2 gap-1 text-[9px] font-bold">
+                                                        <button 
+                                                            onClick={() => { setDiagnosticsFilter('matched'); setShowUnderlayDiagnostics(true); setShowUnderlayMenu(false); }}
+                                                            className="bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 rounded-lg p-1.5 text-center text-green-400 transition-colors"
+                                                        >
+                                                            <div className="text-[14px] font-black">{underlayData.summary.matched}</div>
+                                                            <div className="opacity-70">Matched 🟢</div>
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => { setDiagnosticsFilter('no_match'); setShowUnderlayDiagnostics(true); setShowUnderlayMenu(false); }}
+                                                            className="bg-card-secondary hover:bg-card-secondary/80 border border-border rounded-lg p-1.5 text-center text-text-muted transition-colors"
+                                                        >
+                                                            <div className="text-[14px] font-black">{underlayData.summary.noMatch}</div>
+                                                            <div className="opacity-70">No Match ⬜</div>
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => { setDiagnosticsFilter('ambiguous'); setShowUnderlayDiagnostics(true); setShowUnderlayMenu(false); }}
+                                                            className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-lg p-1.5 text-center text-amber-400 transition-colors"
+                                                        >
+                                                            <div className="text-[14px] font-black">{underlayData.summary.ambiguous}</div>
+                                                            <div className="opacity-70">Ambiguous 🟡</div>
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => { setDiagnosticsFilter('wan_ip_unavailable'); setShowUnderlayDiagnostics(true); setShowUnderlayMenu(false); }}
+                                                            className="bg-slate-500/10 hover:bg-slate-500/20 border border-slate-500/20 rounded-lg p-1.5 text-center text-slate-400 transition-colors"
+                                                        >
+                                                            <div className="text-[14px] font-black">{underlayData.summary.wanIpUnavailable}</div>
+                                                            <div className="opacity-70">IP Unknown ❓</div>
+                                                        </button>
                                                     </div>
                                                 </div>
                                             )}
                                         </div>
-                                    </>
-                                )}
+                                    )}
+                                </div>
                             </div>
                         </Panel>
 
@@ -1773,6 +1853,294 @@ function TopologyContent({ token }: TopologyProps) {
                         })()}
                     </div>
                 </>
+            )}
+
+            {/* Underlay Diagnostics Modal */}
+            {showUnderlayDiagnostics && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+                    <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+                        {/* Header */}
+                        <div className="p-5 border-b border-border bg-card-secondary/30 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400">
+                                    <Layers size={22} />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h2 className="text-lg font-black text-text-primary tracking-tight">Underlay Resolution Diagnostics</h2>
+                                        {underlayData?.vyosConfigAvailable ? (
+                                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/30 uppercase tracking-wider">VyOS Config Active</span>
+                                        ) : (
+                                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 uppercase tracking-wider">No VyOS Config</span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-text-muted mt-0.5">
+                                        Deterministic IPv4 same-subnet next-hop matching between Prisma SD-WAN WAN circuits and VyOS underlay routers
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <a
+                                    href="/api/topology/underlay-debug"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-2 bg-card-secondary hover:bg-card-secondary/80 border border-border text-text-muted hover:text-text-primary rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                                    title="Open raw JSON diagnostic payload"
+                                >
+                                    <ExternalLink size={14} />
+                                    <span>Raw JSON</span>
+                                </a>
+                                <button
+                                    onClick={() => setShowUnderlayDiagnostics(false)}
+                                    className="p-2 hover:bg-card-secondary rounded-xl text-text-muted hover:text-text-primary transition-colors"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Filter Bar & Search */}
+                        <div className="p-4 border-b border-border bg-card/60 flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                    onClick={() => setDiagnosticsFilter('ALL')}
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-xl text-xs font-bold transition-all",
+                                        diagnosticsFilter === 'ALL'
+                                            ? "bg-primary text-primary-foreground shadow"
+                                            : "bg-card-secondary text-text-muted hover:text-text-primary"
+                                    )}
+                                >
+                                    All ({underlayData?.resolutions?.length || 0})
+                                </button>
+                                <button
+                                    onClick={() => setDiagnosticsFilter('matched')}
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
+                                        diagnosticsFilter === 'matched'
+                                            ? "bg-green-500 text-white shadow"
+                                            : "bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20"
+                                    )}
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-green-400" />
+                                    Matched ({underlayData?.summary?.matched || 0})
+                                </button>
+                                <button
+                                    onClick={() => setDiagnosticsFilter('no_match')}
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
+                                        diagnosticsFilter === 'no_match'
+                                            ? "bg-slate-400 text-slate-950 shadow"
+                                            : "bg-card-secondary text-text-muted border border-border hover:text-text-primary"
+                                    )}
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-slate-400" />
+                                    No Match ({underlayData?.summary?.noMatch || 0})
+                                </button>
+                                <button
+                                    onClick={() => setDiagnosticsFilter('ambiguous')}
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
+                                        diagnosticsFilter === 'ambiguous'
+                                            ? "bg-amber-500 text-slate-950 shadow"
+                                            : "bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20"
+                                    )}
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                                    Ambiguous ({underlayData?.summary?.ambiguous || 0})
+                                </button>
+                                <button
+                                    onClick={() => setDiagnosticsFilter('wan_ip_unavailable')}
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5",
+                                        diagnosticsFilter === 'wan_ip_unavailable'
+                                            ? "bg-slate-600 text-white shadow"
+                                            : "bg-slate-500/10 text-slate-400 border border-slate-500/20 hover:bg-slate-500/20"
+                                    )}
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-slate-500" />
+                                    IP Unknown ({underlayData?.summary?.wanIpUnavailable || 0})
+                                </button>
+                            </div>
+
+                            <div className="relative w-full sm:w-64">
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                                <input
+                                    type="text"
+                                    placeholder="Filter site, IP, interface..."
+                                    value={diagnosticsSearch}
+                                    onChange={(e) => setDiagnosticsSearch(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-1.5 bg-card-secondary/60 border border-border rounded-xl text-xs text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:border-amber-500/50"
+                                />
+                                {diagnosticsSearch && (
+                                    <button
+                                        onClick={() => setDiagnosticsSearch('')}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Table Body */}
+                        <div className="flex-1 overflow-y-auto overflow-x-auto p-4 scrollbar-thin scrollbar-thumb-border">
+                            {(!underlayData?.resolutions || underlayData.resolutions.length === 0) ? (
+                                <div className="text-center py-16 text-text-muted">
+                                    <HelpCircle size={36} className="mx-auto text-text-muted/40 mb-3" />
+                                    <p className="text-sm font-bold">No WAN interface resolutions available</p>
+                                    <p className="text-xs text-text-muted/60 mt-1">Make sure topology data has been loaded and try refreshing.</p>
+                                </div>
+                            ) : (
+                                <table className="w-full text-left text-xs border-collapse">
+                                    <thead>
+                                        <tr className="border-b border-border text-[10px] font-black text-text-muted uppercase tracking-wider bg-card-secondary/20">
+                                            <th className="p-3">Site / Device</th>
+                                            <th className="p-3">Prisma Circuit</th>
+                                            <th className="p-3">Prisma IP / Subnet</th>
+                                            <th className="p-3">Status</th>
+                                            <th className="p-3">VyOS Next-Hop Router</th>
+                                            <th className="p-3">VyOS Interface & Network</th>
+                                            <th className="p-3">Diagnostic</th>
+                                            <th className="p-3 text-right">Inspect</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/60 font-sans">
+                                        {underlayData.resolutions
+                                            .filter(r => {
+                                                if (diagnosticsFilter !== 'ALL' && r.status !== diagnosticsFilter) return false;
+                                                if (!diagnosticsSearch) return true;
+                                                const q = diagnosticsSearch.toLowerCase();
+                                                return (
+                                                    (r.prismaWan.siteName || '').toLowerCase().includes(q) ||
+                                                    (r.prismaWan.elementName || '').toLowerCase().includes(q) ||
+                                                    (r.prismaWan.interfaceName || '').toLowerCase().includes(q) ||
+                                                    (r.prismaWan.ipCidr || '').toLowerCase().includes(q) ||
+                                                    (r.prismaWan.ip || '').toLowerCase().includes(q) ||
+                                                    (r.vyos?.routerName || '').toLowerCase().includes(q) ||
+                                                    (r.vyos?.interfaceName || '').toLowerCase().includes(q) ||
+                                                    (r.vyos?.network || '').toLowerCase().includes(q) ||
+                                                    (r.diagnostic || '').toLowerCase().includes(q)
+                                                );
+                                            })
+                                            .map((r, idx) => (
+                                                <tr key={r.id || idx} className="hover:bg-card-secondary/40 transition-colors">
+                                                    <td className="p-3">
+                                                        <div className="font-black text-text-primary">{r.prismaWan.siteName}</div>
+                                                        <div className="text-[10px] text-text-muted font-mono">{r.prismaWan.elementName}</div>
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <div className="font-bold text-blue-400 font-mono">{r.prismaWan.interfaceName}</div>
+                                                        {r.prismaWan.linkType && (
+                                                            <div className={cn(
+                                                                "text-[9px] font-bold px-1.5 py-0.2 rounded inline-block mt-0.5 border uppercase",
+                                                                r.prismaWan.linkType.toLowerCase().includes('mpls')
+                                                                    ? "text-purple-400 bg-purple-500/10 border-purple-500/20"
+                                                                    : "text-blue-400 bg-blue-500/10 border-blue-500/20"
+                                                            )}>
+                                                                {r.prismaWan.linkType}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <div className="font-mono font-black text-text-primary text-[11px]">
+                                                            {r.prismaWan.ipCidr || r.prismaWan.ip || '—'}
+                                                        </div>
+                                                        {r.prismaWan.ipType === 'dhcp_ip_only' && (
+                                                            <span className="text-[9px] text-amber-400/80 font-mono">DHCP (Host IP)</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3">
+                                                        {r.status === 'matched' && (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/30 uppercase">
+                                                                <Check size={10} /> Matched
+                                                            </span>
+                                                        )}
+                                                        {r.status === 'no_match' && (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/30 uppercase">
+                                                                No Match
+                                                            </span>
+                                                        )}
+                                                        {r.status === 'ambiguous' && (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 uppercase">
+                                                                <AlertTriangle size={10} /> Ambiguous ({r.candidates?.length})
+                                                            </span>
+                                                        )}
+                                                        {r.status === 'wan_ip_unavailable' && (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-500 border border-slate-500/20 uppercase">
+                                                                IP Unknown
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3">
+                                                        {r.vyos ? (
+                                                            <div>
+                                                                <div className="font-black text-text-primary flex items-center gap-1">
+                                                                    <Router size={12} className="text-amber-400" />
+                                                                    {r.vyos.routerName}
+                                                                </div>
+                                                                {r.vyos.location && (
+                                                                    <div className="text-[10px] text-text-muted">{r.vyos.location}</div>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-text-muted/40 font-mono">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3">
+                                                        {r.vyos ? (
+                                                            <div>
+                                                                <div className="font-mono font-bold text-amber-400 text-[11px]">
+                                                                    {r.vyos.interfaceName} · {r.vyos.ipCidr}
+                                                                </div>
+                                                                <div className="text-[10px] font-mono text-green-400/80">
+                                                                    Subnet: {r.vyos.network}
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-text-muted/40 font-mono">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3 max-w-xs">
+                                                        <div className="text-[10px] text-text-muted line-clamp-2" title={r.diagnostic}>
+                                                            {r.diagnostic}
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-3 text-right">
+                                                        <button
+                                                            onClick={() => {
+                                                                setUnderlayPanelResolution(r);
+                                                                setShowUnderlayPanel(true);
+                                                                setShowUnderlayDiagnostics(false);
+                                                            }}
+                                                            className="p-1.5 hover:bg-amber-500/10 text-text-muted hover:text-amber-400 rounded-lg transition-colors inline-flex items-center gap-1 text-[11px] font-bold"
+                                                            title="Inspect circuit in side panel"
+                                                        >
+                                                            <Eye size={13} />
+                                                            <span>Inspect</span>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-3 border-t border-border bg-card-secondary/20 flex items-center justify-between text-xs text-text-muted">
+                            <div className="flex items-center gap-4 text-[11px]">
+                                <span>Total WAN circuits: <strong className="text-text-primary">{underlayData?.summary?.wanInterfacesSeen || 0}</strong></span>
+                                <span className="text-green-400 font-bold">{underlayData?.summary?.matched || 0} Matched</span>
+                                <span className="text-slate-400 font-bold">{underlayData?.summary?.noMatch || 0} No Match</span>
+                                <span className="text-amber-400 font-bold">{underlayData?.summary?.ambiguous || 0} Ambiguous</span>
+                            </div>
+                            <div className="text-[10px] text-text-muted/60 italic">
+                                Strict same-subnet IPv4 matching via ipaddr.js — Zero credential exposure
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

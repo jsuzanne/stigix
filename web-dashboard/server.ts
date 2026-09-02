@@ -2850,6 +2850,22 @@ app.get('/api/topology', authenticateToken, async (req, res) => {
     }
 });
 
+// --- Underlay Topology Diagnostics API ---
+app.get('/api/topology/underlay-debug', authenticateToken, async (req, res) => {
+    try {
+        const topologyData = topologyCache?.data || { sites: [] };
+        const underlay = await underlayTopologyManager.resolveAll(topologyData);
+        res.json({
+            status: 'ok',
+            cachedTopologyAvailable: !!topologyCache?.data,
+            cacheAgeSeconds: topologyCache ? Math.round((Date.now() - topologyCache.timestamp) / 1000) : null,
+            underlay,
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message, stack: e.stack });
+    }
+});
+
 // --- Query Flow Browser API ---
 app.post('/api/prisma/flows', authenticateToken, async (req, res) => {
     const {
