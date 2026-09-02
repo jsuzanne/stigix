@@ -379,6 +379,13 @@ export class TcpAppManager extends EventEmitter {
                         await this.startListener(app.id).catch(() => {});
                     }
                 }
+
+                // If startClientWorkload is active and client is not running, auto-start client traffic
+                if (app.enabled && app.startup?.startClientWorkload === true && ctx.metrics.clientSessionCount === 0 && (app.peers || []).length > 0) {
+                    this.startClient(app.id).catch(err => {
+                        console.error(`[CUSTOM_TCP_MGR] Hot-reload client autostart failed for "${app.name}":`, err.message);
+                    });
+                }
             } else {
                 this.registerAppInstance(app, file.instance);
                 if (app.enabled) {
@@ -387,7 +394,7 @@ export class TcpAppManager extends EventEmitter {
                             console.error(`[CUSTOM_TCP_MGR] Hot-reload listener failed for "${app.name}":`, err.message);
                         });
                     }
-                    if (app.startup?.startClientWorkload) {
+                    if (app.startup?.startClientWorkload === true && (app.peers || []).length > 0) {
                         this.startClient(app.id).catch(err => {
                             console.error(`[CUSTOM_TCP_MGR] Hot-reload client failed for "${app.name}":`, err.message);
                         });

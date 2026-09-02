@@ -5,14 +5,20 @@
 import React, { useState, useEffect } from 'react';
 import {
     X, Server, Play, Shield, Globe, Plus, Trash2, CheckCircle2,
-    AlertTriangle, RefreshCw, Cpu, Layers, HelpCircle
+    AlertTriangle, RefreshCw, Cpu, Layers, HelpCircle, Zap
 } from 'lucide-react';
+import { clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
 import type {
     CustomTcpApplicationConfig,
     PeerConfig,
     ServerBehaviorMode,
     ClientWorkloadMode
 } from '../../../custom-tcp-apps/types.js';
+
+function cn(...inputs: (string | undefined | null | false)[]) {
+    return twMerge(clsx(inputs));
+}
 
 interface CustomAppWizardModalProps {
     isOpen: boolean;
@@ -39,7 +45,14 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
 
     // Form State
     const [formData, setFormData] = useState<CustomTcpApplicationConfig>(() => {
-        if (editingApp) return JSON.parse(JSON.stringify(editingApp));
+        if (editingApp) {
+            const cloned = JSON.parse(JSON.stringify(editingApp));
+            cloned.startup = {
+                startListener: cloned.startup?.startListener !== false,
+                startClientWorkload: cloned.startup?.startClientWorkload ?? false
+            };
+            return cloned;
+        }
         return {
             id: `app-${Date.now().toString(36)}`,
             name: '',
@@ -149,7 +162,12 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
 
     useEffect(() => {
         if (editingApp) {
-            setFormData(JSON.parse(JSON.stringify(editingApp)));
+            const cloned = JSON.parse(JSON.stringify(editingApp));
+            cloned.startup = {
+                startListener: cloned.startup?.startListener !== false,
+                startClientWorkload: cloned.startup?.startClientWorkload ?? false
+            };
+            setFormData(cloned);
             setAllowCidrsInput((editingApp.listener?.allowCidrs || []).join(', '));
         } else {
             setFormData({
@@ -829,6 +847,47 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                     </div>
                                 )}
                             </div>
+
+                            {/* Zero-Touch Provisioning Auto-Start Card */}
+                            <div className="p-4 bg-card-secondary/40 border border-border rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <Zap size={16} className={formData.startup?.startClientWorkload ? "text-amber-400 animate-pulse" : "text-text-muted"} />
+                                        <span className="text-xs font-bold text-text-primary">Zero-Touch Auto-Start Traffic</span>
+                                        {formData.startup?.startClientWorkload ? (
+                                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
+                                                Active ZTP
+                                            </span>
+                                        ) : (
+                                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-card border border-border text-text-muted">
+                                                Manual Start
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] text-text-muted leading-relaxed">
+                                        When enabled, peer branches syncing this application via Global Provisioning (or booting up) will <strong>immediately start generating client traffic</strong> without waiting for manual activation.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData((prev: CustomTcpApplicationConfig) => ({
+                                        ...prev,
+                                        startup: {
+                                            startListener: prev.startup?.startListener !== false,
+                                            startClientWorkload: !(prev.startup?.startClientWorkload ?? false)
+                                        }
+                                    }))}
+                                    className={cn(
+                                        "px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all border shrink-0 flex items-center justify-center gap-1.5",
+                                        formData.startup?.startClientWorkload
+                                            ? "bg-amber-600 hover:bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-900/30 ring-1 ring-amber-500/40"
+                                            : "bg-card border-border text-text-muted hover:text-text-primary hover:border-text-muted"
+                                    )}
+                                >
+                                    <Zap size={13} className={formData.startup?.startClientWorkload ? "text-amber-200 fill-amber-200" : "text-text-muted"} />
+                                    {formData.startup?.startClientWorkload ? "Auto-Start ON" : "Auto-Start OFF"}
+                                </button>
+                            </div>
                         </div>
                     )}
 
@@ -851,7 +910,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                     </button>
                                 </div>
 
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
                                     <div className="bg-card-secondary/60 p-3.5 rounded-xl border border-border">
                                         <div className="text-text-muted">Server Mode</div>
                                         <div className="font-bold text-indigo-600 dark:text-indigo-400 mt-1 capitalize">{formData.serverBehavior.mode.replace('_', ' ')}</div>
@@ -863,6 +922,16 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                     <div className="bg-card-secondary/60 p-3.5 rounded-xl border border-border">
                                         <div className="text-text-muted">Configured Peers</div>
                                         <div className="font-bold text-text-primary mt-1">{formData.peers.length} remote nodes</div>
+                                    </div>
+                                    <div className="bg-card-secondary/60 p-3.5 rounded-xl border border-border">
+                                        <div className="text-text-muted">Zero-Touch Auto-Start</div>
+                                        <div className="font-bold mt-1">
+                                            {formData.startup?.startClientWorkload ? (
+                                                <span className="text-amber-500 font-black flex items-center gap-1"><Zap size={12} className="fill-amber-500" /> Active ZTP</span>
+                                            ) : (
+                                                <span className="text-text-muted">Manual Start</span>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="bg-card-secondary/60 p-3.5 rounded-xl border border-border">
                                         <div className="text-text-muted">Host Port Status</div>

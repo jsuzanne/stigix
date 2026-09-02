@@ -210,7 +210,14 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
                                     return (
                                         <tr key={app.id} className="hover:bg-bg-secondary/30 transition-colors">
                                             <td className="py-3 px-4 font-bold text-text-primary">
-                                                <div>{app.name}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <span>{app.name}</span>
+                                                    {app.startup?.startClientWorkload && (
+                                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                                            ⚡ ZTP Auto-Start
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <div className="text-[10px] text-text-muted font-mono font-normal">{app.id}</div>
                                             </td>
                                             <td className="py-3 px-4 font-mono font-bold text-amber-400">

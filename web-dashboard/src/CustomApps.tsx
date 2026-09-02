@@ -425,6 +425,13 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                             {metrics.listenerState}
                                         </strong>
                                     </span>
+
+                                    {currentApp?.startup?.startClientWorkload && (
+                                        <span className="h-[38px] text-xs text-amber-500 bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-sm font-bold" title="Zero-Touch Auto-Start enabled: client workload starts automatically on sync and boot">
+                                            <Zap size={13} className="fill-amber-500" />
+                                            <span>ZTP Auto-Start</span>
+                                        </span>
+                                    )}
                                 </div>
                             );
                         })()}
