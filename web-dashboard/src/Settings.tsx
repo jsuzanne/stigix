@@ -539,7 +539,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     // Config validity for startup behaviour guards
     const [iotHasConfig, setIotHasConfig] = useState<boolean | null>(null);  // null = loading
     const [voiceHasConfig, setVoiceHasConfig] = useState<boolean | null>(null);
-    const [customTcpHasConfig, setCustomTcpHasConfig] = useState<boolean | null>(null);
     // All groups expanded by default; toggled by clicking the group header
     const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
     const toggleCategory = (name: string) =>
@@ -774,12 +773,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
             .then(r => r.json())
             .then((cfg: any) => setVoiceHasConfig(typeof cfg?.servers === 'string' && cfg.servers.trim().length > 0))
             .catch(() => setVoiceHasConfig(false));
-
-        // Check if Custom TCP has at least 1 app configured
-        fetch('/api/custom-tcp/config', { headers: authHeaders })
-            .then(r => r.json())
-            .then((cfg: any) => setCustomTcpHasConfig(Array.isArray(cfg?.applications) && cfg.applications.length > 0))
-            .catch(() => setCustomTcpHasConfig(false));
     }, [token]);
 
     // Polling for upgrade status and registry status
@@ -3071,8 +3064,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         desc: 'Resumes active listeners and client workloads across reboots.',
                                         icon: '⚡',
                                         color: 'indigo',
-                                        hasConfig: customTcpHasConfig,
-                                        noConfigMsg: 'Create a Custom TCP App first',
+                                        hasConfig: true,
+                                        noConfigMsg: '',
                                     },
                                     {
                                         key: 'auto_restart_iot' as const,
