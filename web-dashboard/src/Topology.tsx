@@ -567,8 +567,8 @@ const VyOSRouterNode = ({ data }: any) => {
                 className={cn(
                     "relative px-3.5 py-2.5 rounded-2xl border text-[11px] transition-all flex flex-col justify-between group/port min-w-[170px] max-w-[200px]",
                     isConnected 
-                        ? "bg-slate-900/95 border-amber-500/50 hover:border-amber-400 hover:bg-slate-900 shadow-md shadow-amber-500/10 cursor-pointer" 
-                        : "bg-slate-950/40 border-slate-800/60 text-text-muted opacity-40 cursor-default"
+                        ? "bg-card border-amber-500/50 hover:border-amber-400 hover:bg-card-hover shadow-md shadow-amber-500/10 cursor-pointer" 
+                        : "bg-card-secondary/40 border-border text-text-muted opacity-40 cursor-default"
                 )}
                 title={matchedRes ? `Connected to ${matchedRes.prismaWan.siteName} (${matchedRes.prismaWan.interfaceName}) · Click to inspect` : (iface.description || iface.name)}
             >
@@ -577,16 +577,16 @@ const VyOSRouterNode = ({ data }: any) => {
                     type="target"
                     position={isTop ? Position.Top : Position.Bottom}
                     id={`vyos-port:${iface.name}`}
-                    className="!w-3.5 !h-1.5 !bg-amber-400 !border !border-slate-900 !rounded-sm"
+                    className="!w-3.5 !h-1.5 !bg-amber-500 dark:!bg-amber-400 !border !border-card !rounded-sm"
                 />
 
-                <div className="flex items-center justify-between pb-1.5 border-b border-white/5">
-                    <span className="font-mono font-black text-amber-400 flex items-center gap-1.5">
-                        <span className={cn("w-2 h-2 rounded-full", isConnected ? (isIfaceUp ? "bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]" : "bg-red-400") : "bg-slate-600")} />
+                <div className="flex items-center justify-between pb-1.5 border-b border-border/50">
+                    <span className="font-mono font-black text-amber-500 dark:text-amber-400 flex items-center gap-1.5">
+                        <span className={cn("w-2 h-2 rounded-full", isConnected ? (isIfaceUp ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-red-500") : "bg-slate-400 dark:bg-slate-600")} />
                         {iface.name}
                     </span>
                     {isConnected && (
-                        <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-green-500/20 text-green-300 border border-green-500/30 truncate max-w-[85px]">
+                        <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30 truncate max-w-[85px]">
                             {matchedRes.prismaWan.siteName}
                         </span>
                     )}
@@ -608,12 +608,12 @@ const VyOSRouterNode = ({ data }: any) => {
     };
 
     return (
-        <div className="bg-slate-950/95 backdrop-blur-2xl border-2 border-amber-500/50 hover:border-amber-400 rounded-[36px] p-6 shadow-2xl shadow-amber-500/20 transition-all group relative flex flex-col gap-4">
+        <div className="bg-card/95 backdrop-blur-2xl border-2 border-amber-500/50 hover:border-amber-400 rounded-[36px] p-6 shadow-2xl shadow-amber-500/10 dark:shadow-amber-500/20 transition-all group relative flex flex-col gap-4">
             
             {/* TOP ROW: Hub-facing Physical Ports (Facing DCs at top) */}
             {displayTopIfaces.length > 0 && (
                 <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between text-[9px] font-black text-amber-400/80 uppercase tracking-wider px-1">
+                    <div className="flex items-center justify-between text-[9px] font-black text-amber-600 dark:text-amber-400/90 uppercase tracking-wider px-1">
                         <span>▲ DC & Hub Uplinks ({displayTopIfaces.length})</span>
                         <span className="font-mono text-text-muted">Top Transit</span>
                     </div>
@@ -624,9 +624,9 @@ const VyOSRouterNode = ({ data }: any) => {
             )}
 
             {/* CENTER CHASSIS BANNER */}
-            <div className="flex items-center justify-between gap-4 p-4 bg-slate-900/90 border border-amber-500/30 rounded-2xl shadow-inner">
+            <div className="flex items-center justify-between gap-4 p-4 bg-card-secondary/80 border border-amber-500/30 rounded-2xl shadow-inner">
                 <div className="flex items-center gap-3">
-                    <div className="p-3 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl text-slate-950 shadow-lg shadow-amber-500/30 font-black">
+                    <div className="p-3 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl text-white dark:text-slate-950 shadow-lg shadow-amber-500/30 font-black">
                         <Server size={24} />
                     </div>
                     <div>
@@ -634,20 +634,20 @@ const VyOSRouterNode = ({ data }: any) => {
                             <span className="text-base font-black text-text-primary tracking-tight uppercase">{router.name}</span>
                             <span className={cn(
                                 "w-2.5 h-2.5 rounded-full",
-                                isOnline ? "bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]" : "bg-red-400"
+                                isOnline ? "bg-green-500 dark:bg-green-400 shadow-[0_0_8px_rgba(34,197,94,0.8)]" : "bg-red-500"
                             )} />
-                            <span className="text-[9px] font-bold text-green-400 uppercase tracking-widest">
+                            <span className="text-[9px] font-bold text-green-600 dark:text-green-400 uppercase tracking-widest">
                                 {isOnline ? 'ONLINE' : 'OFFLINE'}
                             </span>
                         </div>
-                        <div className="text-xs text-amber-400 font-mono font-bold mt-0.5">
+                        <div className="text-xs text-amber-600 dark:text-amber-400 font-mono font-bold mt-0.5">
                             Mgmt IP: {router.host}
                         </div>
                     </div>
                 </div>
 
                 <div className="text-right">
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-black uppercase tracking-wider">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider">
                         <span>{connectedCount} Circuits</span>
                     </div>
                     {router.location && (
@@ -661,7 +661,7 @@ const VyOSRouterNode = ({ data }: any) => {
             {/* BOTTOM ROW: Spoke-facing Physical Ports (Facing Branches at bottom) */}
             {displayBottomIfaces.length > 0 && (
                 <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between text-[9px] font-black text-amber-400/80 uppercase tracking-wider px-1">
+                    <div className="flex items-center justify-between text-[9px] font-black text-amber-600 dark:text-amber-400/90 uppercase tracking-wider px-1">
                         <span>▼ Branch & Spoke Downlinks ({displayBottomIfaces.length})</span>
                         <span className="font-mono text-text-muted">Bottom Transit</span>
                     </div>
@@ -690,8 +690,8 @@ const UnderlayGatewayNode = ({ data }: any) => {
             className={cn(
                 "p-3 rounded-2xl border-2 shadow-xl backdrop-blur-xl transition-all hover:scale-105 cursor-pointer min-w-[170px] max-w-[210px] flex flex-col gap-1.5 group relative",
                 isMatched 
-                    ? "bg-slate-900/95 border-amber-500/50 hover:border-amber-400 shadow-amber-500/10" 
-                    : "bg-slate-900/80 border-slate-700/60 hover:border-slate-500 shadow-black/20"
+                    ? "bg-card border-amber-500/50 hover:border-amber-400 shadow-amber-500/10" 
+                    : "bg-card-secondary border-border hover:border-border-hover shadow-black/20"
             )}
         >
             <Handle
@@ -702,35 +702,42 @@ const UnderlayGatewayNode = ({ data }: any) => {
             />
 
             {/* Header: Router Name & Status */}
-            <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
+            <div className="flex items-center justify-between pb-1.5 border-b border-border/50">
                 <div className="flex items-center gap-1.5 overflow-hidden">
-                    <Server size={13} className={isMatched ? "text-amber-400 shrink-0" : "text-slate-400 shrink-0"} />
+                    <Server size={13} className={isMatched ? "text-amber-500 dark:text-amber-400 shrink-0" : "text-text-muted shrink-0"} />
                     <span className="text-[10px] font-black uppercase text-text-primary tracking-tight truncate">
                         {isMatched ? vyos.routerName : 'External Provider'}
                     </span>
                 </div>
-                <span className={cn(
-                    "w-2 h-2 rounded-full shrink-0",
-                    isMatched ? "bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]" : "bg-slate-500"
-                )} />
+                <div className="flex items-center gap-1 shrink-0">
+                    <span className={cn(
+                        "w-1.5 h-1.5 rounded-full",
+                        isMatched ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-slate-400"
+                    )} />
+                </div>
             </div>
 
-            {/* Port & Next-Hop IP */}
-            <div className="flex items-center justify-between font-mono">
+            {/* Interface Name & Tag */}
+            <div className="flex items-center justify-between">
+                <span className="font-mono text-[11px] font-black text-amber-500 dark:text-amber-400">
+                    {isMatched ? vyos.interfaceName : 'WAN Port'}
+                </span>
                 <span className={cn(
-                    "text-[10px] font-bold px-1.5 py-0.5 rounded",
-                    isMatched ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "bg-slate-700/40 text-slate-300"
+                    "text-[8px] font-mono font-bold px-1.5 py-0.2 rounded",
+                    isMatched ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30" : "bg-card-secondary text-text-muted"
                 )}>
-                    {isMatched ? vyos.interfaceName : (prismaWan?.linkType || 'WAN')}
-                </span>
-                <span className="text-[10px] font-black text-green-400 truncate max-w-[95px]">
-                    {isMatched ? (vyos.ipCidr || vyos.ip) : (prismaWan?.ipCidr || prismaWan?.ip || '—')}
+                    {isMatched ? (vyos.interfaceType || 'ETH') : 'EXT'}
                 </span>
             </div>
 
-            {/* Description / Subnet */}
-            <div className="text-[9px] text-text-muted truncate font-mono" title={isMatched ? (vyos.description || `Subnet: ${vyos.network}`) : resolution?.diagnostic}>
-                {isMatched ? (vyos.description || `Subnet: ${vyos.network}`) : (resolution?.diagnostic || 'External provider')}
+            {/* IP Address */}
+            <div className="font-mono text-[10px] font-bold text-text-primary">
+                {isMatched ? (vyos.ipCidr || vyos.ip || '—') : '—'}
+            </div>
+
+            {/* Description / Network */}
+            <div className="text-[9px] text-text-muted truncate font-mono" title={isMatched ? (vyos.description || vyos.network) : 'External Network'}>
+                {isMatched ? (vyos.description || vyos.network || 'VyOS Interface') : 'External Transit'}
             </div>
         </div>
     );
@@ -951,14 +958,21 @@ function TopologyContent({ token }: TopologyProps) {
                     };
                 });
 
-                const ROUTER_BASE_WIDTH = 580;
-                const ROUTER_GAP = 120;
-                const totalRoutersWidth = Math.max(1, activeRouters.length) * ROUTER_BASE_WIDTH + Math.max(0, activeRouters.length - 1) * ROUTER_GAP;
+                const ROUTER_GAP = 140;
+                const routerWidths = activeRouters.map((r: any) => {
+                    const hubCount = r.resolutions.filter((res: any) => res.isHub).length;
+                    const spokeCount = r.resolutions.filter((res: any) => !res.isHub).length;
+                    const portMax = Math.max(hubCount, spokeCount, 3);
+                    return Math.max(540, portMax * 195 + 80);
+                });
+
+                const totalRoutersWidth = routerWidths.reduce((acc: number, w: number) => acc + w, 0) + Math.max(0, activeRouters.length - 1) * ROUTER_GAP;
                 let currentRouterX = -totalRoutersWidth / 2;
 
-                activeRouters.forEach((r: any) => {
-                    const x = currentRouterX + ROUTER_BASE_WIDTH / 2;
-                    currentRouterX += ROUTER_BASE_WIDTH + ROUTER_GAP;
+                activeRouters.forEach((r: any, idx: number) => {
+                    const rWidth = routerWidths[idx];
+                    const x = currentRouterX + rWidth / 2;
+                    currentRouterX += rWidth + ROUTER_GAP;
 
                     newNodes.push({
                         id: `vyos:${r.id || r.name}`,
@@ -978,10 +992,11 @@ function TopologyContent({ token }: TopologyProps) {
                 // If there are unmatched circuits, add cloud:EXTERNAL to the right
                 const unmatchedCount = resolvedWithHub.filter((r: any) => r.status !== 'matched').length;
                 if (unmatchedCount > 0 || activeRouters.length === 0) {
+                    const externalX = activeRouters.length > 0 ? (totalRoutersWidth / 2) + 260 : 0;
                     newNodes.push({
                         id: `cloud:EXTERNAL`,
                         type: 'cloud',
-                        position: { x: activeRouters.length > 0 ? (totalRoutersWidth / 2) + 260 : 0, y: CLOUD_Y },
+                        position: { x: externalX, y: CLOUD_Y },
                         origin: [0.5, 0.5],
                         data: { name: 'EXTERNAL / UNMAPPED' }
                     });
@@ -2552,22 +2567,22 @@ function TopologyContent({ token }: TopologyProps) {
 
             {/* Interactive Physical Link Trace Inspector (Floating Right Drawer) */}
             {underlayDrawerResolution && (
-                <div className="fixed top-24 right-6 z-[70] w-[440px] max-w-[92vw] bg-slate-950/95 backdrop-blur-2xl border-2 border-amber-500/50 rounded-3xl p-5 shadow-2xl shadow-black/90 animate-in fade-in slide-in-from-right-8 duration-300 flex flex-col gap-3.5">
+                <div className="fixed top-24 right-6 z-[70] w-[440px] max-w-[92vw] bg-card/95 dark:bg-slate-950/95 backdrop-blur-2xl border-2 border-amber-500/50 rounded-3xl p-5 shadow-2xl shadow-black/20 dark:shadow-black/90 animate-in fade-in slide-in-from-right-8 duration-300 flex flex-col gap-3.5 text-text-primary">
                     {/* Header */}
-                    <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <div className="flex items-center justify-between pb-3 border-b border-border">
                         <div className="flex items-center gap-2.5">
-                            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                            <div className="p-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
                                 <Activity size={18} />
                             </div>
                             <div>
                                 <h3 className="text-xs font-black uppercase text-text-primary tracking-wider flex items-center gap-2">
                                     <span>Link Trace</span>
                                     {underlayDrawerResolution.status === 'matched' ? (
-                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-green-500/20 text-green-300 border border-green-500/30">
+                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30">
                                             🟢 1:1 MATCHED
                                         </span>
                                     ) : (
-                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-500/20 text-slate-300 border border-slate-500/30">
+                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-card-secondary text-text-muted border border-border">
                                             UNMAPPED
                                         </span>
                                     )}
@@ -2583,7 +2598,7 @@ function TopologyContent({ token }: TopologyProps) {
                                     setUnderlayPanelResolution(underlayDrawerResolution);
                                     setShowUnderlayPanel(true);
                                 }}
-                                className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5"
+                                className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5"
                                 title="Open full inspector side panel"
                             >
                                 <Eye size={12} /> Full Inspect
@@ -2598,12 +2613,12 @@ function TopologyContent({ token }: TopologyProps) {
                     </div>
 
                     {/* Left/Top: Prisma SD-WAN ION Port */}
-                    <div className="bg-blue-950/40 border border-blue-500/30 rounded-2xl p-3.5 space-y-1.5 shadow-inner">
+                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-2xl p-3.5 space-y-1.5 shadow-inner">
                         <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-black uppercase text-blue-400 tracking-wider flex items-center gap-1.5">
+                            <span className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 tracking-wider flex items-center gap-1.5">
                                 <Home size={12} /> Prisma SD-WAN (ION)
                             </span>
-                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-700 dark:text-blue-300">
                                 {underlayDrawerResolution.prismaWan.siteName}
                             </span>
                         </div>
@@ -2617,30 +2632,30 @@ function TopologyContent({ token }: TopologyProps) {
                             </div>
                             <div className="flex justify-between text-text-muted">
                                 <span>Link Type:</span>
-                                <span className="text-blue-400">{underlayDrawerResolution.prismaWan.linkType || 'WAN'}</span>
+                                <span className="text-blue-600 dark:text-blue-400 font-bold">{underlayDrawerResolution.prismaWan.linkType || 'WAN'}</span>
                             </div>
                             <div className="flex justify-between text-text-muted">
                                 <span>ION IPv4:</span>
-                                <span className="text-green-400 font-bold">{underlayDrawerResolution.prismaWan.ipCidr || underlayDrawerResolution.prismaWan.ip || '—'}</span>
+                                <span className="text-green-600 dark:text-green-400 font-bold">{underlayDrawerResolution.prismaWan.ipCidr || underlayDrawerResolution.prismaWan.ip || '—'}</span>
                             </div>
                         </div>
                     </div>
 
                     {/* Middle: Subnet Indicator */}
-                    <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-slate-900 border border-amber-500/30 font-mono text-[11px]">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">Transit Subnet:</span>
-                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
+                    <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-card-secondary border border-amber-500/30 font-mono text-[11px]">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">Transit Subnet:</span>
+                        <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold">
                             {underlayDrawerResolution.matchedNetwork || underlayDrawerResolution.vyos?.network || '—'}
                         </span>
                     </div>
 
                     {/* Right/Bottom: VyOS Underlay Router Port */}
-                    <div className="bg-amber-950/40 border border-amber-500/30 rounded-2xl p-3.5 space-y-1.5 shadow-inner">
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 space-y-1.5 shadow-inner">
                         <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider flex items-center gap-1.5">
+                            <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wider flex items-center gap-1.5">
                                 <Server size={12} /> VyOS Underlay Router
                             </span>
-                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
                                 {underlayDrawerResolution.vyos?.routerName || 'External WAN'}
                             </span>
                         </div>
@@ -2658,11 +2673,11 @@ function TopologyContent({ token }: TopologyProps) {
                             </div>
                             <div className="flex justify-between text-text-muted">
                                 <span>Next-Hop IP:</span>
-                                <span className="text-green-400 font-bold">{underlayDrawerResolution.vyos?.ipCidr || underlayDrawerResolution.vyos?.ip || '—'}</span>
+                                <span className="text-green-600 dark:text-green-400 font-bold">{underlayDrawerResolution.vyos?.ipCidr || underlayDrawerResolution.vyos?.ip || '—'}</span>
                             </div>
                             <div className="flex justify-between text-text-muted">
                                 <span>Port Status:</span>
-                                <span className={cn("font-bold", underlayDrawerResolution.vyos ? "text-green-400" : "text-slate-500")}>
+                                <span className={cn("font-bold", underlayDrawerResolution.vyos ? "text-green-600 dark:text-green-400" : "text-text-muted")}>
                                     {underlayDrawerResolution.vyos ? '🟢 UP' : '—'}
                                 </span>
                             </div>
