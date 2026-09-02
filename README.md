@@ -93,7 +93,7 @@ This project is my way to turn all that lab and demo experience into an open-sou
 - **Real-time Logs** - Live log streaming with WebSocket updates
 - **Statistics Dashboard** - Success/failure rates, latency metrics, bandwidth tracking
 - **Security Score Dashboard** - Multi-module security posture scoring with 24h trend charts, min/max tracking, and run markers
-- **Live VPN Topology Overlay** - Real-time visualization of SD-WAN tunnels with path status (Active/Backup/Down) and HUB-specific filtering. Directly from Prisma SASE API.
+- **Live VPN Topology & Physical Underlay** - Real-time visualization of SD-WAN logical tunnels (Active/Backup/Down) alongside physical VyOS backbone chassis with direct 1:1 port-to-port cable wiring, spatial anti-crossing alignment, and live Link Trace diagnostics. [Read more](docs/UNDERLAY_TOPOLOGY.md)
 - **Persistent Logging** - JSONL storage with 10,000 lines retention and auto-rotation
 - **Search & Filter** - Find specific tests quickly with powerful search
 - **Export Capabilities** - Download results in JSON, CSV, or JSONL format
@@ -121,6 +121,13 @@ This project is my way to turn all that lab and demo experience into an open-sou
 
 The project is evolving rapidly with new features and refinements added in every release.
 
+### Underlay Topology & Physical Chassis *(v1.4.1)*
+- **VyOS Physical Chassis Node** 🖧 — Interactive canvas representation of active VyOS routers with separate DC/Hub uplinks (top row) and Branch/Spoke downlinks (bottom row), management banner, live status, and full IP CIDR visibility on every physical port chip. [Read docs](docs/UNDERLAY_TOPOLOGY.md)
+- **Direct 1:1 Port Cable Wiring** 🔌 — Individual cables connect directly from each Prisma SD-WAN circuit block to the exact physical `ethX` port handle on the VyOS router.
+- **Anti-Cable-Crossing Spatial Routing** 📐 — Dynamic horizontal sorting of interfaces matching connected sites' X-coordinates (DC1, DC2, BR1, BR2, BR3) to ensure straight, untangled parallel cables.
+- **Interactive Link Trace Drawer** 🔍 — Click any port chip or underlay cable to open a floating trace drawer comparing Prisma ION circuit parameters, transit CIDR subnet, and VyOS next-hop IP in real time.
+- **Dual Mode & Theme Support** 🌓 — Instant toggle between Logical Overlay (clouds) and Physical Underlay (chassis) with full Light and Dark mode styling.
+
 ### MCP Server highlights *(v1.4.0-patch.106–109)*
 - **VyOS Natural Language Control** 🤖 — `get_vyos_interfaces` + `vyos_execute_action`: propose+confirm flow, management interfaces silently excluded, multi-router disambiguation.
 - **MCP Live Interaction Feed** ✨ — Real-time color-coded feed in Settings → MCP (category icons, duration bar, node badge, LIVE pulse, 3s refresh).
@@ -128,7 +135,7 @@ The project is evolving rapidly with new features and refinements added in every
 - **Security Score Fix** 🐛 — `get_security_results_stats` now returns real weighted posture scores (URL/DNS/Threat 0–100) + 24-run trend. Eliminates wrong raw-ratio reporting.
 - **MCP Docs** 📖 — `docs/MCP_SERVER.md` updated: upgrade/reconnect workflow, natural language translation explained.
 
-### Highlights in v1.4.0 *(current)*
+### Highlights in v1.4.0
 - **Vulnerability Report Import** 🧨 — New import option in the IoT toolbar for Palo Alto IoT Security **Vulnerability CSV** exports (one row per CVE per device). Aggregates by device, computes a **Danger Score** (Risk Score + Critical CVEs×15 + High CVEs×8 + APT groups×5 + ICS-CERT×10 + Max CVSS×2), and selects the top N most dangerous devices. APT groups → `beacon`, ICS-CERT → `port_scan`, Critical/High CVEs → `pan_test_domains`. [Read docs](docs/IOT_SIMULATION.md#4-vulnerability-report-import)
 - **CVE Threat Intel on Device Cards** 🔍 — Vuln-imported device cards now show an orange threat panel with Danger Score, CVE count/severity, Max CVSS, APT groups, ICS-CERT badge, and top CVE pills directly in the IoT grid.
 - **Smart Device Naming** 🏷️ — When a CSV export contains MAC addresses as device names (common in large Prisma exports), both importers automatically generate human-readable names from the `Profile` field (e.g. `Raspberry Pi Device #1`, `Raspberry Pi Device #2`).
