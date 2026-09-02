@@ -471,6 +471,7 @@ export class TargetsManager {
                     existing.capabilities = {
                         voice: existing.capabilities.voice || t.capabilities.voice,
                         convergence: existing.capabilities.convergence || t.capabilities.convergence,
+                        custom_app: existing.capabilities.custom_app || t.capabilities.custom_app,
                         xfr: existing.capabilities.xfr || t.capabilities.xfr,
                         security: existing.capabilities.security || t.capabilities.security,
                         connectivity: existing.capabilities.connectivity || t.capabilities.connectivity,
