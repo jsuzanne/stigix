@@ -2665,7 +2665,7 @@ def cmd_controller(args):
             leader_ip = "<LEADER_IP>"
         leader_url = f"http://{leader_ip}:8080"
         
-        install_cmd = f"curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- --controller {leader_url}"
+        install_cmd = f"curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | sudo bash -s -- --controller {leader_url}"
         
         hdr("━━ REMOTE PEER ONBOARDING COMMAND ━━━━━━━━━━━━━━━━━━━━━━━")
         info("Run this single command on any remote Linux machine to join this Leader:")

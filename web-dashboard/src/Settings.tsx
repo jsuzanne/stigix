@@ -932,7 +932,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     };
 
     const handleCopyPeerCommand = () => {
-        const installScriptUrl = 'https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh';
+        const installScriptUrl = 'https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh';
         const leaderUrl = peerInstallLeaderUrl || (registryStatus?.detected_ip ? `http://${registryStatus.detected_ip}:8080` : '<leader-url>');
         const cmd = `curl -fsSL ${installScriptUrl} | sudo bash -s -- --controller ${leaderUrl}`;
         copyToClipboard(cmd);
@@ -3818,7 +3818,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                     <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Install command — copy and paste on the remote host:</label>
                                     <div className="relative group">
                                         <div className="bg-card border border-border rounded-xl p-4 pr-28 font-mono text-[11px] text-emerald-400 break-all leading-relaxed">
-                                            {`curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- --controller ${peerInstallLeaderUrl || `http://${detectedIp}:8080`}`}
+                                            {`curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | sudo bash -s -- --controller ${peerInstallLeaderUrl || `http://${detectedIp}:8080`}`}
                                         </div>
                                         <button
                                             id="copy-peer-install-command"

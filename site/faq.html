@@ -1975,7 +1975,7 @@ docker compose restart</pre>
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Zero-Touch Direct Controller Onboarding work for remote branch nodes?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p>To join a remote Linux box, VM, or Raspberry Pi to a Stigix Leader, run the one-line onboarding command on the remote host:</p>
-            <pre>curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- --controller http://&lt;LEADER_IP&gt;:8080</pre>
+            <pre>curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | sudo bash -s -- --controller http://&lt;LEADER_IP&gt;:8080</pre>
             <p>The script automatically:</p>
             <ul>
               <li>Installs Docker if needed and pulls the Stigix container image.</li>
