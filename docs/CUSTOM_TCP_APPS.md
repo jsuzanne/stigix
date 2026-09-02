@@ -1,5 +1,8 @@
 # Stigix Custom TCP Inter-Site Applications
 
+> 📘 **Looking for the practical step-by-step User Guide?**  
+> Check out the [📖 Custom TCP Apps User Guide & Recipes](file:///Users/jsuzanne/Github/stigix/docs/CUSTOM_TCP_APPS_USER_GUIDE.md) with deployment blueprints, chaos recipes (ERP, POS, DB, SD-WAN failover), and troubleshooting.
+
 ## Overview
 
 **Stigix Custom TCP Inter-Site Applications** is a real-time, customizable East-West TCP workload simulation and verification framework designed specifically for SD-WAN, SASE, and Next-Generation Enterprise Network testbeds.
