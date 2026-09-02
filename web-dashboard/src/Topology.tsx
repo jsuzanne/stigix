@@ -595,10 +595,73 @@ const VyOSRouterNode = ({ data }: any) => {
     );
 };
 
+// --- Custom Underlay Peer Gateway Node (Direct 1:1 Interface Block in vis-à-vis) ---
+const UnderlayGatewayNode = ({ data }: any) => {
+    const { resolution, isHubPeer = false, onInspect } = data;
+    const isMatched = resolution?.status === 'matched';
+    const vyos = resolution?.vyos;
+    const prismaWan = resolution?.prismaWan;
+
+    return (
+        <div
+            onClick={(e) => {
+                e.stopPropagation();
+                if (onInspect && resolution) onInspect(resolution);
+            }}
+            className={cn(
+                "p-3 rounded-2xl border-2 shadow-xl backdrop-blur-xl transition-all hover:scale-105 cursor-pointer min-w-[170px] max-w-[210px] flex flex-col gap-1.5 group relative",
+                isMatched 
+                    ? "bg-slate-900/95 border-amber-500/50 hover:border-amber-400 shadow-amber-500/10" 
+                    : "bg-slate-900/80 border-slate-700/60 hover:border-slate-500 shadow-black/20"
+            )}
+        >
+            <Handle
+                type="target"
+                position={isHubPeer ? Position.Top : Position.Bottom}
+                id="target-peer"
+                className="!opacity-0"
+            />
+
+            {/* Header: Router Name & Status */}
+            <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
+                <div className="flex items-center gap-1.5 overflow-hidden">
+                    <Server size={13} className={isMatched ? "text-amber-400 shrink-0" : "text-slate-400 shrink-0"} />
+                    <span className="text-[10px] font-black uppercase text-text-primary tracking-tight truncate">
+                        {isMatched ? vyos.routerName : 'External Provider'}
+                    </span>
+                </div>
+                <span className={cn(
+                    "w-2 h-2 rounded-full shrink-0",
+                    isMatched ? "bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]" : "bg-slate-500"
+                )} />
+            </div>
+
+            {/* Port & Next-Hop IP */}
+            <div className="flex items-center justify-between font-mono">
+                <span className={cn(
+                    "text-[10px] font-bold px-1.5 py-0.5 rounded",
+                    isMatched ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "bg-slate-700/40 text-slate-300"
+                )}>
+                    {isMatched ? vyos.interfaceName : (prismaWan?.linkType || 'WAN')}
+                </span>
+                <span className="text-[10px] font-black text-green-400 truncate max-w-[95px]">
+                    {isMatched ? (vyos.ipCidr || vyos.ip) : (prismaWan?.ipCidr || prismaWan?.ip || '—')}
+                </span>
+            </div>
+
+            {/* Description / Subnet */}
+            <div className="text-[9px] text-text-muted truncate font-mono" title={isMatched ? (vyos.description || `Subnet: ${vyos.network}`) : resolution?.diagnostic}>
+                {isMatched ? (vyos.description || `Subnet: ${vyos.network}`) : (resolution?.diagnostic || 'External provider')}
+            </div>
+        </div>
+    );
+};
+
 const nodeTypes = {
     site: SiteNode,
     cloud: CloudNode,
     vyosRouter: VyOSRouterNode,
+    underlayGateway: UnderlayGatewayNode,
 };
 
 const edgeTypes = {
@@ -731,6 +794,8 @@ function TopologyContent({ token }: TopologyProps) {
             return Math.max(400, devicesWidth + 96);
         };
 
+        const sitePositions = new Map<string, number>();
+
         const layoutRow = (sites: any[], yPos: number, role: string) => {
             const widths = sites.map(getSiteWidth);
             const totalWidth = widths.reduce((acc, w) => acc + w, 0) + HORIZONTAL_GAP_PX * Math.max(0, sites.length - 1);
@@ -740,6 +805,7 @@ function TopologyContent({ token }: TopologyProps) {
                 const w = widths[i];
                 const x = currentX + w / 2;
                 currentX += w + HORIZONTAL_GAP_PX;
+                sitePositions.set(site.site_id, x);
 
                 newNodes.push({
                     id: `site:${site.site_id}`,
@@ -754,69 +820,30 @@ function TopologyContent({ token }: TopologyProps) {
         // --- NODES ARE ALWAYS IN THE SAME POSITION ---
         layoutRow(hubs, HUB_Y, 'HUB');
 
-        // Middle Tier: Clouds in Overlay Mode OR VyOS Routers in Underlay Mode
-        if (!logicalViewSiteId) {
-            if (topologyViewMode === 'underlay') {
-                const vyosRouters = underlayData?.routers || [];
-                const vyosWidth = 380;
-                const vyosGap = 80;
-                const totalVyosWidth = Math.max(1, vyosRouters.length) * vyosWidth + Math.max(0, vyosRouters.length - 1) * vyosGap;
-                let currentVyosX = -totalVyosWidth / 2;
-
-                vyosRouters.forEach((r: any) => {
-                    const x = currentVyosX + vyosWidth / 2;
-                    currentVyosX += vyosWidth + vyosGap;
-                    const routerResolutions = (underlayData?.resolutions || []).filter((res: any) => res.status === 'matched' && res.vyos?.routerName === r.name);
-
-                    newNodes.push({
-                        id: `vyos:${r.id || r.name}`,
-                        type: 'vyosRouter',
-                        position: { x, y: CLOUD_Y },
-                        origin: [0.5, 0.5],
-                        data: {
-                            router: r,
-                            connectedCount: routerResolutions.length,
-                            resolutions: routerResolutions,
-                            onSelectResolution: (res: any) => setUnderlayDrawerResolution(res)
-                        }
-                    });
-                });
-
-                // External network cloud node for unmapped/external circuits
-                const unmatchedCount = (underlayData?.resolutions || []).filter((res: any) => res.status !== 'matched').length;
-                if (unmatchedCount > 0 || vyosRouters.length === 0) {
-                    newNodes.push({
-                        id: `cloud:EXTERNAL`,
-                        type: 'cloud',
-                        position: { x: vyosRouters.length > 0 ? (totalVyosWidth / 2) + 260 : 0, y: CLOUD_Y },
-                        origin: [0.5, 0.5],
-                        data: { name: 'EXTERNAL / UNMAPPED' }
-                    });
-                }
-            } else {
-                const INTERNET_X = -200;
-                if (publicWanNetworks.size > 0) {
-                    newNodes.push({
-                        id: `cloud:INTERNET`,
-                        type: 'cloud',
-                        position: { x: INTERNET_X, y: CLOUD_Y },
-                        origin: [0.5, 0.5],
-                        data: { name: 'INTERNET' },
-                    });
-                }
-
-                const privates = Array.from(privateWanNetworks);
-                privates.forEach((cloudName, i) => {
-                    const x = 200 + (i * 250);
-                    newNodes.push({
-                        id: `cloud:${cloudName}`,
-                        type: 'cloud',
-                        position: { x, y: CLOUD_Y },
-                        origin: [0.5, 0.5],
-                        data: { name: cloudName },
-                    });
+        // Middle Tier: Clouds in Overlay Mode (Underlay mode uses dedicated peer gateway nodes aligned with each site)
+        if (!logicalViewSiteId && topologyViewMode === 'overlay') {
+            const INTERNET_X = -200;
+            if (publicWanNetworks.size > 0) {
+                newNodes.push({
+                    id: `cloud:INTERNET`,
+                    type: 'cloud',
+                    position: { x: INTERNET_X, y: CLOUD_Y },
+                    origin: [0.5, 0.5],
+                    data: { name: 'INTERNET' },
                 });
             }
+
+            const privates = Array.from(privateWanNetworks);
+            privates.forEach((cloudName, i) => {
+                const x = 200 + (i * 250);
+                newNodes.push({
+                    id: `cloud:${cloudName}`,
+                    type: 'cloud',
+                    position: { x, y: CLOUD_Y },
+                    origin: [0.5, 0.5],
+                    data: { name: cloudName },
+                });
+            });
         }
 
         layoutRow(spokes, SPOKE_Y, 'SPOKE');
@@ -889,42 +916,75 @@ function TopologyContent({ token }: TopologyProps) {
                 });
             });
         } else if (topologyViewMode === 'underlay') {
-            // mode UNDERLAY: Draw site-to-VyOS or site-to-External edges
+            // mode UNDERLAY: Generate Peer Underlay Gateway Nodes in direct vertical alignment (No cable crossing)
             filteredSites.forEach((site: any) => {
                 const isHub = hubs.includes(site);
-                site.devices?.forEach((device: any) => {
-                    device.wan_interfaces?.forEach((wan: any) => {
-                        const res = (underlayData?.resolutions || []).find((r: any) => 
-                            r.prismaWan.siteName === site.site_name && 
-                            r.prismaWan.elementName === device.device_name && 
-                            r.prismaWan.interfaceName === wan.name
-                        );
+                const siteX = sitePositions.get(site.site_id) || 0;
 
-                        const isMatched = Boolean(res && res.status === 'matched' && res.vyos);
-                        const targetId = (isMatched && res?.vyos) ? `vyos:${res.vyos.routerId || res.vyos.routerName}` : `cloud:EXTERNAL`;
-
-                        newEdges.push({
-                            id: `underlay-edge:${site.site_id}:${device.device_name}:${wan.name}`,
-                            type: 'site',
-                            source: `site:${site.site_id}`,
-                            target: targetId,
-                            sourceHandle: `circuit:${device.device_name}:${wan.name}`,
-                            targetHandle: isHub ? 'target-top' : 'target-bottom',
-                            animated: isMatched,
-                            style: {
-                                stroke: isMatched ? '#f59e0b' : '#64748b',
-                                strokeWidth: isMatched ? 3.5 : 1.5,
-                                strokeDasharray: isMatched ? undefined : '4 4'
-                            },
-                            data: {
-                                ...wan,
-                                site_name: site.site_name,
-                                device_name: device.device_name,
-                                hideLabel: true,
-                                resolution: res,
-                                isUnderlayEdge: true
-                            }
+                // Collect all WAN circuits for this site in deterministic order
+                const wanCircuits: any[] = [];
+                site.devices?.forEach((dev: any) => {
+                    dev.wan_interfaces?.forEach((wan: any) => {
+                        wanCircuits.push({
+                            ...wan,
+                            devName: dev.device_name,
+                            elementId: dev.element_id
                         });
+                    });
+                });
+
+                const circuitCount = wanCircuits.length;
+
+                wanCircuits.forEach((w: any, idx: number) => {
+                    // Match exact circuit block X offset from SiteNode
+                    const blockX = siteX + (idx - (circuitCount - 1) / 2) * 154;
+                    // Position peer gateway block facing the circuit: Hub peer at Y=-330, Spoke peer at Y=330
+                    const peerY = isHub ? (HUB_Y + 370) : (SPOKE_Y - 370);
+                    const peerGatewayId = `peer-gateway:${site.site_id}:${w.devName}:${w.name}`;
+
+                    const res = (underlayData?.resolutions || []).find((r: any) => 
+                        r.prismaWan.siteName === site.site_name && 
+                        r.prismaWan.elementName === w.devName && 
+                        r.prismaWan.interfaceName === w.name
+                    );
+
+                    const isMatched = Boolean(res && res.status === 'matched' && res.vyos);
+
+                    // Add Peer Gateway Node
+                    newNodes.push({
+                        id: peerGatewayId,
+                        type: 'underlayGateway',
+                        position: { x: blockX, y: peerY },
+                        origin: [0.5, 0.5],
+                        data: {
+                            resolution: res,
+                            isHubPeer: isHub,
+                            onInspect: (r: any) => setUnderlayDrawerResolution(r)
+                        }
+                    });
+
+                    // Add Direct Straight Edge
+                    newEdges.push({
+                        id: `underlay-peer-edge:${site.site_id}:${w.devName}:${w.name}`,
+                        type: 'site',
+                        source: `site:${site.site_id}`,
+                        target: peerGatewayId,
+                        sourceHandle: `circuit:${w.devName}:${w.name}`,
+                        targetHandle: 'target-peer',
+                        animated: isMatched,
+                        style: {
+                            stroke: isMatched ? '#f59e0b' : '#64748b',
+                            strokeWidth: isMatched ? 3.5 : 1.5,
+                            strokeDasharray: isMatched ? undefined : '4 4'
+                        },
+                        data: {
+                            ...w,
+                            site_name: site.site_name,
+                            device_name: w.devName,
+                            hideLabel: true,
+                            resolution: res,
+                            isUnderlayEdge: true
+                        }
                     });
                 });
             });
@@ -1004,7 +1064,9 @@ function TopologyContent({ token }: TopologyProps) {
     const onNodeClick = useCallback((_: any, node: Node) => {
         setSelectedObject({ type: 'node', ...node.data });
         const nodeData = node.data as any;
-        if (node.type === 'vyosRouter' && Array.isArray(nodeData?.resolutions) && nodeData.resolutions.length > 0) {
+        if (node.type === 'underlayGateway' && nodeData?.resolution) {
+            setUnderlayDrawerResolution(nodeData.resolution);
+        } else if (node.type === 'vyosRouter' && Array.isArray(nodeData?.resolutions) && nodeData.resolutions.length > 0) {
             setUnderlayDrawerResolution(nodeData.resolutions[0]);
         }
     }, []);
