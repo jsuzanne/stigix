@@ -504,7 +504,7 @@ const CloudNode = ({ data }: any) => {
 };
 
 const VyOSRouterNode = ({ data }: any) => {
-    const { router, connectedCount = 0, resolutions = [], onSelectResolution } = data;
+    const { router, connectedCount = 0, resolutions = [], siteOrder = new Map(), onSelectResolution } = data;
     const isOnline = router.status !== 'down';
 
     // Group resolutions into Hub-connected and Spoke-connected
@@ -514,16 +514,38 @@ const VyOSRouterNode = ({ data }: any) => {
     // Identify interfaces for this router
     const allIfaces = router.interfaces || [];
 
-    // Separate into top (Hub) and bottom (Spoke) interfaces
-    const hubIfaces = allIfaces.filter((iface: any) => 
-        hubResolutions.some((r: any) => r.vyos?.interfaceName === iface.name)
-    );
+    // Sorting comparator: Sort by connected site's horizontal X position (left to right), then INET before MPLS
+    const sortIfacesBySite = (ifaceA: any, ifaceB: any) => {
+        const resA = resolutions.find((r: any) => r.vyos?.interfaceName === ifaceA.name);
+        const resB = resolutions.find((r: any) => r.vyos?.interfaceName === ifaceB.name);
 
-    const spokeIfaces = allIfaces.filter((iface: any) => 
-        spokeResolutions.some((r: any) => r.vyos?.interfaceName === iface.name)
-    );
+        const siteA = resA?.prismaWan?.siteName || '';
+        const siteB = resB?.prismaWan?.siteName || '';
 
-    // Fallback: if not categorized, show all interfaces in bottom row
+        const posA = siteOrder.has(siteA) ? siteOrder.get(siteA) : 9999;
+        const posB = siteOrder.has(siteB) ? siteOrder.get(siteB) : 9999;
+
+        if (posA !== posB) return posA - posB;
+
+        // Within same site, INET before MPLS
+        const linkA = (resA?.prismaWan?.interfaceName || ifaceA.description || '').toLowerCase();
+        const linkB = (resB?.prismaWan?.interfaceName || ifaceB.description || '').toLowerCase();
+        const isMplsA = linkA.includes('mpls');
+        const isMplsB = linkB.includes('mpls');
+        if (isMplsA !== isMplsB) return isMplsA ? 1 : -1;
+
+        return ifaceA.name.localeCompare(ifaceB.name);
+    };
+
+    // Separate into top (Hub) and bottom (Spoke) interfaces with spatial left-to-right alignment
+    const hubIfaces = allIfaces
+        .filter((iface: any) => hubResolutions.some((r: any) => r.vyos?.interfaceName === iface.name))
+        .sort(sortIfacesBySite);
+
+    const spokeIfaces = allIfaces
+        .filter((iface: any) => spokeResolutions.some((r: any) => r.vyos?.interfaceName === iface.name))
+        .sort(sortIfacesBySite);
+
     const displayTopIfaces = hubIfaces;
     const displayBottomIfaces = spokeIfaces.length > 0 ? spokeIfaces : (hubIfaces.length === 0 ? allIfaces : []);
 
@@ -531,6 +553,7 @@ const VyOSRouterNode = ({ data }: any) => {
         const matchedRes = resolutions.find((r: any) => r.vyos?.interfaceName === iface.name);
         const isConnected = !!matchedRes;
         const isIfaceUp = iface.status !== 'down';
+        const fullIp = iface.address?.[0] || iface.ipCidr || matchedRes?.vyos?.ipCidr || '—';
 
         return (
             <div
@@ -542,9 +565,9 @@ const VyOSRouterNode = ({ data }: any) => {
                     }
                 }}
                 className={cn(
-                    "relative px-3 py-2 rounded-2xl border text-[11px] transition-all flex flex-col justify-between group/port min-w-[145px] max-w-[175px]",
+                    "relative px-3.5 py-2.5 rounded-2xl border text-[11px] transition-all flex flex-col justify-between group/port min-w-[170px] max-w-[200px]",
                     isConnected 
-                        ? "bg-slate-900/90 border-amber-500/50 hover:border-amber-400 hover:bg-slate-900 shadow-md shadow-amber-500/10 cursor-pointer" 
+                        ? "bg-slate-900/95 border-amber-500/50 hover:border-amber-400 hover:bg-slate-900 shadow-md shadow-amber-500/10 cursor-pointer" 
                         : "bg-slate-950/40 border-slate-800/60 text-text-muted opacity-40 cursor-default"
                 )}
                 title={matchedRes ? `Connected to ${matchedRes.prismaWan.siteName} (${matchedRes.prismaWan.interfaceName}) · Click to inspect` : (iface.description || iface.name)}
@@ -554,29 +577,29 @@ const VyOSRouterNode = ({ data }: any) => {
                     type="target"
                     position={isTop ? Position.Top : Position.Bottom}
                     id={`vyos-port:${iface.name}`}
-                    className="!w-3 !h-1.5 !bg-amber-400 !border !border-slate-900 !rounded-sm"
+                    className="!w-3.5 !h-1.5 !bg-amber-400 !border !border-slate-900 !rounded-sm"
                 />
 
-                <div className="flex items-center justify-between pb-1 border-b border-white/5">
+                <div className="flex items-center justify-between pb-1.5 border-b border-white/5">
                     <span className="font-mono font-black text-amber-400 flex items-center gap-1.5">
                         <span className={cn("w-2 h-2 rounded-full", isConnected ? (isIfaceUp ? "bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]" : "bg-red-400") : "bg-slate-600")} />
                         {iface.name}
                     </span>
                     {isConnected && (
-                        <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-green-500/20 text-green-300 border border-green-500/30 truncate max-w-[75px]">
+                        <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-green-500/20 text-green-300 border border-green-500/30 truncate max-w-[85px]">
                             {matchedRes.prismaWan.siteName}
                         </span>
                     )}
                 </div>
 
-                <div className="flex items-center justify-between font-mono mt-1 text-[10px]">
-                    <span className="text-text-primary font-bold truncate max-w-[95px]">
-                        {iface.address?.[0] || iface.ipCidr || matchedRes?.vyos?.ipCidr || '—'}
+                <div className="flex items-center justify-between font-mono mt-1.5">
+                    <span className="text-text-primary font-black text-[11px] whitespace-nowrap tracking-tight">
+                        {fullIp}
                     </span>
                 </div>
 
                 {iface.description && (
-                    <div className="text-[8px] text-text-muted truncate font-mono mt-0.5">
+                    <div className="text-[9px] text-text-muted truncate font-mono mt-0.5" title={iface.description}>
                         {iface.description}
                     </div>
                 )}
@@ -862,6 +885,7 @@ function TopologyContent({ token }: TopologyProps) {
                 const x = currentX + w / 2;
                 currentX += w + HORIZONTAL_GAP_PX;
                 sitePositions.set(site.site_id, x);
+                sitePositions.set(site.site_name, x);
 
                 newNodes.push({
                     id: `site:${site.site_id}`,
@@ -945,6 +969,7 @@ function TopologyContent({ token }: TopologyProps) {
                             router: r,
                             connectedCount: r.connectedCount,
                             resolutions: r.resolutions,
+                            siteOrder: sitePositions,
                             onSelectResolution: (res: any) => setUnderlayDrawerResolution(res)
                         }
                     });
@@ -2525,20 +2550,21 @@ function TopologyContent({ token }: TopologyProps) {
                 </div>
             )}
 
-            {/* Interactive Physical Link Trace Drawer (Option C) */}
+            {/* Interactive Physical Link Trace Inspector (Floating Right Drawer) */}
             {underlayDrawerResolution && (
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[60] w-[95%] max-w-4xl bg-slate-900/95 backdrop-blur-2xl border-2 border-amber-500/40 rounded-3xl p-5 shadow-2xl shadow-black/80 animate-in fade-in slide-in-from-bottom-6 duration-300">
+                <div className="fixed top-24 right-6 z-[70] w-[440px] max-w-[92vw] bg-slate-950/95 backdrop-blur-2xl border-2 border-amber-500/50 rounded-3xl p-5 shadow-2xl shadow-black/90 animate-in fade-in slide-in-from-right-8 duration-300 flex flex-col gap-3.5">
+                    {/* Header */}
                     <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                        <div className="flex items-center gap-2">
-                            <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
-                                <Activity size={16} />
+                        <div className="flex items-center gap-2.5">
+                            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                <Activity size={18} />
                             </div>
                             <div>
                                 <h3 className="text-xs font-black uppercase text-text-primary tracking-wider flex items-center gap-2">
-                                    <span>Physical Link Trace & Next-Hop Mapping</span>
+                                    <span>Link Trace</span>
                                     {underlayDrawerResolution.status === 'matched' ? (
                                         <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-green-500/20 text-green-300 border border-green-500/30">
-                                            🟢 1:1 PATCHED
+                                            🟢 1:1 MATCHED
                                         </span>
                                     ) : (
                                         <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-500/20 text-slate-300 border border-slate-500/30">
@@ -2546,12 +2572,12 @@ function TopologyContent({ token }: TopologyProps) {
                                         </span>
                                     )}
                                 </h3>
-                                <p className="text-[10px] text-text-muted font-mono">
-                                    {underlayDrawerResolution.prismaWan.siteName} ──[{underlayDrawerResolution.matchedNetwork || underlayDrawerResolution.vyos?.network || 'Underlay Subnet'}]── {underlayDrawerResolution.vyos?.routerName || 'External WAN'}
+                                <p className="text-[10px] text-text-muted font-mono truncate max-w-[220px]">
+                                    {underlayDrawerResolution.prismaWan.siteName} ── {underlayDrawerResolution.vyos?.routerName || 'External WAN'}
                                 </p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                             <button
                                 onClick={() => {
                                     setUnderlayPanelResolution(underlayDrawerResolution);
@@ -2571,85 +2597,74 @@ function TopologyContent({ token }: TopologyProps) {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 items-center">
-                        {/* Left: Prisma SD-WAN ION Port */}
-                        <div className="bg-blue-950/30 border border-blue-500/30 rounded-2xl p-3.5 space-y-2 shadow-inner">
-                            <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-black uppercase text-blue-400 tracking-wider flex items-center gap-1.5">
-                                    <Home size={12} /> Prisma SD-WAN (ION)
-                                </span>
-                                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">
-                                    {underlayDrawerResolution.prismaWan.siteName}
-                                </span>
+                    {/* Left/Top: Prisma SD-WAN ION Port */}
+                    <div className="bg-blue-950/40 border border-blue-500/30 rounded-2xl p-3.5 space-y-1.5 shadow-inner">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase text-blue-400 tracking-wider flex items-center gap-1.5">
+                                <Home size={12} /> Prisma SD-WAN (ION)
+                            </span>
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">
+                                {underlayDrawerResolution.prismaWan.siteName}
+                            </span>
+                        </div>
+                        <div className="text-xs font-black text-text-primary">
+                            {underlayDrawerResolution.prismaWan.elementName || 'ION Appliance'}
+                        </div>
+                        <div className="space-y-1 text-[11px] font-mono">
+                            <div className="flex justify-between text-text-muted">
+                                <span>Circuit Label:</span>
+                                <span className="text-text-primary font-bold">{underlayDrawerResolution.prismaWan.interfaceName}</span>
                             </div>
-                            <div className="text-xs font-black text-text-primary">
-                                {underlayDrawerResolution.prismaWan.elementName || 'ION Appliance'}
+                            <div className="flex justify-between text-text-muted">
+                                <span>Link Type:</span>
+                                <span className="text-blue-400">{underlayDrawerResolution.prismaWan.linkType || 'WAN'}</span>
                             </div>
-                            <div className="space-y-1 text-[11px] font-mono">
-                                <div className="flex justify-between text-text-muted">
-                                    <span>Circuit Label:</span>
-                                    <span className="text-text-primary font-bold">{underlayDrawerResolution.prismaWan.interfaceName}</span>
-                                </div>
-                                <div className="flex justify-between text-text-muted">
-                                    <span>Link Type:</span>
-                                    <span className="text-blue-400">{underlayDrawerResolution.prismaWan.linkType || 'WAN'}</span>
-                                </div>
-                                <div className="flex justify-between text-text-muted">
-                                    <span>ION IPv4:</span>
-                                    <span className="text-green-400 font-bold">{underlayDrawerResolution.prismaWan.ipCidr || underlayDrawerResolution.prismaWan.ip || '—'}</span>
-                                </div>
+                            <div className="flex justify-between text-text-muted">
+                                <span>ION IPv4:</span>
+                                <span className="text-green-400 font-bold">{underlayDrawerResolution.prismaWan.ipCidr || underlayDrawerResolution.prismaWan.ip || '—'}</span>
                             </div>
                         </div>
+                    </div>
 
-                        {/* Middle: Patch Cable / Subnet */}
-                        <div className="flex flex-col items-center justify-center p-2 text-center">
-                            <div className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-1.5">
-                                Same-Subnet Match
-                            </div>
-                            <div className="w-full flex items-center gap-2">
-                                <div className="h-0.5 flex-1 bg-gradient-to-r from-blue-500 to-amber-500" />
-                                <span className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-[10px] font-black shadow-lg shadow-amber-500/10">
-                                    {underlayDrawerResolution.matchedNetwork || underlayDrawerResolution.vyos?.network || '—'}
-                                </span>
-                                <div className="h-0.5 flex-1 bg-gradient-to-r from-amber-500 to-green-500" />
-                            </div>
-                            <div className="text-[9px] text-text-muted mt-2 font-mono">
-                                {underlayDrawerResolution.status === 'matched' ? 'Direct L3 / Broadcast Domain Connection' : underlayDrawerResolution.diagnostic}
-                            </div>
+                    {/* Middle: Subnet Indicator */}
+                    <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-slate-900 border border-amber-500/30 font-mono text-[11px]">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">Transit Subnet:</span>
+                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
+                            {underlayDrawerResolution.matchedNetwork || underlayDrawerResolution.vyos?.network || '—'}
+                        </span>
+                    </div>
+
+                    {/* Right/Bottom: VyOS Underlay Router Port */}
+                    <div className="bg-amber-950/40 border border-amber-500/30 rounded-2xl p-3.5 space-y-1.5 shadow-inner">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider flex items-center gap-1.5">
+                                <Server size={12} /> VyOS Underlay Router
+                            </span>
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                                {underlayDrawerResolution.vyos?.routerName || 'External WAN'}
+                            </span>
                         </div>
-
-                        {/* Right: VyOS Underlay Router Port */}
-                        <div className="bg-amber-950/30 border border-amber-500/30 rounded-2xl p-3.5 space-y-2 shadow-inner">
-                            <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider flex items-center gap-1.5">
-                                    <Server size={12} /> VyOS Underlay Router
-                                </span>
-                                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
-                                    {underlayDrawerResolution.vyos?.routerName || 'External WAN'}
-                                </span>
+                        <div className="text-xs font-black text-text-primary">
+                            {underlayDrawerResolution.vyos ? (
+                                <span>Port {underlayDrawerResolution.vyos.interfaceName} · {underlayDrawerResolution.vyos.location || 'Underlay Router'}</span>
+                            ) : (
+                                <span className="text-text-muted italic">Unmatched Provider</span>
+                            )}
+                        </div>
+                        <div className="space-y-1 text-[11px] font-mono">
+                            <div className="flex justify-between text-text-muted">
+                                <span>Port Desc:</span>
+                                <span className="text-text-primary font-bold truncate max-w-[180px]">{underlayDrawerResolution.vyos?.description || '—'}</span>
                             </div>
-                            <div className="text-xs font-black text-text-primary">
-                                {underlayDrawerResolution.vyos ? (
-                                    <span>Port {underlayDrawerResolution.vyos.interfaceName} · {underlayDrawerResolution.vyos.location || 'Underlay Router'}</span>
-                                ) : (
-                                    <span className="text-text-muted italic">Unmatched Provider</span>
-                                )}
+                            <div className="flex justify-between text-text-muted">
+                                <span>Next-Hop IP:</span>
+                                <span className="text-green-400 font-bold">{underlayDrawerResolution.vyos?.ipCidr || underlayDrawerResolution.vyos?.ip || '—'}</span>
                             </div>
-                            <div className="space-y-1 text-[11px] font-mono">
-                                <div className="flex justify-between text-text-muted">
-                                    <span>Port Desc:</span>
-                                    <span className="text-text-primary font-bold truncate max-w-[120px]">{underlayDrawerResolution.vyos?.description || '—'}</span>
-                                </div>
-                                <div className="flex justify-between text-text-muted">
-                                    <span>Next-Hop IP:</span>
-                                    <span className="text-green-400 font-bold">{underlayDrawerResolution.vyos?.ipCidr || underlayDrawerResolution.vyos?.ip || '—'}</span>
-                                </div>
-                                <div className="flex justify-between text-text-muted">
-                                    <span>Port Status:</span>
-                                    <span className={cn("font-bold", underlayDrawerResolution.vyos ? "text-green-400" : "text-slate-500")}>
-                                        {underlayDrawerResolution.vyos ? '🟢 UP' : '—'}
-                                    </span>
-                                </div>
+                            <div className="flex justify-between text-text-muted">
+                                <span>Port Status:</span>
+                                <span className={cn("font-bold", underlayDrawerResolution.vyos ? "text-green-400" : "text-slate-500")}>
+                                    {underlayDrawerResolution.vyos ? '🟢 UP' : '—'}
+                                </span>
                             </div>
                         </div>
                     </div>
