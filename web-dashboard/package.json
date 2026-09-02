@@ -27,6 +27,7 @@
     "cors": "^2.8.5",
     "express": "^5.2.1",
     "html-to-image": "^1.11.13",
+    "ipaddr.js": "^2.5.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.556.0",
     "multer": "^2.0.2",
