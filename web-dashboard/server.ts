@@ -9380,40 +9380,20 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             probes_count: 0
         };
         try {
-            const targets = targetsManager ? targetsManager.getMergedTargets() : [];
-            demStatus.probes_count += targets.length;
+            const envProbes = getEnvConnectivityEndpoints();
+            const customProbes = getCustomConnectivityEndpoints();
+            const discoveredProbes = discoveryManager.getProbes();
+            const allProbesMap = new Map();
+            [...envProbes, ...customProbes, ...discoveredProbes].forEach((p: any) => {
+                if (p && p.name) allProbesMap.set(p.name.toLowerCase().trim(), p);
+            });
+            demStatus.probes_count = allProbesMap.size;
         } catch {}
         if (demStatus.probes_count === 0) {
-            const targetsPaths = [
-                path.join(APP_CONFIG.configDir, 'targets.json'),
-                path.join(PROJECT_ROOT, 'config', 'targets.json')
-            ];
-            for (const tp of targetsPaths) {
-                if (fs.existsSync(tp)) {
-                    try {
-                        const arr = JSON.parse(fs.readFileSync(tp, 'utf8'));
-                        if (Array.isArray(arr)) {
-                            demStatus.probes_count += arr.length;
-                            break;
-                        }
-                    } catch {}
-                }
-            }
-        }
-        const appCfgPaths = [
-            path.join(APP_CONFIG.configDir, 'applications-config.json'),
-            path.join(PROJECT_ROOT, 'config', 'applications-config.json')
-        ];
-        for (const ap of appCfgPaths) {
-            if (fs.existsSync(ap)) {
-                try {
-                    const arr = JSON.parse(fs.readFileSync(ap, 'utf8'));
-                    if (Array.isArray(arr)) {
-                        demStatus.probes_count += arr.length;
-                        break;
-                    }
-                } catch {}
-            }
+            try {
+                const targets = targetsManager ? targetsManager.getMergedTargets() : [];
+                demStatus.probes_count += targets.length;
+            } catch {}
         }
         demStatus.status = demStatus.probes_count > 0 ? 'active' : 'ready';
 
