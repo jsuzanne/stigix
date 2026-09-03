@@ -253,16 +253,13 @@ def is_stigix_app(app_def: Dict[str, Any]) -> bool:
     """Check if an appdef was created by Stigix"""
     if not app_def or not isinstance(app_def, dict):
         return False
-    name = str(app_def.get("name") or "")
-    display_name = str(app_def.get("display_name") or "")
-    tags = app_def.get("tags") if isinstance(app_def.get("tags"), list) else []
+    name = str(app_def.get("display_name") or app_def.get("name") or "")
     desc = str(app_def.get("description") or "")
+    abbr = str(app_def.get("abbreviation") or "")
 
     if name.startswith("STX_") or name.startswith("stx_"):
         return True
-    if "stigix" in tags or "stigix-custom-app" in tags:
-        return True
-    if "Stigix" in display_name or "Stigix" in desc:
+    if abbr == "STX" or "Stigix" in desc or "stigix" in desc.lower():
         return True
     return False
 
@@ -270,7 +267,7 @@ def is_stigix_app(app_def: Dict[str, Any]) -> bool:
 def format_cgx_error(resp: Any, action_name: str, payload: Optional[Dict[str, Any]] = None) -> str:
     """Format controller error response into a clean, actionable message with full payload details"""
     content = getattr(resp, 'cgx_content', {}) or {}
-    status_code = getattr(resp, 'cgx_status_code', None) or (content.get('_status_code') if isinstance(content, dict) else None)
+    status_code = getattr(resp, 'status_code', None) or (content.get('_status_code') if isinstance(content, dict) else None)
     
     error_details = []
     if isinstance(content, dict):
@@ -303,26 +300,53 @@ def build_appdef_payload(
     std_name = sanitize_app_name(name)
     desc = description or f"Auto-provisioned by Stigix for {name} on {protocol.upper()}:{port}"
 
-    tcp_rules = []
-    udp_rules = []
+    rule = {
+        "server_filters": None,
+        "client_filters": None,
+        "server_port": {
+            "start": str(int(port)),
+            "end": str(int(port))
+        },
+        "client_port": None,
+        "dscp": None,
+        "server_prefixes": None,
+        "server_ipv6_prefixes": None
+    }
 
-    if protocol in ('tcp', 'both'):
-        tcp_rules.append({
-            "server_ports": [int(port)]
-        })
+    tcp_rules = [dict(rule)] if protocol in ('tcp', 'both') else None
+    udp_rules = [dict(rule)] if protocol in ('udp', 'both') else None
 
-    if protocol in ('udp', 'both'):
-        udp_rules.append({
-            "server_ports": [int(port)]
-        })
-
-    # Strict CloudGenix / Prisma SD-WAN v2.x schema
+    # Exact verified schema for Prisma SD-WAN v2.6 appdefs
     payload = {
-        "name": std_name,
-        "description": desc,
+        "path_affinity": "none",
+        "ingress_traffic_pct": 50,
+        "conn_idle_timeout": 3600,
+        "display_name": std_name,
+        "abbreviation": "STX",
+        "domains": None,
         "tcp_rules": tcp_rules,
         "udp_rules": udp_rules,
-        "ip_rules": []
+        "ip_rules": None,
+        "transfer_type": "transactional",
+        "app_type": "custom",
+        "category": None,
+        "session_timeout": 0,
+        "aggregate_flows": None,
+        "order_number": 1,
+        "overrides_allowed": None,
+        "system_app_overridden": None,
+        "tags": None,
+        "description": desc,
+        "is_deprecated": None,
+        "parent_id": None,
+        "use_parentapp_network_policy": None,
+        "app_unreachability_detection": True,
+        "network_scan_application": False,
+        "p_category": "saas",
+        "p_sub_category": None,
+        "supported_engines": None,
+        "p_parent_id": None,
+        "supported_base_software_version": None
     }
 
     return payload
@@ -334,18 +358,32 @@ def extract_app_ports(app_def: Dict[str, Any]) -> Dict[str, List[int]]:
     udp_ports = []
 
     for rule in app_def.get("tcp_rules") or []:
-        for p in rule.get("server_ports") or []:
+        sp = rule.get("server_port")
+        if isinstance(sp, dict) and sp.get("start"):
             try:
-                tcp_ports.append(int(p))
+                tcp_ports.append(int(sp["start"]))
             except (ValueError, TypeError):
                 pass
+        elif isinstance(rule.get("server_ports"), list):
+            for p in rule["server_ports"]:
+                try:
+                    tcp_ports.append(int(p))
+                except (ValueError, TypeError):
+                    pass
 
     for rule in app_def.get("udp_rules") or []:
-        for p in rule.get("server_ports") or []:
+        sp = rule.get("server_port")
+        if isinstance(sp, dict) and sp.get("start"):
             try:
-                udp_ports.append(int(p))
+                udp_ports.append(int(sp["start"]))
             except (ValueError, TypeError):
                 pass
+        elif isinstance(rule.get("server_ports"), list):
+            for p in rule["server_ports"]:
+                try:
+                    udp_ports.append(int(p))
+                except (ValueError, TypeError):
+                    pass
 
     return {
         "tcp": sorted(list(set(tcp_ports))),
@@ -367,21 +405,22 @@ def list_custom_apps(sdk: API, api_version: str = 'v2.6') -> List[Dict[str, Any]
         if not item or not isinstance(item, dict):
             continue
         ports = extract_app_ports(item)
-        name_str = str(item.get("name") or "")
-        disp_str = str(item.get("display_name") or name_str or "")
+        name_str = str(item.get("display_name") or item.get("name") or "")
+        disp_str = name_str
         results.append({
             "id": str(item.get("id") or ""),
             "name": name_str,
             "display_name": disp_str,
             "description": str(item.get("description") or ""),
-            "category": str(item.get("category") or item.get("app_category") or "business-systems"),
-            "sub_category": str(item.get("sub_category") or item.get("app_subcategory") or "general"),
+            "category": str(item.get("p_category") or item.get("category") or "business-systems"),
+            "sub_category": str(item.get("p_sub_category") or item.get("sub_category") or "general"),
             "tcp_ports": ports.get("tcp") or [],
             "udp_ports": ports.get("udp") or [],
             "tags": item.get("tags") if isinstance(item.get("tags"), list) else [],
             "is_stigix": is_stigix_app(item),
             "_created_on_utc": item.get("_created_on_utc"),
-            "_updated_on_utc": item.get("_updated_on_utc")
+            "_updated_on_utc": item.get("_updated_on_utc"),
+            "_raw": item
         })
 
     return results
@@ -409,7 +448,7 @@ def create_or_update_app(
     if existing_apps is None:
         existing_apps = list_custom_apps(sdk, api_version=api_version)
 
-    match = next((a for a in existing_apps if (a.get("name") or "").lower() == payload["name"].lower()), None)
+    match = next((a for a in existing_apps if (a.get("name") or "").lower() == payload["display_name"].lower()), None)
 
     if match:
         app_id = match["id"]
@@ -419,23 +458,28 @@ def create_or_update_app(
             return {
                 "action": "unchanged",
                 "id": app_id,
-                "name": payload["name"],
-                "display_name": display_name or f"Stigix {name} (TCP {port})",
+                "name": payload["display_name"],
+                "display_name": payload["display_name"],
                 "port": port,
                 "protocol": protocol,
                 "app": match
             }
 
-        # Delta detected -> Update existing appdef
-        resp = sdk.put.appdefs(appdef_id=app_id, data=payload, api_version=api_version)
+        # Delta detected -> Update existing appdef using full existing object for _etag preservation
+        raw_obj = dict(match.get("_raw") or payload)
+        raw_obj["tcp_rules"] = payload["tcp_rules"]
+        raw_obj["udp_rules"] = payload["udp_rules"]
+        raw_obj["description"] = payload["description"]
+        
+        resp = sdk.put.appdefs(appdef_id=app_id, data=raw_obj, api_version=api_version)
         if not resp.cgx_status:
-            err_msg = format_cgx_error(resp, f"update appdef '{payload['name']}' (ID: {app_id})", payload)
+            err_msg = format_cgx_error(resp, f"update appdef '{payload['display_name']}' (ID: {app_id})", raw_obj)
             raise RuntimeError(err_msg)
         return {
             "action": "updated",
             "id": app_id,
-            "name": payload["name"],
-            "display_name": display_name or f"Stigix {name} (TCP {port})",
+            "name": payload["display_name"],
+            "display_name": payload["display_name"],
             "port": port,
             "protocol": protocol,
             "app": resp.cgx_content
@@ -444,14 +488,14 @@ def create_or_update_app(
         # New app -> Create via POST
         resp = sdk.post.appdefs(data=payload, api_version=api_version)
         if not resp.cgx_status:
-            err_msg = format_cgx_error(resp, f"create appdef '{payload['name']}'", payload)
+            err_msg = format_cgx_error(resp, f"create appdef '{payload['display_name']}'", payload)
             raise RuntimeError(err_msg)
         new_id = resp.cgx_content.get("id") if isinstance(resp.cgx_content, dict) else None
         return {
             "action": "created",
             "id": str(new_id or ""),
-            "name": payload["name"],
-            "display_name": display_name or f"Stigix {name} (TCP {port})",
+            "name": payload["display_name"],
+            "display_name": payload["display_name"],
             "port": port,
             "protocol": protocol,
             "app": resp.cgx_content
