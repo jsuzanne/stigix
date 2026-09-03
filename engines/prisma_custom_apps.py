@@ -241,8 +241,9 @@ def load_credentials(args, json_mode: bool = False) -> Dict[str, str]:
 
 def sanitize_app_name(raw_name: str) -> str:
     """Normalize app name to Prisma SD-WAN valid identifier with STX_ prefix"""
-    # Replace spaces and special characters with underscores or dashes
-    cleaned = re.sub(r'[^a-zA-Z0-9_\-]', '_', raw_name.strip())
+    if not raw_name:
+        return "STX_APP"
+    cleaned = re.sub(r'[^a-zA-Z0-9_\-]', '_', str(raw_name).strip())
     if not cleaned.upper().startswith("STX_"):
         return f"STX_{cleaned}"
     return cleaned
@@ -250,10 +251,12 @@ def sanitize_app_name(raw_name: str) -> str:
 
 def is_stigix_app(app_def: Dict[str, Any]) -> bool:
     """Check if an appdef was created by Stigix"""
-    name = app_def.get("name", "")
-    display_name = app_def.get("display_name", "")
-    tags = app_def.get("tags") or []
-    desc = app_def.get("description", "") or ""
+    if not app_def or not isinstance(app_def, dict):
+        return False
+    name = str(app_def.get("name") or "")
+    display_name = str(app_def.get("display_name") or "")
+    tags = app_def.get("tags") if isinstance(app_def.get("tags"), list) else []
+    desc = str(app_def.get("description") or "")
 
     if name.startswith("STX_") or name.startswith("stx_"):
         return True
@@ -341,17 +344,21 @@ def list_custom_apps(sdk: API, api_version: str = 'v2.6') -> List[Dict[str, Any]
     results = []
 
     for item in raw_items:
+        if not item or not isinstance(item, dict):
+            continue
         ports = extract_app_ports(item)
+        name_str = str(item.get("name") or "")
+        disp_str = str(item.get("display_name") or name_str or "")
         results.append({
-            "id": item.get("id"),
-            "name": item.get("name"),
-            "display_name": item.get("display_name"),
-            "description": item.get("description"),
-            "category": item.get("category"),
-            "sub_category": item.get("sub_category"),
-            "tcp_ports": ports["tcp"],
-            "udp_ports": ports["udp"],
-            "tags": item.get("tags") or [],
+            "id": str(item.get("id") or ""),
+            "name": name_str,
+            "display_name": disp_str,
+            "description": str(item.get("description") or ""),
+            "category": str(item.get("category") or "business-systems"),
+            "sub_category": str(item.get("sub_category") or "general"),
+            "tcp_ports": ports.get("tcp") or [],
+            "udp_ports": ports.get("udp") or [],
+            "tags": item.get("tags") if isinstance(item.get("tags"), list) else [],
             "is_stigix": is_stigix_app(item),
             "_created_on_utc": item.get("_created_on_utc"),
             "_updated_on_utc": item.get("_updated_on_utc")
