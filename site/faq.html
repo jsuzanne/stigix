@@ -1867,14 +1867,44 @@ docker compose restart</pre>
       <div class="faq-panel" id="panel-custom-tcp" role="tabpanel">
 
         <div class="faq-item is-open">
-          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">What are Custom TCP Applications and why are they needed?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">What are Custom TCP Applications and do they support North-South and East-West traffic?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>Traditional network testing tools (like <strong>iPerf</strong> or raw HTTP GET loops) do not accurately reflect real enterprise application dynamics:</p>
+            <p>Traditional network testing tools (like <strong>iPerf</strong> or raw HTTP GET loops) do not accurately reflect real enterprise application dynamics. Real enterprise applications (<strong>SAP ERP, Oracle, POS cash registers, core banking, database sync, industrial SCADA</strong>) rely on <strong>persistent, long-lived TCP connections</strong> with paced request/reply transactions and server-side compute delays.</p>
+            <p>Because every Stigix instance operates simultaneously as a <strong>TCP Server Listener</strong> and a <strong>TCP Client Workload Generator</strong>, Custom TCP Applications support all SD-WAN traffic flows without restriction:</p>
             <ul>
-              <li><strong>iPerf</strong> generates continuous, unidirectional saturation floods to measure maximum link throughput.</li>
-              <li><strong>Ping / ICMP</strong> tests Layer 3 reachability but ignores application sockets, TCP 3-way handshakes, and application-level response delays.</li>
+              <li><strong>North-South (Vertical / Hub-and-Spoke):</strong> Branch &longleftrightarrow; Datacenter / HQ hub, simulating remote offices accessing centralized application servers and databases.</li>
+              <li><strong>East-West (Horizontal / Site-to-Site):</strong> Branch &longleftrightarrow; Branch or Plant &longleftrightarrow; Plant direct mesh communication across the SD-WAN overlay without transiting the datacenter.</li>
+              <li><strong>Full Any-to-Any Mesh:</strong> Multi-site topologies where all nodes concurrently generate and receive transactional TCP workloads.</li>
             </ul>
-            <p>Real enterprise applications (<strong>SAP ERP, Oracle, POS cash registers, core banking, database sync, industrial SCADA</strong>) rely on <strong>persistent, long-lived TCP connections</strong> with paced request/reply transactions and server-side compute delays. Stigix Custom TCP Apps lets you build faithful digital replicas of your business applications to evaluate SD-WAN path selection, QoS enforcement, and failover behavior under realistic application traffic.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Why does Stigix use Latency Percentiles (p50 and p95) instead of simple Average (Avg)?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In enterprise SD-WAN and APM monitoring, relying solely on the arithmetic <strong>Average (<code>Avg</code>)</strong> is dangerously misleading:</p>
+            <p><em>Example:</em> If 99 requests take <strong>10 ms</strong> and 1 request suffers a <strong>1,000 ms</strong> freeze (due to a WAN brownout or TCP retransmission), the average calculates to <code>(99 &times; 10 + 1000) / 100 = 19.9 ms</code>. The dashboard shows ~20 ms (looking normal), completely hiding the 1-second freeze experienced by the user!</p>
+            <p>To reveal the true user experience, Stigix calculates <strong>Rolling Percentiles</strong> across active TCP sessions:</p>
+            <ul>
+              <li><strong><code>Avg</code> (Mean):</strong> Arithmetic average across all samples.</li>
+              <li><strong><code>p50</code> (Median):</strong> 50% of requests are faster than this value. Represents the typical daily user experience, unaffected by isolated spikes.</li>
+              <li><strong><code>p95</code> (95th Percentile):</strong> 95% of requests are faster than this value (the top 5% worst cases). <strong>This is the gold standard for SD-WAN SLA testing</strong> to detect jitter, packet loss, queueing, and failover recovery.</li>
+              <li><strong><code>Max</code>:</strong> The absolute peak RTT recorded in the sampling window.</li>
+            </ul>
+            <p><strong>Diagnosis rule of thumb:</strong> If <code>p50 &approx; p95</code> (e.g. 12ms and 15ms), the WAN path is rock solid. If <code>p50 = 15ms</code> but <code>p95 = 450ms</code>, your SD-WAN path is experiencing micro-outages or bufferbloat.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Prisma SD-WAN Flow Browser integration classify Stigix custom TCP traffic?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>When running custom TCP traffic over Prisma SD-WAN, ION appliances classify unrecognized ports as generic <code>unknown</code> or <code>tcp</code>. With Stigix's built-in <strong>Prisma SD-WAN Integration</strong> (accessible via the Cloud icon in Settings &rarr; Custom TCP Apps):</p>
+            <ul>
+              <li><strong>1-Click AppDef Sync:</strong> Stigix registers application definitions (e.g. <code>STX_Onprem8084</code> on port <code>8084</code>) directly on your Palo Alto Networks Prisma SD-WAN tenant.</li>
+              <li><strong>Flow Browser Visibility:</strong> Synthetic flows between branches and datacenters are immediately recognized and labeled under their true business name in the <strong>Flow Browser</strong>.</li>
+              <li><strong>Analytics &amp; Policy Enforcement:</strong> Measured in bandwidth analytics charts and eligible for application-based QoS / Path Steering policies.</li>
+              <li><strong>Delta Sync &amp; Clean All:</strong> Automatically syncs deltas without duplicate API calls and provides 1-click lab teardown.</li>
+            </ul>
           </div></div></div>
         </div>
 

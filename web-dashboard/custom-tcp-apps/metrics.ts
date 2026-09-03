@@ -145,6 +145,7 @@ export class AppMetricsTracker {
             totalReconnects: this.totalReconnects,
             totalSimulatedDrops: this.totalSimulatedDrops,
             avgRttMs: rttStats.avg,
+            p50RttMs: rttStats.p50,
             p95RttMs: rttStats.p95,
             health
         };

@@ -562,8 +562,10 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                     </div>
                     <div className="mt-3 flex items-baseline justify-between">
                         <div className="text-3xl font-black text-amber-600 dark:text-amber-400">{metrics?.avgRttMs || 0} <span className="text-xs font-normal text-text-muted">ms avg</span></div>
-                        <div className="text-right text-[11px] text-text-muted font-mono">
-                            p95: <span className="text-text-primary font-bold">{metrics?.p95RttMs || 0} ms</span>
+                        <div className="text-right text-[11px] text-text-muted font-mono flex items-center gap-1.5">
+                            <span>p50: <strong className="text-text-primary font-bold">{metrics?.p50RttMs ?? metrics?.avgRttMs ?? 0} ms</strong></span>
+                            <span className="text-border">|</span>
+                            <span>p95: <strong className="text-amber-600 dark:text-amber-400 font-bold">{metrics?.p95RttMs || 0} ms</strong></span>
                         </div>
                     </div>
                     <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
@@ -716,7 +718,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                         <th className="pb-2.5">Target Peer</th>
                                         <th className="pb-2.5">Remote Endpoint</th>
                                         <th className="pb-2.5">State</th>
-                                        <th className="pb-2.5 text-right">RTT (Avg/p95)</th>
+                                        <th className="pb-2.5 text-right">RTT (Avg/p50/p95)</th>
                                         <th className="pb-2.5 text-right">Reconnects</th>
                                         <th className="pb-2.5 text-center">Action</th>
                                     </tr>
@@ -751,7 +753,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                     </span>
                                                 </td>
                                                 <td className="py-3 text-right font-mono text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
-                                                    {s.rttMs.avg > 0 ? `${s.rttMs.avg} ms / ${s.rttMs.p95} ms` : '—'}
+                                                    {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
                                                 </td>
                                                 <td className="py-3 text-right font-mono text-[11px] text-text-muted">
                                                     {s.reconnects}

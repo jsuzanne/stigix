@@ -5,13 +5,42 @@
 
 ## Overview
 
-**Stigix Custom TCP Inter-Site Applications** is a real-time, customizable East-West TCP workload simulation and verification framework designed specifically for SD-WAN, SASE, and Next-Generation Enterprise Network testbeds.
+**Stigix Custom TCP Inter-Site Applications** is a real-time, customizable **Any-to-Any (North-South & East-West)** TCP workload simulation and verification framework designed specifically for SD-WAN, SASE, and Next-Generation Enterprise Network testbeds.
 
 Traditional network testing tools typically emulate generic synthetic traffic (e.g. iPerf or simple HTTP GET loops). However, real enterprise line-of-business applications (such as SAP ERP, Point-of-Sale checkout terminals, Core Banking messaging, database sync, and industrial SCADA) rely on **custom, persistent, long-lived TCP connections** with application-level request/reply transactions and distinct application-level behaviors.
 
-With Stigix Custom TCP Apps, every Stigix instance simultaneously operates as:
-1. A **TCP Server Listener** bound to a dedicated host port, executing realistic server simulation patterns (e.g., fixed delay, jitter, looping degradation, simulated packet drops, error responses).
-2. A **TCP Client Workload Generator** initiating concurrent sessions to remote Stigix branch or data center instances across SD-WAN tunnels, measuring round-trip latency (RTT min/avg/p50/p95/max), transaction rates, throughput, and error states.
+### Topology Flexibility: North-South & East-West
+With Stigix Custom TCP Apps, every node operates simultaneously as a **Server Listener** and a **Client Workload Generator**, supporting:
+- **North-South (Vertical / Hub-and-Spoke)**: Branch $\longleftrightarrow$ Datacenter / HQ, simulating remote users accessing centralized corporate databases and application servers.
+- **East-West (Horizontal / Site-to-Site)**: Branch $\longleftrightarrow$ Branch, Plant $\longleftrightarrow$ Plant, or inter-cloud VPC tunnels exchanging lateral transactional flows without traversing the datacenter hub.
+- **Full Mesh (N-to-N Any-to-Any)**: Multi-site collaborative mesh networks where all nodes simultaneously generate and receive traffic.
+
+---
+
+## Understanding Latency Percentiles ($p50, p95$)
+
+In enterprise SD-WAN and APM monitoring, a simple **Average (`Avg`)** metric is notoriously misleading:
+
+> ⚠️ **The Average Trap**: If 99 requests take **10 ms** and 1 request takes **1,000 ms** (due to a transient brownout, packet loss, or tunnel failover), the average displays **~19.9 ms**, masking the 1-second freeze experienced by the user!
+
+To provide true SLA visibility, Stigix calculates **Rolling Percentiles** on all active TCP sessions:
+
+| Metric | Definition | Practical Purpose in SD-WAN Testing |
+| :--- | :--- | :--- |
+| **`Avg` (Mean)** | Arithmetic mean across the rolling sample window. | Baseline macro performance indicator. |
+| **`p50` (Median)** | **50% of transactions** completed faster than this threshold. | Represents the typical, daily user experience. Immune to isolated outliers. |
+| **`p95` (95th Percentile)** | **95% of transactions** completed faster than this threshold (top 5% worst cases). | **The gold standard for SD-WAN SLA validation**. Captures jitter, queueing, brownouts, and TCP retransmissions during failover. |
+| **`Max`** | Peak highest RTT recorded in the window. | Identifies worst-case failover spikes and timeout events. |
+
+```
+RTT Samples Sorted: [ 10ms, 10ms, 11ms, 12ms ... 15ms ... 45ms ... 1000ms ]
+                                       ▲             ▲          ▲
+                                      p50           p95        Max
+                                  (Median User)   (SLA Tail)  (Worst Spike)
+```
+
+- **Stable Path**: $p50 \approx p95$ (e.g., $p50 = 12\text{ ms}$, $p95 = 14\text{ ms}$) indicates a rock-solid, jitter-free WAN path.
+- **Impaired / Failover Path**: $p50 = 15\text{ ms}$, $p95 = 250\text{ ms}$ immediately highlights micro-drops, bufferbloat, or route flapping even if `Avg` appears acceptable.
 
 ---
 

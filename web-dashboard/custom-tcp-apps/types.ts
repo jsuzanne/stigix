@@ -332,6 +332,7 @@ export interface AppRuntimeMetrics {
     totalReconnects: number;
     totalSimulatedDrops: number;
     avgRttMs: number;
+    p50RttMs: number;
     p95RttMs: number;
     health: AppHealthState;
 }
