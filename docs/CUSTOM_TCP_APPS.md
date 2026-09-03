@@ -246,6 +246,38 @@ stigix-cli --exec "tcp-app reset-metrics erp-main"
 
 ---
 
+---
+
+## Prisma SD-WAN Flow Browser Integration
+
+Stigix Custom TCP Applications include native, automated synchronization with **Palo Alto Networks Prisma SD-WAN** (formerly CloudGenix).
+
+```
++------------------------------------+          +--------------------------------------+
+|          Stigix Instance           |          |         Prisma SD-WAN Tenant         |
+|  - Custom App: Onprem8084 (:8084)  |  ----->  |  - Custom AppDef: STX_Onprem8084     |
+|  - Real-time TCP Traffic Gen       |          |  - Flow Browser / Analytics Aware    |
++------------------------------------+          +--------------------------------------+
+```
+
+### Why It Matters
+When testing custom TCP applications over an SD-WAN overlay, ION branch and datacenter appliances identify unclassified TCP traffic as generic `unknown` or `tcp`. By provisioning matching **Application Definitions (`appdefs`)** into your Prisma SD-WAN tenant:
+1. **Flow Browser Visibility**: All synthetic TCP flows between Stigix branch and DC nodes automatically resolve to their declared application name (e.g. `STX_Onprem8084`, `STX_SAP-ERP`).
+2. **Bandwidth Analytics & Reports**: Live application traffic is measured in Prisma SD-WAN Bandwidth & Performance Analytics widgets.
+3. **App-Based QoS & Path Policies**: Traffic can be steered using fine-grained application-aware forwarding policies (e.g., MPLS primary, Internet backup).
+
+### How to Use
+1. Open **Settings** $\rightarrow$ **Custom TCP Apps** in the Stigix Web Dashboard.
+2. Click **Prisma SD-WAN Integration** (or the Cloud icon).
+3. The modal displays:
+   - Live Tenant Connection state and TSG ID.
+   - List of all Stigix applications and their synchronization status (`SYNCED` vs `NOT SYNCED`).
+   - **Register in Prisma**: 1-click provisioning of individual applications into the tenant.
+   - **Sync All to Prisma**: Delta sync of all active custom applications in a single pass.
+   - **Clean All**: Safely removes all Stigix-created (`STX_`) definitions when tearing down a lab.
+
+---
+
 ## REST API Reference
 
 | Endpoint | Method | Description |
@@ -263,6 +295,13 @@ stigix-cli --exec "tcp-app reset-metrics erp-main"
 | `/api/custom-tcp-apps/:id/test-peer/:peerId`| `POST` | Execute instant one-off TCP handshake test to a peer. |
 | `/api/custom-tcp-apps/:id/metrics/reset` | `POST` | Reset live metrics counters for the application. |
 | `/api/custom-tcp-apps/validate` | `POST` | Validate configuration and check host port availability. |
+| `/api/custom-tcp-apps/export/config` | `GET` | Export complete custom TCP applications JSON file. |
+| `/api/custom-tcp-apps/import/config` | `POST` | Import custom TCP applications configuration. |
+| `/api/custom-tcp-apps/prisma/status` | `GET` | Query tenant connection and list existing Prisma custom appdefs. |
+| `/api/custom-tcp-apps/prisma/sync-app/:id` | `POST` | Provision single custom application definition to Prisma SD-WAN. |
+| `/api/custom-tcp-apps/prisma/delete-app/:id` | `POST` | Remove custom application definition from Prisma SD-WAN. |
+| `/api/custom-tcp-apps/prisma/sync-all` | `POST` | Delta sync all Stigix applications to Prisma SD-WAN in a single batch. |
+| `/api/custom-tcp-apps/prisma/clean-all` | `POST` | Remove all Stigix-created application definitions from tenant. |
 
 ---
 
@@ -271,5 +310,4 @@ stigix-cli --exec "tcp-app reset-metrics erp-main"
 - [Network Impairment & SD-WAN Failover Validation Guide](./CUSTOM_TCP_NETWORK_IMPAIRMENTS.md): Deep dive into validating VyOS netem impairments, packet loss, jitter, and sub-second failover recovery using Custom TCP Apps.
 - [Central Global Provisioning Guide](./GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md): Multi-node distribution and Zero-Touch Auto-Start orchestration.
 - [CLI Reference Manual](./STIGIX_CLI.md): Terminal management with `stigix-cli`.
-| `/api/custom-tcp-apps/export/config` | `GET` | Export complete custom TCP applications JSON file. |
-| `/api/custom-tcp-apps/import/config` | `POST` | Import custom TCP applications configuration. |
+

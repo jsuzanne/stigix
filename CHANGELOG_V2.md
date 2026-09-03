@@ -4,6 +4,24 @@ All notable changes made specifically on the `v2` branch are documented in this 
 
 ---
 
+## [v2-dev] - 2026-09-03 — Prisma SD-WAN Custom Appdefs Flow Browser Integration
+
+### Added
+- **Prisma SD-WAN Custom Application Integration (Flow Browser Ready)** ☁️:
+  - **Automated AppDef Provisioning**: 1-click registration of Stigix custom TCP applications directly into Prisma SD-WAN tenants as `STX_<AppName>` with exact L3/L4 port ranges (`server_port: {start, end}`).
+  - **Flow Browser & Policy Visibility**: Ensures all synthetic inter-site TCP flows between Stigix branch and datacenter instances are immediately recognized, named, and classified in Flow Browser, Bandwidth Analytics, and QoS/Path Steering policies.
+  - **Delta Synchronization**: Single-pass synchronization detects existing definitions on the tenant, applies deltas preserving `_etag`, and skips unchanged configurations without redundant API calls.
+  - **Clean All & Teardown**: Safe bulk teardown of all `STX_`-prefixed and `stigix`-tagged custom applications.
+  - **Dashboard Modal (`PrismaAppSyncModal.tsx`)**: Dedicated interactive sync center with live tenant connection check, per-application status pills (`SYNCED` vs `NOT SYNCED`), inline single-app action buttons, batch actions, and error boundary isolation.
+  - **Python Engine (`engines/prisma_custom_apps.py`)**: Official `prisma_sase` SDK engine with CLI support (`--list`, `--create`, `--delete`, `--sync-all`, `--clean-all`).
+  - **REST API Endpoints**: 5 new endpoints under `/api/custom-tcp-apps/prisma/*`.
+
+### Fixed
+- **React Error Boundary & Safe Property Access**: Prevented React unmounting crashes by guarding against uninitialized/null application fields from tenant responses.
+- **Controller Schema Conformance**: Strictly aligned request payloads with Palo Alto Networks Prisma SD-WAN v2.6 OpenAPI schema requirements.
+
+---
+
 ## [v2-dev] - 2026-09-02 — Custom TCP Inter-Site Applications & Underlay Topology
  
 ### Added
