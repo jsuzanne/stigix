@@ -267,18 +267,40 @@ def is_stigix_app(app_def: Dict[str, Any]) -> bool:
     return False
 
 
+def format_cgx_error(resp: Any, action_name: str, payload: Optional[Dict[str, Any]] = None) -> str:
+    """Format controller error response into a clean, actionable message with full payload details"""
+    content = getattr(resp, 'cgx_content', {}) or {}
+    status_code = getattr(resp, 'cgx_status_code', None) or (content.get('_status_code') if isinstance(content, dict) else None)
+    
+    error_details = []
+    if isinstance(content, dict):
+        raw_errors = content.get('_error', [])
+        if isinstance(raw_errors, list):
+            for err in raw_errors:
+                if isinstance(err, dict):
+                    msg = err.get('message') or err.get('code')
+                    if msg:
+                        error_details.append(str(msg))
+                elif isinstance(err, str):
+                    error_details.append(err)
+        elif isinstance(content.get('error'), dict):
+            error_details.append(content['error'].get('message', str(content['error'])))
+        elif isinstance(content.get('error'), str):
+            error_details.append(content['error'])
+
+    detail_str = "; ".join(error_details) if error_details else (json.dumps(content) if isinstance(content, (dict, list)) else str(content))
+    payload_str = f" | Payload: {json.dumps(payload)}" if payload else ""
+    return f"Failed to {action_name} (HTTP {status_code}): {detail_str}{payload_str}"
+
+
 def build_appdef_payload(
     name: str,
     port: int,
     protocol: str = 'tcp',
-    display_name: Optional[str] = None,
-    description: Optional[str] = None,
-    category: str = 'business-systems',
-    sub_category: str = 'general'
+    description: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Construct a clean, valid Prisma SD-WAN v2.6 appdef dictionary payload"""
+    """Construct a clean, valid Prisma SD-WAN appdef dictionary payload strictly compliant with controller schema"""
     std_name = sanitize_app_name(name)
-    disp_name = display_name or f"Stigix {name} ({protocol.upper()} {port})"
     desc = description or f"Auto-provisioned by Stigix for {name} on {protocol.upper()}:{port}"
 
     tcp_rules = []
@@ -294,16 +316,13 @@ def build_appdef_payload(
             "server_ports": [int(port)]
         })
 
+    # Strict CloudGenix / Prisma SD-WAN v2.x schema
     payload = {
         "name": std_name,
-        "display_name": disp_name,
         "description": desc,
-        "category": category,
-        "sub_category": sub_category,
         "tcp_rules": tcp_rules,
         "udp_rules": udp_rules,
-        "ip_rules": [],
-        "tags": ["stigix", "stigix-custom-app"]
+        "ip_rules": []
     }
 
     return payload
@@ -338,7 +357,8 @@ def list_custom_apps(sdk: API, api_version: str = 'v2.6') -> List[Dict[str, Any]
     """Fetch and normalize all custom applications on the tenant"""
     resp = sdk.get.appdefs(api_version=api_version)
     if not resp.cgx_status:
-        raise RuntimeError(f"Failed to query appdefs: {resp.cgx_content}")
+        err_msg = format_cgx_error(resp, "query appdefs")
+        raise RuntimeError(err_msg)
 
     raw_items = resp.cgx_content.get("items", []) or []
     results = []
@@ -354,8 +374,8 @@ def list_custom_apps(sdk: API, api_version: str = 'v2.6') -> List[Dict[str, Any]
             "name": name_str,
             "display_name": disp_str,
             "description": str(item.get("description") or ""),
-            "category": str(item.get("category") or "business-systems"),
-            "sub_category": str(item.get("sub_category") or "general"),
+            "category": str(item.get("category") or item.get("app_category") or "business-systems"),
+            "sub_category": str(item.get("sub_category") or item.get("app_subcategory") or "general"),
             "tcp_ports": ports.get("tcp") or [],
             "udp_ports": ports.get("udp") or [],
             "tags": item.get("tags") if isinstance(item.get("tags"), list) else [],
@@ -374,8 +394,6 @@ def create_or_update_app(
     protocol: str = 'tcp',
     display_name: Optional[str] = None,
     description: Optional[str] = None,
-    category: str = 'business-systems',
-    sub_category: str = 'general',
     existing_apps: Optional[List[Dict[str, Any]]] = None,
     api_version: str = 'v2.6'
 ) -> Dict[str, Any]:
@@ -384,17 +402,14 @@ def create_or_update_app(
         name=name,
         port=port,
         protocol=protocol,
-        display_name=display_name,
-        description=description,
-        category=category,
-        sub_category=sub_category
+        description=description
     )
 
     # Use provided cache of existing apps or query tenant
     if existing_apps is None:
         existing_apps = list_custom_apps(sdk, api_version=api_version)
 
-    match = next((a for a in existing_apps if a["name"].lower() == payload["name"].lower()), None)
+    match = next((a for a in existing_apps if (a.get("name") or "").lower() == payload["name"].lower()), None)
 
     if match:
         app_id = match["id"]
@@ -405,7 +420,7 @@ def create_or_update_app(
                 "action": "unchanged",
                 "id": app_id,
                 "name": payload["name"],
-                "display_name": payload["display_name"],
+                "display_name": display_name or f"Stigix {name} (TCP {port})",
                 "port": port,
                 "protocol": protocol,
                 "app": match
@@ -414,12 +429,13 @@ def create_or_update_app(
         # Delta detected -> Update existing appdef
         resp = sdk.put.appdefs(appdef_id=app_id, data=payload, api_version=api_version)
         if not resp.cgx_status:
-            raise RuntimeError(f"Failed to update appdef {payload['name']} (ID {app_id}): {resp.cgx_content}")
+            err_msg = format_cgx_error(resp, f"update appdef '{payload['name']}' (ID: {app_id})", payload)
+            raise RuntimeError(err_msg)
         return {
             "action": "updated",
             "id": app_id,
             "name": payload["name"],
-            "display_name": payload["display_name"],
+            "display_name": display_name or f"Stigix {name} (TCP {port})",
             "port": port,
             "protocol": protocol,
             "app": resp.cgx_content
@@ -428,13 +444,14 @@ def create_or_update_app(
         # New app -> Create via POST
         resp = sdk.post.appdefs(data=payload, api_version=api_version)
         if not resp.cgx_status:
-            raise RuntimeError(f"Failed to create appdef {payload['name']}: {resp.cgx_content}")
-        new_id = resp.cgx_content.get("id")
+            err_msg = format_cgx_error(resp, f"create appdef '{payload['name']}'", payload)
+            raise RuntimeError(err_msg)
+        new_id = resp.cgx_content.get("id") if isinstance(resp.cgx_content, dict) else None
         return {
             "action": "created",
-            "id": new_id,
+            "id": str(new_id or ""),
             "name": payload["name"],
-            "display_name": payload["display_name"],
+            "display_name": display_name or f"Stigix {name} (TCP {port})",
             "port": port,
             "protocol": protocol,
             "app": resp.cgx_content
@@ -468,7 +485,8 @@ def delete_custom_app(
 
     resp = sdk.delete.appdefs(appdef_id=target_id, api_version=api_version)
     if not resp.cgx_status:
-        raise RuntimeError(f"Failed to delete appdef (ID {target_id}): {resp.cgx_content}")
+        err_msg = format_cgx_error(resp, f"delete appdef (ID {target_id})")
+        raise RuntimeError(err_msg)
 
     return {
         "success": True,
@@ -550,8 +568,6 @@ def sync_all_from_config(
             protocol="tcp",
             display_name=f"Stigix {app_name} (TCP {port})",
             description=desc,
-            category="business-systems",
-            sub_category="general",
             existing_apps=existing_tenant_apps,
             api_version=api_version
         )
@@ -658,8 +674,6 @@ def main():
                 protocol=args.protocol,
                 display_name=args.display_name,
                 description=args.description,
-                category=args.category,
-                sub_category=args.sub_category,
                 api_version=args.api_version
             )
             output = {
