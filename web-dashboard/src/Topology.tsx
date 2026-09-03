@@ -52,7 +52,11 @@ import {
     ExternalLink,
     Eye,
     Activity,
-    Globe
+    Globe,
+    Power,
+    RotateCcw,
+    Sliders,
+    Gauge
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { clsx } from 'clsx';
@@ -806,6 +810,200 @@ function TopologyContent({ token }: TopologyProps) {
     const [showUnderlayDiagnostics, setShowUnderlayDiagnostics] = useState(false);
     const [diagnosticsFilter, setDiagnosticsFilter] = useState<'ALL' | 'matched' | 'no_match' | 'ambiguous' | 'wan_ip_unavailable'>('ALL');
     const [diagnosticsSearch, setDiagnosticsSearch] = useState('');
+
+    // VyOS Direct Action State (Interactive Topology Controls)
+    const [isVyosExecuting, setIsVyosExecuting] = useState(false);
+    const [vyosActionResult, setVyosActionResult] = useState<{ success: boolean; message: string; durationMs?: number } | null>(null);
+    const [showNetemModal, setShowNetemModal] = useState(false);
+    const [netemLatency, setNetemLatency] = useState(100);
+    const [netemLoss, setNetemLoss] = useState(0);
+    const [netemTarget, setNetemTarget] = useState<{ routerName: string; interfaceName: string; siteName?: string } | null>(null);
+    const [portShutStates, setPortShutStates] = useState<Record<string, boolean>>({});
+    const [portQosStates, setPortQosStates] = useState<Record<string, { latency?: number; loss?: number }>>({});
+
+    const handleVyosDirectAction = async (
+        routerName: string,
+        iface: string,
+        command: string,
+        params: any = {},
+        siteName?: string
+    ) => {
+        setIsVyosExecuting(true);
+        setVyosActionResult(null);
+        try {
+            const res = await fetch('/api/vyos/direct-action', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    routerName,
+                    interface: iface,
+                    command,
+                    params,
+                    source: `Topology: ${siteName || 'Link'} (${iface})`
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to execute VyOS action');
+            }
+
+            const portKey = `${routerName}:${iface}`;
+            if (command === 'shut') {
+                setPortShutStates(prev => ({ ...prev, [portKey]: true }));
+            } else if (command === 'no-shut') {
+                setPortShutStates(prev => ({ ...prev, [portKey]: false }));
+            } else if (command === 'set-qos') {
+                setPortQosStates(prev => ({ ...prev, [portKey]: { latency: params.latency, loss: params.loss } }));
+            } else if (command === 'clear-qos') {
+                setPortQosStates(prev => {
+                    const copy = { ...prev };
+                    delete copy[portKey];
+                    return copy;
+                });
+            }
+
+            setVyosActionResult({
+                success: true,
+                message: command === 'shut'
+                    ? `Port ${iface} disabled (SHUT)`
+                    : command === 'no-shut'
+                    ? `Port ${iface} enabled (NO SHUT)`
+                    : command === 'clear-qos'
+                    ? `QoS cleared on ${iface}`
+                    : `Applied QoS (+${params.latency || 0}ms, ${params.loss || 0}% loss) on ${iface}`,
+                durationMs: data.durationMs
+            });
+
+            setTimeout(() => setVyosActionResult(null), 5000);
+            setShowNetemModal(false);
+        } catch (err: any) {
+            setVyosActionResult({
+                success: false,
+                message: err.message
+            });
+        } finally {
+            setIsVyosExecuting(false);
+        }
+    };
+
+    const renderVyosControls = (res: UnderlayResolution) => {
+        if (!res.vyos) return null;
+        const routerName = res.vyos.routerName;
+        const iface = res.vyos.interfaceName;
+        const portKey = `${routerName}:${iface}`;
+        const isShut = portShutStates[portKey] || false;
+        const activeQos = portQosStates[portKey];
+
+        return (
+            <div className="bg-card-secondary/80 border border-amber-500/30 rounded-2xl p-4 space-y-3 shadow-inner">
+                <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wider flex items-center gap-1.5">
+                        <Zap size={13} className="fill-amber-500" /> VyOS Interactive Actions
+                    </span>
+                    <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold">
+                        {routerName}:{iface}
+                    </span>
+                </div>
+
+                {/* Active QoS / Status Badges */}
+                {(isShut || activeQos) && (
+                    <div className="flex flex-wrap gap-1.5 text-[10px] font-mono">
+                        {isShut && (
+                            <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-500 border border-rose-500/30 font-bold flex items-center gap-1">
+                                <Power size={10} /> INTERFACE SHUT
+                            </span>
+                        )}
+                        {activeQos && (
+                            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold flex items-center gap-1">
+                                <Sliders size={10} /> +{activeQos.latency || 0}ms | {activeQos.loss || 0}% Loss
+                            </span>
+                        )}
+                    </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                    {/* 1. Shut / No-Shut Toggle */}
+                    <button
+                        type="button"
+                        onClick={() => handleVyosDirectAction(
+                            routerName,
+                            iface,
+                            isShut ? 'no-shut' : 'shut',
+                            {},
+                            res.prismaWan.siteName
+                        )}
+                        disabled={isVyosExecuting}
+                        className={cn(
+                            "px-2.5 py-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all border shadow-sm cursor-pointer",
+                            isShut
+                                ? "bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 ring-1 ring-emerald-500/40"
+                                : "bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border-rose-500/30"
+                        )}
+                        title={isShut ? "Restore link (no-shut)" : "Simulate link cut (shut interface)"}
+                    >
+                        <Power size={14} className={isVyosExecuting ? 'animate-pulse' : ''} />
+                        <span className="text-[10px]">{isShut ? 'NO SHUT' : 'SHUT PORT'}</span>
+                    </button>
+
+                    {/* 2. Inject Netem */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setNetemTarget({
+                                routerName,
+                                interfaceName: iface,
+                                siteName: res.prismaWan.siteName
+                            });
+                            setShowNetemModal(true);
+                        }}
+                        disabled={isVyosExecuting}
+                        className="px-2.5 py-2.5 rounded-xl font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex flex-col items-center justify-center gap-1 transition-all shadow-sm cursor-pointer"
+                        title="Inject latency, jitter, or packet loss via netem"
+                    >
+                        <Sliders size={14} />
+                        <span className="text-[10px]">INJECT QOS</span>
+                    </button>
+
+                    {/* 3. Clear QoS */}
+                    <button
+                        type="button"
+                        onClick={() => handleVyosDirectAction(
+                            routerName,
+                            iface,
+                            'clear-qos',
+                            {},
+                            res.prismaWan.siteName
+                        )}
+                        disabled={isVyosExecuting}
+                        className="px-2.5 py-2.5 rounded-xl font-bold bg-card border border-border hover:border-amber-500/40 text-text-muted hover:text-text-primary flex flex-col items-center justify-center gap-1 transition-all shadow-sm cursor-pointer"
+                        title="Remove netem latency/loss rules"
+                    >
+                        <RotateCcw size={14} />
+                        <span className="text-[10px]">CLEAR QOS</span>
+                    </button>
+                </div>
+
+                {/* Feedback Message */}
+                {vyosActionResult && (
+                    <div className={cn(
+                        "p-2.5 rounded-xl text-[11px] font-mono flex items-center justify-between border animate-fadeIn",
+                        vyosActionResult.success
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                            : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20"
+                    )}>
+                        <span className="truncate max-w-[280px]">{vyosActionResult.message}</span>
+                        {vyosActionResult.durationMs !== undefined && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-card font-bold">{vyosActionResult.durationMs}ms</span>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     // Persist visibility selection
     useEffect(() => {
@@ -2260,6 +2458,7 @@ function TopologyContent({ token }: TopologyProps) {
                                                         </div>
                                                     )}
                                                 </div>
+                                                {renderVyosControls(r)}
                                             </div>
                                         )}
                                         {r.status === 'ambiguous' && r.candidates && r.candidates.length > 0 && (
@@ -2687,9 +2886,133 @@ function TopologyContent({ token }: TopologyProps) {
                             <div className="flex justify-between text-text-muted">
                                 <span>Port Status:</span>
                                 <span className={cn("font-bold", underlayDrawerResolution.vyos ? "text-green-600 dark:text-green-400" : "text-text-muted")}>
-                                    {underlayDrawerResolution.vyos ? '🟢 UP' : '—'}
+                                    {underlayDrawerResolution.vyos ? (
+                                        portShutStates[`${underlayDrawerResolution.vyos.routerName}:${underlayDrawerResolution.vyos.interfaceName}`] ? '🔴 SHUT' : '🟢 UP'
+                                    ) : '—'}
                                 </span>
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Interactive VyOS Action Controls */}
+                    {renderVyosControls(underlayDrawerResolution)}
+                </div>
+            )}
+
+            {/* Interactive Netem QoS Modal */}
+            {showNetemModal && netemTarget && (
+                <div className="fixed inset-0 z-[90] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+                    <div className="w-full max-w-md bg-card/95 backdrop-blur-2xl border-2 border-amber-500/40 rounded-3xl p-6 shadow-2xl space-y-5 text-text-primary">
+                        <div className="flex items-center justify-between pb-3 border-b border-border">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400">
+                                    <Sliders size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-wider text-text-primary">Inject WAN Impairment</h3>
+                                    <p className="text-[10px] text-text-muted font-mono">{netemTarget.routerName} · Port {netemTarget.interfaceName} ({netemTarget.siteName || 'Circuit'})</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowNetemModal(false)}
+                                className="p-1.5 hover:bg-card-secondary rounded-lg text-text-muted transition-colors cursor-pointer"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Latency Section */}
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="font-bold text-text-secondary">Added Latency (ms):</span>
+                                <span className="font-mono font-bold text-amber-500 text-sm">+{netemLatency} ms</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="0"
+                                max="500"
+                                step="10"
+                                value={netemLatency}
+                                onChange={e => setNetemLatency(parseInt(e.target.value, 10))}
+                                className="w-full accent-amber-500 cursor-pointer"
+                            />
+                            <div className="flex gap-1.5 justify-between">
+                                {[0, 25, 50, 100, 200, 350].map(val => (
+                                    <button
+                                        key={val}
+                                        type="button"
+                                        onClick={() => setNetemLatency(val)}
+                                        className={cn(
+                                            "px-2 py-1 rounded-lg text-[10px] font-mono font-bold border transition-all cursor-pointer",
+                                            netemLatency === val
+                                                ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
+                                                : "bg-card-secondary text-text-muted border-border hover:text-text-primary"
+                                        )}
+                                    >
+                                        {val === 0 ? '0ms' : `+${val}ms`}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Packet Loss Section */}
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="font-bold text-text-secondary">Packet Loss (%):</span>
+                                <span className="font-mono font-bold text-rose-500 text-sm">{netemLoss}%</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="0"
+                                max="50"
+                                step="1"
+                                value={netemLoss}
+                                onChange={e => setNetemLoss(parseInt(e.target.value, 10))}
+                                className="w-full accent-rose-500 cursor-pointer"
+                            />
+                            <div className="flex gap-1.5 justify-between">
+                                {[0, 1, 3, 5, 10, 20].map(val => (
+                                    <button
+                                        key={val}
+                                        type="button"
+                                        onClick={() => setNetemLoss(val)}
+                                        className={cn(
+                                            "px-2 py-1 rounded-lg text-[10px] font-mono font-bold border transition-all cursor-pointer",
+                                            netemLoss === val
+                                                ? "bg-rose-500/20 text-rose-400 border-rose-500/40"
+                                                : "bg-card-secondary text-text-muted border-border hover:text-text-primary"
+                                        )}
+                                    >
+                                        {val}%
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Modal Action Buttons */}
+                        <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
+                            <button
+                                type="button"
+                                onClick={() => setShowNetemModal(false)}
+                                className="px-4 py-2 bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleVyosDirectAction(
+                                    netemTarget.routerName,
+                                    netemTarget.interfaceName,
+                                    'set-qos',
+                                    { latency: netemLatency, loss: netemLoss },
+                                    netemTarget.siteName
+                                )}
+                                disabled={isVyosExecuting}
+                                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-900/20 cursor-pointer"
+                            >
+                                <Zap size={14} className={isVyosExecuting ? 'animate-spin' : 'fill-slate-950'} />
+                                <span>{isVyosExecuting ? 'Applying...' : `Apply to ${netemTarget.interfaceName}`}</span>
+                            </button>
                         </div>
                     </div>
                 </div>

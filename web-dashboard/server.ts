@@ -2519,6 +2519,50 @@ app.get('/api/vyos/history', authenticateToken, (req, res) => {
     res.json(vyosScheduler.getHistory(limit));
 });
 
+// Interactive Direct Action Execution (e.g. from Topology Canvas or Quick Controls)
+app.post('/api/vyos/direct-action', authenticateToken, async (req, res) => {
+    try {
+        const { routerId, routerName, interface: iface, command, params, source = 'Topology Action' } = req.body;
+        if (!routerId && !routerName) {
+            return res.status(400).json({ success: false, error: 'routerId or routerName is required' });
+        }
+        if (!command) {
+            return res.status(400).json({ success: false, error: 'command is required' });
+        }
+
+        // Resolve target router ID
+        let targetRouterId = routerId;
+        const allRouters = vyosManager.getRouters();
+        if (routerName) {
+            const found = allRouters.find(r => 
+                (r.name && r.name.toLowerCase() === routerName.toLowerCase()) || 
+                (r.id && r.id.toLowerCase() === routerName.toLowerCase())
+            );
+            if (found) targetRouterId = found.id;
+        }
+        if (!targetRouterId && allRouters.length > 0) {
+            targetRouterId = allRouters[0].id;
+        }
+
+        if (!targetRouterId) {
+            return res.status(404).json({ success: false, error: 'No VyOS router configured or matching target' });
+        }
+
+        const result = await vyosScheduler.executeDirectAction(
+            targetRouterId,
+            { command, interface: iface, parameters: params },
+            source
+        );
+
+        res.json({
+            success: true,
+            ...result
+        });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // VyOS Unified Configuration Management
 app.get('/api/vyos/config/export', authenticateToken, (req, res) => {
     try {

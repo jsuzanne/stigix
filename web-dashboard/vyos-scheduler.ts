@@ -307,11 +307,40 @@ export class VyosScheduler extends EventEmitter {
         if (seq.enabled && seq.cycle_duration > 0) {
             this.startScheduled(seq);
         }
+    public async executeDirectAction(
+        routerId: string,
+        action: { command: string; interface?: string; parameters?: any },
+        sourceName: string = 'Topology Action'
+    ): Promise<{ success: boolean; durationMs: number; cliEquivalent?: string[] }> {
+        const actionId = `dir-${Date.now().toString(36)}`;
+        const vyosAction: VyosAction = {
+            id: actionId,
+            offset_minutes: 0,
+            router_id: routerId,
+            command: action.command,
+            params: { ...(action.parameters || {}), interface: action.interface }
+        };
+
+        const startTime = performance.now();
+        const runId = `DIR-${Date.now().toString().slice(-4)}`;
+
+        try {
+            const result = await this.manager.executeAction(routerId, vyosAction);
+            const duration = Math.round(performance.now() - startTime);
+            this.logActionExecution(sourceName, { ...vyosAction, interface: action.interface, parameters: action.parameters }, 'success', undefined, runId, duration, result?.cliEquivalent);
+            this.emit('action:executed', { source: sourceName, action: vyosAction, status: 'success', cliEquivalent: result?.cliEquivalent });
+            return { success: true, durationMs: duration, cliEquivalent: result?.cliEquivalent };
+        } catch (error: any) {
+            const duration = Math.round(performance.now() - startTime);
+            this.logActionExecution(sourceName, { ...vyosAction, interface: action.interface, parameters: action.parameters }, 'failed', error.message, runId, duration);
+            this.emit('action:executed', { source: sourceName, action: vyosAction, status: 'failed', error: error.message });
+            throw error;
+        }
     }
 
-    private logActionExecution(
+    public logActionExecution(
         sequenceId: string,
-        action: VyosAction,
+        action: any,
         status: 'success' | 'failed',
         error?: string,
         runId?: string,
@@ -325,13 +354,13 @@ export class VyosScheduler extends EventEmitter {
         const logEntry = {
             timestamp,
             sequence_id: sequenceId,
-            sequence_name: seq?.name || 'Unknown',
-            action_id: action.id,
+            sequence_name: seq?.name || sequenceId || 'Topology Action',
+            action_id: action.id || `act-${Date.now().toString(36)}`,
             run_id: runId,
             router_id: action.router_id,
             interface: action.interface,
             command: action.command,
-            parameters: action.parameters,
+            parameters: action.parameters || action.params,
             status,
             duration_ms: durationMs,
             error,
