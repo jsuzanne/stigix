@@ -168,9 +168,9 @@ def log_output(message: str, json_mode: bool = False, is_error: bool = False):
 
 def load_credentials(args, json_mode: bool = False) -> Dict[str, str]:
     """Load Prisma SASE credentials from environment variables or file"""
-    env_client_id = os.getenv("PRISMA_SDWAN_CLIENT_ID") or os.getenv("PRISMA_CLIENT_ID")
-    env_client_secret = os.getenv("PRISMA_SDWAN_CLIENT_SECRET") or os.getenv("PRISMA_CLIENT_SECRET")
-    env_tsg_id = os.getenv("PRISMA_SDWAN_TSG_ID") or os.getenv("PRISMA_SDWAN_TSGID") or os.getenv("PRISMA_TSG_ID")
+    env_client_id = (os.getenv("PRISMA_SDWAN_CLIENT_ID") or os.getenv("PRISMA_CLIENT_ID") or "").strip()
+    env_client_secret = (os.getenv("PRISMA_SDWAN_CLIENT_SECRET") or os.getenv("PRISMA_CLIENT_SECRET") or "").strip()
+    env_tsg_id = (os.getenv("PRISMA_SDWAN_TSG_ID") or os.getenv("PRISMA_SDWAN_TSGID") or os.getenv("PRISMA_TSG_ID") or "").strip()
 
     if env_client_id and env_client_secret and env_tsg_id:
         return {
@@ -181,29 +181,51 @@ def load_credentials(args, json_mode: bool = False) -> Dict[str, str]:
         }
 
     # Search common credential file paths
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     candidate_paths = [
-        args.credentials,
-        os.path.join(os.getcwd(), 'credentials.json'),
+        getattr(args, 'credentials', None),
+        os.path.join(os.getcwd(), 'config', 'prisma-config.json'),
+        os.path.join(os.getcwd(), 'prisma-config.json'),
         os.path.join(os.getcwd(), 'config', 'credentials.json'),
+        os.path.join(os.getcwd(), 'credentials.json'),
+        os.path.join(script_dir, '..', 'config', 'prisma-config.json'),
+        os.path.join(script_dir, '..', 'config', 'credentials.json'),
+        '/data/stigix/config/prisma-config.json',
+        '/data/stigix/prisma-config.json',
+        '/data/stigix/config/credentials.json',
         '/data/stigix/credentials.json',
-        '/app/config/credentials.json'
+        '/app/config/prisma-config.json',
+        '/app/config/credentials.json',
+        '/app/prisma-config.json',
+        '/app/credentials.json',
+        '/opt/sdwan-traffic-gen/config/prisma-config.json',
+        '/opt/sdwan-traffic-gen/config/credentials.json'
     ]
 
     for path in candidate_paths:
         if path and os.path.exists(path):
             try:
-                with open(path, 'r') as f:
+                with open(path, 'r', encoding='utf-8') as f:
                     creds = json.load(f)
-                required = ("client_id", "client_secret", "tsg_id")
-                if all(k in creds and creds[k] for k in required):
-                    creds["source"] = f"file:{path}"
-                    return creds
+                client_id = (creds.get("client_id") or creds.get("clientId") or creds.get("CLIENT_ID") or "").strip()
+                client_secret = (creds.get("client_secret") or creds.get("clientSecret") or creds.get("CLIENT_SECRET") or "").strip()
+                tsg_id = (creds.get("tsg_id") or creds.get("tsgid") or creds.get("tsgId") or creds.get("TSG_ID") or creds.get("TSGID") or "").strip()
+                if client_id and client_secret and tsg_id:
+                    creds_out = {
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "tsg_id": tsg_id,
+                        "source": f"file:{path}"
+                    }
+                    if creds.get("region"):
+                        creds_out["region"] = creds["region"]
+                    return creds_out
             except Exception:
                 pass
 
     error_msg = {
         "success": False,
-        "error": "Prisma SD-WAN credentials not found in env vars or credentials.json",
+        "error": "Prisma SD-WAN credentials not found in environment variables or config files (prisma-config.json / credentials.json)",
         "required_env": [
             "PRISMA_SDWAN_CLIENT_ID",
             "PRISMA_SDWAN_CLIENT_SECRET",

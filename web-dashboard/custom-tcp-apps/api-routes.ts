@@ -6,6 +6,9 @@ import { Router, Request, Response } from 'express';
 import { TcpAppManager } from './tcp-app-manager.js';
 import { validateApplicationConfig, checkHostPortAvailable } from './validation.js';
 import crypto from 'crypto';
+import path from 'path';
+import fs from 'fs';
+import { spawn } from 'child_process';
 
 export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
     const router = Router();
@@ -313,12 +316,32 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
     return router;
 }
 
-function getPythonPath(): string {
+function findProjectRoot(): string {
     const cwd = process.cwd();
     const candidates = [
-        path.join(cwd, 'engines', '.venv', 'bin', 'python3'),
-        path.join(cwd, '..', 'engines', '.venv', 'bin', 'python3'),
-        '/app/engines/.venv/bin/python3'
+        cwd,
+        path.join(cwd, '..'),
+        path.resolve(__dirname, '..'),
+        path.resolve(__dirname, '../..'),
+        '/app',
+        '/opt/sdwan-traffic-gen'
+    ];
+    for (const c of candidates) {
+        if (fs.existsSync(path.join(c, 'engines', 'prisma_custom_apps.py'))) {
+            return c;
+        }
+    }
+    return cwd;
+}
+
+function getPythonPath(): string {
+    const root = findProjectRoot();
+    const candidates = [
+        path.join(root, 'engines', '.venv', 'bin', 'python3'),
+        path.join(root, 'engines', '.venv', 'bin', 'python'),
+        '/app/engines/.venv/bin/python3',
+        path.join(process.cwd(), 'engines', '.venv', 'bin', 'python3'),
+        'python3'
     ];
     for (const c of candidates) {
         if (fs.existsSync(c)) return c;
@@ -327,11 +350,11 @@ function getPythonPath(): string {
 }
 
 function getPrismaCustomAppsScript(): string {
-    const cwd = process.cwd();
+    const root = findProjectRoot();
     const candidates = [
-        path.join(cwd, 'engines', 'prisma_custom_apps.py'),
-        path.join(cwd, '..', 'engines', 'prisma_custom_apps.py'),
-        '/app/engines/prisma_custom_apps.py'
+        path.join(root, 'engines', 'prisma_custom_apps.py'),
+        '/app/engines/prisma_custom_apps.py',
+        path.join(process.cwd(), 'engines', 'prisma_custom_apps.py')
     ];
     for (const c of candidates) {
         if (fs.existsSync(c)) return c;
@@ -341,13 +364,54 @@ function getPrismaCustomAppsScript(): string {
 
 function runPrismaCustomApps(args: string[]): Promise<any> {
     return new Promise((resolve, reject) => {
+        const root = findProjectRoot();
         const script = getPrismaCustomAppsScript();
         const python = getPythonPath();
         const fullArgs = [script, ...args, '--json'];
 
+        // Ensure Prisma credentials from process.env or prisma-config.json are in child env
+        const childEnv: Record<string, string> = {
+            ...process.env as Record<string, string>,
+            PYTHONUNBUFFERED: '1'
+        };
+
+        const tsgId = process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID;
+        if (tsgId) {
+            childEnv.PRISMA_SDWAN_TSGID = tsgId;
+            childEnv.PRISMA_SDWAN_TSG_ID = tsgId;
+        }
+
+        // Try to load prisma-config.json if env vars missing
+        if (!childEnv.PRISMA_SDWAN_CLIENT_ID || !childEnv.PRISMA_SDWAN_CLIENT_SECRET) {
+            const configCandidates = [
+                path.join(root, 'config', 'prisma-config.json'),
+                path.join(root, 'config', 'credentials.json'),
+                '/data/stigix/config/prisma-config.json',
+                '/data/stigix/prisma-config.json',
+                '/app/config/prisma-config.json'
+            ];
+            for (const cfgPath of configCandidates) {
+                if (fs.existsSync(cfgPath)) {
+                    try {
+                        const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+                        if (parsed.client_id) childEnv.PRISMA_SDWAN_CLIENT_ID = parsed.client_id;
+                        if (parsed.client_secret) childEnv.PRISMA_SDWAN_CLIENT_SECRET = parsed.client_secret;
+                        const tsg = parsed.tsg_id || parsed.tsgid || parsed.tsgId;
+                        if (tsg) {
+                            childEnv.PRISMA_SDWAN_TSGID = tsg;
+                            childEnv.PRISMA_SDWAN_TSG_ID = tsg;
+                        }
+                        if (parsed.region) childEnv.PRISMA_SDWAN_REGION = parsed.region;
+                        break;
+                    } catch {}
+                }
+            }
+        }
+
         const proc = spawn(python, fullArgs, {
+            cwd: path.dirname(script),
             timeout: 35000,
-            env: { ...process.env }
+            env: childEnv
         });
 
         let stdout = '';
