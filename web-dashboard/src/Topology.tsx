@@ -1701,7 +1701,7 @@ function TopologyContent({ token }: TopologyProps) {
     useEffect(() => {
         if (filteredNodes.length > 0) {
             const timer = setTimeout(() => {
-                fitView({ padding: 0.25, duration: 800 });
+                fitView({ padding: 0.28, duration: 800 });
             }, 300);
             return () => clearTimeout(timer);
         }
@@ -1923,113 +1923,125 @@ function TopologyContent({ token }: TopologyProps) {
                             </div>
                         </Panel>
 
-                        {/* Export & Toggles Panel */}
-                        <Panel position="top-right" className="flex flex-col gap-2 items-end">
-                            <div className="bg-card/90 backdrop-blur-md border border-border p-1.5 rounded-2xl shadow-xl flex items-center gap-2">
-                                {/* View Switcher: Overlay vs Underlay */}
-                                <div className="flex items-center bg-card-secondary/80 p-0.5 rounded-xl border border-border">
-                                    <button
-                                        onClick={() => setTopologyViewMode('overlay')}
-                                        className={cn(
-                                            "px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5",
-                                            topologyViewMode === 'overlay'
-                                                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
-                                                : "text-text-muted hover:text-text-primary"
-                                        )}
-                                        title="Logical SASE Overlay View (Hubs <-> Clouds <-> Branches)"
-                                    >
-                                        <Globe size={12} />
-                                        Overlay
-                                    </button>
-                                    <button
-                                        onClick={() => setTopologyViewMode('underlay')}
-                                        className={cn(
-                                            "px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5",
-                                            topologyViewMode === 'underlay'
-                                                ? "bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20"
-                                                : "text-text-muted hover:text-amber-400"
-                                        )}
-                                        title="Physical Underlay View (Prisma ION Ports <-> VyOS Router Interfaces)"
-                                    >
-                                        <Server size={12} />
-                                        VyOS Underlay
-                                        {underlayData?.summary?.matched ? (
-                                            <span className={cn(
-                                                "px-1 rounded text-[8px] font-mono",
-                                                topologyViewMode === 'underlay' ? "bg-slate-950/20 text-slate-950 font-black" : "bg-amber-500/20 text-amber-300"
-                                            )}>
-                                                {underlayData.summary.matched}
-                                            </span>
-                                        ) : null}
-                                    </button>
-                                </div>
-                                <div className="h-4 w-px bg-border mx-1" />
+                        {/* Export & Toggles Panel - Vertical Dock on the Right */}
+                        <Panel position="top-right" className="flex flex-col gap-2 items-end z-20 pointer-events-auto">
+                            {/* 1. View Switcher: Overlay vs Underlay (Vertical Segmented Control) */}
+                            <div className="bg-card/90 backdrop-blur-md border border-border p-1 rounded-2xl shadow-xl flex flex-col gap-1 w-[140px]">
+                                <button
+                                    onClick={() => setTopologyViewMode('overlay')}
+                                    className={cn(
+                                        "w-full px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-1.5 cursor-pointer",
+                                        topologyViewMode === 'overlay'
+                                            ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                                            : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
+                                    )}
+                                    title="Logical SASE Overlay View (Hubs <-> Clouds <-> Branches)"
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        <Globe size={13} />
+                                        <span>Overlay</span>
+                                    </div>
+                                </button>
+                                <button
+                                    onClick={() => setTopologyViewMode('underlay')}
+                                    className={cn(
+                                        "w-full px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-1.5 cursor-pointer",
+                                        topologyViewMode === 'underlay'
+                                            ? "bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/25"
+                                            : "text-text-muted hover:text-amber-400 hover:bg-card-secondary"
+                                    )}
+                                    title="Physical Underlay View (Prisma ION Ports <-> VyOS Router Interfaces)"
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        <Server size={13} />
+                                        <span>Underlay</span>
+                                    </div>
+                                    {underlayData?.summary?.matched ? (
+                                        <span className={cn(
+                                            "px-1.5 py-0.2 rounded-full text-[8px] font-mono font-black",
+                                            topologyViewMode === 'underlay' ? "bg-slate-950/20 text-slate-950" : "bg-amber-500/20 text-amber-300"
+                                        )}>
+                                            {underlayData.summary.matched}
+                                        </span>
+                                    ) : null}
+                                </button>
+                            </div>
 
+                            {/* 2. Action Tools Vertical Dock */}
+                            <div className="bg-card/90 backdrop-blur-md border border-border p-1 rounded-2xl shadow-xl flex flex-col items-center gap-1">
+                                {/* BG as Hub Toggle */}
                                 <button
                                     onClick={() => setBgAsHub(prev => !prev)}
                                     className={cn(
-                                        "px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-tighter transition-all flex items-center gap-1.5",
+                                        "w-8 h-8 rounded-xl transition-all flex items-center justify-center cursor-pointer",
                                         bgAsHub 
                                             ? "bg-blue-500/20 text-blue-500 hover:bg-blue-500/30 border border-blue-500/30 shadow-sm" 
-                                            : "bg-card-secondary text-text-muted hover:text-text-primary border border-border/50"
+                                            : "hover:bg-card-secondary text-text-muted hover:text-text-primary"
                                     )}
                                     title="Toggle whether Branch Gateways appear as Hubs (top) or regular Branches (bottom)"
                                 >
-                                    <Server size={12} />
-                                    BG as Hub
+                                    <Server size={15} />
                                 </button>
+
+                                {/* Filter Button */}
                                 <button
                                     onClick={() => setShowFilter(!showFilter)}
                                     className={cn(
-                                        "p-2 rounded-xl transition-all group flex items-center justify-center relative",
+                                        "w-8 h-8 rounded-xl transition-all flex items-center justify-center relative cursor-pointer",
                                         (visibleSiteIds !== null && topology && visibleSiteIds.length !== topology.sites.length) 
                                             ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" 
                                             : "hover:bg-card-secondary text-text-muted hover:text-text-primary"
                                     )}
                                     title="Filter visible sites"
                                 >
-                                    <Filter size={16} />
+                                    <Filter size={15} />
                                     {visibleSiteIds !== null && topology && visibleSiteIds.length !== topology.sites.length && (
-                                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-background">
+                                        <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-blue-500 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-background">
                                             {visibleSiteIds.length}
                                         </span>
                                     )}
                                 </button>
-                                <div className="h-4 w-px bg-border mx-1" />
 
+                                <div className="w-5 h-px bg-border/60 my-0.5" />
+
+                                {/* Export CSV */}
                                 <button
                                     onClick={handleExportCsv}
-                                    className="p-2 hover:bg-card-secondary rounded-xl text-text-muted hover:text-green-500 transition-all group flex items-center gap-2"
+                                    className="w-8 h-8 hover:bg-card-secondary rounded-xl text-text-muted hover:text-green-500 transition-all flex items-center justify-center cursor-pointer"
                                     title="Export Inventory (CSV)"
                                 >
-                                    <FileText size={16} />
-                                    <span className="text-[10px] font-black uppercase tracking-tighter hidden group-hover:block transition-all">CSV</span>
-                                </button>
-                                <button
-                                    onClick={handleExportPng}
-                                    className="p-2 hover:bg-card-secondary rounded-xl text-text-muted hover:text-blue-500 transition-all group flex items-center gap-2"
-                                    title="Export Map (PNG)"
-                                >
-                                    <Download size={16} />
-                                    <span className="text-[10px] font-black uppercase tracking-tighter hidden group-hover:block transition-all">PNG</span>
-                                </button>
-                                <div className="h-4 w-px bg-border" />
-                                <button
-                                    onClick={fetchTopology}
-                                    className="p-2 hover:bg-card-secondary rounded-xl text-text-muted hover:text-orange-500 transition-all group"
-                                    title="Refresh Data"
-                                >
-                                    <RefreshCw size={16} />
+                                    <FileText size={15} />
                                 </button>
 
-                                {/* Underlay Inspect Button — Always Visible */}
-                                <div className="h-4 w-px bg-border" />
+                                {/* Export PNG */}
+                                <button
+                                    onClick={handleExportPng}
+                                    className="w-8 h-8 hover:bg-card-secondary rounded-xl text-text-muted hover:text-blue-500 transition-all flex items-center justify-center cursor-pointer"
+                                    title="Export Map (PNG)"
+                                >
+                                    <Download size={15} />
+                                </button>
+
+                                <div className="w-5 h-px bg-border/60 my-0.5" />
+
+                                {/* Refresh Topology Data */}
+                                <button
+                                    onClick={fetchTopology}
+                                    className="w-8 h-8 hover:bg-card-secondary rounded-xl text-text-muted hover:text-orange-500 transition-all flex items-center justify-center cursor-pointer"
+                                    title="Refresh Data"
+                                >
+                                    <RefreshCw size={15} />
+                                </button>
+
+                                <div className="w-5 h-px bg-border/60 my-0.5" />
+
+                                {/* Underlay Inspect Button */}
                                 <div className="relative">
                                     <button
                                         id="topology-underlay-btn"
                                         onClick={() => setShowUnderlayMenu(prev => !prev)}
                                         className={cn(
-                                            "p-2 rounded-xl transition-all group flex items-center gap-1.5",
+                                            "w-8 h-8 rounded-xl transition-all flex items-center justify-center relative cursor-pointer",
                                             underlayMode !== 'off'
                                                 ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
                                                 : underlayData?.summary?.matched
@@ -2044,21 +2056,18 @@ function TopologyContent({ token }: TopologyProps) {
                                                     : `Underlay Inspect — ${underlayData.summary.matched}/${underlayData.summary.wanInterfacesSeen} matched to VyOS next-hops`
                                         }
                                     >
-                                        <Layers size={16} className={cn(underlayData && !underlayData.vyosConfigAvailable ? "text-amber-500/70" : "")} />
+                                        <Layers size={15} className={cn(underlayData && !underlayData.vyosConfigAvailable ? "text-amber-500/70" : "")} />
                                         {underlayData?.summary?.matched !== undefined && underlayData.summary.matched > 0 ? (
-                                            <span className={cn(
-                                                "text-[9px] font-black tracking-tight",
-                                                underlayMode !== 'off' ? "text-amber-300" : "text-text-muted"
-                                            )}>
-                                                {underlayData.summary.matched}/{underlayData.summary.wanInterfacesSeen}
+                                            <span className="absolute -top-1 -right-1 px-1 bg-amber-500 text-slate-950 text-[7px] font-black rounded-full border border-background">
+                                                {underlayData.summary.matched}
                                             </span>
                                         ) : underlayData && !underlayData.vyosConfigAvailable ? (
-                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400" />
                                         ) : null}
                                     </button>
 
                                     {showUnderlayMenu && (
-                                        <div className="absolute top-full right-0 mt-2 w-72 bg-card/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl z-[70] animate-in fade-in slide-in-from-top-2 duration-200">
+                                        <div className="absolute top-0 right-full mr-2 w-72 bg-card/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl z-[70] animate-in fade-in slide-in-from-right-2 duration-200">
                                             <div className="p-3 border-b border-border">
                                                 <div className="flex items-center justify-between">
                                                     <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-1.5">
