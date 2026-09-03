@@ -81,11 +81,18 @@ All resolutions rely on **strict same-subnet IPv4/CIDR matching** via `ipaddr.js
   - **VyOS Underlay Router**: Interface Name, Description, Next-Hop IP, Port Status.
 - Includes a **Full Inspect** button to open the comprehensive underlay diagnostics side panel.
 
-### 5. Unmapped & External Circuit Handling
+### 5. Interactive Direct Actions & Chaos Injection
+Directly from the floating Link Trace drawer or side panel, operators can control the physical underlay in real time:
+- **Shut / No-Shut Port Toggle** 🔴🟢: Disables or enables the physical interface on the VyOS router via write-through API execution. The UI and canvas immediately update the LED status (`🔴 SHUT (DOWN)` vs `🟢 UP`).
+- **Inject WAN Impairment (Netem)** 🎛️: Opens a modal with sliders and quick presets for Latency (0–500ms) and Packet Loss (0–50%).
+- **Persistent QoS State & Canvas Badges** ⏱️: Configured impairments are stored on the interface and persist across refreshes. The router port chip on the canvas displays an active micro-badge (e.g. `⏱️ +120ms`) and illuminates the **Clear QoS** button.
+- **Unified Audit Logging**: Every topology action is logged to VyOS History with a descriptive source tag (e.g., `Topology: DC1 (eth10)`).
+
+### 6. Unmapped & External Circuit Handling
 - WAN circuits that do not match a local VyOS router interface are neatly routed to a dedicated `EXTERNAL / UNMAPPED` cloud node.
 - The router width is computed dynamically based on interface density, and the External node is positioned with clean spacing on the right.
 
-### 6. Light & Dark Mode Support
+### 7. Light & Dark Mode Support
 - Seamless, high-contrast theme support:
   - **Dark Mode**: Sleek dark slate surfaces, glowing amber accents, and illuminated status indicators.
   - **Light Mode**: Crisp white card surfaces (`bg-card`), soft gray chassis backgrounds (`bg-card-secondary`), warm amber borders, and dark high-contrast typography.

@@ -23,6 +23,7 @@ graph TD
 
 - **Automated Router Discovery**: Connects via the VyOS HTTP API to retrieve interfaces, IP addresses, and operational descriptions.
 - **Path Visibility**: Interface descriptions (e.g., "Paris to NYC MPLS") are promoted throughout the UI for rapid identification during troubleshooting.
+- **Interactive Topology Direct Actions** ⚡: Click any port chip or underlay cable on the Topology canvas to immediately toggle **Shut / No-Shut**, inject **Netem Latency/Loss**, or **Clear QoS** with live write-through state and unified history recording.
 - **Orchestrated Sequences**: Build multi-step impairment profiles with relative offsets (T+Minutes).
 - **Scheduled Cycles**: Run missions manually or in cyclic loops (e.g., every 60 minutes) to create predictable network instability.
 - **Audit Trails**: Detailed VoIP-style console logging and persistent JSONL history for post-mortem analysis.

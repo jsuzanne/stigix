@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.4] - 2026-09-03
+
+### Added / Changed
+- **Interactive Underlay Topology Direct Actions** ⚡: Execute instant network control operations directly from the Topology canvas by clicking any router port chip or underlay cable:
+  - **Live Port State & Shut / No-Shut Toggle** 🔴🟢: Toggles interface administrative state on VyOS routers with real-time write-through synchronization between router hardware, backend cache, and canvas LED indicators.
+  - **Inject WAN Impairment (Netem Modal)** 🎛️: Interactive modal with latency (0–500ms) and packet loss (0–50%) sliders and presets.
+  - **Persistent QoS State & Canvas Badges** ⏱️: Impairment states persist across page/topology refreshes, render amber micro-badges (`⏱️ +120ms`) directly on port chips, and illuminate the **Clear QoS** button.
+- **High-Capacity VyOS Router Canvas Layout** 🖧: Expanded vertical clearance (`HUB_Y = -850`, `SPOKE_Y = 850`, `min-h-[440px]`, `min-h-[76px]` chips) accommodating 14+ interfaces without clipping or scrolling.
+- **CI & Docker Hub Build Stability** 🐳: Disabled buildx provenance attestations (`provenance: false`) in GitHub Actions workflow to prevent Docker Hub layer push failures (`invalid content range`).
+
+---
+
 ## [2.0.3] - 2026-09-02
 
 ### Added / Changed

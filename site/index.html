@@ -316,19 +316,19 @@
     <!-- 4. Physical Underlay & VyOS Chassis (V2 NEW) -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">Physical Underlay &amp; Chassis <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.15);border-color:rgba(24,201,174,0.4);color:var(--teal);font-size:0.58rem;vertical-align:middle;">V2 NEW</span></div>
-        <div class="caps__col-category">topology · physical</div>
+        <div class="caps__col-name">Physical Underlay &amp; Actions <span class="tag" style="margin-left:6px;background:rgba(24,201,174,0.15);border-color:rgba(24,201,174,0.4);color:var(--teal);font-size:0.58rem;vertical-align:middle;">V2 NEW</span></div>
+        <div class="caps__col-category">topology · physical · chaos</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Real-time interactive canvas visualization of physical VyOS backbone routers with separate DC/Hub uplinks and Branch/Spoke downlinks. Direct 1:1 port-to-port cable wiring, spatial anti-crossing alignment, complete IPv4 CIDR visibility on every port chip, and live Link Trace diagnostic drawer comparing transit subnets and router next-hops.</div>
+        <div class="caps__col-desc">Real-time interactive canvas visualization of physical VyOS backbone routers with direct 1:1 port-to-port cable wiring and spatial anti-crossing alignment. Execute direct topology actions: instant <strong>Shut / No-Shut</strong> port toggle with live status write-through, <strong>Inject WAN Impairment</strong> (Netem latency/loss), and persistent QoS badges on canvas port chips.</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
           <span class="tag">Physical Underlay</span>
-          <span class="tag">VyOS Chassis</span>
+          <span class="tag">Interactive Actions</span>
+          <span class="tag">Shut/No-Shut</span>
+          <span class="tag">Netem Sliders</span>
           <span class="tag">1:1 Cabling</span>
-          <span class="tag">Link Trace</span>
-          <span class="tag">Dark/Light</span>
         </div>
       </div>
     </div>
@@ -472,17 +472,18 @@
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
         <div class="caps__col-name">VyOS Control</div>
-        <div class="caps__col-category">orchestration</div>
+        <div class="caps__col-category">orchestration · chaos</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Orchestrate network impairments on VyOS routers via the VyOS API without touching the CLI for each test. Inject latency, packet loss, rate-limiting, and IP blocking on demand. Enables repeatable, automated lab scenarios with controllable network conditions.</div>
+        <div class="caps__col-desc">Orchestrate network impairments on VyOS routers via the VyOS API. Execute direct actions from the Topology canvas or schedule multi-step automated sequences. Inject latency, packet loss, rate-limiting, and IP blocking on demand with persistent audit history.</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
           <span class="tag">VyOS API</span>
+          <span class="tag">Direct Topology</span>
           <span class="tag">Latency</span>
           <span class="tag">Loss</span>
-          <span class="tag">Rate-limit</span>
+          <span class="tag">Sequences</span>
         </div>
       </div>
     </div>

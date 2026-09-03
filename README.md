@@ -123,10 +123,12 @@ This project is my way to turn all that lab and demo experience into an open-sou
 The project is evolving rapidly with new features and refinements added in every release.
 
 ### Underlay Topology & Physical Chassis *(v1.4.1)*
-- **VyOS Physical Chassis Node** 🖧 — Interactive canvas representation of active VyOS routers with separate DC/Hub uplinks (top row) and Branch/Spoke downlinks (bottom row), management banner, live status, and full IP CIDR visibility on every physical port chip. [Read docs](docs/UNDERLAY_TOPOLOGY.md)
+- **Interactive Direct Actions & Chaos Control** ⚡ — Trigger real-time VyOS actions directly from the Topology view: instant **Shut / No-Shut** port toggle with live status write-through, **Inject WAN Impairment** (latency 0–500ms, packet loss 0–50% via Netem), and **Clear QoS**, all logged to VyOS History.
+- **Persistent QoS State & Canvas Badges** ⏱️ — Active latency and loss impairments persist across page/topology refreshes and display dynamic amber micro-badges (`⏱️ +120ms`) directly on the router port chips on the canvas.
+- **VyOS Physical Chassis Node** 🖧 — High-capacity interactive canvas representation of active VyOS routers with separate DC/Hub uplinks (top row) and Branch/Spoke downlinks (bottom row), management banner, live status, and full IP CIDR visibility on every physical port chip. [Read docs](docs/UNDERLAY_TOPOLOGY.md)
 - **Direct 1:1 Port Cable Wiring** 🔌 — Individual cables connect directly from each Prisma SD-WAN circuit block to the exact physical `ethX` port handle on the VyOS router.
 - **Anti-Cable-Crossing Spatial Routing** 📐 — Dynamic horizontal sorting of interfaces matching connected sites' X-coordinates (DC1, DC2, BR1, BR2, BR3) to ensure straight, untangled parallel cables.
-- **Interactive Link Trace Drawer** 🔍 — Click any port chip or underlay cable to open a floating trace drawer comparing Prisma ION circuit parameters, transit CIDR subnet, and VyOS next-hop IP in real time.
+- **Interactive Link Trace Drawer** 🔍 — Click any port chip or underlay cable to open a floating trace drawer comparing Prisma ION circuit parameters, transit CIDR subnet, VyOS next-hop IP, and instant action controls.
 - **Dual Mode & Theme Support** 🌓 — Instant toggle between Logical Overlay (clouds) and Physical Underlay (chassis) with full Light and Dark mode styling.
 
 ### MCP Server highlights *(v1.4.0-patch.106–109)*
