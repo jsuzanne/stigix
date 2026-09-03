@@ -9196,25 +9196,33 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             configured: false,
             synced_apps_count: 0
         };
-        try {
-            if (fs.existsSync(PRISMA_CONFIG_FILE)) {
-                const raw = fs.readFileSync(PRISMA_CONFIG_FILE, 'utf8');
-                const cfg = JSON.parse(raw);
-                if (cfg && (cfg.tsg_id || cfg.client_id)) {
-                    prismaStatus.configured = true;
-                    prismaStatus.tsg_id = cfg.tsg_id || 'Configured';
-                    prismaStatus.region = cfg.region || 'default';
-                    prismaStatus.status = 'connected';
-                }
-            } else if (process.env.PRISMA_CLIENT_ID || process.env.PRISMA_TSG_ID) {
-                prismaStatus.configured = true;
-                prismaStatus.tsg_id = process.env.PRISMA_TSG_ID || 'Env Configured';
-                prismaStatus.region = process.env.PRISMA_REGION || 'default';
-                prismaStatus.status = 'connected';
+        const prismaPaths = [
+            PRISMA_CONFIG_FILE,
+            path.join(APP_CONFIG.configDir, 'prisma-config.json'),
+            path.join(PROJECT_ROOT, 'config', 'prisma-config.json'),
+            '/data/stigix/config/prisma-config.json',
+            '/data/stigix/prisma-config.json',
+            '/app/config/prisma-config.json'
+        ];
+        for (const p of prismaPaths) {
+            if (fs.existsSync(p)) {
+                try {
+                    const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+                    if (raw && (raw.tsg_id || raw.client_id)) {
+                        prismaStatus.configured = true;
+                        prismaStatus.tsg_id = raw.tsg_id || process.env.PRISMA_SDWAN_TSGID || 'Configured';
+                        prismaStatus.region = raw.region || process.env.PRISMA_SDWAN_REGION || 'default';
+                        prismaStatus.status = 'connected';
+                        break;
+                    }
+                } catch {}
             }
-        } catch (err: any) {
-            prismaStatus.status = 'error';
-            prismaStatus.error = err.message;
+        }
+        if (!prismaStatus.configured && (process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_TSG_ID || process.env.PRISMA_SDWAN_CLIENT_ID || process.env.PRISMA_CLIENT_ID)) {
+            prismaStatus.configured = true;
+            prismaStatus.tsg_id = process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_TSG_ID || 'Env Configured';
+            prismaStatus.region = process.env.PRISMA_SDWAN_REGION || process.env.PRISMA_REGION || 'default';
+            prismaStatus.status = 'connected';
         }
 
         // 2. VyOS Underlay Router
@@ -9228,48 +9236,61 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             active_qos_rules: 0,
             routers_summary: []
         };
+        let routers: any[] = [];
         try {
-            const routers = vyosManager.getRouters();
-            vyosStatus.total_routers = routers.length;
-            if (routers.length > 0) {
-                let anyOnline = false;
-                let anyOffline = false;
-                for (const r of routers) {
-                    const isOnline = r.status !== 'down';
-                    if (isOnline) {
-                        anyOnline = true;
-                        vyosStatus.active_routers++;
-                    } else {
-                        anyOffline = true;
-                    }
-
-                    const ifaces = r.interfaces || [];
-                    vyosStatus.total_interfaces += ifaces.length;
-                    for (const iface of ifaces) {
-                        if (iface.status === 'down') vyosStatus.shut_interfaces++;
-                        else vyosStatus.up_interfaces++;
-                        if (iface.qos && (iface.qos.latency || iface.qos.loss)) vyosStatus.active_qos_rules++;
-                    }
-
-                    vyosStatus.routers_summary.push({
-                        id: r.id,
-                        name: r.name,
-                        host: r.host,
-                        status: r.status,
-                        ifacesCount: ifaces.length
-                    });
-                }
-                if (anyOnline && !anyOffline) {
-                    vyosStatus.status = 'connected';
-                } else if (anyOnline && anyOffline) {
-                    vyosStatus.status = 'degraded';
-                } else {
-                    vyosStatus.status = 'offline';
+            if (vyosManager && typeof vyosManager.getRouters === 'function') {
+                routers = vyosManager.getRouters() || [];
+            }
+        } catch {}
+        if (routers.length === 0) {
+            const vyosPaths = [
+                path.join(APP_CONFIG.configDir, 'vyos-config.json'),
+                path.join(PROJECT_ROOT, 'config', 'vyos-config.json'),
+                '/data/stigix/config/vyos-config.json',
+                '/app/config/vyos-config.json'
+            ];
+            for (const vp of vyosPaths) {
+                if (fs.existsSync(vp)) {
+                    try {
+                        const parsed = JSON.parse(fs.readFileSync(vp, 'utf8'));
+                        if (parsed && Array.isArray(parsed.routers) && parsed.routers.length > 0) {
+                            routers = parsed.routers;
+                            break;
+                        }
+                    } catch {}
                 }
             }
-        } catch (err: any) {
-            vyosStatus.status = 'error';
-            vyosStatus.error = err.message;
+        }
+        if (routers.length > 0) {
+            vyosStatus.total_routers = routers.length;
+            let anyOnline = false;
+            let anyOffline = false;
+            for (const r of routers) {
+                const isOnline = r.status !== 'down';
+                if (isOnline) {
+                    anyOnline = true;
+                    vyosStatus.active_routers++;
+                } else {
+                    anyOffline = true;
+                }
+
+                const ifaces = r.interfaces || [];
+                vyosStatus.total_interfaces += ifaces.length;
+                for (const iface of ifaces) {
+                    if (iface.status === 'down') vyosStatus.shut_interfaces++;
+                    else vyosStatus.up_interfaces++;
+                    if (iface.qos && (iface.qos.latency || iface.qos.loss)) vyosStatus.active_qos_rules++;
+                }
+
+                vyosStatus.routers_summary.push({
+                    id: r.id,
+                    name: r.name,
+                    host: r.host,
+                    status: r.status,
+                    ifacesCount: ifaces.length
+                });
+            }
+            vyosStatus.status = anyOnline ? (anyOffline ? 'degraded' : 'connected') : 'offline';
         }
 
         // 3. Custom TCP Apps
@@ -9283,11 +9304,36 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             p50_latency_ms: 0,
             p95_latency_ms: 0
         };
+        let tcpApps: any[] = [];
+        let allStatuses: any[] = [];
         try {
-            const tcpConfig = tcpAppManager.getConfig();
-            const allStatuses = tcpAppManager.getAllAppsStatus();
-            customAppsStatus.total_apps = tcpConfig.applications?.length || 0;
-
+            if (tcpAppManager) {
+                const cfg = tcpAppManager.getConfig();
+                tcpApps = cfg?.applications || [];
+                allStatuses = tcpAppManager.getAllAppsStatus() || [];
+            }
+        } catch {}
+        if (tcpApps.length === 0) {
+            const tcpPaths = [
+                path.join(APP_CONFIG.configDir, 'custom-tcp-applications.json'),
+                path.join(PROJECT_ROOT, 'config', 'custom-tcp-applications.json'),
+                '/data/stigix/config/custom-tcp-applications.json',
+                '/app/config/custom-tcp-applications.json'
+            ];
+            for (const tp of tcpPaths) {
+                if (fs.existsSync(tp)) {
+                    try {
+                        const parsed = JSON.parse(fs.readFileSync(tp, 'utf8'));
+                        if (parsed && Array.isArray(parsed.applications) && parsed.applications.length > 0) {
+                            tcpApps = parsed.applications;
+                            break;
+                        }
+                    } catch {}
+                }
+            }
+        }
+        customAppsStatus.total_apps = tcpApps.length;
+        if (allStatuses.length > 0) {
             let totalLatency = 0;
             let latencyCount = 0;
             let allP50: number[] = [];
@@ -9318,14 +9364,15 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             if (allP95.length > 0) {
                 customAppsStatus.p95_latency_ms = Math.round((allP95.reduce((a, b) => a + b, 0) / allP95.length) * 10) / 10;
             }
-
-            customAppsStatus.status = customAppsStatus.total_apps > 0
-                ? (customAppsStatus.active_listeners > 0 || customAppsStatus.active_workloads > 0 ? 'running' : 'idle')
-                : 'ready';
-        } catch (err: any) {
-            customAppsStatus.status = 'error';
-            customAppsStatus.error = err.message;
+        } else if (tcpApps.length > 0) {
+            for (const app of tcpApps) {
+                if (app.startup?.startListener) customAppsStatus.active_listeners++;
+                if (app.startup?.startClientWorkload) customAppsStatus.active_workloads++;
+            }
         }
+        customAppsStatus.status = customAppsStatus.total_apps > 0
+            ? (customAppsStatus.active_listeners > 0 || customAppsStatus.active_workloads > 0 ? 'running' : 'idle')
+            : 'ready';
 
         // 4. Digital Experience (DEM) & Bandwidth
         let demStatus: any = {
@@ -9334,9 +9381,41 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
         };
         try {
             const targets = targetsManager ? targetsManager.getMergedTargets() : [];
-            demStatus.probes_count = targets.length;
-            demStatus.status = targets.length > 0 ? 'active' : 'ready';
+            demStatus.probes_count += targets.length;
         } catch {}
+        if (demStatus.probes_count === 0) {
+            const targetsPaths = [
+                path.join(APP_CONFIG.configDir, 'targets.json'),
+                path.join(PROJECT_ROOT, 'config', 'targets.json')
+            ];
+            for (const tp of targetsPaths) {
+                if (fs.existsSync(tp)) {
+                    try {
+                        const arr = JSON.parse(fs.readFileSync(tp, 'utf8'));
+                        if (Array.isArray(arr)) {
+                            demStatus.probes_count += arr.length;
+                            break;
+                        }
+                    } catch {}
+                }
+            }
+        }
+        const appCfgPaths = [
+            path.join(APP_CONFIG.configDir, 'applications-config.json'),
+            path.join(PROJECT_ROOT, 'config', 'applications-config.json')
+        ];
+        for (const ap of appCfgPaths) {
+            if (fs.existsSync(ap)) {
+                try {
+                    const arr = JSON.parse(fs.readFileSync(ap, 'utf8'));
+                    if (Array.isArray(arr)) {
+                        demStatus.probes_count += arr.length;
+                        break;
+                    }
+                } catch {}
+            }
+        }
+        demStatus.status = demStatus.probes_count > 0 ? 'active' : 'ready';
 
         let bandwidthStatus: any = {
             status: 'ready',
@@ -9389,11 +9468,18 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 total_bytes: totalMem,
                 used_bytes: usedMem,
                 free_bytes: freeMem,
+                total: totalMem,
+                used: usedMem,
+                free: freeMem,
                 usage_percent: Math.round((usedMem / totalMem) * 100)
             },
             disk,
             uptime_process: Math.round(process.uptime()),
             uptime_system: Math.round(os.uptime()),
+            uptime: {
+                process: Math.round(process.uptime()),
+                system: Math.round(os.uptime())
+            },
             mode: hasHostInterfaces ? 'Host Mode' : 'Bridge Mode'
         };
 

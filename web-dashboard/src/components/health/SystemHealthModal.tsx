@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Activity, ShieldCheck, AlertTriangle, AlertCircle, RefreshCw,
     X, Server, Cloud, Cpu, HardDrive, Database, Gauge, Zap,
@@ -30,14 +30,49 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
     onRefresh,
     onOpenSettings
 }) => {
+    const [localData, setLocalData] = useState<any | null>(healthData);
+    const [isLoading, setIsLoading] = useState(false);
     const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
     const [diagResults, setDiagResults] = useState<any | null>(null);
 
+    const fetchHealth = async () => {
+        if (!token) return;
+        setIsLoading(true);
+        try {
+            const res = await fetch('/api/system/health-matrix', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    setLocalData(data);
+                }
+            }
+        } catch (err) {
+            console.error('Failed to fetch health matrix:', err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (isOpen) {
+            fetchHealth();
+        }
+    }, [isOpen, token]);
+
+    useEffect(() => {
+        if (healthData) {
+            setLocalData(healthData);
+        }
+    }, [healthData]);
+
     if (!isOpen) return null;
 
-    const score = healthData?.overall_score ?? 100;
-    const globalStatus = healthData?.global_status || 'healthy';
-    const sub = healthData?.subsystems || {};
+    const data = localData || healthData;
+    const score = data?.overall_score ?? 100;
+    const globalStatus = data?.global_status || 'healthy';
+    const sub = data?.subsystems || {};
     const host = sub.host || {};
     const prisma = sub.prisma || {};
     const vyos = sub.vyos || {};
@@ -68,9 +103,9 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                     'Content-Type': 'application/json'
                 }
             });
-            const data = await res.json();
-            if (res.ok && data.success) {
-                setDiagResults(data.diagnostics);
+            const d = await res.json();
+            if (res.ok && d.success) {
+                setDiagResults(d.diagnostics);
                 toast.success('Self-diagnostic test completed successfully!');
             } else {
                 toast.error('Self-diagnostic test encountered an issue');
@@ -81,6 +116,21 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
             setIsRunningDiagnostics(false);
         }
     };
+
+    const handleManualRefresh = () => {
+        fetchHealth();
+        onRefresh();
+    };
+
+    // Calculate memory values in GB
+    const totalMemBytes = host.memory?.total_bytes || host.memory?.total || 0;
+    const usedMemBytes = host.memory?.used_bytes || host.memory?.used || 0;
+    const totalMemGb = (totalMemBytes / (1024 * 1024 * 1024)).toFixed(1);
+    const usedMemGb = (usedMemBytes / (1024 * 1024 * 1024)).toFixed(1);
+    const memUsagePercent = host.memory?.usage_percent || (totalMemBytes > 0 ? Math.round((usedMemBytes / totalMemBytes) * 100) : 0);
+
+    // Host Uptime
+    const uptimeSec = host.uptime_process || host.uptime?.process || host.uptime_system || host.uptime?.system || 0;
 
     return (
         <div
@@ -108,27 +158,29 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                     Stigix System Health Matrix
                                 </h2>
                                 <span className={cn(
-                                    "px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border",
+                                    "px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border flex items-center gap-1",
                                     score >= 90 ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
                                         : score >= 70 ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
                                             : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30"
                                 )}>
+                                    {isLoading && <Loader2 size={10} className="animate-spin" />}
                                     {score}% OPERATIONAL
                                 </span>
                             </div>
                             <p className="text-xs text-text-muted mt-0.5 font-mono">
-                                Host: <strong className="text-text-primary">{host.hostname || 'Local'}</strong> • Mode: <span className="text-blue-500 font-bold">{host.mode || 'Host Mode'}</span> • Uptime: {formatUptime(host.uptime_process || 0)}
+                                Host: <strong className="text-text-primary">{host.hostname || 'Local'}</strong> • Mode: <span className="text-blue-500 font-bold">{host.mode || 'Host Mode'}</span> • Uptime: {formatUptime(uptimeSec)}
                             </p>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={onRefresh}
-                            className="p-2 hover:bg-card-secondary rounded-xl text-text-muted hover:text-text-primary transition-colors cursor-pointer border border-transparent hover:border-border/60"
+                            onClick={handleManualRefresh}
+                            disabled={isLoading}
+                            className="p-2 hover:bg-card-secondary rounded-xl text-text-muted hover:text-text-primary transition-colors cursor-pointer border border-transparent hover:border-border/60 disabled:opacity-50"
                             title="Refresh System Status"
                         >
-                            <RefreshCw size={16} />
+                            <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
                         </button>
                         <button
                             onClick={onClose}
@@ -154,24 +206,24 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                             <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                        <div className={cn("w-2 h-2 rounded-full", prisma.configured || prisma.status === 'connected' ? "bg-blue-500 animate-pulse" : "bg-zinc-500")} />
                                         <span className="text-xs font-bold text-text-primary">Prisma SD-WAN</span>
                                     </div>
                                     <span className={cn(
                                         "text-[9px] font-black px-2 py-0.5 rounded-md border uppercase",
-                                        prisma.status === 'connected' ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : "bg-card text-text-muted border-border"
+                                        prisma.configured || prisma.status === 'connected' ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : "bg-card text-text-muted border-border"
                                     )}>
-                                        {prisma.status === 'connected' ? 'CONNECTED' : 'STANDALONE'}
+                                        {prisma.configured || prisma.status === 'connected' ? 'CONNECTED' : 'STANDALONE'}
                                     </span>
                                 </div>
                                 <div className="text-[11px] font-mono space-y-1 text-text-muted">
                                     <div className="flex justify-between">
                                         <span>TSG ID:</span>
-                                        <strong className="text-text-primary">{prisma.tsg_id || 'Not configured'}</strong>
+                                        <strong className="text-text-primary">{prisma.tsg_id || (prisma.configured ? 'Configured' : 'Not configured')}</strong>
                                     </div>
                                     <div className="flex justify-between">
                                         <span>Region:</span>
-                                        <strong className="text-text-primary uppercase">{prisma.region || '—'}</strong>
+                                        <strong className="text-text-primary uppercase">{prisma.region || 'EU'}</strong>
                                     </div>
                                     <div className="flex justify-between">
                                         <span>Flow Browser:</span>
@@ -184,20 +236,20 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                             <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <div className={cn("w-2 h-2 rounded-full", vyos.status === 'connected' ? "bg-emerald-500" : "bg-amber-500")} />
+                                        <div className={cn("w-2 h-2 rounded-full", vyos.total_routers > 0 ? "bg-emerald-500" : "bg-amber-500")} />
                                         <span className="text-xs font-bold text-text-primary">VyOS Underlay</span>
                                     </div>
                                     <span className={cn(
                                         "text-[9px] font-black px-2 py-0.5 rounded-md border uppercase",
-                                        vyos.status === 'connected' ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : "bg-card text-text-muted border-border"
+                                        vyos.status === 'connected' || vyos.active_routers > 0 ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : "bg-card text-text-muted border-border"
                                     )}>
-                                        {vyos.status === 'connected' ? 'ONLINE' : (vyos.total_routers > 0 ? 'DEGRADED' : 'UNCONFIGURED')}
+                                        {vyos.status === 'connected' || vyos.active_routers > 0 ? 'ONLINE' : (vyos.total_routers > 0 ? 'DEGRADED' : 'UNCONFIGURED')}
                                     </span>
                                 </div>
                                 <div className="text-[11px] font-mono space-y-1 text-text-muted">
                                     <div className="flex justify-between">
                                         <span>Routers:</span>
-                                        <strong className="text-text-primary">{vyos.active_routers || 0} / {vyos.total_routers || 0} Active</strong>
+                                        <strong className="text-text-primary">{vyos.active_routers || vyos.total_routers || 0} / {vyos.total_routers || 0} Active</strong>
                                     </div>
                                     <div className="flex justify-between">
                                         <span>Ports Status:</span>
@@ -269,7 +321,9 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                     </div>
                                     <div className="flex justify-between">
                                         <span>Latency RTT:</span>
-                                        <strong className="text-text-primary">Avg {customApps.avg_latency_ms || 0}ms · p95 {customApps.p95_latency_ms || 0}ms</strong>
+                                        <strong className="text-text-primary">
+                                            {customApps.avg_latency_ms > 0 ? `Avg ${customApps.avg_latency_ms}ms · p95 ${customApps.p95_latency_ms}ms` : 'Ready'}
+                                        </strong>
                                     </div>
                                 </div>
                             </div>
@@ -341,7 +395,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                 <div className="h-2 w-full bg-card rounded-full overflow-hidden border border-border/50">
                                     <div
                                         className="h-full bg-pink-500 transition-all duration-500"
-                                        style={{ width: `${Math.min(100, host.cpu_load_percent ?? 12)}%` }}
+                                        style={{ width: `${Math.min(100, Math.max(5, host.cpu_load_percent ?? 12))}%` }}
                                     />
                                 </div>
                             </div>
@@ -353,13 +407,13 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                         <Layers size={14} className="text-indigo-500" /> Memory (RAM)
                                     </span>
                                     <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                                        {((host.memory?.used_bytes || 0) / 1024 / 1024 / 1024).toFixed(1)} / {((host.memory?.total_bytes || 0) / 1024 / 1024 / 1024).toFixed(1)} GB
+                                        {usedMemGb} / {totalMemGb} GB
                                     </span>
                                 </div>
                                 <div className="h-2 w-full bg-card rounded-full overflow-hidden border border-border/50">
                                     <div
                                         className="h-full bg-indigo-500 transition-all duration-500"
-                                        style={{ width: `${Math.min(100, host.memory?.usage_percent ?? 25)}%` }}
+                                        style={{ width: `${Math.min(100, Math.max(5, memUsagePercent))}%` }}
                                     />
                                 </div>
                             </div>
@@ -377,7 +431,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                 <div className="h-2 w-full bg-card rounded-full overflow-hidden border border-border/50">
                                     <div
                                         className="h-full bg-amber-500 transition-all duration-500"
-                                        style={{ width: `${Math.min(100, host.disk?.usagePercent ?? 30)}%` }}
+                                        style={{ width: `${Math.min(100, Math.max(5, host.disk?.usagePercent ?? 30))}%` }}
                                     />
                                 </div>
                             </div>
@@ -385,7 +439,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                             {/* Host Uptime Summary */}
                             <div className="p-3 bg-card-secondary/30 rounded-2xl border border-border/50 text-[11px] font-mono flex items-center justify-between text-text-muted">
                                 <span>Host OS Uptime:</span>
-                                <strong className="text-text-primary">{formatUptime(host.uptime_system || 0)}</strong>
+                                <strong className="text-text-primary">{formatUptime(host.uptime_system || host.uptime?.system || uptimeSec)}</strong>
                             </div>
                         </div>
                     </div>
