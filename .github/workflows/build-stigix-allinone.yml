@@ -1,6 +1,7 @@
 name: Build and Push Stigix All-in-One
 run-name: >-
   ${{ github.event_name == 'push' && (
+      github.ref == 'refs/heads/main' && '🚀 Auto-Release main (Multi-Arch)' ||
       startsWith(github.ref, 'refs/tags/v') && format('🚀 Release {0}', github.ref_name) ||
       format('⚡ Build {0}', github.ref_name)
   ) || '🛠️ Manual Build' }}
@@ -27,6 +28,10 @@ on:
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: write
+  packages: write
 
 env:
   REGISTRY: docker.io
@@ -79,6 +84,9 @@ jobs:
     name: Build Stigix Image
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.version_to_stable == '')
+    outputs:
+      version: ${{ steps.tags.outputs.version }}
+      is_release: ${{ steps.tags.outputs.is_release }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -97,10 +105,11 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
       
-      - name: Determine Tags
+      - name: Determine Tags and Auto-Increment
         id: tags
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
+          
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/v}
             TAG_LIST="${{ env.IMAGE_NAME }}:$VERSION,${{ env.IMAGE_NAME }}:v$VERSION,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA"
@@ -111,10 +120,41 @@ jobs:
             fi
             echo "tags=$TAG_LIST" >> $GITHUB_OUTPUT
             echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
           elif [[ $GITHUB_REF == refs/heads/main ]]; then
-            BASELINE=$(cat VERSION 2>/dev/null || echo "2.0.0")
-            echo "tags=${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:stable,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA" >> $GITHUB_OUTPUT
-            echo "version=$BASELINE" >> $GITHUB_OUTPUT
+            # Check if current commit is already tagged
+            EXACT_TAG=$(git tag --points-at HEAD "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null | head -n 1)
+            if [ -n "$EXACT_TAG" ]; then
+              VERSION=${EXACT_TAG#v}
+              echo "ℹ️ Commit already tagged with $EXACT_TAG"
+            else
+              # Discover highest tag and increment patch version
+              LATEST_TAG=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname 2>/dev/null | head -n 1)
+              if [ -z "$LATEST_TAG" ]; then
+                BASELINE=$(cat VERSION 2>/dev/null || echo "2.0.0")
+                LATEST_TAG="v$BASELINE"
+              fi
+              VERSION_CLEAN=${LATEST_TAG#v}
+              MAJOR=$(echo "$VERSION_CLEAN" | cut -d. -f1)
+              MINOR=$(echo "$VERSION_CLEAN" | cut -d. -f2)
+              PATCH=$(echo "$VERSION_CLEAN" | cut -d. -f3 | cut -d- -f1)
+              NEXT_PATCH=$((PATCH + 1))
+              VERSION="$MAJOR.$MINOR.$NEXT_PATCH"
+              NEW_TAG="v$VERSION"
+              
+              echo "🚀 Auto-incrementing version to $VERSION ($NEW_TAG)"
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git tag -a "$NEW_TAG" -m "Automated Release $NEW_TAG on main push"
+              git push origin "$NEW_TAG" || echo "Tag push skipped or already exists"
+            fi
+            
+            MAJOR=$(echo $VERSION | cut -d. -f1)
+            MINOR=$(echo $VERSION | cut -d. -f2)
+            TAG_LIST="${{ env.IMAGE_NAME }}:$VERSION,${{ env.IMAGE_NAME }}:v$VERSION,${{ env.IMAGE_NAME }}:$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:v$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:$MAJOR,${{ env.IMAGE_NAME }}:v$MAJOR,${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:stable,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA"
+            echo "tags=$TAG_LIST" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
           elif [[ $GITHUB_REF == refs/heads/v2 ]]; then
             BASELINE=$(cat VERSION 2>/dev/null || echo "2.0.0-dev")
             BASELINE_CLEAN=${BASELINE%-dev}
@@ -122,6 +162,7 @@ jobs:
             DEV_VERSION="$BASELINE_CLEAN.dev$COMMIT_COUNT"
             echo "tags=${{ env.IMAGE_NAME }}:v2,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA,${{ env.IMAGE_NAME }}:$DEV_VERSION" >> $GITHUB_OUTPUT
             echo "version=$DEV_VERSION" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
           else
             BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr '/' '-')
             BASELINE=$(cat VERSION 2>/dev/null || echo "dev")
@@ -130,26 +171,18 @@ jobs:
             DEV_VERSION="$BASELINE_CLEAN-$BRANCH_NAME.dev$COMMIT_COUNT"
             echo "tags=${{ env.IMAGE_NAME }}:$BRANCH_NAME,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA,${{ env.IMAGE_NAME }}:$DEV_VERSION" >> $GITHUB_OUTPUT
             echo "version=$DEV_VERSION" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Determine Platforms
         id: plat
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.build_full }}" == "true" ]]; then
+          if [[ "${{ steps.tags.outputs.is_release }}" == "true" || "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.build_full }}" == "true" || $GITHUB_REF == refs/heads/main || $GITHUB_REF == refs/tags/* ]]; then
             echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-            echo "🚀 FULL BUILD: AMD64 + ARM64 (Manual)"
-          elif [[ $GITHUB_REF == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-            if [[ "$VERSION" == *"-patch."* ]]; then
-              echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-              echo "⚡ FAST PATCH BUILD: AMD64 ONLY ($VERSION)"
-            else
-              echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-              echo "🌍 RELEASE BUILD: AMD64 + ARM64 ($VERSION)"
-            fi
+            echo "🌍 RELEASE MULTI-ARCH BUILD: AMD64 + ARM64"
           else
             echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-            echo "⚡ FAST BUILD: AMD64 ONLY (Main/Branch)"
+            echo "⚡ FAST BUILD: AMD64 ONLY (v2/dev branch)"
           fi
 
       - name: Build and push Stigix All-in-One
@@ -176,28 +209,26 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [build]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: Extract version
-        id: version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        with:
+          fetch-depth: 0
       
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: Release v${{ steps.version.outputs.version }}
+          tag_name: v${{ needs.build.outputs.version }}
+          name: Release v${{ needs.build.outputs.version }}
           body: |
-            ## Stigix All-in-One v${{ steps.version.outputs.version }}
+            ## Stigix All-in-One v${{ needs.build.outputs.version }}
             
-            ### Docker Images
+            ### Multi-Architecture Docker Images (AMD64 + ARM64)
             ```bash
-            docker pull jsuzanne/stigix:${{ steps.version.outputs.version }}
+            docker pull jsuzanne/stigix:${{ needs.build.outputs.version }}
             docker pull jsuzanne/stigix:latest
+            docker pull jsuzanne/stigix:stable
             ```
             
             ### Fast Deployment
@@ -206,7 +237,7 @@ jobs:
             ```
             
             ### What's Changed
-            See [CHANGELOG.md](https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md) for full release details.
+            Automated production build with full multi-platform support (AMD64 + ARM64).
           generate_release_notes: true
           draft: false
-          prerelease: ${{ contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'dev') }}
+          prerelease: false
