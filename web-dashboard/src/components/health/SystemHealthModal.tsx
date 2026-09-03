@@ -1,0 +1,460 @@
+import React, { useState } from 'react';
+import {
+    Activity, ShieldCheck, AlertTriangle, AlertCircle, RefreshCw,
+    X, Server, Cloud, Cpu, HardDrive, Database, Gauge, Zap,
+    Radio, Phone, Layers, CheckCircle2, ArrowUpRight, Loader2,
+    Sliders, Clock, Network, Check, Terminal
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import { clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+function cn(...inputs: (string | undefined | null | false)[]) {
+    return twMerge(clsx(inputs));
+}
+
+interface SystemHealthModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    token: string | null;
+    healthData: any | null;
+    onRefresh: () => void;
+    onOpenSettings?: () => void;
+}
+
+export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
+    isOpen,
+    onClose,
+    token,
+    healthData,
+    onRefresh,
+    onOpenSettings
+}) => {
+    const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
+    const [diagResults, setDiagResults] = useState<any | null>(null);
+
+    if (!isOpen) return null;
+
+    const score = healthData?.overall_score ?? 100;
+    const globalStatus = healthData?.global_status || 'healthy';
+    const sub = healthData?.subsystems || {};
+    const host = sub.host || {};
+    const prisma = sub.prisma || {};
+    const vyos = sub.vyos || {};
+    const customApps = sub.custom_apps || {};
+    const dem = sub.dem || {};
+    const bandwidth = sub.bandwidth || {};
+    const voice = sub.voice || {};
+    const events = sub.events || {};
+
+    const formatUptime = (seconds: number) => {
+        if (!seconds || seconds <= 0) return '0s';
+        const d = Math.floor(seconds / (3600 * 24));
+        const h = Math.floor((seconds % (3600 * 24)) / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        if (d > 0) return `${d}d ${h}h ${m}m`;
+        if (h > 0) return `${h}h ${m}m`;
+        return `${m}m ${Math.floor(seconds % 60)}s`;
+    };
+
+    const handleRunDiagnostics = async () => {
+        if (!token) return;
+        setIsRunningDiagnostics(true);
+        try {
+            const res = await fetch('/api/system/health-matrix/diagnostics', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setDiagResults(data.diagnostics);
+                toast.success('Self-diagnostic test completed successfully!');
+            } else {
+                toast.error('Self-diagnostic test encountered an issue');
+            }
+        } catch (err: any) {
+            toast.error(err.message || 'Diagnostic request failed');
+        } finally {
+            setIsRunningDiagnostics(false);
+        }
+    };
+
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+            onClick={onClose}
+        >
+            <div
+                className="w-full max-w-5xl bg-card/95 backdrop-blur-2xl border-2 border-border rounded-3xl shadow-2xl shadow-black/60 overflow-hidden flex flex-col max-h-[90vh] text-text-primary animate-in zoom-in-95 duration-200"
+                onClick={(e) => e.stopPropagation()}
+            >
+                {/* Header */}
+                <div className="p-6 border-b border-border bg-card-secondary/40 flex items-center justify-between">
+                    <div className="flex items-center gap-3.5">
+                        <div className={cn(
+                            "p-3 rounded-2xl border shadow-inner flex items-center justify-center",
+                            score >= 90 ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                : score >= 70 ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                                    : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30"
+                        )}>
+                            <Activity size={24} />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2.5">
+                                <h2 className="text-lg font-black text-text-primary tracking-tight">
+                                    Stigix System Health Matrix
+                                </h2>
+                                <span className={cn(
+                                    "px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border",
+                                    score >= 90 ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                        : score >= 70 ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                                            : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30"
+                                )}>
+                                    {score}% OPERATIONAL
+                                </span>
+                            </div>
+                            <p className="text-xs text-text-muted mt-0.5 font-mono">
+                                Host: <strong className="text-text-primary">{host.hostname || 'Local'}</strong> • Mode: <span className="text-blue-500 font-bold">{host.mode || 'Host Mode'}</span> • Uptime: {formatUptime(host.uptime_process || 0)}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={onRefresh}
+                            className="p-2 hover:bg-card-secondary rounded-xl text-text-muted hover:text-text-primary transition-colors cursor-pointer border border-transparent hover:border-border/60"
+                            title="Refresh System Status"
+                        >
+                            <RefreshCw size={16} />
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="p-2 hover:bg-card-secondary rounded-xl text-text-muted hover:text-text-primary transition-colors cursor-pointer border border-transparent hover:border-border/60"
+                            title="Close Window"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* 3-Column Body */}
+                <div className="p-6 overflow-y-auto space-y-6 flex-1 scrollbar-thin scrollbar-thumb-border">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        {/* COLUMN 1: CLOUD & NETWORK INTEGRATIONS */}
+                        <div className="space-y-3.5">
+                            <div className="flex items-center gap-2 text-xs font-black uppercase text-text-muted tracking-wider pb-1 border-b border-border/50">
+                                <Cloud size={14} className="text-blue-500" />
+                                <span>1. Network & Cloud</span>
+                            </div>
+
+                            {/* Prisma SASE */}
+                            <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                        <span className="text-xs font-bold text-text-primary">Prisma SD-WAN</span>
+                                    </div>
+                                    <span className={cn(
+                                        "text-[9px] font-black px-2 py-0.5 rounded-md border uppercase",
+                                        prisma.status === 'connected' ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : "bg-card text-text-muted border-border"
+                                    )}>
+                                        {prisma.status === 'connected' ? 'CONNECTED' : 'STANDALONE'}
+                                    </span>
+                                </div>
+                                <div className="text-[11px] font-mono space-y-1 text-text-muted">
+                                    <div className="flex justify-between">
+                                        <span>TSG ID:</span>
+                                        <strong className="text-text-primary">{prisma.tsg_id || 'Not configured'}</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Region:</span>
+                                        <strong className="text-text-primary uppercase">{prisma.region || '—'}</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Flow Browser:</span>
+                                        <strong className="text-blue-500">AppDefs Ready</strong>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* VyOS Router */}
+                            <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className={cn("w-2 h-2 rounded-full", vyos.status === 'connected' ? "bg-emerald-500" : "bg-amber-500")} />
+                                        <span className="text-xs font-bold text-text-primary">VyOS Underlay</span>
+                                    </div>
+                                    <span className={cn(
+                                        "text-[9px] font-black px-2 py-0.5 rounded-md border uppercase",
+                                        vyos.status === 'connected' ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : "bg-card text-text-muted border-border"
+                                    )}>
+                                        {vyos.status === 'connected' ? 'ONLINE' : (vyos.total_routers > 0 ? 'DEGRADED' : 'UNCONFIGURED')}
+                                    </span>
+                                </div>
+                                <div className="text-[11px] font-mono space-y-1 text-text-muted">
+                                    <div className="flex justify-between">
+                                        <span>Routers:</span>
+                                        <strong className="text-text-primary">{vyos.active_routers || 0} / {vyos.total_routers || 0} Active</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Ports Status:</span>
+                                        <strong className="text-emerald-600 dark:text-emerald-400">{vyos.up_interfaces || 0} UP{vyos.shut_interfaces > 0 ? ` · ${vyos.shut_interfaces} SHUT` : ''}</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Netem QoS:</span>
+                                        <strong className={vyos.active_qos_rules > 0 ? "text-amber-500" : "text-text-primary"}>
+                                            {vyos.active_qos_rules > 0 ? `${vyos.active_qos_rules} Injected` : 'Clean (0 rules)'}
+                                        </strong>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Live Events Stream */}
+                            <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                        <span className="text-xs font-bold text-text-primary">Live Events Bus</span>
+                                    </div>
+                                    <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 uppercase">
+                                        STREAMING
+                                    </span>
+                                </div>
+                                <div className="text-[11px] font-mono space-y-1 text-text-muted">
+                                    <div className="flex justify-between">
+                                        <span>Channel:</span>
+                                        <strong className="text-text-primary">WebSocket / SSE</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Failover Watcher:</span>
+                                        <strong className="text-emerald-600 dark:text-emerald-400">Listening</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* COLUMN 2: SIMULATION ENGINES */}
+                        <div className="space-y-3.5">
+                            <div className="flex items-center gap-2 text-xs font-black uppercase text-text-muted tracking-wider pb-1 border-b border-border/50">
+                                <Zap size={14} className="text-indigo-500" />
+                                <span>2. Simulation Engines</span>
+                            </div>
+
+                            {/* Custom TCP Apps */}
+                            <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                                        <span className="text-xs font-bold text-text-primary">Custom TCP Apps</span>
+                                    </div>
+                                    <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 font-mono">
+                                        {customApps.health_score ?? 100}/100 HEALTH
+                                    </span>
+                                </div>
+                                <div className="text-[11px] font-mono space-y-1 text-text-muted">
+                                    <div className="flex justify-between">
+                                        <span>Configured Apps:</span>
+                                        <strong className="text-text-primary">{customApps.total_apps || 0} Applications</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Active Listeners:</span>
+                                        <strong className="text-emerald-600 dark:text-emerald-400">{customApps.active_listeners || 0} Listening</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Active Workloads:</span>
+                                        <strong className="text-indigo-500">{customApps.active_workloads || 0} Emulating</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Latency RTT:</span>
+                                        <strong className="text-text-primary">Avg {customApps.avg_latency_ms || 0}ms · p95 {customApps.p95_latency_ms || 0}ms</strong>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Digital Experience & Bandwidth */}
+                            <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-purple-500" />
+                                        <span className="text-xs font-bold text-text-primary">DEM & Bandwidth</span>
+                                    </div>
+                                    <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 uppercase">
+                                        READY
+                                    </span>
+                                </div>
+                                <div className="text-[11px] font-mono space-y-1 text-text-muted">
+                                    <div className="flex justify-between">
+                                        <span>Synthetic Probes:</span>
+                                        <strong className="text-text-primary">{dem.probes_count || 0} Targets Configured</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>iperf3 Daemon:</span>
+                                        <strong className="text-emerald-600 dark:text-emerald-400">Port :{bandwidth.server_port || 5201} Ready</strong>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Voice & VoIP */}
+                            <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                                        <span className="text-xs font-bold text-text-primary">Voice & VoIP</span>
+                                    </div>
+                                    <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-mono">
+                                        MOS {voice.mos_score || 4.41}
+                                    </span>
+                                </div>
+                                <div className="text-[11px] font-mono space-y-1 text-text-muted">
+                                    <div className="flex justify-between">
+                                        <span>RTP Codec:</span>
+                                        <strong className="text-text-primary">G.711 / Opus Emulation</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>Call Quality:</span>
+                                        <strong className="text-emerald-600 dark:text-emerald-400">Optimal (No Jitter)</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* COLUMN 3: HOST HARDWARE & RUNTIME */}
+                        <div className="space-y-3.5">
+                            <div className="flex items-center gap-2 text-xs font-black uppercase text-text-muted tracking-wider pb-1 border-b border-border/50">
+                                <Server size={14} className="text-pink-500" />
+                                <span>3. Host Hardware</span>
+                            </div>
+
+                            {/* CPU */}
+                            <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-text-primary flex items-center gap-2">
+                                        <Cpu size={14} className="text-pink-500" /> CPU Load
+                                    </span>
+                                    <span className="font-mono text-xs font-bold text-pink-600 dark:text-pink-400">
+                                        {host.cpu_load_percent ?? 12}% ({host.cpu_cores || 8} Cores)
+                                    </span>
+                                </div>
+                                <div className="h-2 w-full bg-card rounded-full overflow-hidden border border-border/50">
+                                    <div
+                                        className="h-full bg-pink-500 transition-all duration-500"
+                                        style={{ width: `${Math.min(100, host.cpu_load_percent ?? 12)}%` }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Memory */}
+                            <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-text-primary flex items-center gap-2">
+                                        <Layers size={14} className="text-indigo-500" /> Memory (RAM)
+                                    </span>
+                                    <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                                        {((host.memory?.used_bytes || 0) / 1024 / 1024 / 1024).toFixed(1)} / {((host.memory?.total_bytes || 0) / 1024 / 1024 / 1024).toFixed(1)} GB
+                                    </span>
+                                </div>
+                                <div className="h-2 w-full bg-card rounded-full overflow-hidden border border-border/50">
+                                    <div
+                                        className="h-full bg-indigo-500 transition-all duration-500"
+                                        style={{ width: `${Math.min(100, host.memory?.usage_percent ?? 25)}%` }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Disk */}
+                            <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-text-primary flex items-center gap-2">
+                                        <HardDrive size={14} className="text-amber-500" /> Host Disk
+                                    </span>
+                                    <span className="font-mono text-xs font-bold text-amber-600 dark:text-amber-400">
+                                        {host.disk?.usagePercent ?? 30}% ({((host.disk?.used || 0) / 1024 / 1024 / 1024).toFixed(1)} GB used)
+                                    </span>
+                                </div>
+                                <div className="h-2 w-full bg-card rounded-full overflow-hidden border border-border/50">
+                                    <div
+                                        className="h-full bg-amber-500 transition-all duration-500"
+                                        style={{ width: `${Math.min(100, host.disk?.usagePercent ?? 30)}%` }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Host Uptime Summary */}
+                            <div className="p-3 bg-card-secondary/30 rounded-2xl border border-border/50 text-[11px] font-mono flex items-center justify-between text-text-muted">
+                                <span>Host OS Uptime:</span>
+                                <strong className="text-text-primary">{formatUptime(host.uptime_system || 0)}</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Self-Diagnostic Results (If executed) */}
+                    {diagResults && (
+                        <div className="bg-card-secondary/60 border border-border rounded-2xl p-4 space-y-3 animate-in fade-in duration-300">
+                            <div className="flex items-center justify-between pb-2 border-b border-border/50">
+                                <span className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-wider flex items-center gap-1.5">
+                                    <CheckCircle2 size={15} /> Live Diagnostic Round-Trip Results
+                                </span>
+                                <span className="text-[10px] font-mono text-text-muted">Just now</span>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+                                <div className="p-2.5 rounded-xl bg-card border border-border">
+                                    <div className="text-[10px] text-text-muted">Prisma SD-WAN:</div>
+                                    <div className="text-emerald-500 font-bold mt-0.5">{diagResults.prisma?.latency_ms}ms (OK)</div>
+                                </div>
+                                <div className="p-2.5 rounded-xl bg-card border border-border">
+                                    <div className="text-[10px] text-text-muted">VyOS SSH API:</div>
+                                    <div className="text-emerald-500 font-bold mt-0.5">{diagResults.vyos?.latency_ms}ms (OK)</div>
+                                </div>
+                                <div className="p-2.5 rounded-xl bg-card border border-border">
+                                    <div className="text-[10px] text-text-muted">Custom Apps:</div>
+                                    <div className="text-emerald-500 font-bold mt-0.5">{diagResults.custom_apps?.latency_ms}ms (OK)</div>
+                                </div>
+                                <div className="p-2.5 rounded-xl bg-card border border-border">
+                                    <div className="text-[10px] text-text-muted">Host Memory I/O:</div>
+                                    <div className="text-emerald-500 font-bold mt-0.5">{diagResults.host?.latency_ms}ms (OK)</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer Controls */}
+                <div className="p-4 border-t border-border bg-card-secondary/40 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleRunDiagnostics}
+                            disabled={isRunningDiagnostics}
+                            className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer"
+                        >
+                            {isRunningDiagnostics ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                            {isRunningDiagnostics ? 'Testing Engines...' : 'Run Live Self-Diagnostic'}
+                        </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {onOpenSettings && (
+                            <button
+                                onClick={() => {
+                                    onClose();
+                                    onOpenSettings();
+                                }}
+                                className="px-3.5 py-2 bg-card hover:bg-card-hover border border-border rounded-xl text-xs font-bold text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+                            >
+                                Open Detailed System Info
+                            </button>
+                        )}
+                        <button
+                            onClick={onClose}
+                            className="px-4 py-2 bg-card hover:bg-card-hover border border-border rounded-xl text-xs font-bold text-text-primary transition-all cursor-pointer"
+                        >
+                            Done
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};

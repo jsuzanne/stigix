@@ -13,6 +13,8 @@ import Speedtest from './Speedtest';
 import Topology from './Topology';
 import LiveEvents from './LiveEvents';
 import { CustomApps } from './CustomApps';
+import { SystemHealthBadge } from './components/health/SystemHealthBadge';
+import { SystemHealthModal } from './components/health/SystemHealthModal';
 import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -139,6 +141,9 @@ export default function App() {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [registryStatus, setRegistryStatus] = useState<any>(null);
   const [uiConfig, setUiConfig] = useState<{ refreshInterval: number, maxCaptures: number, globalScoreTypes?: string[] }>({ refreshInterval: 1000, maxCaptures: 10 });
+  const [healthData, setHealthData] = useState<any | null>(null);
+  const [isHealthLoading, setIsHealthLoading] = useState(false);
+  const [showHealthModal, setShowHealthModal] = useState(false);
 
 
   // Rate Calculation State - Use Refs to avoid stale closures in setInterval
@@ -603,6 +608,19 @@ export default function App() {
     } catch (e) { }
   };
 
+  const fetchHealthMatrix = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/system/health-matrix', { headers: authHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setHealthData(data);
+        }
+      }
+    } catch (e) { }
+  };
+
 
 
   // One-time initialization on login — does NOT re-run on tab changes
@@ -619,12 +637,18 @@ export default function App() {
     fetchSiteInfo();
     fetchHistory();
     fetchFeatures();
+    fetchHealthMatrix();
 
     // Core 3s polling — always on, not restarted on tab changes
     const interval = setInterval(() => {
       fetchDashboardData();
       fetchTrafficStatus();
     }, 3000);
+
+    // Health Matrix polling every 10s
+    const healthInterval = setInterval(() => {
+      fetchHealthMatrix();
+    }, 10000);
 
     // History refresh every 60s silently (no spinner, no chart flash)
     const historyInterval = setInterval(() => {
@@ -645,6 +669,7 @@ export default function App() {
 
     return () => {
       clearInterval(interval);
+      clearInterval(healthInterval);
       clearInterval(historyInterval);
       clearInterval(connectivityInterval);
       clearInterval(maintenanceInterval);
@@ -729,6 +754,12 @@ export default function App() {
 
 
         <div className="flex gap-4 items-center">
+          <SystemHealthBadge
+            healthData={healthData}
+            isLoading={isHealthLoading}
+            onClick={() => setShowHealthModal(true)}
+          />
+
           <span className="text-sm font-medium text-text-secondary">{username}</span>
 
           <button
@@ -1576,6 +1607,18 @@ export default function App() {
       {view === 'custom_apps' && <CustomApps token={token!} />}
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
+
+      <SystemHealthModal
+        isOpen={showHealthModal}
+        onClose={() => setShowHealthModal(false)}
+        token={token}
+        healthData={healthData}
+        onRefresh={fetchHealthMatrix}
+        onOpenSettings={() => {
+          setView('settings');
+          setInitialSettingsTab('system');
+        }}
+      />
     </div>
   );
 }
