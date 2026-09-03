@@ -9424,10 +9424,18 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
         };
 
         // 5. Voice & VoIP
+        let voiceActive = false;
+        try {
+            if (fs.existsSync(VOICE_CONFIG_FILE)) {
+                const voiceCfg = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
+                voiceActive = !!(voiceCfg?.control?.enabled);
+            }
+        } catch {}
+
         let voiceStatus: any = {
-            status: 'ready',
+            status: voiceActive ? 'active' : 'ready',
             mos_score: 4.41,
-            active: !!globalVoiceStatus
+            active: voiceActive
         };
 
         // 6. Live Events / Event Stream
@@ -10800,7 +10808,10 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     const iotPending = provisioningManager.hasUnpublishedChanges('iot-config', readJson(IOT_DEVICES_FILE));
     const customTcpPending = provisioningManager.hasUnpublishedChanges('custom-tcp-apps', readJson(path.join(APP_CONFIG.configDir, 'custom-tcp-applications.json')));
 
+    const isLeader = registryManager ? registryManager.isLeader() : false;
+
     res.json({
+        is_leader: isLeader,
         state: provisioningManager.getState(),
         manifest: provisioningManager.getManifest(),
         pending: {

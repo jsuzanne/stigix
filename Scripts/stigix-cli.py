@@ -2323,9 +2323,16 @@ def cmd_provision(args):
         pending = r.get("pending", {})
         is_enabled = state.get("enabled", False)
 
+        is_leader = r.get("is_leader", True)
+        # Check mesh leader status as fallback if needed
+        mesh_status = api_get("/api/mesh/leader")
+        if mesh_status and "isLeader" in mesh_status:
+            is_leader = mesh_status.get("isLeader", is_leader)
+
         hdr("━━ GLOBAL PROVISIONING STATUS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         status_text = c("1;32", "🟢 ENABLED") if is_enabled else c("1;31", "🔴 DISABLED")
-        print(f"  Status       : {status_text}")
+        role_text = c("1;35", "👑 LEADER") if is_leader else c("1;36", "🔗 PEER NODE")
+        print(f"  Status       : {status_text}  |  Node Role: {role_text}")
         
         applied_revs = state.get("appliedRevisions", {})
         bundles = manifest.get("bundles", [])
@@ -2351,9 +2358,6 @@ def cmd_provision(args):
             applied = applied_revs.get(b_type, {})
             app_rev = applied.get("revision", "-") if isinstance(applied, dict) else (applied if applied else "-")
             
-            has_pending = pending.get(pending_key, False)
-            pending_str = c("1;33", "⚠ Modified (Unpublished)") if has_pending else c("2;37", "None")
-            
             if pub_rev != "-" and app_rev != "-" and str(pub_rev) == str(app_rev):
                 sync_badge = c("1;32", f"✓ rev {app_rev}")
             elif app_rev != "-":
@@ -2361,20 +2365,35 @@ def cmd_provision(args):
             else:
                 sync_badge = c("2;37", "—")
 
+            if is_leader:
+                has_pending = pending.get(pending_key, False)
+                status_col = c("1;33", "⚠ Modified (Unpublished)") if has_pending else c("2;37", "None")
+            else:
+                # On peer nodes, show sync state against published manifest
+                if pub_rev != "-" and app_rev != "-" and str(pub_rev) == str(app_rev):
+                    status_col = c("1;32", "✓ Synced from Leader")
+                elif pub_rev != "-" and str(pub_rev) != str(app_rev):
+                    status_col = c("1;33", "⏳ Sync in progress")
+                else:
+                    status_col = c("2;37", "— Synced")
+
             rows.append([
                 label,
                 str(pub_rev) if pub_rev != "-" else "—",
                 str(item_count) if item_count != "-" else "—",
                 sync_badge,
-                pending_str
+                status_col
             ])
 
-        table(["Bundle", "Published Rev", "Items", "Local Applied", "Pending on Leader"], rows)
+        col_header = "Pending on Leader" if is_leader else "Peer Sync Status"
+        table(["Bundle", "Published Rev", "Items", "Local Applied", col_header], rows)
 
         if not is_enabled:
             dim("\n  Tip: Enable provisioning with 'provision enable' or 'provision on'")
-        elif any(pending.values()):
+        elif is_leader and any(pending.values()):
             dim("\n  Tip: Publish modified bundles to all connected peers with 'provision publish <type|all>'")
+        elif not is_leader:
+            dim("\n  Info: Operating in Peer mode. Configurations are synchronized automatically from the Leader.")
 
     elif sub in ("on", "enable", "start"):
         r = api_post("/api/provisioning/config", {"enabled": True})
@@ -4309,33 +4328,52 @@ def cmd_iot(args):
 
 def _print_app_status(aid):
     r = api_get(f"/api/custom-tcp-apps/{aid}/status")
-    if not r or not r.get("success"):
+    if not r or (r.get("success") is False and "appId" not in r and "appName" not in r):
         err(f"Application '{aid}' not found or unreachable")
         return
     app = r.get("app", {})
     lst = r.get("listener", {})
     cli = r.get("clientWorkload", {})
     m = r.get("metrics", {})
-    hdr(f"━━ Custom TCP App: {app.get('name', aid)} ({aid}) ━━━━━━━━━━━━━━━━━━")
-    lst_state = lst.get("state", "stopped")
-    cli_state = cli.get("state", "stopped")
-    port = lst.get("port") or app.get("listener", {}).get("port", "?")
-    print(f"  Listener State   : {status_badge(lst_state)} on port {port} ({lst.get('activeConnections', 0)} active conns)")
+
+    app_name = app.get("name") or r.get("appName", aid)
+    app_id = app.get("id") or r.get("appId", aid)
+    lst_state = lst.get("state") or r.get("listenerState", "stopped")
+    cli_state = cli.get("state") or ("running" if r.get("clientWorkloadRunning") else "stopped")
+    port = lst.get("port") or r.get("port") or app.get("listener", {}).get("port", "?")
+    active_in = lst.get("activeConnections", r.get("activeIncomingSessions", 0))
+    active_out = cli.get("activeSessions", r.get("activeOutgoingSessions", 0))
+
+    hdr(f"━━ Custom TCP App: {app_name} ({app_id}) ━━━━━━━━━━━━━━━━━━")
+    lst_display = "LISTENING" if lst_state in ("listening", "running") else lst_state.upper()
+    print(f"  Listener State   : {status_badge(lst_display)} on port {port} ({active_in} active conns)")
     print(f"  Server Mode      : {app.get('serverBehavior', {}).get('mode', 'echo')}")
-    print(f"  Client State     : {status_badge(cli_state)} towards {len(app.get('peers', []))} peers ({cli.get('activeSessions', 0)} active sessions)")
+    peers_list = app.get("peers", [])
+    cli_display = "RUNNING" if cli_state == "running" else cli_state.upper()
+    print(f"  Client State     : {status_badge(cli_display)} towards {len(peers_list)} peers ({active_out} active sessions)")
     cli_defs = app.get("clientDefaults", {})
-    print(f"  Workload Mode    : {cli_defs.get('mode', 'persistent_request_reply')} ({cli_defs.get('connectionsPerPeer', 1)} conn/peer @ {cli_defs.get('intervalMs', 1000)}ms)")
+    if cli_defs:
+        print(f"  Workload Mode    : {cli_defs.get('mode', 'persistent_request_reply')} ({cli_defs.get('connectionsPerPeer', 1)} conn/peer @ {cli_defs.get('intervalMs', 1000)}ms)")
     
     rtt = m.get("rtt", {})
-    if rtt and rtt.get("count", 0) > 0:
-        print(f"  RTT Latency      : avg={rtt.get('avg', 0):.2f}ms | p50={rtt.get('p50', 0):.2f}ms | p95={rtt.get('p95', 0):.2f}ms | min={rtt.get('min', 0):.2f}ms | max={rtt.get('max', 0):.2f}ms")
+    avg_rtt = r.get("avgRttMs") or (rtt.get("avg") if isinstance(rtt, dict) else 0) or 0
+    p50_rtt = r.get("p50RttMs") or (rtt.get("p50") if isinstance(rtt, dict) else 0) or 0
+    p95_rtt = r.get("p95RttMs") or (rtt.get("p95") if isinstance(rtt, dict) else 0) or 0
+    if avg_rtt > 0 or p50_rtt > 0 or p95_rtt > 0:
+        print(f"  RTT Latency      : avg={avg_rtt:.2f}ms | p50={p50_rtt:.2f}ms | p95={p95_rtt:.2f}ms")
     else:
         print(f"  RTT Latency      : No samples yet")
     
-    tput = m.get("throughput", {})
-    print(f"  Traffic (Tx/Rx)  : {m.get('txPackets', 0)} sent ({m.get('txBytes', 0)} B) / {m.get('rxPackets', 0)} rcvd ({m.get('rxBytes', 0)} B)")
-    print(f"  Bitrate          : Tx {tput.get('txKbps', 0):.2f} Kbps | Rx {tput.get('rxKbps', 0):.2f} Kbps")
-    print(f"  Errors / Timeouts: {m.get('errors', 0)} errors, {m.get('timeouts', 0)} timeouts, {m.get('rejectedHandshakes', 0)} rejected")
+    tx_b = r.get("totalTxBytes") or m.get("txBytes", 0)
+    rx_b = r.get("totalRxBytes") or m.get("rxBytes", 0)
+    tx_req = r.get("totalRequests") or m.get("txPackets", 0)
+    rx_resp = r.get("totalResponses") or m.get("rxPackets", 0)
+    print(f"  Traffic (Tx/Rx)  : {tx_req} sent ({tx_b} B) / {rx_resp} rcvd ({rx_b} B)")
+    
+    errs = r.get("totalErrors") or m.get("errors", 0)
+    timeouts = r.get("totalTimeouts") or m.get("timeouts", 0)
+    health = r.get("health", "healthy")
+    print(f"  Health / Errors  : {status_badge(health.upper())} | {errs} errors, {timeouts} timeouts")
     print()
 
 
@@ -4358,10 +4396,10 @@ def cmd_custom_tcp_app(args):
                 status_res = api_get(f"/api/custom-tcp-apps/{aid}/status")
                 lst_status = "STOPPED"
                 cli_status = "STOPPED"
-                if status_res and status_res.get("success"):
-                    lst_state = status_res.get("listener", {}).get("state", "stopped")
-                    lst_status = "RUNNING" if lst_state == "running" else lst_state.upper()
-                    cli_state = status_res.get("clientWorkload", {}).get("state", "stopped")
+                if status_res:
+                    lst_state = status_res.get("listener", {}).get("state") or status_res.get("listenerState", "stopped")
+                    lst_status = "RUNNING" if lst_state in ("running", "listening") else lst_state.upper()
+                    cli_state = status_res.get("clientWorkload", {}).get("state") or ("running" if status_res.get("clientWorkloadRunning") else "stopped")
                     cli_status = "RUNNING" if cli_state == "running" else cli_state.upper()
                 rows.append([
                     aid[:16], name[:20], port, srv_mode, cli_mode, peers_cnt,

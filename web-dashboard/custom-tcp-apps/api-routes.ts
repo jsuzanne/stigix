@@ -267,12 +267,24 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
     });
 
     // POST /api/custom-tcp-apps/:id/peers/:peerId/test — Test single-shot handshake to peer
-    router.post('/:id/peers/:peerId/test', async (req: Request, res: Response) => {
+    const testPeerHandler = async (req: Request, res: Response) => {
         try {
             const result = await tcpAppManager.testPeer(req.params.id, req.params.peerId);
             res.json(result);
         } catch (err: any) {
-            res.status(400).json({ error: err.message });
+            res.status(400).json({ success: false, error: err.message });
+        }
+    };
+    router.post('/:id/peers/:peerId/test', testPeerHandler);
+    router.post('/:id/test-peer/:peerId', testPeerHandler);
+
+    // POST /api/custom-tcp-apps/:id/metrics/reset — Reset runtime metrics
+    router.post('/:id/metrics/reset', (req: Request, res: Response) => {
+        try {
+            tcpAppManager.resetMetrics(req.params.id);
+            res.json({ success: true });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
         }
     });
 
@@ -280,9 +292,49 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
     router.get('/:id/status', (req: Request, res: Response) => {
         try {
             const metrics = tcpAppManager.getAppStatus(req.params.id);
-            res.json(metrics);
+            const file = tcpAppManager.getConfig();
+            const app = file?.applications?.find(a => a.id === req.params.id || a.id === metrics.appId || a.name.toLowerCase() === req.params.id.toLowerCase());
+            const inboundSessions = tcpAppManager.getIncomingSessions(req.params.id);
+            const outboundSessions = tcpAppManager.getOutgoingSessions(req.params.id);
+
+            res.json({
+                success: true,
+                ...metrics,
+                app: app || { id: metrics.appId, name: metrics.appName, listener: { port: metrics.port } },
+                listener: {
+                    state: metrics.listenerState,
+                    port: metrics.port,
+                    activeConnections: metrics.activeIncomingSessions,
+                    error: metrics.listenerError
+                },
+                clientWorkload: {
+                    state: metrics.clientWorkloadRunning ? 'running' : 'stopped',
+                    activeSessions: metrics.activeOutgoingSessions
+                },
+                inboundSessions,
+                outboundSessions,
+                metrics: {
+                    rtt: {
+                        avg: metrics.avgRttMs,
+                        p50: metrics.p50RttMs,
+                        p95: metrics.p95RttMs,
+                        count: (metrics.totalResponses || 0)
+                    },
+                    throughput: {
+                        txKbps: 0,
+                        rxKbps: 0
+                    },
+                    txBytes: metrics.totalTxBytes,
+                    rxBytes: metrics.totalRxBytes,
+                    txPackets: metrics.totalRequests,
+                    rxPackets: metrics.totalResponses,
+                    errors: metrics.totalErrors,
+                    timeouts: metrics.totalTimeouts,
+                    rejectedHandshakes: metrics.totalSimulatedDrops
+                }
+            });
         } catch (err: any) {
-            res.status(404).json({ error: err.message });
+            res.status(404).json({ success: false, error: err.message });
         }
     });
 

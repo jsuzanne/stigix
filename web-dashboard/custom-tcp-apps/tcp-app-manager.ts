@@ -167,8 +167,37 @@ export class TcpAppManager extends EventEmitter {
         this.emit('app_deleted', appId);
     }
 
+    public getAppContext(appIdOrName: string) {
+        if (!appIdOrName) return undefined;
+        let ctx = this.appInstances.get(appIdOrName);
+        if (ctx) return ctx;
+
+        // Try lookup by name or case-insensitive ID
+        for (const [id, instance] of this.appInstances.entries()) {
+            if (id.toLowerCase() === appIdOrName.toLowerCase() ||
+                instance.config.name.toLowerCase() === appIdOrName.toLowerCase()) {
+                return instance;
+            }
+        }
+
+        // Lazy load from cached or loaded configuration
+        const file = this.configStore.getCached();
+        if (file && file.applications) {
+            const found = file.applications.find(a =>
+                a.id === appIdOrName ||
+                a.id.toLowerCase() === appIdOrName.toLowerCase() ||
+                a.name.toLowerCase() === appIdOrName.toLowerCase()
+            );
+            if (found) {
+                this.registerAppInstance(found, file.instance);
+                return this.appInstances.get(found.id);
+            }
+        }
+        return undefined;
+    }
+
     public async startListener(appId: string, persist: boolean = true): Promise<void> {
-        const ctx = this.appInstances.get(appId);
+        const ctx = this.getAppContext(appId);
         if (!ctx) throw new Error(`Application ${appId} not registered`);
 
         // Check if port is free before starting
@@ -187,14 +216,14 @@ export class TcpAppManager extends EventEmitter {
                 startListener: true,
                 startClientWorkload: ctx.config.startup?.startClientWorkload ?? false
             };
-            await this.persistAppStartupState(appId);
+            await this.persistAppStartupState(ctx.config.id);
         }
 
-        this.emit('state_changed', { appId, type: 'listener_started' });
+        this.emit('state_changed', { appId: ctx.config.id, type: 'listener_started' });
     }
 
     public async stopListener(appId: string, persist: boolean = true): Promise<void> {
-        const ctx = this.appInstances.get(appId);
+        const ctx = this.getAppContext(appId);
         if (!ctx) throw new Error(`Application ${appId} not registered`);
         await ctx.serverRuntime.stop();
 
@@ -203,14 +232,14 @@ export class TcpAppManager extends EventEmitter {
                 startListener: false,
                 startClientWorkload: ctx.config.startup?.startClientWorkload ?? false
             };
-            await this.persistAppStartupState(appId);
+            await this.persistAppStartupState(ctx.config.id);
         }
 
-        this.emit('state_changed', { appId, type: 'listener_stopped' });
+        this.emit('state_changed', { appId: ctx.config.id, type: 'listener_stopped' });
     }
 
     public async startClient(appId: string, targetedPeerIds?: string[], persist: boolean = true): Promise<void> {
-        const ctx = this.appInstances.get(appId);
+        const ctx = this.getAppContext(appId);
         if (!ctx) throw new Error(`Application ${appId} not registered`);
 
         ctx.clientRunStartTs = Date.now();
@@ -222,14 +251,14 @@ export class TcpAppManager extends EventEmitter {
                 startListener: ctx.config.startup?.startListener ?? true,
                 startClientWorkload: true
             };
-            await this.persistAppStartupState(appId);
+            await this.persistAppStartupState(ctx.config.id);
         }
 
-        this.emit('state_changed', { appId, type: 'client_started' });
+        this.emit('state_changed', { appId: ctx.config.id, type: 'client_started' });
     }
 
     public async stopClient(appId: string, persist: boolean = true): Promise<void> {
-        const ctx = this.appInstances.get(appId);
+        const ctx = this.getAppContext(appId);
         if (!ctx) throw new Error(`Application ${appId} not registered`);
 
         await ctx.clientRuntime.stop();
@@ -240,7 +269,7 @@ export class TcpAppManager extends EventEmitter {
             const outgoing = ctx.clientRuntime.getOutgoingSessions();
             const record: RunHistoryRecord = {
                 id: `run-${crypto.randomUUID().substring(0, 8)}`,
-                appId,
+                appId: ctx.config.id,
                 appName: ctx.config.name,
                 startedAt: new Date(ctx.clientRunStartTs).toISOString(),
                 endedAt: new Date().toISOString(),
@@ -275,10 +304,10 @@ export class TcpAppManager extends EventEmitter {
                 startListener: ctx.config.startup?.startListener ?? true,
                 startClientWorkload: false
             };
-            await this.persistAppStartupState(appId);
+            await this.persistAppStartupState(ctx.config.id);
         }
 
-        this.emit('state_changed', { appId, type: 'client_stopped' });
+        this.emit('state_changed', { appId: ctx.config.id, type: 'client_stopped' });
     }
 
     private async persistAppStartupState(appId: string): Promise<void> {
@@ -305,17 +334,17 @@ export class TcpAppManager extends EventEmitter {
         responder?: any;
         error?: string;
     }> {
-        const ctx = this.appInstances.get(appId);
+        const ctx = this.getAppContext(appId);
         if (!ctx) throw new Error(`Application ${appId} not found`);
 
-        const peer = ctx.config.peers.find(p => p.id === peerId);
-        if (!peer) throw new Error(`Peer ${peerId} not found in application ${appId}`);
+        const peer = ctx.config.peers.find(p => p.id === peerId || p.name.toLowerCase() === peerId.toLowerCase());
+        if (!peer) throw new Error(`Peer ${peerId} not found in application ${ctx.config.name}`);
 
         return ctx.clientRuntime.testPeerHandshake(peer);
     }
 
     public getAppStatus(appId: string): AppRuntimeMetrics {
-        const ctx = this.appInstances.get(appId);
+        const ctx = this.getAppContext(appId);
         if (!ctx) throw new Error(`Application ${appId} not found`);
 
         const inCount = ctx.serverRuntime.getActiveSessionsCount();
@@ -323,18 +352,24 @@ export class TcpAppManager extends EventEmitter {
         return ctx.metrics.getSnapshot(inCount, outCount);
     }
 
+    public resetMetrics(appId: string): void {
+        const ctx = this.getAppContext(appId);
+        if (!ctx) throw new Error(`Application ${appId} not found`);
+        ctx.metrics.reset();
+    }
+
     public getAllAppsStatus(): AppRuntimeMetrics[] {
         return Array.from(this.appInstances.keys()).map(id => this.getAppStatus(id));
     }
 
     public getIncomingSessions(appId: string): IncomingSessionState[] {
-        const ctx = this.appInstances.get(appId);
+        const ctx = this.getAppContext(appId);
         if (!ctx) return [];
         return ctx.serverRuntime.getIncomingSessions();
     }
 
     public getOutgoingSessions(appId: string): OutgoingSessionState[] {
-        const ctx = this.appInstances.get(appId);
+        const ctx = this.getAppContext(appId);
         if (!ctx) return [];
         return ctx.clientRuntime.getOutgoingSessions();
     }

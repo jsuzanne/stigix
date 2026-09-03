@@ -76,6 +76,22 @@ export class AppMetricsTracker {
         this.port = port;
     }
 
+    public reset(): void {
+        this.totalTxBytes = 0;
+        this.totalRxBytes = 0;
+        this.serverTxBytes = 0;
+        this.serverRxBytes = 0;
+        this.clientTxBytes = 0;
+        this.clientRxBytes = 0;
+        this.totalRequests = 0;
+        this.totalResponses = 0;
+        this.totalTimeouts = 0;
+        this.totalErrors = 0;
+        this.totalReconnects = 0;
+        this.totalSimulatedDrops = 0;
+        this.globalRttTracker.reset();
+    }
+
     public recordRtt(rttMs: number): void {
         this.globalRttTracker.record(rttMs);
     }
