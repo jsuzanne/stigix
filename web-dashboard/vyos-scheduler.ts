@@ -307,6 +307,8 @@ export class VyosScheduler extends EventEmitter {
         if (seq.enabled && seq.cycle_duration > 0) {
             this.startScheduled(seq);
         }
+    }
+
     public async executeDirectAction(
         routerId: string,
         action: { command: string; interface?: string; parameters?: any },
