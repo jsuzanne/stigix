@@ -47,16 +47,9 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
             if (res.ok) {
                 const data = await res.json();
                 if (data.success && data.subsystems) {
-                    const s = data.subsystems;
-                    const hasValidPrisma = s.prisma?.configured || s.prisma?.tsg_id;
-                    const hasValidVyos = s.vyos?.total_routers > 0;
-                    const hasValidApps = s.custom_apps?.total_apps > 0;
-
-                    if (hasValidPrisma || hasValidVyos || hasValidApps) {
-                        setLocalData(data);
-                        setIsLoading(false);
-                        return;
-                    }
+                    setLocalData(data);
+                    setIsLoading(false);
+                    return;
                 }
             }
         } catch (err) {
@@ -83,30 +76,35 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
             const probesData = probesRes.status === 'fulfilled' && probesRes.value.ok ? await probesRes.value.json() : null;
             const regData = regRes.status === 'fulfilled' && regRes.value.ok ? await regRes.value.json() : null;
 
-            // VyOS parsing
+            // VyOS parsing — 100% dynamic
             const rawRouters = Array.isArray(vyosData?.routers) ? vyosData.routers : (Array.isArray(vyosData) ? vyosData : []);
-            const totalRouters = rawRouters.length > 0 ? rawRouters.length : 3;
-            const activeRouters = rawRouters.length > 0 ? rawRouters.filter((r: any) => r.status !== 'down').length : 3;
+            const totalRouters = rawRouters.length;
+            const activeRouters = rawRouters.filter((r: any) => r.status !== 'down').length;
             let upIfaces = 0;
             let shutIfaces = 0;
+            let activeQos = 0;
             for (const r of rawRouters) {
                 for (const iface of (r.interfaces || [])) {
                     if (iface.status === 'down') shutIfaces++;
                     else upIfaces++;
+                    if (iface.qos && (iface.qos.latency || iface.qos.loss)) activeQos++;
                 }
             }
-            if (upIfaces === 0 && shutIfaces === 0) {
-                upIfaces = 26;
-                shutIfaces = 2;
-            }
+            const vyosStatus = totalRouters > 0
+                ? (activeRouters > 0 ? (activeRouters < totalRouters ? 'degraded' : 'connected') : 'offline')
+                : 'not_configured';
 
-            // Custom TCP apps parsing
+            // Custom TCP apps parsing — 100% dynamic
             const rawApps = Array.isArray(appsData?.applications) ? appsData.applications : [];
-            const totalApps = rawApps.length > 0 ? rawApps.length : 8;
-            const activeListeners = rawApps.length > 0 ? rawApps.filter((a: any) => a.startup?.startListener !== false).length : 8;
+            const totalApps = rawApps.length;
+            const activeListeners = rawApps.filter((a: any) => a.startup?.startListener !== false).length;
+            const activeWorkloads = rawApps.filter((a: any) => a.startup?.startClientWorkload === true).length;
+            const appsStatus = totalApps > 0
+                ? (activeListeners > 0 || activeWorkloads > 0 ? 'running' : 'idle')
+                : 'ready';
 
             // DEM probes parsing (47 probes)
-            let probesCount = 47;
+            let probesCount = 0;
             if (Array.isArray(probesData?.probes) && probesData.probes.length > 0) {
                 probesCount = probesData.probes.length;
             } else if (Array.isArray(targetsData) && targetsData.length > 0) {
@@ -114,14 +112,21 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
             }
 
             // Mesh & Leader Sync
-            const meshMode = regData?.mode || (regData?.peer_count > 0 ? 'peer' : 'peer');
-            const peerCount = regData?.peer_count ?? (regData?.peers ? regData.peers.length : 1);
-            const leaderIp = regData?.leader_info?.ip || regData?.static_leader_url || (meshMode === 'leader' ? 'Local Leader' : '192.168.203.1');
+            const meshMode = regData?.mode || (regData?.peer_count > 0 ? 'peer' : 'standalone');
+            const peerCount = regData?.peer_count ?? (Array.isArray(regData?.peers) ? regData.peers.length : 0);
+            const leaderIp = regData?.leader_info?.ip || regData?.static_leader_url || (meshMode === 'leader' ? 'Local Leader' : (peerCount > 0 ? 'Connected' : 'Standalone'));
             const pocId = regData?.poc_id || '777003';
+            const meshStatus = meshMode === 'leader' ? 'leader' : (regData?.leader_info || peerCount > 0 ? 'connected' : 'standalone');
+
+            // Prisma Status
+            const isPrismaConfigured = !!(siteData?.hasCredentials || siteData?.detected_site_name);
+            const tsgId = siteData?.detected_site_name ? `Site: ${siteData.detected_site_name}` : (isPrismaConfigured ? '1927975026' : 'Not configured');
 
             // Host info parsing
-            const totalMem = sysData?.memory?.total || 3.8 * 1024 * 1024 * 1024;
-            const usedMem = sysData?.memory?.used || 1.4 * 1024 * 1024 * 1024;
+            const hostname = sysData?.hostname || 'Node';
+            const mode = sysData?.mode || 'Host Mode';
+            const totalMem = sysData?.memory?.total || 0;
+            const usedMem = sysData?.memory?.used || 0;
             const freeMem = sysData?.memory?.free || (totalMem - usedMem);
 
             const synthesized: any = {
@@ -130,19 +135,19 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                 global_status: 'healthy',
                 subsystems: {
                     prisma: {
-                        status: 'connected',
-                        tsg_id: '1927975026',
+                        status: isPrismaConfigured ? 'connected' : 'not_configured',
+                        tsg_id: tsgId,
                         region: 'EU',
-                        configured: true
+                        configured: isPrismaConfigured
                     },
                     mesh: {
                         mode: meshMode,
-                        status: regData?.leader_info || peerCount > 0 ? 'connected' : 'standalone',
+                        status: meshStatus,
                         peer_count: peerCount,
                         leader_ip: leaderIp,
-                        learned_targets_count: Array.isArray(targetsData) ? targetsData.length : 7,
+                        learned_targets_count: Array.isArray(targetsData) ? targetsData.length : 0,
                         poc_id: pocId,
-                        is_registered: true
+                        is_registered: !!regData?.is_registered
                     },
                     cloud: {
                         status: 'connected',
@@ -152,24 +157,24 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                         poc_id: pocId
                     },
                     vyos: {
-                        status: 'connected',
+                        status: vyosStatus,
                         total_routers: totalRouters,
                         active_routers: activeRouters,
                         up_interfaces: upIfaces,
                         shut_interfaces: shutIfaces,
-                        active_qos_rules: 0
+                        active_qos_rules: activeQos
                     },
                     custom_apps: {
-                        status: 'running',
+                        status: appsStatus,
                         total_apps: totalApps,
                         active_listeners: activeListeners,
-                        active_workloads: 0,
+                        active_workloads: activeWorkloads,
                         health_score: 100,
                         avg_latency_ms: 0,
                         p95_latency_ms: 0
                     },
                     dem: {
-                        status: 'active',
+                        status: probesCount > 0 ? 'active' : 'ready',
                         probes_count: probesCount
                     },
                     bandwidth: {
@@ -185,10 +190,10 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                         stream: 'WebSocket Bus Active'
                     },
                     host: {
-                        hostname: 'UbuntuBR8',
-                        mode: sysData?.mode || 'Host Mode',
-                        cpu_cores: 8,
-                        cpu_load_percent: 12,
+                        hostname: hostname,
+                        mode: mode,
+                        cpu_cores: sysData?.cpu_cores || 8,
+                        cpu_load_percent: sysData?.cpu_load_percent ?? 12,
                         memory: {
                             total_bytes: totalMem,
                             used_bytes: usedMem,
@@ -196,11 +201,11 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                             total: totalMem,
                             used: usedMem,
                             free: freeMem,
-                            usage_percent: Math.round((usedMem / totalMem) * 100)
+                            usage_percent: totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0
                         },
-                        disk: sysData?.disk || { usagePercent: 53, used: 14.6 * 1024 * 1024 * 1024, total: 28 * 1024 * 1024 * 1024 },
-                        uptime_process: sysData?.uptime?.process || 109,
-                        uptime_system: sysData?.uptime?.system || 4255140
+                        disk: sysData?.disk || { usagePercent: 0, used: 0, total: 0 },
+                        uptime_process: sysData?.uptime?.process || 0,
+                        uptime_system: sysData?.uptime?.system || 0
                     }
                 }
             };
@@ -222,7 +227,6 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
 
     const data = localData || healthData;
     const score = data?.overall_score ?? 100;
-    const globalStatus = data?.global_status || 'healthy';
     const sub = data?.subsystems || {};
     const host = sub.host || {};
     const prisma = sub.prisma || {};
@@ -236,7 +240,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
     const events = sub.events || {};
 
     const formatUptime = (seconds: number) => {
-        if (!seconds || seconds <= 0) return '49d 5h';
+        if (!seconds || seconds <= 0) return '0s';
         const d = Math.floor(seconds / (3600 * 24));
         const h = Math.floor((seconds % (3600 * 24)) / 3600);
         const m = Math.floor((seconds % 3600) / 60);
@@ -276,14 +280,14 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
     };
 
     // Memory display
-    const totalMemBytes = host.memory?.total_bytes || host.memory?.total || 3.8 * 1024 * 1024 * 1024;
-    const usedMemBytes = host.memory?.used_bytes || host.memory?.used || 1.4 * 1024 * 1024 * 1024;
+    const totalMemBytes = host.memory?.total_bytes || host.memory?.total || 0;
+    const usedMemBytes = host.memory?.used_bytes || host.memory?.used || 0;
     const totalMemGb = (totalMemBytes / (1024 * 1024 * 1024)).toFixed(1);
     const usedMemGb = (usedMemBytes / (1024 * 1024 * 1024)).toFixed(1);
-    const memUsagePercent = host.memory?.usage_percent || (totalMemBytes > 0 ? Math.round((usedMemBytes / totalMemBytes) * 100) : 37);
+    const memUsagePercent = host.memory?.usage_percent || (totalMemBytes > 0 ? Math.round((usedMemBytes / totalMemBytes) * 100) : 0);
 
     // Host Uptime
-    const uptimeSec = host.uptime_process || host.uptime?.process || 109;
+    const uptimeSec = host.uptime_process || host.uptime?.process || 0;
 
     return (
         <div
@@ -321,7 +325,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                 </span>
                             </div>
                             <p className="text-xs text-text-muted mt-0.5 font-mono">
-                                Host: <strong className="text-text-primary">{host.hostname || 'UbuntuBR8'}</strong> • Mode: <span className="text-blue-500 font-bold">{host.mode || 'Host Mode'}</span> • Uptime: {formatUptime(uptimeSec)}
+                                Host: <strong className="text-text-primary">{host.hostname || 'Local'}</strong> • Mode: <span className="text-blue-500 font-bold">{host.mode || 'Host Mode'}</span> • Uptime: {formatUptime(uptimeSec)}
                             </p>
                         </div>
                     </div>
@@ -359,17 +363,22 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                             <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                                        <div className={cn("w-2 h-2 rounded-full", prisma.status === 'connected' ? "bg-blue-500 animate-pulse" : "bg-zinc-500")} />
                                         <span className="text-xs font-bold text-text-primary">Prisma SD-WAN</span>
                                     </div>
-                                    <span className="text-[9px] font-black px-2 py-0.5 rounded-md border uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
-                                        CONNECTED
+                                    <span className={cn(
+                                        "text-[9px] font-black px-2 py-0.5 rounded-md border uppercase",
+                                        prisma.status === 'connected'
+                                            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                            : "bg-card text-text-muted border-border"
+                                    )}>
+                                        {prisma.status === 'connected' ? 'CONNECTED' : 'STANDALONE'}
                                     </span>
                                 </div>
                                 <div className="text-[11px] font-mono space-y-1 text-text-muted">
                                     <div className="flex justify-between">
                                         <span>TSG ID:</span>
-                                        <strong className="text-text-primary">{prisma.tsg_id || '1927975026'}</strong>
+                                        <strong className="text-text-primary">{prisma.tsg_id || 'Not configured'}</strong>
                                     </div>
                                     <div className="flex justify-between">
                                         <span>Region:</span>
@@ -377,7 +386,9 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                     </div>
                                     <div className="flex justify-between">
                                         <span>Flow Browser:</span>
-                                        <strong className="text-blue-500">AppDefs Ready</strong>
+                                        <strong className={prisma.status === 'connected' ? "text-blue-500" : "text-text-muted"}>
+                                            {prisma.status === 'connected' ? 'AppDefs Ready' : 'Standby'}
+                                        </strong>
                                     </div>
                                 </div>
                             </div>
@@ -401,12 +412,12 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                 <div className="text-[11px] font-mono space-y-1 text-text-muted">
                                     <div className="flex justify-between">
                                         <span>Leader Target:</span>
-                                        <strong className="text-text-primary">{mesh.leader_ip || 'Local Leader'}</strong>
+                                        <strong className="text-text-primary">{mesh.leader_ip || 'Standalone'}</strong>
                                     </div>
                                     <div className="flex justify-between">
                                         <span>Learned Targets:</span>
                                         <strong className="text-emerald-600 dark:text-emerald-400">
-                                            {mesh.learned_targets_count || 7} Targets ({mesh.peer_count || 1} Peers)
+                                            {mesh.learned_targets_count || 0} Targets ({mesh.peer_count || 0} Peers)
                                         </strong>
                                     </div>
                                     <div className="flex justify-between">
@@ -464,7 +475,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                             <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                                        <div className={cn("w-2 h-2 rounded-full", customApps.total_apps > 0 ? "bg-indigo-500" : "bg-zinc-500")} />
                                         <span className="text-xs font-bold text-text-primary">Custom TCP Apps</span>
                                     </div>
                                     <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 font-mono">
@@ -474,11 +485,11 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                 <div className="text-[11px] font-mono space-y-1 text-text-muted">
                                     <div className="flex justify-between">
                                         <span>Configured Apps:</span>
-                                        <strong className="text-text-primary">{customApps.total_apps || 8} Applications</strong>
+                                        <strong className="text-text-primary">{customApps.total_apps || 0} Applications</strong>
                                     </div>
                                     <div className="flex justify-between">
                                         <span>Active Listeners:</span>
-                                        <strong className="text-emerald-600 dark:text-emerald-400">{customApps.active_listeners || 8} Listening</strong>
+                                        <strong className="text-emerald-600 dark:text-emerald-400">{customApps.active_listeners || 0} Listening</strong>
                                     </div>
                                     <div className="flex justify-between">
                                         <span>Active Workloads:</span>
@@ -497,17 +508,17 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                             <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-purple-500" />
+                                        <div className={cn("w-2 h-2 rounded-full", dem.probes_count > 0 ? "bg-purple-500" : "bg-zinc-500")} />
                                         <span className="text-xs font-bold text-text-primary">DEM & Bandwidth</span>
                                     </div>
                                     <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 uppercase">
-                                        READY
+                                        {dem.probes_count > 0 ? 'ACTIVE' : 'READY'}
                                     </span>
                                 </div>
                                 <div className="text-[11px] font-mono space-y-1 text-text-muted">
                                     <div className="flex justify-between">
                                         <span>Synthetic Probes:</span>
-                                        <strong className="text-text-primary">{dem.probes_count || 47} Targets Configured</strong>
+                                        <strong className="text-text-primary">{dem.probes_count || 0} Targets Configured</strong>
                                     </div>
                                     <div className="flex justify-between">
                                         <span>iperf3 Daemon:</span>
@@ -574,21 +585,28 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                             <div className="bg-card-secondary/50 border border-border/80 rounded-2xl p-4 space-y-2.5 shadow-sm">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                                        <div className={cn("w-2 h-2 rounded-full", vyos.total_routers > 0 ? "bg-emerald-500" : "bg-zinc-500")} />
                                         <span className="text-xs font-bold text-text-primary">VyOS Underlay</span>
                                     </div>
-                                    <span className="text-[9px] font-black px-2 py-0.5 rounded-md border uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
-                                        ONLINE
+                                    <span className={cn(
+                                        "text-[9px] font-black px-2 py-0.5 rounded-md border uppercase",
+                                        vyos.total_routers > 0
+                                            ? (vyos.active_routers > 0 ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30")
+                                            : "bg-card text-text-muted border-border"
+                                    )}>
+                                        {vyos.total_routers > 0 ? (vyos.active_routers > 0 ? 'ONLINE' : 'OFFLINE') : 'UNCONFIGURED'}
                                     </span>
                                 </div>
                                 <div className="text-[11px] font-mono space-y-1 text-text-muted">
                                     <div className="flex justify-between">
                                         <span>Routers:</span>
-                                        <strong className="text-text-primary">{vyos.active_routers || vyos.total_routers || 3} / {vyos.total_routers || 3} Active</strong>
+                                        <strong className="text-text-primary">{vyos.active_routers || 0} / {vyos.total_routers || 0} Active</strong>
                                     </div>
                                     <div className="flex justify-between">
                                         <span>Ports Status:</span>
-                                        <strong className="text-emerald-600 dark:text-emerald-400">{vyos.up_interfaces || 26} UP{vyos.shut_interfaces ? ` · ${vyos.shut_interfaces} SHUT` : ' · 2 SHUT'}</strong>
+                                        <strong className={vyos.up_interfaces > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-text-muted"}>
+                                            {vyos.total_routers > 0 ? `${vyos.up_interfaces || 0} UP${vyos.shut_interfaces ? ` · ${vyos.shut_interfaces} SHUT` : ''}` : '0 UP'}
+                                        </strong>
                                     </div>
                                     <div className="flex justify-between">
                                         <span>Netem QoS:</span>
@@ -606,13 +624,13 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                         <Cpu size={14} className="text-pink-500" /> CPU Load
                                     </span>
                                     <span className="font-mono text-xs font-bold text-pink-600 dark:text-pink-400">
-                                        {host.cpu_load_percent ?? 12}% ({host.cpu_cores || 8} Cores)
+                                        {host.cpu_load_percent ?? 0}% ({host.cpu_cores || 8} Cores)
                                     </span>
                                 </div>
                                 <div className="h-2 w-full bg-card rounded-full overflow-hidden border border-border/50">
                                     <div
                                         className="h-full bg-pink-500 transition-all duration-500"
-                                        style={{ width: `${Math.min(100, Math.max(5, host.cpu_load_percent ?? 12))}%` }}
+                                        style={{ width: `${Math.min(100, Math.max(5, host.cpu_load_percent ?? 0))}%` }}
                                     />
                                 </div>
                             </div>
@@ -642,13 +660,13 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                         <HardDrive size={14} className="text-amber-500" /> Host Disk
                                     </span>
                                     <span className="font-mono text-xs font-bold text-amber-600 dark:text-amber-400">
-                                        {host.disk?.usagePercent ?? 53}% ({((host.disk?.used || 14.6 * 1024 * 1024 * 1024) / 1024 / 1024 / 1024).toFixed(1)} GB used)
+                                        {host.disk?.usagePercent ?? 0}% ({((host.disk?.used || 0) / 1024 / 1024 / 1024).toFixed(1)} GB used)
                                     </span>
                                 </div>
                                 <div className="h-2 w-full bg-card rounded-full overflow-hidden border border-border/50">
                                     <div
                                         className="h-full bg-amber-500 transition-all duration-500"
-                                        style={{ width: `${Math.min(100, Math.max(5, host.disk?.usagePercent ?? 53))}%` }}
+                                        style={{ width: `${Math.min(100, Math.max(5, host.disk?.usagePercent ?? 0))}%` }}
                                     />
                                 </div>
                             </div>
@@ -656,7 +674,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                             {/* Host Uptime Summary */}
                             <div className="p-3 bg-card-secondary/30 rounded-2xl border border-border/50 text-[11px] font-mono flex items-center justify-between text-text-muted">
                                 <span>Host OS Uptime:</span>
-                                <strong className="text-text-primary">{formatUptime(host.uptime_system || host.uptime?.system || 4255140)}</strong>
+                                <strong className="text-text-primary">{formatUptime(host.uptime_system || host.uptime?.system || uptimeSec)}</strong>
                             </div>
                         </div>
                     </div>
@@ -685,7 +703,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                 </div>
                                 <div className="p-2.5 rounded-xl bg-card border border-border">
                                     <div className="text-[10px] text-text-muted">VyOS SSH API:</div>
-                                    <div className="text-emerald-500 font-bold mt-0.5">{diagResults.vyos?.latency_ms ?? 11}ms (OK)</div>
+                                    <div className="text-emerald-500 font-bold mt-0.5">{diagResults.vyos?.latency_ms ?? 0}ms (OK)</div>
                                 </div>
                                 <div className="p-2.5 rounded-xl bg-card border border-border">
                                     <div className="text-[10px] text-text-muted">Custom Apps:</div>
@@ -693,7 +711,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
                                 </div>
                                 <div className="p-2.5 rounded-xl bg-card border border-border">
                                     <div className="text-[10px] text-text-muted">Host RAM I/O:</div>
-                                    <div className="text-emerald-500 font-bold mt-0.5">{diagResults.host?.latency_ms ?? 1}ms (OK)</div>
+                                    <div className="text-emerald-500 font-bold mt-0.5">{diagResults.host?.latency_ms ?? 0}ms (OK)</div>
                                 </div>
                             </div>
                         </div>
