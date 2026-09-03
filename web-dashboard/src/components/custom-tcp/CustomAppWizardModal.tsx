@@ -669,7 +669,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                     <Play size={16} /> Client Workload Generation Defaults
                                 </h3>
 
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                                     <div>
                                         <label className="block text-xs font-semibold text-text-secondary mb-1.5">Workload Mode</label>
                                         <select
@@ -728,6 +728,21 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                             max={1048576}
                                             className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
                                         />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-text-secondary mb-1.5">Request Timeout (ms)</label>
+                                        <input
+                                            type="number"
+                                            value={formData.clientDefaults.requestTimeoutMs || 5000}
+                                            onChange={e => setFormData((prev: CustomTcpApplicationConfig) => ({
+                                                ...prev,
+                                                clientDefaults: { ...prev.clientDefaults, requestTimeoutMs: parseInt(e.target.value, 10) || 5000 }
+                                            }))}
+                                            min={500}
+                                            step={500}
+                                            className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
+                                        />
+                                        <span className="text-[10px] text-text-muted mt-1 block">Max wait for server reply</span>
                                     </div>
                                 </div>
                             </div>
