@@ -6925,7 +6925,10 @@ setTimeout(() => {
     startSchedulers();
     scheduleMidnightReset();
 
-    // VyOS Health Check (60s)
+    // VyOS Health Check (Immediate on boot after 3s, then every 60s)
+    setTimeout(() => {
+        vyosManager.checkHealth().catch(e => console.error('[VYOS] Initial health check error:', e));
+    }, 3000);
     setInterval(() => {
         vyosManager.checkHealth().catch(e => console.error('[VYOS] Health check error:', e));
     }, 60000);

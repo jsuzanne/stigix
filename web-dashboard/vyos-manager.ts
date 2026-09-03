@@ -528,7 +528,33 @@ export class VyosManager extends EventEmitter {
                     try {
                         const jsonStart = output.indexOf('{');
                         const jsonStr = jsonStart !== -1 ? output.substring(jsonStart) : output;
-                        resolve(JSON.parse(jsonStr));
+                        const parsed = JSON.parse(jsonStr);
+
+                        // Sync live state into in-memory router model
+                        if (router && Array.isArray(parsed.interfaces)) {
+                            let changed = false;
+                            for (const item of parsed.interfaces) {
+                                const target = router.interfaces.find(i => i.name.toLowerCase() === item.name.toLowerCase());
+                                if (target) {
+                                    if (item.admin_state && target.status !== item.admin_state) {
+                                        target.status = item.admin_state;
+                                        changed = true;
+                                    }
+                                    if (item.qos_active) {
+                                        const lat = item.qos_active.delay_ms ? parseInt(String(item.qos_active.delay_ms).replace(/[^\d]/g, ''), 10) : undefined;
+                                        const los = item.qos_active.loss_pct ? parseInt(String(item.qos_active.loss_pct).replace(/[^\d]/g, ''), 10) : undefined;
+                                        target.qos = { latency: lat, loss: los };
+                                        changed = true;
+                                    } else if (target.qos) {
+                                        delete target.qos;
+                                        changed = true;
+                                    }
+                                }
+                            }
+                            if (changed) this.saveRouters();
+                        }
+
+                        resolve(parsed);
                     } catch {
                         reject(new Error('Invalid JSON response from get-state'));
                     }

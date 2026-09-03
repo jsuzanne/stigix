@@ -66,6 +66,32 @@ function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
 }
 
+// Robust QoS normalization helper
+function normalizeQos(raw: any): { latency?: number; loss?: number } | null {
+    if (!raw || typeof raw !== 'object') return null;
+    let lat: number | undefined = undefined;
+    let los: number | undefined = undefined;
+
+    // Extract latency / delay
+    const rawLat = raw.latency ?? raw.delay_ms ?? raw.delay ?? raw.ms;
+    if (rawLat !== undefined && rawLat !== null) {
+        const parsed = typeof rawLat === 'number' ? rawLat : parseFloat(String(rawLat).replace(/[^\d.]/g, ''));
+        if (!isNaN(parsed) && parsed > 0) lat = parsed;
+    }
+
+    // Extract loss / loss_pct
+    const rawLoss = raw.loss ?? raw.loss_pct ?? raw.lossPct ?? raw.percent;
+    if (rawLoss !== undefined && rawLoss !== null) {
+        const parsed = typeof rawLoss === 'number' ? rawLoss : parseFloat(String(rawLoss).replace(/[^\d.]/g, ''));
+        if (!isNaN(parsed) && parsed > 0) los = parsed;
+    }
+
+    if (lat !== undefined || los !== undefined) {
+        return { latency: lat, loss: los };
+    }
+    return null;
+}
+
 // --- Underlay types (mirror of server-side UnderlayPayload) ---
 type UnderlayResolutionStatus = 'matched' | 'no_match' | 'ambiguous' | 'wan_ip_unavailable' | 'vyos_unavailable';
 type UnderlayResolution = {
@@ -563,8 +589,8 @@ const VyOSRouterNode = ({ data }: any) => {
         const isConnected = !!matchedRes;
         const isIfaceUp = iface.status !== 'down';
         const fullIp = iface.address?.[0] || iface.ipCidr || iface.ip || matchedRes?.vyos?.ipCidr || matchedRes?.vyos?.ip || '—';
-        const portQos = iface.qos || matchedRes?.vyos?.qos;
-        const hasQos = portQos && (portQos.latency !== undefined || portQos.loss !== undefined) && (portQos.latency > 0 || portQos.loss > 0);
+        const portQos = normalizeQos(iface.qos || matchedRes?.vyos?.qos);
+        const hasQos = !!portQos;
 
         return (
             <div
@@ -869,7 +895,7 @@ function TopologyContent({ token }: TopologyProps) {
         if (!routerName || !ifaceName) return null;
         const portKey = `${routerName}:${ifaceName}`;
         if (portQosStates[portKey] !== undefined) {
-            return portQosStates[portKey];
+            return normalizeQos(portQosStates[portKey]);
         }
         // Check router in underlayData
         const rObj = (underlayData?.routers || []).find(r => 
@@ -878,7 +904,8 @@ function TopologyContent({ token }: TopologyProps) {
         );
         const ifObj = rObj?.interfaces?.find(i => i.name.toLowerCase() === ifaceName.toLowerCase());
         if (ifObj?.qos) {
-            return ifObj.qos;
+            const norm = normalizeQos(ifObj.qos);
+            if (norm) return norm;
         }
         // Check resolutions
         const resObj = (underlayData?.resolutions || []).find(r => 
@@ -886,7 +913,8 @@ function TopologyContent({ token }: TopologyProps) {
             r.vyos?.interfaceName.toLowerCase() === ifaceName.toLowerCase()
         );
         if (resObj?.vyos?.qos) {
-            return resObj.vyos.qos;
+            const norm = normalizeQos(resObj.vyos.qos);
+            if (norm) return norm;
         }
         return null;
     }, [portQosStates, underlayData]);
@@ -996,7 +1024,7 @@ function TopologyContent({ token }: TopologyProps) {
         const portKey = `${routerName}:${iface}`;
         const isShut = getVyosInterfaceStatus(routerName, iface) === 'down';
         const activeQos = getVyosInterfaceQos(routerName, iface);
-        const hasActiveQos = activeQos && (activeQos.latency !== undefined || activeQos.loss !== undefined) && ((activeQos.latency || 0) > 0 || (activeQos.loss || 0) > 0);
+        const hasActiveQos = !!activeQos;
 
         return (
             <div className="bg-card-secondary/80 border border-amber-500/30 rounded-2xl p-4 space-y-3 shadow-inner">
@@ -1019,7 +1047,7 @@ function TopologyContent({ token }: TopologyProps) {
                         )}
                         {hasActiveQos && (
                             <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold flex items-center gap-1.5 shadow-sm">
-                                <Sliders size={12} /> +{activeQos?.latency || 0}ms | {activeQos?.loss || 0}% Loss
+                                <Sliders size={12} /> {activeQos?.latency ? `+${activeQos.latency}ms` : ''}{activeQos?.latency && activeQos?.loss ? ' | ' : ''}{activeQos?.loss ? `${activeQos.loss}% Loss` : ''}
                             </span>
                         )}
                     </div>
