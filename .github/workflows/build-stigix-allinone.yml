@@ -62,6 +62,7 @@ jobs:
           file: stigix-all-in-one/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
           tags: ${{ env.IMAGE_NAME }}:stable,${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:${{ github.event.inputs.version_to_stable }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -158,6 +159,7 @@ jobs:
           file: stigix-all-in-one/Dockerfile
           platforms: ${{ steps.plat.outputs.platforms }}
           push: true
+          provenance: false
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
