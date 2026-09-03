@@ -79,6 +79,89 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
         }
     });
 
+    // ─── Prisma SD-WAN Custom Apps Sync Endpoints (Static prefix before /:id) ─
+
+    // GET /api/custom-tcp-apps/prisma/status — Check tenant status and list Prisma appdefs
+    router.get('/prisma/status', async (_req: Request, res: Response) => {
+        try {
+            const result = await runPrismaCustomApps(['--list']);
+            res.json(result);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/prisma/sync-app/:id — Sync single app to Prisma SD-WAN
+    router.post('/prisma/sync-app/:id', async (req: Request, res: Response) => {
+        try {
+            const file = tcpAppManager.getConfig();
+            const app = file.applications.find(a => a.id === req.params.id);
+            if (!app) return res.status(404).json({ success: false, error: 'Application not found' });
+
+            const port = app.listener?.port || app.peers?.[0]?.port;
+            if (!port) return res.status(400).json({ success: false, error: 'Application has no port configured' });
+
+            const result = await runPrismaCustomApps([
+                '--create',
+                '--name', app.name,
+                '--port', String(port),
+                '--protocol', 'tcp',
+                '--display-name', `Stigix ${app.name} (TCP ${port})`,
+                '--description', app.description || `Auto-provisioned by Stigix for ${app.name}`
+            ]);
+
+            res.json(result);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/prisma/delete-app/:id — Delete app from Prisma SD-WAN
+    router.post('/prisma/delete-app/:id', async (req: Request, res: Response) => {
+        try {
+            const file = tcpAppManager.getConfig();
+            const app = file.applications.find(a => a.id === req.params.id);
+            const appName = app ? app.name : req.params.id;
+
+            const result = await runPrismaCustomApps([
+                '--delete',
+                '--name', appName
+            ]);
+
+            res.json(result);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/prisma/sync-all — 1-click sync all apps to Prisma SD-WAN
+    router.post('/prisma/sync-all', async (_req: Request, res: Response) => {
+        try {
+            const file = tcpAppManager.getConfig();
+            const jsonString = JSON.stringify(file);
+            const result = await runPrismaCustomApps([
+                '--sync-all',
+                '--json-data', jsonString
+            ]);
+
+            res.json(result);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/prisma/clean-all — Delete all Stigix apps from tenant
+    router.post('/prisma/clean-all', async (_req: Request, res: Response) => {
+        try {
+            const result = await runPrismaCustomApps(['--clean-all']);
+            res.json(result);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // ─── Individual Application Routes ────────────────────────────────────────
+
     // GET /api/custom-tcp-apps/:id — Get application details
     router.get('/:id', (req: Request, res: Response) => {
         try {
@@ -224,87 +307,6 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
             res.json({ history: records });
         } catch (err: any) {
             res.status(500).json({ error: err.message });
-        }
-    });
-
-    // ─── Prisma SD-WAN Custom Apps Sync Endpoints ─────────────────────────────
-
-    // GET /api/custom-tcp-apps/prisma/status — Check tenant status and list Prisma appdefs
-    router.get('/prisma/status', async (_req: Request, res: Response) => {
-        try {
-            const result = await runPrismaCustomApps(['--list']);
-            res.json(result);
-        } catch (err: any) {
-            res.status(500).json({ success: false, error: err.message });
-        }
-    });
-
-    // POST /api/custom-tcp-apps/prisma/sync-app/:id — Sync single app to Prisma SD-WAN
-    router.post('/prisma/sync-app/:id', async (req: Request, res: Response) => {
-        try {
-            const file = tcpAppManager.getConfig();
-            const app = file.applications.find(a => a.id === req.params.id);
-            if (!app) return res.status(404).json({ success: false, error: 'Application not found' });
-
-            const port = app.listener?.port || app.peers?.[0]?.port;
-            if (!port) return res.status(400).json({ success: false, error: 'Application has no port configured' });
-
-            const result = await runPrismaCustomApps([
-                '--create',
-                '--name', app.name,
-                '--port', String(port),
-                '--protocol', 'tcp',
-                '--display-name', `Stigix ${app.name} (TCP ${port})`,
-                '--description', app.description || `Auto-provisioned by Stigix for ${app.name}`
-            ]);
-
-            res.json(result);
-        } catch (err: any) {
-            res.status(500).json({ success: false, error: err.message });
-        }
-    });
-
-    // POST /api/custom-tcp-apps/prisma/delete-app/:id — Delete app from Prisma SD-WAN
-    router.post('/prisma/delete-app/:id', async (req: Request, res: Response) => {
-        try {
-            const file = tcpAppManager.getConfig();
-            const app = file.applications.find(a => a.id === req.params.id);
-            const appName = app ? app.name : req.params.id;
-
-            const result = await runPrismaCustomApps([
-                '--delete',
-                '--name', appName
-            ]);
-
-            res.json(result);
-        } catch (err: any) {
-            res.status(500).json({ success: false, error: err.message });
-        }
-    });
-
-    // POST /api/custom-tcp-apps/prisma/sync-all — 1-click sync all apps to Prisma SD-WAN
-    router.post('/prisma/sync-all', async (_req: Request, res: Response) => {
-        try {
-            const file = tcpAppManager.getConfig();
-            const jsonString = JSON.stringify(file);
-            const result = await runPrismaCustomApps([
-                '--sync-all',
-                '--json-data', jsonString
-            ]);
-
-            res.json(result);
-        } catch (err: any) {
-            res.status(500).json({ success: false, error: err.message });
-        }
-    });
-
-    // POST /api/custom-tcp-apps/prisma/clean-all — Delete all Stigix apps from tenant
-    router.post('/prisma/clean-all', async (_req: Request, res: Response) => {
-        try {
-            const result = await runPrismaCustomApps(['--clean-all']);
-            res.json(result);
-        } catch (err: any) {
-            res.status(500).json({ success: false, error: err.message });
         }
     });
 
