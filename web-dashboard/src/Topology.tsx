@@ -2932,11 +2932,14 @@ function TopologyContent({ token }: TopologyProps) {
                             <div className="min-w-0">
                                 <div className="flex items-center gap-2">
                                     <h3 className="text-xs font-black uppercase text-text-primary tracking-wider">
-                                        Link Trace
+                                        WAN Link Details
                                     </h3>
                                     {underlayDrawerResolution.status === 'matched' ? (
-                                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> 1:1 MATCHED
+                                        <span 
+                                            className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1"
+                                            title={`Subnet Correlated: ${underlayDrawerResolution.matchedNetwork || ''} (Prisma WAN and VyOS share the same transit subnet)`}
+                                        >
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> LINK CONNECTED
                                         </span>
                                     ) : (
                                         <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-card-secondary text-text-muted border border-border">
@@ -2944,25 +2947,16 @@ function TopologyContent({ token }: TopologyProps) {
                                         </span>
                                     )}
                                 </div>
-                                <p className="text-[10px] text-text-muted font-mono truncate max-w-[210px] mt-0.5">
-                                    {underlayDrawerResolution.prismaWan.siteName} ── {underlayDrawerResolution.vyos?.routerName || 'External WAN'}
+                                <p className="text-[10px] text-text-muted font-mono truncate max-w-[280px] mt-0.5">
+                                    {underlayDrawerResolution.prismaWan.siteName} ({underlayDrawerResolution.prismaWan.interfaceName}) ⟷ {underlayDrawerResolution.vyos?.routerName || 'External WAN'}{underlayDrawerResolution.vyos ? ` (${underlayDrawerResolution.vyos.interfaceName})` : ''}
                                 </p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                            <button
-                                onClick={() => {
-                                    setUnderlayPanelResolution(underlayDrawerResolution);
-                                    setShowUnderlayPanel(true);
-                                }}
-                                className="px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-                                title="Open full inspector side panel"
-                            >
-                                <Eye size={12} /> Full Inspect
-                            </button>
+                        <div className="flex items-center gap-1 flex-shrink-0">
                             <button
                                 onClick={() => setUnderlayDrawerResolution(null)}
                                 className="p-1.5 hover:bg-card-secondary rounded-xl transition-colors text-text-muted hover:text-text-primary cursor-pointer border border-transparent hover:border-border/50"
+                                title="Close Drawer"
                             >
                                 <X size={16} />
                             </button>
@@ -2983,15 +2977,15 @@ function TopologyContent({ token }: TopologyProps) {
                             {underlayDrawerResolution.prismaWan.elementName || 'ION Appliance'}
                         </div>
                         <div className="divide-y divide-blue-500/15 text-[11px] font-mono">
-                            <div className="grid grid-cols-[100px_1fr] items-center py-1">
+                            <div className="grid grid-cols-[115px_1fr] items-center py-1">
                                 <span className="text-text-muted">Circuit Label:</span>
                                 <span className="text-text-primary font-bold text-right truncate">{underlayDrawerResolution.prismaWan.interfaceName}</span>
                             </div>
-                            <div className="grid grid-cols-[100px_1fr] items-center py-1">
+                            <div className="grid grid-cols-[115px_1fr] items-center py-1">
                                 <span className="text-text-muted">Link Type:</span>
                                 <span className="text-blue-600 dark:text-blue-400 font-bold text-right uppercase">{underlayDrawerResolution.prismaWan.linkType || 'WAN'}</span>
                             </div>
-                            <div className="grid grid-cols-[100px_1fr] items-center py-1">
+                            <div className="grid grid-cols-[115px_1fr] items-center py-1">
                                 <span className="text-text-muted">ION IPv4:</span>
                                 <span className="text-emerald-600 dark:text-emerald-400 font-bold text-right">{underlayDrawerResolution.prismaWan.ipCidr || underlayDrawerResolution.prismaWan.ip || '—'}</span>
                             </div>
@@ -3028,15 +3022,15 @@ function TopologyContent({ token }: TopologyProps) {
                             )}
                         </div>
                         <div className="divide-y divide-amber-500/15 text-[11px] font-mono">
-                            <div className="grid grid-cols-[100px_1fr] items-center py-1">
+                            <div className="grid grid-cols-[115px_1fr] items-center py-1">
                                 <span className="text-text-muted">Port Desc:</span>
                                 <span className="text-text-primary font-bold text-right truncate">{underlayDrawerResolution.vyos?.description || '—'}</span>
                             </div>
-                            <div className="grid grid-cols-[100px_1fr] items-center py-1">
+                            <div className="grid grid-cols-[115px_1fr] items-center py-1">
                                 <span className="text-text-muted">Next-Hop IP:</span>
                                 <span className="text-emerald-600 dark:text-emerald-400 font-bold text-right">{underlayDrawerResolution.vyos?.ipCidr || underlayDrawerResolution.vyos?.ip || '—'}</span>
                             </div>
-                            <div className="grid grid-cols-[100px_1fr] items-center py-1">
+                            <div className="grid grid-cols-[115px_1fr] items-center py-1">
                                 <span className="text-text-muted">Port Status:</span>
                                 <div className="flex items-center justify-end gap-1.5">
                                     {underlayDrawerResolution.vyos ? (
