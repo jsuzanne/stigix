@@ -3379,6 +3379,105 @@ def cmd_vyos(args):
                              status_badge(item.get("status","?"))])
             table(["Time", "Router", "Command", "Status"], rows)
 
+    elif sub in ("ifaces", "interfaces", "ports"):
+        target_router = args[1] if len(args) > 1 else None
+        r = api_get("/api/vyos/routers")
+        if r:
+            routers = r if isinstance(r, list) else r.get("routers", [])
+            for rt in routers:
+                if target_router and target_router.lower() not in (rt.get("id", "").lower(), rt.get("name", "").lower()):
+                    continue
+                hdr(f"── Router: {rt.get('name', '?')} ({rt.get('host', '?')}) ──")
+                ifaces = rt.get("interfaces", [])
+                if not ifaces:
+                    dim("  No interfaces detected")
+                    continue
+                rows = []
+                for iface in ifaces:
+                    status = iface.get("status", "up")
+                    qos = iface.get("qos")
+                    qos_str = "Clean"
+                    if qos and (qos.get("latency") or qos.get("loss")):
+                        qos_str = f"Delay {qos.get('latency', 0)}ms | Loss {qos.get('loss', 0)}%"
+                    rows.append([
+                        iface.get("name", "?"),
+                        iface.get("ip") or "-",
+                        status_badge("running" if status == "up" else "stopped"),
+                        iface.get("mac") or "-",
+                        qos_str
+                    ])
+                table(["Interface", "IP Address", "Status", "MAC", "QoS / Impairment"], rows)
+                print()
+
+    elif sub in ("shut", "no-shut"):
+        cmd = "shut" if sub == "shut" else "no-shut"
+        if len(args) < 3:
+            err(f"Usage: vyos {sub} <router-id|router-name> <interface>")
+            return
+        router_target, iface = args[1], args[2]
+        payload = {
+            "routerName": router_target,
+            "interface": iface,
+            "command": cmd,
+            "source": "CLI Direct Action"
+        }
+        info(f"Executing '{cmd}' on interface {iface} on router {router_target}...")
+        res = api_post("/api/vyos/direct-action", payload)
+        if res and res.get("success"):
+            ok(f"Interface {iface} on {router_target} set to {cmd.upper()} ({res.get('durationMs', 0)}ms)")
+        else:
+            err(f"Failed: {res.get('error') if res else 'Unknown error'}")
+
+    elif sub in ("netem", "impair", "qos"):
+        if len(args) < 3:
+            err("Usage: vyos netem <router-id|router-name> <interface> [latency_ms] [loss_pct]")
+            err("       (Pass 0 0 or omit numbers to clear QoS impairment)")
+            return
+        router_target, iface = args[1], args[2]
+        latency = int(args[3]) if len(args) > 3 and args[3].isdigit() else 0
+        loss = float(args[4]) if len(args) > 4 else 0.0
+
+        if latency > 0 or loss > 0:
+            cmd = "set-qos"
+            params = {"latency": latency, "loss": loss}
+            info(f"Injecting QoS impairment on {iface} ({router_target}): latency={latency}ms, loss={loss}%...")
+        else:
+            cmd = "clear-qos"
+            params = {}
+            info(f"Clearing QoS impairment on {iface} ({router_target})...")
+
+        payload = {
+            "routerName": router_target,
+            "interface": iface,
+            "command": cmd,
+            "params": params,
+            "source": "CLI Direct Action"
+        }
+        res = api_post("/api/vyos/direct-action", payload)
+        if res and res.get("success"):
+            ok(f"QoS action executed on {iface} ({router_target}) in {res.get('durationMs', 0)}ms")
+        else:
+            err(f"Failed: {res.get('error') if res else 'Unknown error'}")
+
+    elif sub in ("block", "unblock"):
+        cmd = "simple-block" if sub == "block" else "simple-unblock"
+        if len(args) < 3:
+            err(f"Usage: vyos {sub} <router-id|router-name> <ip>")
+            return
+        router_target, ip_target = args[1], args[2]
+        payload = {
+            "routerName": router_target,
+            "command": cmd,
+            "params": {"ip": ip_target},
+            "source": "CLI Direct Action"
+        }
+        info(f"Executing {cmd} for IP {ip_target} on {router_target}...")
+        res = api_post("/api/vyos/direct-action", payload)
+        if res and res.get("success"):
+            ok(f"Firewall action '{cmd}' applied for {ip_target} on {router_target}")
+        else:
+            err(f"Failed: {res.get('error') if res else 'Unknown error'}")
+
     elif sub == "export":
         filepath = args[1] if len(args) > 1 else "vyos-config.json"
         info(f"Exporting VyOS configuration to {filepath}...")
@@ -3416,6 +3515,12 @@ def cmd_vyos(args):
     else:
         _help_section("VyOS CONTROL", [
             ("vyos list",            "List configured routers"),
+            ("vyos ifaces [router]", "List interfaces, IPs, UP/DOWN status, and QoS"),
+            ("vyos shut <r> <if>",   "Shut down an interface on router"),
+            ("vyos no-shut <r> <if>","Enable / up an interface on router"),
+            ("vyos netem <r> <if> [ms] [%]", "Inject latency & packet loss via VyOS engine"),
+            ("vyos block <r> <ip>",  "Block traffic from IP address on router"),
+            ("vyos unblock <r> <ip>","Unblock traffic for IP address"),
             ("vyos sequences",       "List action sequences"),
             ("vyos run <id>",        "Execute a sequence"),
             ("vyos stop <id>",       "Stop a sequence"),
@@ -3428,6 +3533,26 @@ def cmd_vyos(args):
 def cmd_voice(args):
     if not require_auth(): return
     sub = args[0] if args else "status"
+
+    if sub in ("ingress", "calls", "inbound"):
+        r = api_get("/api/voice/ingress")
+        if r:
+            sessions = r.get("sessions", []) if isinstance(r, dict) else (r if isinstance(r, list) else [])
+            if not sessions:
+                info("No active or recent inbound VoIP sessions detected.")
+            else:
+                table(["Site", "Source Host", "Call ID", "Codec", "MOS", "Jitter (ms)", "Loss (%)"], [
+                    [
+                        s.get("site_name") or s.get("site") or "Unknown Site",
+                        f"{s.get('source_ip', '?')}:{s.get('source_port', '?')}",
+                        s.get("call_id", "?"),
+                        s.get("codec", "G.711"),
+                        f"{s.get('mos', 4.4):.2f}" if isinstance(s.get('mos'), (int, float)) else str(s.get('mos', '4.4')),
+                        f"{s.get('jitter_ms', 0):.1f}" if isinstance(s.get('jitter_ms'), (int, float)) else str(s.get('jitter_ms', '0')),
+                        f"{s.get('loss_pct', 0):.1f}%" if isinstance(s.get('loss_pct'), (int, float)) else str(s.get('loss_pct', '0%'))
+                    ]
+                    for s in sessions
+                ])
 
     if sub == "status":
         r = api_get("/api/voice/status")
@@ -3755,7 +3880,8 @@ def cmd_voice(args):
             ("voice start",    "Start global VoIP simulation daemon (calls all enabled targets)"),
             ("voice stop",     "Stop VoIP simulation daemon"),
             ("voice status",   "Show VoIP simulation status"),
-            ("voice stats",    "Show MOS / jitter / loss stats"),
+            ("voice stats",    "Show MOS / jitter / loss stats (outbound)"),
+            ("voice ingress",  "Show incoming VoIP calls received with SITE tags & MOS"),
         ])
 
 
@@ -4402,9 +4528,134 @@ def cmd_custom_tcp_app(args):
         ])
 
 
+def cmd_health(args):
+    if not require_auth(): return
+    sub = args[0] if args else "status"
+
+    if sub in ("diag", "test", "diagnostics", "--diag"):
+        hdr("━━ Live System Self-Diagnostics ━━━━━━━━━━━━━━━━━━")
+        info("Testing live round-trip latency across all subsystems...")
+        r = api_post("/api/system/health-matrix/diagnostics")
+        if r and r.get("success"):
+            diag = r.get("diagnostics", {})
+            rows = []
+            for k, v in diag.items():
+                name = {
+                    "prisma": "Prisma SD-WAN",
+                    "cloud": "Stigix Cloud (Workers)",
+                    "mesh": "Mesh Leader Sync",
+                    "vyos": "VyOS SSH API",
+                    "custom_apps": "Custom TCP Apps",
+                    "host": "Host Memory I/O"
+                }.get(k, k.replace("_", " ").title())
+                badge = status_badge("running" if v.get("ok") else "stopped")
+                lat = f"{v.get('latency_ms', 0)} ms"
+                detail = v.get("detail") or v.get("error") or "OK"
+                rows.append([name, badge, lat, detail])
+            table(["Subsystem", "Status", "Latency", "Details"], rows)
+            print()
+            ok("Self-diagnostic test completed successfully.")
+        else:
+            err("Failed to execute self-diagnostics.")
+        return
+
+    # Matrix Overview
+    r = api_get("/api/system/health-matrix")
+    if not r or not r.get("success"):
+        cmd_status(args)
+        return
+
+    import re
+    score = r.get("overall_score", 100)
+    sub = r.get("subsystems", {})
+    host = sub.get("host", {})
+    prisma = sub.get("prisma", {})
+    mesh = sub.get("mesh", {})
+    cloud = sub.get("cloud", {})
+    vyos = sub.get("vyos", {})
+    apps = sub.get("custom_apps", {})
+    dem = sub.get("dem", {})
+    voice = sub.get("voice", {})
+    events = sub.get("events", {})
+
+    card_width = 72
+    print(c("2;34", "┏" + "━" * (card_width - 2) + "┓"))
+    title = f" Stigix System Health Matrix — {score}% OPERATIONAL "
+    tpad = (card_width - 2 - len(title)) // 2
+    print(c("2;34", "┃") + " " * tpad + c("1;32" if score >= 90 else "1;33", title) + " " * (card_width - 2 - len(title) - tpad) + c("2;34", "┃"))
+    print(c("2;34", "┣" + "━" * (card_width - 2) + "┫"))
+
+    def row(label, val):
+        llen = len(label)
+        vlen = len(re.sub(r'\033\[[0-9;]*m', '', str(val)))
+        pad = max(0, card_width - 4 - llen - 3 - vlen)
+        print(c("2;34", "┃ ") + c("1;36", f"{label:<18}") + c("2;37", " : ") + str(val) + " " * pad + c("2;34", " ┃"))
+
+    def section(name):
+        print(c("2;34", "┣" + "─" * (card_width - 2) + "⫫"[0] if False else "┣" + "─" * (card_width - 2) + "┫"))
+        print(c("2;34", "┃ ") + c("1;35", f"▶ {name.upper()}") + " " * (card_width - 6 - len(name)) + c("2;34", " ┃"))
+        print(c("2;34", "┣" + "─" * (card_width - 2) + "┫"))
+
+    section("1. Network & Cloud Integrations")
+    p_status = "CONNECTED" if prisma.get("status") == "connected" else "STANDALONE"
+    row("Prisma SD-WAN", f"{status_badge('running' if p_status == 'CONNECTED' else 'stopped')} TSG: {prisma.get('tsg_id', 'None')} ({prisma.get('region', 'EU')})")
+
+    m_mode = mesh.get("mode", "standalone").upper()
+    m_badge = status_badge("running" if mesh.get("status") == "connected" or mesh.get("peer_count", 0) > 0 else "stopped")
+    row("Stigix Mesh", f"{m_badge} Mode: {m_mode} | Leader: {mesh.get('leader_ip', 'Local')} | Peers: {mesh.get('peer_count', 0)}")
+
+    c_badge = status_badge("running" if cloud.get("master_key_valid") else "idle")
+    row("Stigix Cloud", f"{c_badge} Key: {'VALID' if cloud.get('master_key_valid') else 'OPEN'} | Scenarios: {cloud.get('scenarios_count', 8)} Probes")
+
+    section("2. Simulation Engines")
+    app_badge = status_badge("running" if apps.get("total_apps", 0) > 0 else "stopped")
+    row("Custom TCP Apps", f"{app_badge} {apps.get('total_apps', 0)} Apps ({apps.get('active_listeners', 0)} Listeners, {apps.get('active_workloads', 0)} Clients)")
+
+    dem_badge = status_badge("running" if dem.get("probes_count", 0) > 0 else "stopped")
+    row("DEM Probes", f"{dem_badge} {dem.get('probes_count', 0)} Synthetic Endpoints Active")
+
+    v_badge = status_badge("running")
+    row("Voice & VoIP", f"{v_badge} Codec G.711/Opus | MOS: {voice.get('mos_score', 4.41)}")
+
+    ev_badge = status_badge("running")
+    row("Live Events Bus", f"{ev_badge} {events.get('stream', 'WebSocket Streaming')}")
+
+    section("3. Host Hardware & Underlay")
+    vyos_badge = status_badge("running" if vyos.get("total_routers", 0) > 0 and vyos.get("active_routers", 0) > 0 else "stopped")
+    vyos_str = f"{vyos_badge} {vyos.get('active_routers', 0)}/{vyos.get('total_routers', 0)} Active"
+    if vyos.get("total_routers", 0) > 0:
+        vyos_str += f" | {vyos.get('up_interfaces', 0)} UP, {vyos.get('shut_interfaces', 0)} SHUT"
+    else:
+        vyos_str += " (Unconfigured)"
+    row("VyOS Underlay", vyos_str)
+
+    mem = host.get("memory", {})
+    used_gb = (mem.get("used_bytes") or mem.get("used") or 0) / (1024**3)
+    tot_gb = (mem.get("total_bytes") or mem.get("total") or 0) / (1024**3)
+    row("Host Memory", f"{used_gb:.1f} / {tot_gb:.1f} GB ({mem.get('usage_percent', 0)}%)")
+
+    disk = host.get("disk", {})
+    row("Host Disk", f"{disk.get('usagePercent', 0)}% Used (Host: {host.get('hostname', 'Local')})")
+
+    upt = format_uptime(host.get("uptime_process", 0))
+    row("Process Uptime", f"{upt} (Mode: {host.get('mode', 'Host Mode')})")
+
+    print(c("2;34", "┗" + "━" * (card_width - 2) + "┛"))
+    dim("  Tip: Run 'health diag' to perform live latency self-diagnostics.")
+    print()
+
+
 def cmd_system(args):
     if not require_auth(): return
     sub = args[0] if args else "info"
+
+    if sub in ("health", "matrix"):
+        cmd_health(args[1:])
+        return
+
+    if sub in ("diag", "diagnostics"):
+        cmd_health(["diag"])
+        return
 
     if sub == "info":
         hdr("━━ System Info ━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -4601,6 +4852,8 @@ def cmd_system(args):
 
     else:
         _help_section("SYSTEM", [
+            ("system health",        "Show 360° System Health Matrix"),
+            ("system diag",          "Run live round-trip latency self-diagnostics"),
             ("system info",          "System health, memory, disk"),
             ("system interfaces",    "List network interfaces"),
             ("system logs",          "Show backend logs (last 30 lines)"),
@@ -4856,6 +5109,8 @@ def cmd_help(args):
     connect forget <name>  Remove a saved profile
     connect list           List all saved profiles
     status                 Global overview: backend, traffic, public IP
+    health                 Show 360° System Health Matrix across all 9 subsystems
+    health diag            Run live round-trip latency self-diagnostics
     auth login|logout      Authenticate / clear session
     autocomplete on|off    Enable / disable tab autocompletion
     history                Show commands run in current session
@@ -4935,10 +5190,17 @@ def cmd_help(args):
     voice start            Start global VoIP simulation daemon
     voice stop             Stop VoIP simulation daemon
     voice status           Show VoIP simulation status
-    voice stats            MOS / jitter / loss stats
+    voice stats            MOS / jitter / loss stats (outbound)
+    voice ingress          Show incoming VoIP calls received with SITE tags & MOS
 
   {c('1','VyOS CONTROL')}
     vyos list              Configured routers
+    vyos ifaces [router]   List router interfaces, IPs, UP/DOWN status & QoS
+    vyos shut <r> <if>     Shut down an interface on router
+    vyos no-shut <r> <if>  Enable / up an interface on router
+    vyos netem <r> <if> [ms] [%] Inject latency & loss via VyOS engine
+    vyos block <r> <ip>    Block traffic from IP address on router
+    vyos unblock <r> <ip>  Unblock traffic for IP address
     vyos sequences         Action sequences
     vyos run <id>          Execute a sequence
     vyos stop <id>         Stop a sequence
@@ -4970,6 +5232,8 @@ def cmd_help(args):
     flows query            Query SD-WAN Flow Browser (interactive or flags)
 
   {c('1','SYSTEM')}
+    system health          Show 360° System Health Matrix
+    system diag            Run live round-trip latency self-diagnostics
     system info            Health, memory, disk
     system interfaces      Network interfaces
     system logs            Backend logs (last 30 lines)
@@ -5122,6 +5386,10 @@ class StigixCompleter(Completer):
 DISPATCH = {
     "auth":           cmd_auth,
     "status":         cmd_status,
+    "health":         cmd_health,
+    "diag":           cmd_health,
+    "diagnostics":    cmd_health,
+    "matrix":         cmd_health,
     "traffic":        cmd_traffic,
     "security":       cmd_security,
     "experience":     cmd_experience,
@@ -5164,6 +5432,9 @@ COMPLETER_TREE = {
         "--minutes": None, "--fast": None
     }},
     "status":      None,
+    "health":      {"status": None, "diag": None, "diagnostics": None},
+    "diag":        None,
+    "diagnostics": None,
     "connect":     {"list": None, "save": None, "forget": None},
     "history":     {"list": None, "dump": None, "save": None, "clear": None},
     "autocomplete": {"on": None, "off": None, "status": None},
@@ -5350,9 +5621,17 @@ COMPLETER_TREE = {
         "endpoints": None, "watch": None,
         "start": {"--target": None, "--pps": None, "--label": None},
     },
-    "vyos":        {"list": None, "sequences": None, "run": None, "stop": None, "history": None, "import": None, "export": None},
+    "vyos":        {
+        "list": None, "ifaces": None, "interfaces": None, "ports": None,
+        "shut": None, "no-shut": None,
+        "netem": None, "impair": None, "qos": None,
+        "block": None, "unblock": None,
+        "sequences": None, "run": None, "stop": None, "history": None,
+        "import": None, "export": None
+    },
     "voice":       {
         "status": None, "stop": None, "stats": None, "start": None,
+        "ingress": None, "calls": None, "inbound": None,
     },
     "iot":         {"list": None, "start": None, "stop": None, "stats": None, "vulns": None, "import": None, "export": None},
     "tcp-app":     {
@@ -5370,7 +5649,10 @@ COMPLETER_TREE = {
         "start-client": None, "stop-client": None, "test": None, "sessions": None,
         "reset-metrics": None
     },
-    "system":      {"info": None, "interfaces": None, "logs": None, "restart": None, "upgrade": None},
+    "system":      {
+        "health": None, "diag": None, "diagnostics": None,
+        "info": None, "interfaces": None, "logs": None, "restart": None, "upgrade": None
+    },
     "help":        None,
     "?":           None,
     "exit":        None,
