@@ -1021,40 +1021,36 @@ function TopologyContent({ token }: TopologyProps) {
         if (!res.vyos) return null;
         const routerName = res.vyos.routerName;
         const iface = res.vyos.interfaceName;
-        const portKey = `${routerName}:${iface}`;
         const isShut = getVyosInterfaceStatus(routerName, iface) === 'down';
         const activeQos = getVyosInterfaceQos(routerName, iface);
         const hasActiveQos = !!activeQos;
 
         return (
-            <div className="bg-card-secondary/80 border border-amber-500/30 rounded-2xl p-4 space-y-3 shadow-inner">
+            <div className="bg-card-secondary/80 border border-amber-500/30 rounded-2xl p-3.5 space-y-3 shadow-inner">
+                {/* Actions Header */}
                 <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wider flex items-center gap-1.5">
+                    <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wider flex items-center gap-1.5">
                         <Zap size={13} className="fill-amber-500" /> VyOS Interactive Actions
                     </span>
-                    <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold">
-                        {routerName}:{iface}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                        {hasActiveQos && (
+                            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[9px] font-mono font-bold flex items-center gap-1">
+                                <Sliders size={10} /> +{activeQos?.latency || 0}ms{activeQos?.loss ? ` ${activeQos.loss}%` : ''}
+                            </span>
+                        )}
+                        {isShut && (
+                            <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-500 border border-rose-500/30 text-[9px] font-mono font-bold flex items-center gap-1">
+                                <Power size={10} /> SHUT
+                            </span>
+                        )}
+                        <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20">
+                            {routerName}:{iface}
+                        </span>
+                    </div>
                 </div>
 
-                {/* Active QoS / Status Badges */}
-                {(isShut || hasActiveQos) && (
-                    <div className="flex flex-wrap gap-1.5 text-[10px] font-mono">
-                        {isShut && (
-                            <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-500 border border-rose-500/30 font-bold flex items-center gap-1">
-                                <Power size={10} /> INTERFACE SHUT
-                            </span>
-                        )}
-                        {hasActiveQos && (
-                            <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold flex items-center gap-1.5 shadow-sm">
-                                <Sliders size={12} /> {activeQos?.latency ? `+${activeQos.latency}ms` : ''}{activeQos?.latency && activeQos?.loss ? ' | ' : ''}{activeQos?.loss ? `${activeQos.loss}% Loss` : ''}
-                            </span>
-                        )}
-                    </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="grid grid-cols-3 gap-2 text-xs">
+                {/* 3 Action Buttons */}
+                <div className="grid grid-cols-3 gap-2">
                     {/* 1. Shut / No-Shut Toggle */}
                     <button
                         type="button"
@@ -1067,7 +1063,7 @@ function TopologyContent({ token }: TopologyProps) {
                         )}
                         disabled={isVyosExecuting}
                         className={cn(
-                            "px-2.5 py-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all border shadow-sm cursor-pointer",
+                            "h-[54px] rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all border shadow-sm cursor-pointer",
                             isShut
                                 ? "bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 ring-1 ring-emerald-500/40"
                                 : "bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border-rose-500/30"
@@ -1075,7 +1071,7 @@ function TopologyContent({ token }: TopologyProps) {
                         title={isShut ? "Restore link (no-shut)" : "Simulate link cut (shut interface)"}
                     >
                         <Power size={14} className={isVyosExecuting ? 'animate-pulse' : ''} />
-                        <span className="text-[10px]">{isShut ? 'NO SHUT' : 'SHUT PORT'}</span>
+                        <span className="text-[10px] tracking-wide">{isShut ? 'NO SHUT' : 'SHUT PORT'}</span>
                     </button>
 
                     {/* 2. Inject Netem */}
@@ -1093,7 +1089,7 @@ function TopologyContent({ token }: TopologyProps) {
                         }}
                         disabled={isVyosExecuting}
                         className={cn(
-                            "px-2.5 py-2.5 rounded-xl font-bold border flex flex-col items-center justify-center gap-1 transition-all shadow-sm cursor-pointer",
+                            "h-[54px] rounded-xl font-bold border flex flex-col items-center justify-center gap-1 transition-all shadow-sm cursor-pointer",
                             hasActiveQos
                                 ? "bg-amber-500/25 text-amber-300 border-amber-500/60 ring-1 ring-amber-500/40"
                                 : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border-amber-500/30"
@@ -1101,7 +1097,7 @@ function TopologyContent({ token }: TopologyProps) {
                         title="Inject latency, jitter, or packet loss via netem"
                     >
                         <Sliders size={14} />
-                        <span className="text-[10px]">INJECT QOS</span>
+                        <span className="text-[10px] tracking-wide">INJECT QOS</span>
                     </button>
 
                     {/* 3. Clear QoS */}
@@ -1114,17 +1110,17 @@ function TopologyContent({ token }: TopologyProps) {
                             {},
                             res.prismaWan.siteName
                         )}
-                        disabled={isVyosExecuting}
+                        disabled={isVyosExecuting || !hasActiveQos}
                         className={cn(
-                            "px-2.5 py-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all shadow-sm cursor-pointer border",
+                            "h-[54px] rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all shadow-sm border",
                             hasActiveQos
-                                ? "bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border-rose-500/40"
-                                : "bg-card border-border hover:border-amber-500/40 text-text-muted hover:text-text-primary"
+                                ? "bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border-rose-500/40 cursor-pointer"
+                                : "bg-card/40 border-border/40 text-text-muted/40 cursor-not-allowed"
                         )}
                         title="Remove netem latency/loss rules"
                     >
                         <RotateCcw size={14} />
-                        <span className="text-[10px]">CLEAR QOS</span>
+                        <span className="text-[10px] tracking-wide">CLEAR QOS</span>
                     </button>
                 </div>
 
@@ -2919,128 +2915,135 @@ function TopologyContent({ token }: TopologyProps) {
             {underlayDrawerResolution && (
                 <div className="fixed top-24 right-6 z-[70] w-[440px] max-w-[92vw] bg-card/95 backdrop-blur-2xl border-2 border-amber-500/50 rounded-3xl p-5 shadow-2xl shadow-black/10 dark:shadow-black/60 animate-in fade-in slide-in-from-right-8 duration-300 flex flex-col gap-3.5 text-text-primary">
                     {/* Header */}
-                    <div className="flex items-center justify-between pb-3 border-b border-border">
-                        <div className="flex items-center gap-2.5">
-                            <div className="p-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                    <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="p-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex-shrink-0">
                                 <Activity size={18} />
                             </div>
-                            <div>
-                                <h3 className="text-xs font-black uppercase text-text-primary tracking-wider flex items-center gap-2">
-                                    <span>Link Trace</span>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-xs font-black uppercase text-text-primary tracking-wider">
+                                        Link Trace
+                                    </h3>
                                     {underlayDrawerResolution.status === 'matched' ? (
-                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30">
-                                            🟢 1:1 MATCHED
+                                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> 1:1 MATCHED
                                         </span>
                                     ) : (
-                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-card-secondary text-text-muted border border-border">
+                                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-card-secondary text-text-muted border border-border">
                                             UNMAPPED
                                         </span>
                                     )}
-                                </h3>
-                                <p className="text-[10px] text-text-muted font-mono truncate max-w-[220px]">
+                                </div>
+                                <p className="text-[10px] text-text-muted font-mono truncate max-w-[210px] mt-0.5">
                                     {underlayDrawerResolution.prismaWan.siteName} ── {underlayDrawerResolution.vyos?.routerName || 'External WAN'}
                                 </p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
                             <button
                                 onClick={() => {
                                     setUnderlayPanelResolution(underlayDrawerResolution);
                                     setShowUnderlayPanel(true);
                                 }}
-                                className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5"
+                                className="px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
                                 title="Open full inspector side panel"
                             >
                                 <Eye size={12} /> Full Inspect
                             </button>
                             <button
                                 onClick={() => setUnderlayDrawerResolution(null)}
-                                className="p-1.5 hover:bg-card-secondary rounded-lg transition-colors text-text-muted hover:text-text-primary"
+                                className="p-1.5 hover:bg-card-secondary rounded-xl transition-colors text-text-muted hover:text-text-primary cursor-pointer border border-transparent hover:border-border/50"
                             >
                                 <X size={16} />
                             </button>
                         </div>
                     </div>
 
-                    {/* Left/Top: Prisma SD-WAN ION Port */}
-                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-2xl p-3.5 space-y-1.5 shadow-inner">
+                    {/* Top: Prisma SD-WAN ION Port */}
+                    <div className="bg-blue-500/10 border border-blue-500/25 rounded-2xl p-3.5 space-y-2.5 shadow-inner">
                         <div className="flex items-center justify-between">
                             <span className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 tracking-wider flex items-center gap-1.5">
                                 <Home size={12} /> Prisma SD-WAN (ION)
                             </span>
-                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-700 dark:text-blue-300">
+                            <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30">
                                 {underlayDrawerResolution.prismaWan.siteName}
                             </span>
                         </div>
-                        <div className="text-xs font-black text-text-primary">
+                        <div className="text-xs font-black text-text-primary tracking-tight">
                             {underlayDrawerResolution.prismaWan.elementName || 'ION Appliance'}
                         </div>
-                        <div className="space-y-1 text-[11px] font-mono">
-                            <div className="flex justify-between text-text-muted">
-                                <span>Circuit Label:</span>
-                                <span className="text-text-primary font-bold">{underlayDrawerResolution.prismaWan.interfaceName}</span>
+                        <div className="divide-y divide-blue-500/15 text-[11px] font-mono">
+                            <div className="grid grid-cols-[100px_1fr] items-center py-1">
+                                <span className="text-text-muted">Circuit Label:</span>
+                                <span className="text-text-primary font-bold text-right truncate">{underlayDrawerResolution.prismaWan.interfaceName}</span>
                             </div>
-                            <div className="flex justify-between text-text-muted">
-                                <span>Link Type:</span>
-                                <span className="text-blue-600 dark:text-blue-400 font-bold">{underlayDrawerResolution.prismaWan.linkType || 'WAN'}</span>
+                            <div className="grid grid-cols-[100px_1fr] items-center py-1">
+                                <span className="text-text-muted">Link Type:</span>
+                                <span className="text-blue-600 dark:text-blue-400 font-bold text-right uppercase">{underlayDrawerResolution.prismaWan.linkType || 'WAN'}</span>
                             </div>
-                            <div className="flex justify-between text-text-muted">
-                                <span>ION IPv4:</span>
-                                <span className="text-green-600 dark:text-green-400 font-bold">{underlayDrawerResolution.prismaWan.ipCidr || underlayDrawerResolution.prismaWan.ip || '—'}</span>
+                            <div className="grid grid-cols-[100px_1fr] items-center py-1">
+                                <span className="text-text-muted">ION IPv4:</span>
+                                <span className="text-emerald-600 dark:text-emerald-400 font-bold text-right">{underlayDrawerResolution.prismaWan.ipCidr || underlayDrawerResolution.prismaWan.ip || '—'}</span>
                             </div>
                         </div>
                     </div>
 
                     {/* Middle: Subnet Indicator */}
-                    <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-card-secondary border border-amber-500/30 font-mono text-[11px]">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">Transit Subnet:</span>
-                        <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold">
-                            {underlayDrawerResolution.matchedNetwork || underlayDrawerResolution.vyos?.network || '—'}
+                    <div className="grid grid-cols-[120px_1fr] items-center px-3.5 py-2.5 rounded-xl bg-card-secondary/70 border border-amber-500/30 font-mono text-[11px] shadow-sm">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                            Transit Subnet:
                         </span>
+                        <div className="flex justify-end">
+                            <span className="px-2.5 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30">
+                                {underlayDrawerResolution.matchedNetwork || underlayDrawerResolution.vyos?.network || '—'}
+                            </span>
+                        </div>
                     </div>
 
-                    {/* Right/Bottom: VyOS Underlay Router Port */}
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 space-y-1.5 shadow-inner">
+                    {/* Bottom: VyOS Underlay Router Port */}
+                    <div className="bg-amber-500/10 border border-amber-500/25 rounded-2xl p-3.5 space-y-2.5 shadow-inner">
                         <div className="flex items-center justify-between">
                             <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wider flex items-center gap-1.5">
                                 <Server size={12} /> VyOS Underlay Router
                             </span>
-                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                            <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
                                 {underlayDrawerResolution.vyos?.routerName || 'External WAN'}
                             </span>
                         </div>
-                        <div className="text-xs font-black text-text-primary">
+                        <div className="text-xs font-black text-text-primary tracking-tight">
                             {underlayDrawerResolution.vyos ? (
                                 <span>Port {underlayDrawerResolution.vyos.interfaceName} · {underlayDrawerResolution.vyos.location || 'Underlay Router'}</span>
                             ) : (
                                 <span className="text-text-muted italic">Unmatched Provider</span>
                             )}
                         </div>
-                        <div className="space-y-1 text-[11px] font-mono">
-                            <div className="flex justify-between text-text-muted">
-                                <span>Port Desc:</span>
-                                <span className="text-text-primary font-bold truncate max-w-[180px]">{underlayDrawerResolution.vyos?.description || '—'}</span>
+                        <div className="divide-y divide-amber-500/15 text-[11px] font-mono">
+                            <div className="grid grid-cols-[100px_1fr] items-center py-1">
+                                <span className="text-text-muted">Port Desc:</span>
+                                <span className="text-text-primary font-bold text-right truncate">{underlayDrawerResolution.vyos?.description || '—'}</span>
                             </div>
-                            <div className="flex justify-between text-text-muted">
-                                <span>Next-Hop IP:</span>
-                                <span className="text-green-600 dark:text-green-400 font-bold">{underlayDrawerResolution.vyos?.ipCidr || underlayDrawerResolution.vyos?.ip || '—'}</span>
+                            <div className="grid grid-cols-[100px_1fr] items-center py-1">
+                                <span className="text-text-muted">Next-Hop IP:</span>
+                                <span className="text-emerald-600 dark:text-emerald-400 font-bold text-right">{underlayDrawerResolution.vyos?.ipCidr || underlayDrawerResolution.vyos?.ip || '—'}</span>
                             </div>
-                            <div className="flex justify-between text-text-muted">
-                                <span>Port Status:</span>
-                                <span className={cn(
-                                    "font-bold",
-                                    underlayDrawerResolution.vyos
-                                        ? (getVyosInterfaceStatus(underlayDrawerResolution.vyos.routerName, underlayDrawerResolution.vyos.interfaceName) === 'down'
-                                            ? "text-rose-500"
-                                            : "text-green-600 dark:text-green-400")
-                                        : "text-text-muted"
-                                )}>
+                            <div className="grid grid-cols-[100px_1fr] items-center py-1">
+                                <span className="text-text-muted">Port Status:</span>
+                                <div className="flex items-center justify-end gap-1.5">
                                     {underlayDrawerResolution.vyos ? (
-                                        getVyosInterfaceStatus(underlayDrawerResolution.vyos.routerName, underlayDrawerResolution.vyos.interfaceName) === 'down'
-                                            ? '🔴 SHUT (DOWN)'
-                                            : '🟢 UP'
-                                    ) : '—'}
-                                </span>
+                                        getVyosInterfaceStatus(underlayDrawerResolution.vyos.routerName, underlayDrawerResolution.vyos.interfaceName) === 'down' ? (
+                                            <span className="text-rose-500 font-bold flex items-center gap-1.5">
+                                                <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.6)]" /> SHUT (DOWN)
+                                            </span>
+                                        ) : (
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5">
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" /> UP
+                                            </span>
+                                        )
+                                    ) : (
+                                        <span className="text-text-muted">—</span>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
