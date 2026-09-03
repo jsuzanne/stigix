@@ -9,30 +9,26 @@ description: >
 
 Use this skill when developing features, fixing bugs, or updating configurations specifically on the **Stigix V2 branch (`v2`)**.
 
-## V2 Development Rules
+## V2 Development & Release Rules
 
-1. **Never Commit Directly to Main**: The `main` branch remains the stable V1 production release. All V2 development commits must go directly to the `v2` branch.
-2. **Never Merge V2 to Main**: V2 contains breaking and experimental features. Do not open pull requests or merge V2 into `main` unless explicitly requested.
-3. **No Force Push**: Never use `git push --force` on `v2` or `main`.
+1. **Development Strictly on `v2`**: All feature development and bug fixes must be committed and pushed exclusively to the `v2` branch.
+2. **Never Push Directly to `main` during Dev**: Do not push or merge to `main` until the user explicitly asks to release / merge.
+3. **Release Protocol (Upon User Request)**:
+   - When the user asks to merge to `main`, increment version (`VERSION`, `engines/VERSION`, `web-dashboard/package.json`).
+   - Merge `v2` into `main` and push to `origin main`.
+   - GitHub Actions will automatically tag `v2.0.x`, compile Multi-Arch (`linux/amd64,linux/arm64`), and publish to Docker Hub (`:latest`, `:stable`, `:2.0.x`).
+4. **No Force Push**: Never use `git push --force` on `v2` or `main`.
 
 ---
 
 ## Dynamic Versioning & Docker Builds
 
-Every push to the `v2` branch triggers the GitHub Actions workflow `.github/workflows/build-stigix-allinone.yml`. 
+Every push to the `v2` branch triggers the fast dev GitHub Actions build:
 
 - **Docker Image Name**: `jsuzanne/stigix`
 - **Docker Tags Generated**:
   - `jsuzanne/stigix:v2` (glissant / equivalent of latest for V2)
-  - `jsuzanne/stigix:v2-<short-sha>` (immuable, e.g. `v2-df50fdc`)
-
-### Dynamic Version Baking
-The Dockerfile automatically intercepts the `VERSION` build argument and bakes it into `/app/VERSION` inside the container:
-```dockerfile
-ARG VERSION
-RUN if [ -n "$VERSION" ]; then echo "$VERSION" > VERSION; fi
-```
-Do **NOT** manually edit the static `VERSION` file in the Git repository unless raising the baseline V2 version. The running container will dynamically reflect the built tag.
+  - `jsuzanne/stigix:sha-<short-sha>` (immuable)
 
 ---
 
