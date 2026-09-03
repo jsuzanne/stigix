@@ -2028,6 +2028,80 @@ docker compose restart</pre>
         </div>
 
         <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Does Global Provisioning require inbound firewall rules or public IPs on branch nodes?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>No.</strong> Stigix uses a pure <strong>outbound pull-mode architecture</strong>. Branch peers initiate standard outbound HTTP/HTTPS connections (<code>TCP 8080</code> / <code>443</code>) to the central Leader.</p>
+            <p>There is zero requirement to open inbound firewall ports, configure port forwarding, or assign public IP addresses to remote branch sites. It operates flawlessly across NAT, Carrier-Grade NAT (CGNAT), private MPLS circuits, SD-WAN IPsec overlays, and restricted enterprise lab firewalls.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What happens to branch nodes if the Leader node is temporarily unreachable or offline?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Complete operational survivability.</strong> Branch instances cache all active configuration bundles locally on persistent disk volumes (<code>/data/stigix/</code>).</p>
+            <p>If WAN connectivity to the Leader is severed or the Leader undergoes maintenance:</p>
+            <ul>
+              <li>Branch nodes continue generating traffic, listening on custom TCP application ports, evaluating SLA targets, and executing scheduled security tests with zero downtime.</li>
+              <li>When connectivity is restored, branch nodes resume heartbeat synchronization and automatically catch up with any newly published revisions.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Global Provisioning orchestrate Custom TCP Application listeners across the mesh?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>When you define a Custom TCP Application (e.g. <code>SAP-ERP</code> on port <code>3200</code> or <code>DICOM-PACS</code> on port <code>104</code>) on the Leader, the definition is packaged into the <code>custom-tcp-apps</code> bundle.</p>
+            <p>Once published, all target branch peers download the revision, dynamically spawn persistent multi-threaded TCP listeners, and register them as valid East-West traffic targets. This turns a complex multi-site application simulation into a 1-click central operation.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I manage, publish, and inspect Global Provisioning via the Stigix CLI?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix ships with a full CLI provisioning command suite for headless automation and CI/CD scripting:</p>
+            <pre># View Leader provisioning status, manifest revisions, and connected peers
+stigix-cli provision status
+
+# Force an immediate on-demand configuration pull on the local node
+stigix-cli provision sync
+
+# Publish a new bundle revision from the Leader
+stigix-cli provision publish custom-tcp-apps
+
+# Roll back a bundle to a specific revision across the entire fleet
+stigix-cli provision rollback custom-tcp-apps 2
+
+# List all connected branch nodes, last seen timestamps, and sync latency
+stigix-cli provision peers</pre>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does the Leader monitor peer health and identify out-of-sync branch instances?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Every branch node transmits a telemetry heartbeat at regular intervals. The Leader aggregates these heartbeats in real-time under <strong>Settings &rarr; Central Global Provisioning</strong>, displaying a live Fleet Matrix showing:</p>
+            <ul>
+              <li><strong>Connectivity Status:</strong> Live online / offline indicators with last-seen timestamps.</li>
+              <li><strong>Revision Alignment:</strong> Per-bundle revision tracking (e.g. <code>rev-4</code> vs <code>rev-3</code>) highlighting synchronized nodes.</li>
+              <li><strong>Sync Latency:</strong> Real-time propagation time from Leader publication to branch hot-reload.</li>
+              <li><strong>Alerting:</strong> Visual warnings if a peer reports a SHA-256 mismatch or fails to pull a new revision.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How can I safely test new security or traffic policies before broadcasting them globally?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix supports safe, staged validation workflows:</p>
+            <ul>
+              <li><strong>Draft Mode:</strong> You can configure and test new security test profiles or custom application traffic locally on the Leader or a single testbed instance without publishing.</li>
+              <li><strong>Publish Revision:</strong> When validation succeeds, clicking <strong>PUBLISH REVISION</strong> (or running <code>stigix-cli provision publish</code>) broadcasts the bundle to the entire fleet.</li>
+              <li><strong>Instant Rollback (&lt; 30s):</strong> If an issue arises in the field, clicking <strong>ROLLBACK</strong> immediately reverts all branch instances to the previous known-good revision in under 30 seconds.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can branch nodes maintain local overrides, and how do rollbacks work?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p><strong>Local Overrides &amp; Orphan Protection:</strong></p>
