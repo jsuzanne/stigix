@@ -311,8 +311,8 @@ export const PrismaAppSyncModal: React.FC<PrismaAppSyncModalProps> = ({
                                         const expectedPrismaName = `STX_${String(rawName).replace(/[^a-zA-Z0-9_\-]/g, '_')}`;
                                         
                                         const matchedPrismaApp = prismaAppsList.find(pa => {
-                                            if (!pa) return false;
-                                            const paName = String(pa.name || '').toLowerCase();
+                                            if (!pa || !pa.is_stigix) return false;
+                                            const paName = String(pa.name || pa.display_name || '').toLowerCase();
                                             const expName = expectedPrismaName.toLowerCase();
                                             const rawAppName = String(rawName).toLowerCase();
                                             const tcpPorts: number[] = Array.isArray(pa.tcp_ports) ? pa.tcp_ports : [];

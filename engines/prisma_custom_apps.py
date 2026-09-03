@@ -253,6 +253,8 @@ def is_stigix_app(app_def: Dict[str, Any]) -> bool:
     """Check if an appdef was created by Stigix"""
     if not app_def or not isinstance(app_def, dict):
         return False
+    if app_def.get("app_type") == "system":
+        return False
     name = str(app_def.get("display_name") or app_def.get("name") or "")
     desc = str(app_def.get("description") or "")
     abbr = str(app_def.get("abbreviation") or "")
