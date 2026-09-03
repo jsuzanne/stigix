@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.5] - 2026-09-03
+
+### Added / Changed
+- **Prisma SD-WAN Custom Application Integration (Flow Browser Ready)** ☁️:
+  - **Automated AppDef Provisioning**: 1-click registration of Stigix custom TCP applications directly into Prisma SD-WAN tenants as `STX_<AppName>` with exact L3/L4 port ranges (`server_port: {start, end}`).
+  - **Flow Browser & Policy Visibility**: All synthetic inter-site TCP flows between Stigix branch and datacenter instances are immediately recognized, named, and classified in Flow Browser, Bandwidth Analytics, and QoS/Path Steering policies.
+  - **Delta Synchronization**: Single-pass synchronization detects existing definitions on the tenant, applies deltas preserving `_etag`, and skips unchanged configurations without redundant API calls.
+  - **Clean All & Teardown**: Safe bulk teardown of all `STX_`-prefixed and `stigix`-tagged custom applications.
+  - **Interactive Sync Center (`PrismaAppSyncModal.tsx`)**: Dedicated dashboard modal with live tenant status, per-application status pills (`SYNCED` vs `NOT SYNCED`), inline single-app action buttons, batch actions, and error boundary isolation.
+  - **Python Engine (`engines/prisma_custom_apps.py`)**: Official `prisma_sase` SDK engine with CLI support (`--list`, `--create`, `--delete`, `--sync-all`, `--clean-all`).
+  - **REST API Endpoints**: 5 new endpoints under `/api/custom-tcp-apps/prisma/*`.
+
+---
+
 ## [2.0.4] - 2026-09-03
 
 ### Added / Changed
