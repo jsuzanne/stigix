@@ -269,12 +269,12 @@ export class TcpClientRuntime extends EventEmitter {
             const buf = encodeFrame(hello);
             socket.write(buf);
             session.state.bytesSent += buf.length;
-            this.metricsTracker.recordTx(buf.length);
+            this.metricsTracker.recordClientTx(buf.length);
         });
 
         socket.on('data', chunk => {
             session.state.bytesReceived += chunk.length;
-            this.metricsTracker.recordRx(chunk.length);
+            this.metricsTracker.recordClientRx(chunk.length);
             session.parser.push(chunk);
         });
 
@@ -385,7 +385,7 @@ export class TcpClientRuntime extends EventEmitter {
         session.state.requestsSent++;
         session.state.bytesSent += buf.length;
         this.metricsTracker.totalRequests++;
-        this.metricsTracker.recordTx(buf.length);
+        this.metricsTracker.recordClientTx(buf.length);
 
         // Track timeout for this specific request
         const timer = setTimeout(() => {

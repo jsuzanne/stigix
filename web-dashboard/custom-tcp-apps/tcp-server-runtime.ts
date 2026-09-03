@@ -212,7 +212,7 @@ export class TcpServerRuntime extends EventEmitter {
         socket.on('data', chunk => {
             sessionState.bytesReceived += chunk.length;
             sessionState.lastActivityAt = Date.now();
-            this.metricsTracker.recordRx(chunk.length);
+            this.metricsTracker.recordServerRx(chunk.length);
             this.resetIdleTimer(tracked);
             parser.push(chunk);
         });
@@ -313,7 +313,7 @@ export class TcpServerRuntime extends EventEmitter {
             const raw = encodeFrame(serverHello);
             socket.write(raw);
             state.bytesSent += raw.length;
-            this.metricsTracker.recordTx(raw.length);
+            this.metricsTracker.recordServerTx(raw.length);
             this.resetIdleTimer(client);
             return;
         }
@@ -327,7 +327,7 @@ export class TcpServerRuntime extends EventEmitter {
                 const pongBuf = encodeFrame(buildPong({ clientSessionId: client.sessionId, seq: (msg as PingMessage).seq }));
                 socket.write(pongBuf);
                 state.bytesSent += pongBuf.length;
-                this.metricsTracker.recordTx(pongBuf.length);
+                this.metricsTracker.recordServerTx(pongBuf.length);
                 break;
             case 'CLIENT_CLOSE':
                 socket.end();
@@ -383,7 +383,7 @@ export class TcpServerRuntime extends EventEmitter {
                 }));
                 socket.write(errFrame);
                 state.bytesSent += errFrame.length;
-                this.metricsTracker.recordTx(errFrame.length);
+                this.metricsTracker.recordServerTx(errFrame.length);
                 return;
             }
         }
@@ -423,7 +423,8 @@ export class TcpServerRuntime extends EventEmitter {
             const respBuf = encodeFrame(resp);
             socket.write(respBuf);
             state.bytesSent += respBuf.length;
-            this.metricsTracker.recordTx(respBuf.length);
+            state.state = 'connected';
+            this.metricsTracker.recordServerTx(respBuf.length);
             this.metricsTracker.totalResponses++;
         };
 

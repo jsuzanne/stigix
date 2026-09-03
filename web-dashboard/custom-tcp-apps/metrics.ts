@@ -57,6 +57,10 @@ export class AppMetricsTracker {
 
     public totalTxBytes: number = 0;
     public totalRxBytes: number = 0;
+    public serverTxBytes: number = 0;
+    public serverRxBytes: number = 0;
+    public clientTxBytes: number = 0;
+    public clientRxBytes: number = 0;
     public totalRequests: number = 0;
     public totalResponses: number = 0;
     public totalTimeouts: number = 0;
@@ -81,6 +85,26 @@ export class AppMetricsTracker {
     }
 
     public recordRx(bytes: number): void {
+        this.totalRxBytes += bytes;
+    }
+
+    public recordServerTx(bytes: number): void {
+        this.serverTxBytes += bytes;
+        this.totalTxBytes += bytes;
+    }
+
+    public recordServerRx(bytes: number): void {
+        this.serverRxBytes += bytes;
+        this.totalRxBytes += bytes;
+    }
+
+    public recordClientTx(bytes: number): void {
+        this.clientTxBytes += bytes;
+        this.totalTxBytes += bytes;
+    }
+
+    public recordClientRx(bytes: number): void {
+        this.clientRxBytes += bytes;
         this.totalRxBytes += bytes;
     }
 
@@ -110,6 +134,10 @@ export class AppMetricsTracker {
             activeOutgoingSessions: activeOutgoing,
             totalTxBytes: this.totalTxBytes,
             totalRxBytes: this.totalRxBytes,
+            serverTxBytes: this.serverTxBytes,
+            serverRxBytes: this.serverRxBytes,
+            clientTxBytes: this.clientTxBytes,
+            clientRxBytes: this.clientRxBytes,
             totalRequests: this.totalRequests,
             totalResponses: this.totalResponses,
             totalTimeouts: this.totalTimeouts,

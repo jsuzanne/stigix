@@ -490,46 +490,56 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
             </div>
 
             {/* Metrics Overview Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* 1. Incoming Sessions Card */}
-                <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
-                            <ArrowDownRight size={16} /> Incoming Sessions (Server)
-                        </span>
-                        <span className="font-mono text-[11px] text-text-muted">:{currentApp?.listener?.port}</span>
-                    </div>
-                    <div className="mt-3 flex items-baseline justify-between">
-                        <div className="text-3xl font-black text-text-primary">{incomingSessions.length} <span className="text-xs font-normal text-text-muted">active</span></div>
-                        <div className="text-right text-[11px] text-text-muted font-mono">
-                            RX: <span className="text-emerald-600 dark:text-emerald-400 font-bold">{formatBytes(metrics?.totalRxBytes || 0)}</span>
-                        </div>
-                    </div>
-                    <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
-                        <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.serverBehavior?.mode.replace('_', ' ')}</strong></span>
-                        <span>Handled: <strong className="text-text-secondary">{metrics?.totalRequests || 0}</strong></span>
-                    </div>
-                </div>
+            {(() => {
+                const serverRx = incomingSessions.reduce((acc, s) => acc + (s.bytesReceived || 0), 0) || (metrics?.serverRxBytes ?? (metrics?.totalRxBytes || 0));
+                const serverTx = incomingSessions.reduce((acc, s) => acc + (s.bytesSent || 0), 0) || (metrics?.serverTxBytes ?? 0);
 
-                {/* 2. Outgoing Sessions Card */}
-                <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                            <ArrowUpRight size={16} /> Outgoing Sessions (Client)
-                        </span>
-                        <span className="font-mono text-[11px] text-text-muted">{currentApp?.peers?.length || 0} peers</span>
-                    </div>
-                    <div className="mt-3 flex items-baseline justify-between">
-                        <div className="text-3xl font-black text-text-primary">{outgoingSessions.filter(s => s.state === 'connected').length} <span className="text-xs font-normal text-text-muted">active</span></div>
-                        <div className="text-right text-[11px] text-text-muted font-mono">
-                            TX: <span className="text-indigo-600 dark:text-indigo-400 font-bold">{formatBytes(metrics?.totalTxBytes || 0)}</span>
+                const clientTx = outgoingSessions.reduce((acc, s) => acc + (s.bytesSent || 0), 0) || (metrics?.clientTxBytes ?? (metrics?.clientWorkloadRunning ? metrics?.totalTxBytes || 0 : 0));
+                const clientRx = outgoingSessions.reduce((acc, s) => acc + (s.bytesReceived || 0), 0) || (metrics?.clientRxBytes ?? 0);
+
+                return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {/* 1. Incoming Sessions Card */}
+                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="font-semibold flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
+                                    <ArrowDownRight size={16} /> Incoming Sessions (Server)
+                                </span>
+                                <span className="font-mono text-[11px] text-text-muted">:{currentApp?.listener?.port}</span>
+                            </div>
+                            <div className="mt-3 flex items-baseline justify-between">
+                                <div className="text-3xl font-black text-text-primary">{incomingSessions.length} <span className="text-xs font-normal text-text-muted">active</span></div>
+                                <div className="text-right text-[11px] font-mono space-y-0.5">
+                                    <div className="text-text-muted">RX: <span className="text-emerald-500 font-bold">{formatBytes(serverRx)}</span></div>
+                                    <div className="text-text-muted">TX: <span className="text-indigo-400 font-bold">{formatBytes(serverTx)}</span></div>
+                                </div>
+                            </div>
+                            <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
+                                <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.serverBehavior?.mode.replace('_', ' ')}</strong></span>
+                                <span>Handled: <strong className="text-text-secondary">{metrics?.totalRequests || 0}</strong></span>
+                            </div>
                         </div>
-                    </div>
-                    <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
-                        <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.clientDefaults?.mode.replace(/_/g, ' ')}</strong></span>
-                        <span>Replies: <strong className="text-text-secondary">{metrics?.totalResponses || 0}</strong></span>
-                    </div>
-                </div>
+
+                        {/* 2. Outgoing Sessions Card */}
+                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="font-semibold flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                    <ArrowUpRight size={16} /> Outgoing Sessions (Client)
+                                </span>
+                                <span className="font-mono text-[11px] text-text-muted">{currentApp?.peers?.length || 0} peers</span>
+                            </div>
+                            <div className="mt-3 flex items-baseline justify-between">
+                                <div className="text-3xl font-black text-text-primary">{outgoingSessions.filter(s => s.state === 'connected').length} <span className="text-xs font-normal text-text-muted">active</span></div>
+                                <div className="text-right text-[11px] font-mono space-y-0.5">
+                                    <div className="text-text-muted">TX: <span className="text-indigo-400 font-bold">{formatBytes(clientTx)}</span></div>
+                                    <div className="text-text-muted">RX: <span className="text-emerald-500 font-bold">{formatBytes(clientRx)}</span></div>
+                                </div>
+                            </div>
+                            <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
+                                <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.clientDefaults?.mode.replace(/_/g, ' ')}</strong></span>
+                                <span>Replies: <strong className="text-text-secondary">{metrics?.totalResponses || 0}</strong></span>
+                            </div>
+                        </div>
 
                 {/* 3. Application Latency Card */}
                 <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
@@ -571,6 +581,8 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                     </div>
                 </div>
             </div>
+        );
+    })()}
 
             {/* LIVE TABLES SECTION */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

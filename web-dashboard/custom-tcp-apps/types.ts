@@ -321,6 +321,10 @@ export interface AppRuntimeMetrics {
     activeOutgoingSessions: number;
     totalTxBytes: number;
     totalRxBytes: number;
+    serverTxBytes?: number;
+    serverRxBytes?: number;
+    clientTxBytes?: number;
+    clientRxBytes?: number;
     totalRequests: number;
     totalResponses: number;
     totalTimeouts: number;
