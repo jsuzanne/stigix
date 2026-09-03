@@ -7,7 +7,7 @@ import {
     Play, Square, RefreshCw, Server, Globe, Activity, Plus,
     Copy, Trash2, Edit3, Shield, AlertTriangle, CheckCircle2,
     Clock, Cpu, ArrowDownRight, ArrowUpRight, Zap, ExternalLink,
-    Layers
+    Layers, Cloud
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type {
@@ -17,6 +17,7 @@ import type {
     OutgoingSessionState
 } from '../custom-tcp-apps/types.js';
 import { CustomAppWizardModal } from './components/custom-tcp/CustomAppWizardModal';
+import { PrismaAppSyncModal } from './components/custom-tcp/PrismaAppSyncModal';
 
 interface CustomAppsProps {
     token: string | null;
@@ -35,6 +36,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
 
     // Modals
     const [isWizardOpen, setIsWizardOpen] = useState(false);
+    const [isPrismaModalOpen, setIsPrismaModalOpen] = useState(false);
     const [editingApp, setEditingApp] = useState<CustomTcpApplicationConfig | null>(null);
     const [peerTestModal, setPeerTestModal] = useState<{ isOpen: boolean; peerId: string; peerName: string; host: string; port: number } | null>(null);
     const [peerTestResult, setPeerTestResult] = useState<{ loading: boolean; success?: boolean; rttMs?: number; error?: string } | null>(null);
@@ -481,9 +483,18 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                 setEditingApp(null);
                                 setIsWizardOpen(true);
                             }}
-                            className="h-[38px] px-3.5 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+                            className="h-[38px] px-3.5 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                         >
                             <Plus size={15} /> New App
+                        </button>
+
+                        <button
+                            onClick={() => setIsPrismaModalOpen(true)}
+                            className="h-[38px] px-3.5 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            title="Prisma SD-WAN Appdef Sync & Flow Browser Classification"
+                        >
+                            <Cloud size={15} />
+                            <span>Prisma SD-WAN</span>
                         </button>
                     </div>
                 </div>
@@ -838,6 +849,14 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                 onSave={handleSaveApp}
                 editingApp={editingApp}
                 token={token}
+            />
+
+            {/* Prisma SD-WAN Appdef Sync Modal */}
+            <PrismaAppSyncModal
+                isOpen={isPrismaModalOpen}
+                onClose={() => setIsPrismaModalOpen(false)}
+                token={token}
+                applications={applications}
             />
         </div>
     );

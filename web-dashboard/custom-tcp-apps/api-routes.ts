@@ -227,5 +227,152 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
         }
     });
 
+    // ─── Prisma SD-WAN Custom Apps Sync Endpoints ─────────────────────────────
+
+    // GET /api/custom-tcp-apps/prisma/status — Check tenant status and list Prisma appdefs
+    router.get('/prisma/status', async (_req: Request, res: Response) => {
+        try {
+            const result = await runPrismaCustomApps(['--list']);
+            res.json(result);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/prisma/sync-app/:id — Sync single app to Prisma SD-WAN
+    router.post('/prisma/sync-app/:id', async (req: Request, res: Response) => {
+        try {
+            const file = tcpAppManager.getConfig();
+            const app = file.applications.find(a => a.id === req.params.id);
+            if (!app) return res.status(404).json({ success: false, error: 'Application not found' });
+
+            const port = app.listener?.port || app.peers?.[0]?.port;
+            if (!port) return res.status(400).json({ success: false, error: 'Application has no port configured' });
+
+            const result = await runPrismaCustomApps([
+                '--create',
+                '--name', app.name,
+                '--port', String(port),
+                '--protocol', 'tcp',
+                '--display-name', `Stigix ${app.name} (TCP ${port})`,
+                '--description', app.description || `Auto-provisioned by Stigix for ${app.name}`
+            ]);
+
+            res.json(result);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/prisma/delete-app/:id — Delete app from Prisma SD-WAN
+    router.post('/prisma/delete-app/:id', async (req: Request, res: Response) => {
+        try {
+            const file = tcpAppManager.getConfig();
+            const app = file.applications.find(a => a.id === req.params.id);
+            const appName = app ? app.name : req.params.id;
+
+            const result = await runPrismaCustomApps([
+                '--delete',
+                '--name', appName
+            ]);
+
+            res.json(result);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/prisma/sync-all — 1-click sync all apps to Prisma SD-WAN
+    router.post('/prisma/sync-all', async (_req: Request, res: Response) => {
+        try {
+            const file = tcpAppManager.getConfig();
+            const jsonString = JSON.stringify(file);
+            const result = await runPrismaCustomApps([
+                '--sync-all',
+                '--json-data', jsonString
+            ]);
+
+            res.json(result);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/prisma/clean-all — Delete all Stigix apps from tenant
+    router.post('/prisma/clean-all', async (_req: Request, res: Response) => {
+        try {
+            const result = await runPrismaCustomApps(['--clean-all']);
+            res.json(result);
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
     return router;
+}
+
+function getPythonPath(): string {
+    const cwd = process.cwd();
+    const candidates = [
+        path.join(cwd, 'engines', '.venv', 'bin', 'python3'),
+        path.join(cwd, '..', 'engines', '.venv', 'bin', 'python3'),
+        '/app/engines/.venv/bin/python3'
+    ];
+    for (const c of candidates) {
+        if (fs.existsSync(c)) return c;
+    }
+    return 'python3';
+}
+
+function getPrismaCustomAppsScript(): string {
+    const cwd = process.cwd();
+    const candidates = [
+        path.join(cwd, 'engines', 'prisma_custom_apps.py'),
+        path.join(cwd, '..', 'engines', 'prisma_custom_apps.py'),
+        '/app/engines/prisma_custom_apps.py'
+    ];
+    for (const c of candidates) {
+        if (fs.existsSync(c)) return c;
+    }
+    return 'engines/prisma_custom_apps.py';
+}
+
+function runPrismaCustomApps(args: string[]): Promise<any> {
+    return new Promise((resolve, reject) => {
+        const script = getPrismaCustomAppsScript();
+        const python = getPythonPath();
+        const fullArgs = [script, ...args, '--json'];
+
+        const proc = spawn(python, fullArgs, {
+            timeout: 35000,
+            env: { ...process.env }
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        proc.stdout.on('data', (d) => { stdout += d.toString(); });
+        proc.stderr.on('data', (d) => { stderr += d.toString(); });
+
+        proc.on('close', (code) => {
+            try {
+                const parsed = JSON.parse(stdout);
+                if (code === 0 && parsed.success !== false) {
+                    resolve(parsed);
+                } else {
+                    reject(new Error(parsed.error || stderr || `Script failed (exit code ${code})`));
+                }
+            } catch (err) {
+                if (code === 0) {
+                    resolve({ success: true, raw: stdout });
+                } else {
+                    reject(new Error(stderr || stdout || `Script failed (exit code ${code})`));
+                }
+            }
+        });
+
+        proc.on('error', (err) => {
+            reject(err);
+        });
+    });
 }
