@@ -1408,6 +1408,311 @@ async def get_prisma_flows(
 
 
 # -----------------------------------------------------------------------------
+# System Health Matrix & Live Diagnostics (Phase 1)
+# -----------------------------------------------------------------------------
+
+@mcp.tool()
+async def get_health_matrix(agent_id: str) -> dict:
+    """
+    Get the 360° System Health Matrix of a Stigix node.
+    Returns the global operational score (0-100%) and detailed status across all 9 subsystems:
+    1. Prisma SD-WAN (TSG ID, controller connection, region)
+    2. Stigix Mesh (Leader vs Branch mode, active leader IP, peer count)
+    3. Stigix Cloud (Cloudflare Edge Worker keys & probe scenarios)
+    4. Custom TCP Apps (active listeners, client workloads, registered apps)
+    5. DEM Probes (configured synthetic endpoints)
+    6. Voice & VoIP (G.711/Opus simulation daemon, MOS score)
+    7. Live Events Bus (WebSocket streaming state)
+    8. VyOS Underlay (configured routers, active interfaces, UP/SHUT ports)
+    9. Host Hardware (Memory RAM used/total, Disk usage %, process uptime, host mode)
+
+    Args:
+        agent_id: ID of the Stigix node (from list_endpoints()).
+    """
+    return await orchestrator.get_health_matrix(agent_id)
+
+
+@mcp.tool()
+async def run_system_diagnostics(agent_id: str) -> dict:
+    """
+    Run live round-trip latency self-diagnostics across all 6 core engines of a Stigix node.
+    Actively probes Prisma API, Cloudflare Workers, Mesh Leader sync, VyOS SSH API,
+    Custom TCP App engine, and Host Memory I/O.
+    Returns real-time latency (ms), health status, and diagnostic details per engine.
+
+    Args:
+        agent_id: ID of the Stigix node (from list_endpoints()).
+    """
+    return await orchestrator.run_system_diagnostics(agent_id)
+
+
+# -----------------------------------------------------------------------------
+# Voice & VoIP Analytics (Phase 1)
+# -----------------------------------------------------------------------------
+
+@mcp.tool()
+async def get_voice_stats(agent_id: str) -> dict:
+    """
+    Get detailed outbound VoIP simulation statistics and quality metrics from a node.
+    Returns overall and per-target MOS scores, jitter (ms), packet loss (%), and RTT.
+
+    Args:
+        agent_id: ID of the Stigix node.
+    """
+    return await orchestrator.get_voice_stats(agent_id)
+
+
+@mcp.tool()
+async def get_voice_ingress_calls(agent_id: str) -> dict:
+    """
+    Inspect incoming VoIP calls received on UDP port 6100 by a Stigix node.
+    Identifies remote caller site tags embedded in RTP payloads, active call IDs,
+    codecs used, and real-time MOS/jitter/loss metrics on ingress.
+
+    Args:
+        agent_id: ID of the Stigix node.
+    """
+    return await orchestrator.get_voice_ingress(agent_id)
+
+
+# -----------------------------------------------------------------------------
+# Custom TCP Applications (Phase 2)
+# -----------------------------------------------------------------------------
+
+@mcp.tool()
+async def list_custom_tcp_apps(agent_id: str) -> dict:
+    """
+    List all configured Custom TCP Applications on a node and their live operational status.
+    Returns app names, description, listener port/state, client workload state, target peers,
+    RTT handshake latencies, throughput, and error rates.
+
+    Args:
+        agent_id: ID of the Stigix node.
+    """
+    return await orchestrator.list_custom_tcp_apps(agent_id)
+
+
+@mcp.tool()
+async def start_tcp_app_listener(agent_id: str, app_id: str) -> dict:
+    """
+    Start the local TCP server listener for a specific Custom TCP Application.
+
+    Args:
+        agent_id: ID of the Stigix node.
+        app_id: Application identifier (e.g. 'app-erp', 'app-pos', 'app-sql').
+    """
+    return await orchestrator.start_tcp_app_listener(agent_id, app_id)
+
+
+@mcp.tool()
+async def stop_tcp_app_listener(agent_id: str, app_id: str) -> dict:
+    """
+    Stop the local TCP server listener for a specific Custom TCP Application.
+
+    Args:
+        agent_id: ID of the Stigix node.
+        app_id: Application identifier (e.g. 'app-erp', 'app-pos', 'app-sql').
+    """
+    return await orchestrator.stop_tcp_app_listener(agent_id, app_id)
+
+
+@mcp.tool()
+async def start_tcp_app_workload(agent_id: str, app_id: str) -> dict:
+    """
+    Start outbound client synthetic workload generator for a Custom TCP Application.
+    Generates synthetic TCP transactions towards remote branch/hub peers according to profile.
+
+    Args:
+        agent_id: ID of the Stigix node.
+        app_id: Application identifier.
+    """
+    return await orchestrator.start_tcp_app_workload(agent_id, app_id)
+
+
+@mcp.tool()
+async def stop_tcp_app_workload(agent_id: str, app_id: str) -> dict:
+    """
+    Stop outbound client synthetic workload generator for a Custom TCP Application.
+
+    Args:
+        agent_id: ID of the Stigix node.
+        app_id: Application identifier.
+    """
+    return await orchestrator.stop_tcp_app_workload(agent_id, app_id)
+
+
+@mcp.tool()
+async def test_tcp_app_handshake(agent_id: str, app_id: str, peer_id: Optional[str] = None) -> dict:
+    """
+    Execute an instant single-shot TCP 3-way handshake latency test to a target peer.
+    Measures exact TCP SYN-ACK connection setup time in milliseconds without starting a continuous workload.
+
+    Args:
+        agent_id: ID of the Stigix node initiating the test.
+        app_id: Application identifier.
+        peer_id: Optional specific target peer ID. If omitted, tests the default configured primary peer.
+    """
+    return await orchestrator.test_tcp_app_handshake(agent_id, app_id, peer_id)
+
+
+@mcp.tool()
+async def get_tcp_app_sessions(agent_id: str, app_id: str) -> dict:
+    """
+    Inspect active incoming and outgoing TCP sessions for a Custom TCP Application.
+    Shows client IPs, ports, duration, bytes exchanged, and state.
+
+    Args:
+        agent_id: ID of the Stigix node.
+        app_id: Application identifier.
+    """
+    return await orchestrator.get_tcp_app_sessions(agent_id, app_id)
+
+
+@mcp.tool()
+async def reset_tcp_app_metrics(agent_id: str, app_id: str) -> dict:
+    """
+    Reset operational latency and bandwidth counters for a Custom TCP Application.
+
+    Args:
+        agent_id: ID of the Stigix node.
+        app_id: Application identifier.
+    """
+    return await orchestrator.reset_tcp_app_metrics(agent_id, app_id)
+
+
+# -----------------------------------------------------------------------------
+# Target Controller & Mesh Leader (Phase 2)
+# -----------------------------------------------------------------------------
+
+@mcp.tool()
+async def get_controller_status(agent_id: str) -> dict:
+    """
+    Get Target Controller and Mesh status on a Stigix node.
+    Shows whether the node operates as Leader or Branch/Peer, configured Site Name,
+    active Leader IP, discovery mode (Static vs Dynamic Autodiscover), and number of connected peers.
+
+    Args:
+        agent_id: ID of the Stigix node.
+    """
+    return await orchestrator.get_controller_status(agent_id)
+
+
+@mcp.tool()
+async def list_controller_peers(agent_id: str) -> dict:
+    """
+    List all remote branch nodes registered with the Leader node.
+    Returns site names, LAN IPs, roles, capabilities (voice, xfr, failover, apps), and last heartbeat timestamps.
+
+    Args:
+        agent_id: ID of the Leader Stigix node.
+    """
+    return await orchestrator.list_controller_peers(agent_id)
+
+
+@mcp.tool()
+async def set_controller_leader(agent_id: str, leader_url: Optional[str] = None) -> dict:
+    """
+    Configure the central Leader for a branch node, or revert to dynamic autodiscovery.
+
+    Args:
+        agent_id: ID of the Stigix node.
+        leader_url: IP or URL of the central Leader (e.g. '192.168.203.100'). If None/empty, reverts to Cloudflare dynamic autodiscovery.
+    """
+    return await orchestrator.set_controller_leader(agent_id, leader_url)
+
+
+@mcp.tool()
+async def generate_peer_onboard_command(agent_id: str) -> dict:
+    """
+    Generate a ready-to-run curl one-liner command to onboard and connect a new remote branch node to this Leader.
+
+    Args:
+        agent_id: ID of the Leader Stigix node.
+    """
+    return await orchestrator.generate_peer_onboard_command(agent_id)
+
+
+# -----------------------------------------------------------------------------
+# Global Configuration Provisioning (Phase 2)
+# -----------------------------------------------------------------------------
+
+@mcp.tool()
+async def get_provisioning_status(agent_id: str) -> dict:
+    """
+    Get Global Configuration Provisioning status across the SD-WAN fabric.
+    Shows whether provisioning pull mode is enabled, published revision hashes for all bundle types
+    (applications, connectivity-probes, convergence-sla, security-config, voice-config, iot-config, custom-tcp-apps, prisma-sase),
+    locally applied revisions on this node, and any pending unpublished changes.
+
+    Args:
+        agent_id: ID of the Stigix node.
+    """
+    return await orchestrator.get_provisioning_status(agent_id)
+
+
+@mcp.tool()
+async def set_provisioning_mode(agent_id: str, enabled: bool) -> dict:
+    """
+    Enable or disable the Global Provisioning pull daemon on a node.
+    When enabled, the node automatically synchronizes published configuration bundles from the Leader.
+
+    Args:
+        agent_id: ID of the Stigix node.
+        enabled: True to enable automatic pull mode, False to disable.
+    """
+    return await orchestrator.set_provisioning_mode(agent_id, enabled)
+
+
+@mcp.tool()
+async def publish_configuration_bundle(agent_id: str, bundle_type: str = "all") -> dict:
+    """
+    Publish local configuration bundle(s) across the entire SD-WAN mesh.
+    Computes a new cryptographic revision hash and notifies all connected branch peers to pull the update.
+
+    Bundle types:
+    - 'all'                 : Publish all configuration bundles at once
+    - 'applications'        : Traffic simulation applications & catalogues
+    - 'connectivity-probes' : Synthetic DEM probes
+    - 'convergence-sla'     : SLA thresholds and failover timers
+    - 'security-config'     : Security audit URL categories & DNS domains
+    - 'voice-config'        : VoIP call generators & targets
+    - 'iot-config'          : IoT device simulation catalogues
+    - 'custom-tcp-apps'     : Custom TCP application definitions & listeners
+    - 'prisma-sase'         : Prisma SD-WAN credentials
+
+    Args:
+        agent_id: ID of the Leader Stigix node.
+        bundle_type: Name of the bundle to publish (default 'all').
+    """
+    return await orchestrator.publish_configuration_bundle(agent_id, bundle_type)
+
+
+@mcp.tool()
+async def rollback_configuration_bundle(agent_id: str, bundle_type: str, revision: str) -> dict:
+    """
+    Rollback a configuration bundle to a prior revision hash across the mesh.
+
+    Args:
+        agent_id: ID of the Leader Stigix node.
+        bundle_type: The bundle to rollback (e.g. 'applications', 'connectivity-probes', 'custom-tcp-apps').
+        revision: Target revision hash to restore.
+    """
+    return await orchestrator.rollback_configuration_bundle(agent_id, bundle_type, revision)
+
+
+@mcp.tool()
+async def get_provisioning_history(agent_id: str, limit: int = 15) -> dict:
+    """
+    Get the audit trail of published configuration bundles and rollbacks on a node.
+
+    Args:
+        agent_id: ID of the Stigix node.
+        limit: Number of history records to return (default 15).
+    """
+    return await orchestrator.get_provisioning_history(agent_id, limit)
+
+
+# -----------------------------------------------------------------------------
 # Main Entry Point
 # -----------------------------------------------------------------------------
 

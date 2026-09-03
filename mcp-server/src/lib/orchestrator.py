@@ -2144,3 +2144,349 @@ class TestOrchestrator:
                 return r.json()
             except Exception as e:
                 return self._handle_exception(f"Prisma flow query on {agent_id}", e)
+
+    # -------------------------------------------------------------------------
+    # System Health Matrix & Diagnostics (Phase 1)
+    # -------------------------------------------------------------------------
+
+    async def get_health_matrix(self, agent_id: str) -> Dict[str, Any]:
+        """Fetch the 360-degree system health matrix across all 9 subsystems."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.get(f"{agent.api_base_url}/api/system/health-matrix", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Health matrix fetch on {agent_id}", e)
+
+    async def run_system_diagnostics(self, agent_id: str) -> Dict[str, Any]:
+        """Run live round-trip latency diagnostics across all subsystems."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            try:
+                r = await client.post(f"{agent.api_base_url}/api/system/health-matrix/diagnostics", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"System diagnostics on {agent_id}", e)
+
+    # -------------------------------------------------------------------------
+    # Voice / VoIP Analytics & Ingress (Phase 1)
+    # -------------------------------------------------------------------------
+
+    async def get_voice_stats(self, agent_id: str) -> Dict[str, Any]:
+        """Fetch outbound voice simulation metrics (MOS score, jitter, loss %, RTT)."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.get(f"{agent.api_base_url}/api/voice/stats", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Voice stats on {agent_id}", e)
+
+    async def get_voice_ingress(self, agent_id: str) -> Dict[str, Any]:
+        """Fetch inbound VoIP calls received on port 6100 with identified site tags and MOS."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.get(f"{agent.api_base_url}/api/voice/ingress", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Voice ingress fetch on {agent_id}", e)
+
+    # -------------------------------------------------------------------------
+    # Custom TCP Applications (Phase 2)
+    # -------------------------------------------------------------------------
+
+    async def list_custom_tcp_apps(self, agent_id: str) -> Dict[str, Any]:
+        """List configured Custom TCP Applications and their operational status."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps/summary/all", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"List Custom TCP Apps on {agent_id}", e)
+
+    async def start_tcp_app_listener(self, agent_id: str, app_id: str) -> Dict[str, Any]:
+        """Start the local host TCP listener for a custom TCP application."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/start-listener", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Start TCP listener {app_id} on {agent_id}", e)
+
+    async def stop_tcp_app_listener(self, agent_id: str, app_id: str) -> Dict[str, Any]:
+        """Stop the local host TCP listener for a custom TCP application."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/stop-listener", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Stop TCP listener {app_id} on {agent_id}", e)
+
+    async def start_tcp_app_workload(self, agent_id: str, app_id: str) -> Dict[str, Any]:
+        """Start client workload generator for a custom TCP application."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/start-client", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Start TCP client {app_id} on {agent_id}", e)
+
+    async def stop_tcp_app_workload(self, agent_id: str, app_id: str) -> Dict[str, Any]:
+        """Stop client workload generator for a custom TCP application."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/stop-client", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Stop TCP client {app_id} on {agent_id}", e)
+
+    async def test_tcp_app_handshake(self, agent_id: str, app_id: str, peer_id: Optional[str] = None) -> Dict[str, Any]:
+        """Run an instant TCP 3-way handshake latency test to a target peer."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        body = {"peerId": peer_id} if peer_id else {}
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/test", json=body, headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Test TCP app {app_id} on {agent_id}", e)
+
+    async def get_tcp_app_sessions(self, agent_id: str, app_id: str) -> Dict[str, Any]:
+        """List active incoming and outgoing TCP sessions for an application."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/sessions", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Get TCP sessions for {app_id} on {agent_id}", e)
+
+    async def reset_tcp_app_metrics(self, agent_id: str, app_id: str) -> Dict[str, Any]:
+        """Reset operational latency and bandwidth counters for a TCP application."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/reset", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Reset metrics for {app_id} on {agent_id}", e)
+
+    # -------------------------------------------------------------------------
+    # Target Controller & Mesh Leader (Phase 2)
+    # -------------------------------------------------------------------------
+
+    async def get_controller_status(self, agent_id: str) -> Dict[str, Any]:
+        """Fetch Target Controller role, site name, leader IP, and peer count."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.get(f"{agent.api_base_url}/api/registry/status", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Controller status on {agent_id}", e)
+
+    async def list_controller_peers(self, agent_id: str) -> Dict[str, Any]:
+        """List all remote branch nodes registered with the Leader."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.get(f"{agent.api_base_url}/api/registry/status", headers=headers)
+                r.raise_for_status()
+                data = r.json()
+                peers = data.get("peers", [])
+                return {
+                    "is_leader": data.get("is_leader", False),
+                    "site_name": data.get("site_name"),
+                    "peer_count": len(peers),
+                    "peers": peers
+                }
+            except Exception as e:
+                return self._handle_exception(f"List controller peers on {agent_id}", e)
+
+    async def set_controller_leader(self, agent_id: str, leader_url: Optional[str] = None) -> Dict[str, Any]:
+        """Set a static central leader IP/URL or revert to dynamic autodiscovery."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                if leader_url:
+                    r = await client.post(f"{agent.api_base_url}/api/registry/static-leader", json={"url": leader_url}, headers=headers)
+                else:
+                    r = await client.post(f"{agent.api_base_url}/api/registry/autodiscover", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Set controller leader on {agent_id}", e)
+
+    async def generate_peer_onboard_command(self, agent_id: str) -> Dict[str, Any]:
+        """Generate a curl one-liner onboarding command to connect a new branch node to the mesh."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.get(f"{agent.api_base_url}/api/registry/onboard-command", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Generate onboard command on {agent_id}", e)
+
+    # -------------------------------------------------------------------------
+    # Global Configuration Provisioning (Phase 2)
+    # -------------------------------------------------------------------------
+
+    async def get_provisioning_status(self, agent_id: str) -> Dict[str, Any]:
+        """Fetch Global Provisioning pull mode status, active bundle revisions, and pending changes."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.get(f"{agent.api_base_url}/api/provisioning/config", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Provisioning status on {agent_id}", e)
+
+    async def set_provisioning_mode(self, agent_id: str, enabled: bool) -> Dict[str, Any]:
+        """Enable or disable Global Provisioning pull daemon on a node."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.post(f"{agent.api_base_url}/api/provisioning/config", json={"enabled": enabled}, headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Set provisioning mode on {agent_id}", e)
+
+    async def publish_configuration_bundle(self, agent_id: str, bundle_type: str = "all") -> Dict[str, Any]:
+        """Publish local configuration bundle(s) across the entire SD-WAN mesh."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                r = await client.post(f"{agent.api_base_url}/api/provisioning/publish", json={"type": bundle_type}, headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Publish bundle {bundle_type} on {agent_id}", e)
+
+    async def rollback_configuration_bundle(self, agent_id: str, bundle_type: str, revision: str) -> Dict[str, Any]:
+        """Rollback a specific configuration bundle to a prior revision hash."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                r = await client.post(f"{agent.api_base_url}/api/provisioning/rollback", json={"type": bundle_type, "revision": revision}, headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Rollback bundle {bundle_type} to rev {revision} on {agent_id}", e)
+
+    async def get_provisioning_history(self, agent_id: str, limit: int = 15) -> Dict[str, Any]:
+        """Fetch the audit trail of published configuration bundles and rollbacks."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.get(f"{agent.api_base_url}/api/provisioning/history?limit={limit}", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Provisioning history on {agent_id}", e)
