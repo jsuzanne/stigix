@@ -347,9 +347,10 @@ def create_or_update_app(
     description: Optional[str] = None,
     category: str = 'business-systems',
     sub_category: str = 'general',
+    existing_apps: Optional[List[Dict[str, Any]]] = None,
     api_version: str = 'v2.6'
 ) -> Dict[str, Any]:
-    """Create a new custom application or update existing if name matches"""
+    """Create a new custom application or update existing only if there is a delta"""
     payload = build_appdef_payload(
         name=name,
         port=port,
@@ -360,13 +361,28 @@ def create_or_update_app(
         sub_category=sub_category
     )
 
-    # Check if appdef with this standardized name already exists
-    existing_apps = list_custom_apps(sdk, api_version=api_version)
+    # Use provided cache of existing apps or query tenant
+    if existing_apps is None:
+        existing_apps = list_custom_apps(sdk, api_version=api_version)
+
     match = next((a for a in existing_apps if a["name"].lower() == payload["name"].lower()), None)
 
     if match:
-        # Update existing appdef
         app_id = match["id"]
+        # Check if identical (delta check)
+        existing_ports = match.get("tcp_ports" if protocol == "tcp" else "udp_ports") or []
+        if len(existing_ports) == 1 and existing_ports[0] == int(port):
+            return {
+                "action": "unchanged",
+                "id": app_id,
+                "name": payload["name"],
+                "display_name": payload["display_name"],
+                "port": port,
+                "protocol": protocol,
+                "app": match
+            }
+
+        # Delta detected -> Update existing appdef
         resp = sdk.put.appdefs(appdef_id=app_id, data=payload, api_version=api_version)
         if not resp.cgx_status:
             raise RuntimeError(f"Failed to update appdef {payload['name']} (ID {app_id}): {resp.cgx_content}")
@@ -380,7 +396,7 @@ def create_or_update_app(
             "app": resp.cgx_content
         }
     else:
-        # Create new appdef
+        # New app -> Create via POST
         resp = sdk.post.appdefs(data=payload, api_version=api_version)
         if not resp.cgx_status:
             raise RuntimeError(f"Failed to create appdef {payload['name']}: {resp.cgx_content}")
@@ -439,7 +455,7 @@ def sync_all_from_config(
     json_data: Optional[str] = None,
     api_version: str = 'v2.6'
 ) -> Dict[str, Any]:
-    """Read Stigix Custom TCP applications and synchronize all to Prisma SD-WAN"""
+    """Read Stigix Custom TCP applications and synchronize delta to Prisma SD-WAN in single pass"""
     apps_list = []
 
     if json_data:
@@ -473,10 +489,20 @@ def sync_all_from_config(
             "success": True,
             "message": "No Custom TCP applications found to sync",
             "synced_count": 0,
+            "created_count": 0,
+            "updated_count": 0,
+            "unchanged_count": 0,
             "results": []
         }
 
+    # Fetch existing apps on tenant ONCE (single pass optimization)
+    existing_tenant_apps = list_custom_apps(sdk, api_version=api_version)
+
     results = []
+    created_count = 0
+    updated_count = 0
+    unchanged_count = 0
+
     for app in apps_list:
         app_name = app.get("name")
         listener = app.get("listener", {})
@@ -497,14 +523,24 @@ def sync_all_from_config(
             description=desc,
             category="business-systems",
             sub_category="general",
+            existing_apps=existing_tenant_apps,
             api_version=api_version
         )
         results.append(res)
+        if res["action"] == "created":
+            created_count += 1
+        elif res["action"] == "updated":
+            updated_count += 1
+        elif res["action"] == "unchanged":
+            unchanged_count += 1
 
     return {
         "success": True,
-        "message": f"Successfully synchronized {len(results)} application(s) to Prisma SD-WAN",
+        "message": f"Delta Sync complete: {created_count} created, {updated_count} updated, {unchanged_count} already up-to-date",
         "synced_count": len(results),
+        "created_count": created_count,
+        "updated_count": updated_count,
+        "unchanged_count": unchanged_count,
         "results": results
     }
 
