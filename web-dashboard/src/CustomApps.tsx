@@ -377,15 +377,20 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
             )}
 
             {/* Application Selector & Control Header */}
-            <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
-                <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2">Select Application</label>
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[300px]">
-                        <div className="w-full max-w-xs">
+            {/* Top Toolbar & Application Selector */}
+            <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm space-y-3.5">
+                {/* Row 1: Application Select & Primary Actions */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+                    {/* Left: Application Select Dropdown */}
+                    <div className="flex items-center gap-3 flex-1">
+                        <span className="text-xs font-bold text-text-muted uppercase tracking-wider whitespace-nowrap">
+                            Application:
+                        </span>
+                        <div className="w-full max-w-sm">
                             <select
                                 value={selectedAppId}
                                 onChange={e => setSelectedAppId(e.target.value)}
-                                className="w-full h-[38px] bg-card-secondary border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary font-medium focus:outline-none focus:border-indigo-500 shadow-sm"
+                                className="w-full h-[38px] bg-card-secondary hover:bg-card-hover border border-border rounded-xl px-3.5 text-sm text-text-primary font-medium focus:outline-none focus:border-indigo-500 shadow-sm transition-colors cursor-pointer"
                             >
                                 {applications.map(app => {
                                     const sum = allAppSummaries[app.id];
@@ -398,59 +403,20 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                 })}
                             </select>
                         </div>
-
-                        {metrics && (() => {
-                            const health = calculateHealthScore();
-                            return (
-                                <div className="flex items-center gap-2.5">
-                                    <div
-                                        title={health.reason}
-                                        className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-black border flex items-center gap-2 cursor-help transition-all shadow-sm ${
-                                            health.color === 'emerald'
-                                                ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
-                                                : health.color === 'amber'
-                                                ? 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400'
-                                                : 'bg-rose-500/15 border-rose-500/50 text-rose-600 dark:text-rose-400 animate-pulse'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-1.5 font-mono">
-                                            <span className="text-[13px]">{health.score}</span>
-                                            <span className="text-[10px] opacity-70">/100</span>
-                                        </div>
-                                        <span className="text-[11px] uppercase tracking-wider font-extrabold">{health.label}</span>
-                                    </div>
-
-                                    <span className="h-[38px] text-xs text-text-muted bg-card-secondary border border-border px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm">
-                                        <Server size={13} className={metrics.listenerState === 'listening' ? 'text-emerald-500' : 'text-text-muted'} />
-                                        <span>Listener:</span>
-                                        <strong className={`uppercase ${metrics.listenerState === 'listening' ? 'text-emerald-600 dark:text-emerald-400' : 'text-text-muted'}`}>
-                                            {metrics.listenerState}
-                                        </strong>
-                                    </span>
-
-                                    {currentApp?.startup?.startClientWorkload && (
-                                        <span className="h-[38px] text-xs text-amber-500 bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-sm font-bold" title="Zero-Touch Auto-Start enabled: client workload starts automatically on sync and boot">
-                                            <Zap size={13} className="fill-amber-500" />
-                                            <span>ZTP Auto-Start</span>
-                                        </span>
-                                    )}
-                                </div>
-                            );
-                        })()}
                     </div>
 
-                    {/* Control Action Buttons */}
-                    <div className="flex items-center gap-2.5">
+                    {/* Right: Primary Control & Config Buttons */}
+                    <div className="flex flex-wrap items-center gap-2">
                         <button
                             onClick={handleToggleListener}
                             disabled={isActionLoading}
-                            className={`h-[38px] px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm ${
+                            className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm ${
                                 metrics?.listenerState === 'listening'
                                     ? 'bg-card-secondary hover:bg-card-hover text-amber-600 dark:text-amber-400 border border-amber-500/30'
                                     : 'bg-indigo-600 hover:bg-indigo-500 text-white'
                             }`}
                         >
-                            <Server size={15} />
+                            <Server size={14} />
                             {metrics?.listenerState === 'listening' ? 'Stop Listener' : 'Start Listener'}
                         </button>
 
@@ -458,24 +424,26 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             onClick={handleToggleClient}
                             disabled={isActionLoading}
                             title={!currentApp?.peers?.length ? 'No target peers configured — click to configure peers' : ''}
-                            className={`h-[38px] px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm ${
+                            className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm ${
                                 metrics?.clientWorkloadRunning
                                     ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40'
                                     : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
                             }`}
                         >
-                            {metrics?.clientWorkloadRunning ? <Square size={15} /> : <Play size={15} />}
+                            {metrics?.clientWorkloadRunning ? <Square size={14} /> : <Play size={14} />}
                             {metrics?.clientWorkloadRunning ? 'Stop Client Workload' : 'Start Client Workload'}
                         </button>
+
+                        <div className="h-5 w-px bg-border mx-1 hidden sm:block" />
 
                         <button
                             onClick={() => {
                                 setEditingApp(currentApp || null);
                                 setIsWizardOpen(true);
                             }}
-                            className="h-[38px] px-3.5 py-2 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+                            className="h-[38px] px-3 py-2 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                         >
-                            <Edit3 size={15} /> Edit Profile
+                            <Edit3 size={14} /> Edit Profile
                         </button>
 
                         <button
@@ -483,9 +451,9 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                 setEditingApp(null);
                                 setIsWizardOpen(true);
                             }}
-                            className="h-[38px] px-3.5 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            className="h-[38px] px-3 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                         >
-                            <Plus size={15} /> New App
+                            <Plus size={14} /> New App
                         </button>
 
                         <button
@@ -493,9 +461,65 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             className="h-[38px] px-3.5 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                             title="Prisma SD-WAN Appdef Sync & Flow Browser Classification"
                         >
-                            <Cloud size={15} />
+                            <Cloud size={14} />
                             <span>Prisma SD-WAN</span>
                         </button>
+                    </div>
+                </div>
+
+                {/* Row 2: Live Status Badges & Quick Context Details */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border/70 text-xs">
+                    {/* Live Status Badges */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {metrics && (() => {
+                            const health = calculateHealthScore();
+                            return (
+                                <>
+                                    <div
+                                        title={health.reason}
+                                        className={`h-8 px-3 rounded-lg text-xs font-black border flex items-center gap-1.5 cursor-help transition-all shadow-sm ${
+                                            health.color === 'emerald'
+                                                ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
+                                                : health.color === 'amber'
+                                                ? 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400'
+                                                : 'bg-rose-500/15 border-rose-500/50 text-rose-600 dark:text-rose-400 animate-pulse'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1 font-mono">
+                                            <span className="text-[12px]">{health.score}</span>
+                                            <span className="text-[9px] opacity-70">/100</span>
+                                        </div>
+                                        <span className="text-[10px] uppercase tracking-wider font-extrabold">{health.label}</span>
+                                    </div>
+
+                                    <span className="h-8 text-xs text-text-muted bg-card-secondary border border-border px-3 rounded-lg flex items-center gap-1.5 shadow-sm">
+                                        <Server size={12} className={metrics.listenerState === 'listening' ? 'text-emerald-500' : 'text-text-muted'} />
+                                        <span>Listener:</span>
+                                        <strong className={`uppercase font-bold ${metrics.listenerState === 'listening' ? 'text-emerald-600 dark:text-emerald-400' : 'text-text-muted'}`}>
+                                            {metrics.listenerState}
+                                        </strong>
+                                    </span>
+
+                                    {currentApp?.startup?.startClientWorkload && (
+                                        <span className="h-8 text-xs text-amber-500 bg-amber-500/10 border border-amber-500/30 px-3 rounded-lg flex items-center gap-1.5 shadow-sm font-bold" title="Zero-Touch Auto-Start enabled: client workload starts automatically on sync and boot">
+                                            <Zap size={12} className="fill-amber-500" />
+                                            <span>ZTP Auto-Start</span>
+                                        </span>
+                                    )}
+                                </>
+                            );
+                        })()}
+                    </div>
+
+                    {/* Quick Metadata Info */}
+                    <div className="flex items-center gap-3 text-text-muted text-[11px] font-mono">
+                        <span className="bg-card-secondary px-2 py-0.5 rounded border border-border font-semibold text-text-primary">
+                            TCP :{currentApp?.listener?.port}
+                        </span>
+                        <span>•</span>
+                        <span>{currentApp?.peers?.length || 0} Target Peer(s)</span>
+                        <span>•</span>
+                        <span className="capitalize">{currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}</span>
                     </div>
                 </div>
             </div>
