@@ -79,10 +79,12 @@ type UnderlayResolution = {
     vyos?: {
         routerId: string; routerName: string; location?: string | null; interfaceName: string;
         description?: string | null; ipCidr: string; ip: string; network: string; routerStatus?: string | null;
+        status?: string | null;
     };
     candidates?: Array<{
         routerId: string; routerName: string; location?: string | null; interfaceName: string;
         description?: string | null; ipCidr: string; ip: string; network: string; routerStatus?: string | null;
+        status?: string | null;
     }>;
     matchMethod?: 'same_subnet'; matchedNetwork?: string; diagnostic?: string;
 };
@@ -821,6 +823,51 @@ function TopologyContent({ token }: TopologyProps) {
     const [portShutStates, setPortShutStates] = useState<Record<string, boolean>>({});
     const [portQosStates, setPortQosStates] = useState<Record<string, { latency?: number; loss?: number }>>({});
 
+    // Dynamic helper to resolve the true current status of any VyOS interface
+    const getVyosInterfaceStatus = useCallback((routerName?: string | null, ifaceName?: string | null): 'up' | 'down' => {
+        if (!routerName || !ifaceName) return 'up';
+        const portKey = `${routerName}:${ifaceName}`;
+        if (portShutStates[portKey] !== undefined) {
+            return portShutStates[portKey] ? 'down' : 'up';
+        }
+        // Check router in underlayData
+        const rObj = (underlayData?.routers || []).find(r => 
+            (r.name && r.name.toLowerCase() === routerName.toLowerCase()) || 
+            (r.id && r.id.toLowerCase() === routerName.toLowerCase())
+        );
+        const ifObj = rObj?.interfaces?.find(i => i.name.toLowerCase() === ifaceName.toLowerCase());
+        if (ifObj?.status) {
+            return ifObj.status.toLowerCase() === 'down' ? 'down' : 'up';
+        }
+        // Check resolutions
+        const resObj = (underlayData?.resolutions || []).find(r => 
+            r.vyos?.routerName.toLowerCase() === routerName.toLowerCase() && 
+            r.vyos?.interfaceName.toLowerCase() === ifaceName.toLowerCase()
+        );
+        if (resObj?.vyos?.status) {
+            return resObj.vyos.status.toLowerCase() === 'down' ? 'down' : 'up';
+        }
+        return 'up';
+    }, [portShutStates, underlayData]);
+
+    // Periodic light background refresh of underlay interface statuses every 6 seconds
+    useEffect(() => {
+        if (!token) return;
+        const interval = setInterval(() => {
+            fetch('/api/topology/underlay-debug', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(r => r.json())
+            .then(d => {
+                if (d?.underlay) {
+                    setUnderlayData(d.underlay);
+                }
+            })
+            .catch(() => {});
+        }, 6000);
+        return () => clearInterval(interval);
+    }, [token]);
+
     const handleVyosDirectAction = async (
         routerName: string,
         iface: string,
@@ -865,6 +912,18 @@ function TopologyContent({ token }: TopologyProps) {
                 });
             }
 
+            // Immediately poll /api/topology/underlay-debug to refresh underlay routers and interface statuses
+            fetch('/api/topology/underlay-debug', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(r => r.json())
+            .then(d => {
+                if (d?.underlay) {
+                    setUnderlayData(d.underlay);
+                }
+            })
+            .catch(() => {});
+
             setVyosActionResult({
                 success: true,
                 message: command === 'shut'
@@ -894,7 +953,7 @@ function TopologyContent({ token }: TopologyProps) {
         const routerName = res.vyos.routerName;
         const iface = res.vyos.interfaceName;
         const portKey = `${routerName}:${iface}`;
-        const isShut = portShutStates[portKey] || false;
+        const isShut = getVyosInterfaceStatus(routerName, iface) === 'down';
         const activeQos = portQosStates[portKey];
 
         return (
@@ -2885,9 +2944,18 @@ function TopologyContent({ token }: TopologyProps) {
                             </div>
                             <div className="flex justify-between text-text-muted">
                                 <span>Port Status:</span>
-                                <span className={cn("font-bold", underlayDrawerResolution.vyos ? "text-green-600 dark:text-green-400" : "text-text-muted")}>
+                                <span className={cn(
+                                    "font-bold",
+                                    underlayDrawerResolution.vyos
+                                        ? (getVyosInterfaceStatus(underlayDrawerResolution.vyos.routerName, underlayDrawerResolution.vyos.interfaceName) === 'down'
+                                            ? "text-rose-500"
+                                            : "text-green-600 dark:text-green-400")
+                                        : "text-text-muted"
+                                )}>
                                     {underlayDrawerResolution.vyos ? (
-                                        portShutStates[`${underlayDrawerResolution.vyos.routerName}:${underlayDrawerResolution.vyos.interfaceName}`] ? '🔴 SHUT' : '🟢 UP'
+                                        getVyosInterfaceStatus(underlayDrawerResolution.vyos.routerName, underlayDrawerResolution.vyos.interfaceName) === 'down'
+                                            ? '🔴 SHUT (DOWN)'
+                                            : '🟢 UP'
                                     ) : '—'}
                                 </span>
                             </div>

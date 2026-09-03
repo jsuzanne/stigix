@@ -375,6 +375,21 @@ export class VyosManager extends EventEmitter {
                 }
 
                 if (code === 0) {
+                    // Update in-memory interface status if command was shut / no-shut
+                    const ifaceName = action.params?.interface || action.params?.iface;
+                    if (router && ifaceName) {
+                        const targetIface = router.interfaces.find(i => i.name.toLowerCase() === ifaceName.toLowerCase());
+                        if (targetIface) {
+                            if (['shut', 'interface-down'].includes(command)) {
+                                targetIface.status = 'down';
+                                this.saveRouters();
+                            } else if (['no-shut', 'interface-up'].includes(command)) {
+                                targetIface.status = 'up';
+                                this.saveRouters();
+                            }
+                        }
+                    }
+
                     try {
                         const jsonStart = output.indexOf('{');
                         const jsonStr = jsonStart !== -1 ? output.substring(jsonStart) : output;

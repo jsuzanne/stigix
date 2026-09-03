@@ -50,6 +50,7 @@ export type VyosInterfaceEndpoint = {
     ip: string;
     network: string;
     routerStatus?: string | null;
+    status?: string | null;
 };
 
 export type UnderlayResolution = {
@@ -212,6 +213,7 @@ export class UnderlayTopologyManager {
                             ip: parsed.ip,
                             network: parsed.network,
                             routerStatus,
+                            status: iface.status || 'up',
                             parsedNetwork: ipaddr.parse(parsed.network.split('/')[0]) as ipaddr.IPv4,
                             parsedPrefix: parsed.parsedPrefix,
                         });
