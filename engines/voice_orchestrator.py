@@ -109,8 +109,15 @@ def load_control():
     config = load_voice_config()
     data = config.get('control', {})
     
-    # If explicitly set to eth0 but we found something else in interfaces.txt, prioritize interfaces.txt
-    if data.get('interface') == 'eth0' and default_iface != 'eth0':
+    # Unwrap any legacy nested control objects
+    while isinstance(data.get('control'), dict):
+        nested = data.pop('control')
+        nested.update(data)
+        data = nested
+
+    # If interface is empty, eth0, or missing, prioritize default_iface from interfaces.txt
+    current_iface = data.get('interface')
+    if not current_iface or current_iface == 'eth0':
         data['interface'] = default_iface
     
     # Defaults

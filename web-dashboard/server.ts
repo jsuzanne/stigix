@@ -3419,6 +3419,27 @@ app.post('/api/traffic/settings', authenticateToken, (req, res) => {
     }
 });
 
+const sanitizeVoiceControl = (rawControl: any) => {
+    let base = typeof rawControl === 'object' && rawControl !== null ? { ...rawControl } : {};
+    // Unwrap nested control objects if they exist
+    while (base.control && typeof base.control === 'object') {
+        const nested = { ...base.control };
+        delete base.control;
+        base = { ...nested, ...base };
+        delete base.control;
+    }
+
+    const currentIface = getInterface();
+    const iface = base.interface && base.interface.trim() ? base.interface.trim() : currentIface;
+    return {
+        enabled: Boolean(base.enabled),
+        max_simultaneous_calls: Number(base.max_simultaneous_calls) || 3,
+        sleep_between_calls: Number(base.sleep_between_calls) || 1,
+        interface: iface,
+        source_port_mode: base.source_port_mode || 'call_id'
+    };
+};
+
 // API: Voice Control - Status
 app.get('/api/voice/status', authenticateToken, (req, res) => {
     try {
@@ -3426,7 +3447,7 @@ app.get('/api/voice/status', authenticateToken, (req, res) => {
             return res.json({ success: true, enabled: false, max_simultaneous_calls: 3, interface: getInterface() });
         }
         const config = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
-        const control = config.control || { enabled: false, max_simultaneous_calls: 3, interface: getInterface() };
+        const control = sanitizeVoiceControl(config.control);
         res.json({ success: true, ...control });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
@@ -3443,10 +3464,7 @@ app.post('/api/voice/control', authenticateToken, (req, res) => {
             config = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
         }
 
-        if (!config.control) {
-            config.control = { enabled: false, max_simultaneous_calls: 3, interface: getInterface() };
-        }
-
+        config.control = sanitizeVoiceControl(config.control);
         config.control.enabled = !!enabled;
         fs.writeFileSync(VOICE_CONFIG_FILE, JSON.stringify(config, null, 2));
         res.json({ success: true, enabled: config.control.enabled });
@@ -3468,7 +3486,7 @@ app.get('/api/voice/config', authenticateToken, (req, res) => {
         const config = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
         // Parse servers back to raw string for frontend textarea
         const rawServers = (config.servers || []).map((s: any) => `${s.target}|${s.codec}|${s.weight}|${s.duration}`).join('\n');
-        res.json({ success: true, servers: rawServers, control: config.control });
+        res.json({ success: true, servers: rawServers, control: sanitizeVoiceControl(config.control) });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -3484,7 +3502,7 @@ app.post('/api/voice/config', authenticateToken, (req, res) => {
         }
 
         if (control !== undefined) {
-            currentConfig.control = { ...currentConfig.control, ...control };
+            currentConfig.control = sanitizeVoiceControl(control);
         }
 
         if (servers !== undefined) {
@@ -3537,6 +3555,9 @@ app.post('/api/voice/config/import', authenticateToken, (req, res) => {
             })}`, 'error');
             return res.status(400).json({ success: false, error: 'Invalid voice configuration: Missing control or servers' });
         }
+        // Sanitize imported control
+        config.control = sanitizeVoiceControl(config.control);
+
         // Preserve state if possible
         if (fs.existsSync(VOICE_CONFIG_FILE)) {
             const current = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
