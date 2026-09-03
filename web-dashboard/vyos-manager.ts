@@ -15,6 +15,7 @@ export interface VyosRouterInterface {
     description: string | null;
     address: string[];
     status?: 'up' | 'down' | 'unknown';
+    qos?: { latency?: number; loss?: number };
 }
 
 export interface VyosRouter {
@@ -375,7 +376,7 @@ export class VyosManager extends EventEmitter {
                 }
 
                 if (code === 0) {
-                    // Update in-memory interface status if command was shut / no-shut
+                    // Update in-memory interface status & QoS state if command was shut / no-shut / set-qos / clear-qos
                     const ifaceName = action.params?.interface || action.params?.iface;
                     if (router && ifaceName) {
                         const targetIface = router.interfaces.find(i => i.name.toLowerCase() === ifaceName.toLowerCase());
@@ -385,6 +386,14 @@ export class VyosManager extends EventEmitter {
                                 this.saveRouters();
                             } else if (['no-shut', 'interface-up'].includes(command)) {
                                 targetIface.status = 'up';
+                                this.saveRouters();
+                            } else if (command === 'set-qos') {
+                                const lat = action.params?.latency !== undefined ? Number(action.params.latency) : (action.params?.ms !== undefined ? Number(action.params.ms) : undefined);
+                                const los = action.params?.loss !== undefined ? Number(action.params.loss) : undefined;
+                                targetIface.qos = { latency: lat, loss: los };
+                                this.saveRouters();
+                            } else if (command === 'clear-qos') {
+                                delete targetIface.qos;
                                 this.saveRouters();
                             }
                         }

@@ -80,11 +80,13 @@ type UnderlayResolution = {
         routerId: string; routerName: string; location?: string | null; interfaceName: string;
         description?: string | null; ipCidr: string; ip: string; network: string; routerStatus?: string | null;
         status?: string | null;
+        qos?: { latency?: number; loss?: number } | null;
     };
     candidates?: Array<{
         routerId: string; routerName: string; location?: string | null; interfaceName: string;
         description?: string | null; ipCidr: string; ip: string; network: string; routerStatus?: string | null;
         status?: string | null;
+        qos?: { latency?: number; loss?: number } | null;
     }>;
     matchMethod?: 'same_subnet'; matchedNetwork?: string; diagnostic?: string;
 };
@@ -99,6 +101,7 @@ type UnderlayRouterSummary = {
         description?: string | null;
         address: string[];
         status: string;
+        qos?: { latency?: number; loss?: number } | null;
     }>;
 };
 
@@ -560,6 +563,8 @@ const VyOSRouterNode = ({ data }: any) => {
         const isConnected = !!matchedRes;
         const isIfaceUp = iface.status !== 'down';
         const fullIp = iface.address?.[0] || iface.ipCidr || iface.ip || matchedRes?.vyos?.ipCidr || matchedRes?.vyos?.ip || '—';
+        const portQos = iface.qos || matchedRes?.vyos?.qos;
+        const hasQos = portQos && (portQos.latency !== undefined || portQos.loss !== undefined) && (portQos.latency > 0 || portQos.loss > 0);
 
         return (
             <div
@@ -571,9 +576,11 @@ const VyOSRouterNode = ({ data }: any) => {
                     }
                 }}
                 className={cn(
-                    "relative px-3.5 py-2.5 rounded-2xl border text-[11px] transition-all flex flex-col justify-between group/port min-w-[175px] max-w-[210px] gap-1",
+                    "relative px-4 py-3 rounded-2xl border text-[11px] transition-all flex flex-col justify-between group/port min-w-[195px] max-w-[230px] min-h-[76px] gap-1.5 shadow-sm",
                     isConnected 
-                        ? "bg-card border-amber-500/50 hover:border-amber-400 hover:bg-card-secondary/70 shadow-md shadow-amber-500/10 cursor-pointer" 
+                        ? (isIfaceUp
+                            ? "bg-card border-amber-500/50 hover:border-amber-400 hover:bg-card-secondary/70 shadow-md shadow-amber-500/10 cursor-pointer"
+                            : "bg-rose-950/20 border-rose-500/50 hover:border-rose-400 hover:bg-rose-950/30 shadow-md shadow-rose-500/10 cursor-pointer") 
                         : "bg-card-secondary/40 border-border text-text-muted opacity-40 cursor-default"
                 )}
                 title={matchedRes ? `Connected to ${matchedRes.prismaWan.siteName} (${matchedRes.prismaWan.interfaceName}) · Click to inspect` : (iface.description || iface.name)}
@@ -586,16 +593,23 @@ const VyOSRouterNode = ({ data }: any) => {
                     className="!w-3.5 !h-1.5 !bg-amber-500 dark:!bg-amber-400 !border !border-card !rounded-sm"
                 />
 
-                <div className="flex items-center justify-between pb-1.5 border-b border-border/50">
+                <div className="flex items-center justify-between pb-1 border-b border-border/50">
                     <span className="font-mono font-black text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-                        <span className={cn("w-2 h-2 rounded-full", isConnected ? (isIfaceUp ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-red-500") : "bg-slate-400 dark:bg-slate-600")} />
+                        <span className={cn("w-2.5 h-2.5 rounded-full", isConnected ? (isIfaceUp ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]" : "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]") : "bg-slate-400 dark:bg-slate-600")} />
                         {iface.name}
                     </span>
-                    {isConnected && (
-                        <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30 truncate max-w-[85px]">
-                            {matchedRes.prismaWan.siteName}
-                        </span>
-                    )}
+                    <div className="flex items-center gap-1">
+                        {hasQos && (
+                            <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                                ⏱️ +{portQos.latency || 0}ms
+                            </span>
+                        )}
+                        {isConnected && (
+                            <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-green-500/15 text-green-700 dark:text-green-300 border border-green-500/30 truncate max-w-[85px]">
+                                {matchedRes.prismaWan.siteName}
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex items-center justify-between font-mono">
@@ -614,23 +628,23 @@ const VyOSRouterNode = ({ data }: any) => {
     };
 
     return (
-        <div className="bg-card/95 backdrop-blur-2xl border-2 border-amber-500/50 hover:border-amber-400 rounded-[36px] p-6 shadow-2xl shadow-amber-500/10 dark:shadow-amber-500/20 transition-all group relative flex flex-col gap-4">
+        <div className="bg-card/95 backdrop-blur-2xl border-2 border-amber-500/50 hover:border-amber-400 rounded-[36px] p-7 shadow-2xl shadow-amber-500/10 dark:shadow-amber-500/20 transition-all group relative flex flex-col justify-between gap-6 min-h-[440px]">
             
             {/* TOP ROW: Hub-facing Physical Ports (Facing DCs at top) */}
             {displayTopIfaces.length > 0 && (
-                <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between text-[9px] font-black text-amber-600 dark:text-amber-400/90 uppercase tracking-wider px-1">
+                <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between text-[10px] font-black text-amber-600 dark:text-amber-400/90 uppercase tracking-wider px-1">
                         <span>▲ DC & Hub Uplinks ({displayTopIfaces.length})</span>
                         <span className="font-mono text-text-muted">Top Transit</span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-3">
                         {displayTopIfaces.map((iface: any) => renderPortChip(iface, true))}
                     </div>
                 </div>
             )}
 
             {/* CENTER CHASSIS BANNER */}
-            <div className="flex items-center justify-between gap-4 p-4 bg-card-secondary/80 border border-amber-500/30 rounded-2xl shadow-inner">
+            <div className="flex items-center justify-between gap-4 p-4.5 bg-card-secondary/80 border border-amber-500/30 rounded-2xl shadow-inner">
                 <div className="flex items-center gap-3">
                     <div className="p-3 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl text-white dark:text-slate-950 shadow-lg shadow-amber-500/30 font-black">
                         <Server size={24} />
@@ -666,12 +680,12 @@ const VyOSRouterNode = ({ data }: any) => {
 
             {/* BOTTOM ROW: Spoke-facing Physical Ports (Facing Branches at bottom) */}
             {displayBottomIfaces.length > 0 && (
-                <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between text-[9px] font-black text-amber-600 dark:text-amber-400/90 uppercase tracking-wider px-1">
+                <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between text-[10px] font-black text-amber-600 dark:text-amber-400/90 uppercase tracking-wider px-1">
                         <span>▼ Branch & Spoke Downlinks ({displayBottomIfaces.length})</span>
                         <span className="font-mono text-text-muted">Bottom Transit</span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-3">
                         {displayBottomIfaces.map((iface: any) => renderPortChip(iface, false))}
                     </div>
                 </div>
@@ -850,6 +864,33 @@ function TopologyContent({ token }: TopologyProps) {
         return 'up';
     }, [portShutStates, underlayData]);
 
+    // Dynamic helper to resolve the true current QoS impairment of any VyOS interface
+    const getVyosInterfaceQos = useCallback((routerName?: string | null, ifaceName?: string | null): { latency?: number; loss?: number } | null => {
+        if (!routerName || !ifaceName) return null;
+        const portKey = `${routerName}:${ifaceName}`;
+        if (portQosStates[portKey] !== undefined) {
+            return portQosStates[portKey];
+        }
+        // Check router in underlayData
+        const rObj = (underlayData?.routers || []).find(r => 
+            (r.name && r.name.toLowerCase() === routerName.toLowerCase()) || 
+            (r.id && r.id.toLowerCase() === routerName.toLowerCase())
+        );
+        const ifObj = rObj?.interfaces?.find(i => i.name.toLowerCase() === ifaceName.toLowerCase());
+        if (ifObj?.qos) {
+            return ifObj.qos;
+        }
+        // Check resolutions
+        const resObj = (underlayData?.resolutions || []).find(r => 
+            r.vyos?.routerName.toLowerCase() === routerName.toLowerCase() && 
+            r.vyos?.interfaceName.toLowerCase() === ifaceName.toLowerCase()
+        );
+        if (resObj?.vyos?.qos) {
+            return resObj.vyos.qos;
+        }
+        return null;
+    }, [portQosStates, underlayData]);
+
     // Periodic light background refresh of underlay interface statuses every 6 seconds
     useEffect(() => {
         if (!token) return;
@@ -954,7 +995,8 @@ function TopologyContent({ token }: TopologyProps) {
         const iface = res.vyos.interfaceName;
         const portKey = `${routerName}:${iface}`;
         const isShut = getVyosInterfaceStatus(routerName, iface) === 'down';
-        const activeQos = portQosStates[portKey];
+        const activeQos = getVyosInterfaceQos(routerName, iface);
+        const hasActiveQos = activeQos && (activeQos.latency !== undefined || activeQos.loss !== undefined) && ((activeQos.latency || 0) > 0 || (activeQos.loss || 0) > 0);
 
         return (
             <div className="bg-card-secondary/80 border border-amber-500/30 rounded-2xl p-4 space-y-3 shadow-inner">
@@ -968,16 +1010,16 @@ function TopologyContent({ token }: TopologyProps) {
                 </div>
 
                 {/* Active QoS / Status Badges */}
-                {(isShut || activeQos) && (
+                {(isShut || hasActiveQos) && (
                     <div className="flex flex-wrap gap-1.5 text-[10px] font-mono">
                         {isShut && (
                             <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-500 border border-rose-500/30 font-bold flex items-center gap-1">
                                 <Power size={10} /> INTERFACE SHUT
                             </span>
                         )}
-                        {activeQos && (
-                            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold flex items-center gap-1">
-                                <Sliders size={10} /> +{activeQos.latency || 0}ms | {activeQos.loss || 0}% Loss
+                        {hasActiveQos && (
+                            <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold flex items-center gap-1.5 shadow-sm">
+                                <Sliders size={12} /> +{activeQos?.latency || 0}ms | {activeQos?.loss || 0}% Loss
                             </span>
                         )}
                     </div>
@@ -1017,10 +1059,17 @@ function TopologyContent({ token }: TopologyProps) {
                                 interfaceName: iface,
                                 siteName: res.prismaWan.siteName
                             });
+                            setNetemLatency(activeQos?.latency || 100);
+                            setNetemLoss(activeQos?.loss || 0);
                             setShowNetemModal(true);
                         }}
                         disabled={isVyosExecuting}
-                        className="px-2.5 py-2.5 rounded-xl font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex flex-col items-center justify-center gap-1 transition-all shadow-sm cursor-pointer"
+                        className={cn(
+                            "px-2.5 py-2.5 rounded-xl font-bold border flex flex-col items-center justify-center gap-1 transition-all shadow-sm cursor-pointer",
+                            hasActiveQos
+                                ? "bg-amber-500/25 text-amber-300 border-amber-500/60 ring-1 ring-amber-500/40"
+                                : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                        )}
                         title="Inject latency, jitter, or packet loss via netem"
                     >
                         <Sliders size={14} />
@@ -1038,7 +1087,12 @@ function TopologyContent({ token }: TopologyProps) {
                             res.prismaWan.siteName
                         )}
                         disabled={isVyosExecuting}
-                        className="px-2.5 py-2.5 rounded-xl font-bold bg-card border border-border hover:border-amber-500/40 text-text-muted hover:text-text-primary flex flex-col items-center justify-center gap-1 transition-all shadow-sm cursor-pointer"
+                        className={cn(
+                            "px-2.5 py-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all shadow-sm cursor-pointer border",
+                            hasActiveQos
+                                ? "bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border-rose-500/40"
+                                : "bg-card border-border hover:border-amber-500/40 text-text-muted hover:text-text-primary"
+                        )}
                         title="Remove netem latency/loss rules"
                     >
                         <RotateCcw size={14} />
@@ -1126,9 +1180,9 @@ function TopologyContent({ token }: TopologyProps) {
             });
         });
 
-        const HUB_Y = -700;
+        const HUB_Y = -850;
         const CLOUD_Y = 0;
-        const SPOKE_Y = 700;
+        const SPOKE_Y = 850;
         const HORIZONTAL_GAP_PX = 100;
 
         const getSiteWidth = (site: any) => {

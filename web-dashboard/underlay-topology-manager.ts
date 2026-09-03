@@ -51,6 +51,7 @@ export type VyosInterfaceEndpoint = {
     network: string;
     routerStatus?: string | null;
     status?: string | null;
+    qos?: { latency?: number; loss?: number } | null;
 };
 
 export type UnderlayResolution = {
@@ -75,6 +76,7 @@ export type UnderlayRouterSummary = {
         description?: string | null;
         address: string[];
         status: string;
+        qos?: { latency?: number; loss?: number };
     }[];
 };
 
@@ -214,6 +216,7 @@ export class UnderlayTopologyManager {
                             network: parsed.network,
                             routerStatus,
                             status: iface.status || 'up',
+                            qos: iface.qos || null,
                             parsedNetwork: ipaddr.parse(parsed.network.split('/')[0]) as ipaddr.IPv4,
                             parsedPrefix: parsed.parsedPrefix,
                         });
@@ -405,7 +408,8 @@ export class UnderlayTopologyManager {
                         name: i.name,
                         description: i.description || null,
                         address: Array.isArray(i.address) ? i.address : [],
-                        status: i.status || 'up'
+                        status: i.status || 'up',
+                        qos: i.qos || null
                     }))
                 }));
             } catch {
