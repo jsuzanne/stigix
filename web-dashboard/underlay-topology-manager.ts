@@ -321,6 +321,8 @@ export class UnderlayTopologyManager {
             ip: match.ip,
             network: match.network,
             routerStatus: match.routerStatus,
+            status: match.status,
+            qos: match.qos,
         };
 
         return {

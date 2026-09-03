@@ -1261,7 +1261,8 @@ function TopologyContent({ token }: TopologyProps) {
                                 address: addresses,
                                 ipCidr: ipCidr,
                                 ip: res.vyos.ip || existing.ip || (ipCidr ? ipCidr.split('/')[0] : undefined),
-                                status: existing.status || 'up'
+                                status: res.vyos.status || existing.status || 'up',
+                                qos: res.vyos.qos || existing.qos || null
                             });
                         }
                     });

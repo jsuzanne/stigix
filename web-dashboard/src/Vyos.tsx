@@ -68,6 +68,7 @@ export interface VyosRouterInterface {
     description: string | null;
     address: string[];
     status?: 'up' | 'down';
+    qos?: { latency?: number; loss?: number; rate?: string };
 }
 
 export interface VyosRouter {
@@ -1168,7 +1169,7 @@ export default function Vyos(props: VyosProps) {
                                         <span className="text-text-muted uppercase font-black tracking-widest pl-1">Network Interfaces</span>
                                         <span className="text-blue-500 font-black">{router.interfaces.length} DETECTED</span>
                                     </div>
-                                    <div className="space-y-2 max-h-[120px] overflow-y-auto pr-2 custom-scrollbar group/list">
+                                    <div className="space-y-2 max-h-[550px] overflow-y-auto pr-2 custom-scrollbar group/list">
                                         {router.interfaces.map((iface) => (
                                             <div key={iface.name} className="flex flex-col p-3 bg-card-secondary/50 border border-border/50 rounded-xl hover:border-blue-500/30 transition-all group/iface">
                                                 <div className="flex items-center justify-between mb-1">
@@ -1178,6 +1179,11 @@ export default function Vyos(props: VyosProps) {
                                                             iface.status === 'up' ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]"
                                                         )} />
                                                         <span className="text-[11px] text-text-primary font-extrabold uppercase tracking-tight">{iface.name}</span>
+                                                        {iface.qos && ((iface.qos.latency && iface.qos.latency > 0) || (iface.qos.loss && iface.qos.loss > 0)) && (
+                                                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                                                +{iface.qos.latency || 0}ms{iface.qos.loss ? ` ${iface.qos.loss}% loss` : ''}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <span className="text-[10px] text-text-muted font-mono bg-card px-1.5 py-0.5 rounded border border-border/50">{iface.address?.[0] || 'no-ip'}</span>
                                                 </div>

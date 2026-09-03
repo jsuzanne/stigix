@@ -105,6 +105,37 @@ def get_router_info(host, apikey, verify=False):
         if 'system' in config and 'host-name' in config['system']:
             info['hostname'] = config['system']['host-name']
         
+        # QoS lookup tables
+        if info['version'] == '1.4':
+            ne_policies = config.get('traffic-policy', {}).get('network-emulator', {})
+        else:
+            ne_policies = config.get('qos', {}).get('policy', {}).get('network-emulator', {})
+
+        def _extract_qos(policy_name):
+            if not policy_name or policy_name not in ne_policies:
+                return None
+            p = ne_policies[policy_name]
+            if not isinstance(p, dict):
+                return None
+            params = {}
+            if 'network-delay' in p:
+                d_str = str(p['network-delay']).replace('ms', '')
+                try: params['latency'] = int(float(d_str))
+                except: pass
+            if 'delay' in p:
+                d_str = str(p['delay']).replace('ms', '')
+                try: params['latency'] = int(float(d_str))
+                except: pass
+            if 'packet-loss' in p:
+                l_str = str(p['packet-loss']).replace('%', '')
+                try: params['loss'] = int(float(l_str))
+                except: pass
+            if 'loss' in p:
+                l_str = str(p['loss']).replace('%', '')
+                try: params['loss'] = int(float(l_str))
+                except: pass
+            return params if params else None
+
         # Get ethernet interfaces
         if 'interfaces' in config and 'ethernet' in config['interfaces']:
             ethernet_ifaces = config['interfaces']['ethernet']
@@ -115,6 +146,23 @@ def get_router_info(host, apikey, verify=False):
                     'address': [],
                     'status': 'down' if 'disable' in iface_data else 'up'
                 }
+                
+                # Detect attached QoS policy
+                attached_policy = None
+                if info['version'] == '1.4':
+                    attached_policy = iface_data.get('traffic-policy', {}).get('out')
+                else:
+                    qos_iface = config.get('qos', {}).get('interface', {}).get(iface_name, {})
+                    egress = qos_iface.get('egress')
+                    if isinstance(egress, dict):
+                        attached_policy = next(iter(egress), None)
+                    elif isinstance(egress, str):
+                        attached_policy = egress
+                
+                qos_data = _extract_qos(attached_policy)
+                if qos_data:
+                    iface_info['qos'] = qos_data
+
                 addr = iface_data.get('address')
                 if addr:
                     if isinstance(addr, str):
