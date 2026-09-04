@@ -364,6 +364,8 @@ export class TcpServerRuntime extends EventEmitter {
             }
         }
 
+const EICAR_TEST_STRING = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
+
         const sendHttpResponse = () => {
             if (socket.destroyed) return;
 
@@ -373,6 +375,33 @@ export class TcpServerRuntime extends EventEmitter {
             if (isError) {
                 state.simulatedErrors++;
                 this.metricsTracker.totalErrors++;
+            }
+
+            if (behavior.mode === 'eicar_response') {
+                const eicarBody = EICAR_TEST_STRING + '\n';
+                const eicarBuf = Buffer.from(eicarBody, 'utf8');
+                const headers = [
+                    'HTTP/1.1 200 OK',
+                    'Content-Type: text/plain',
+                    `Content-Length: ${eicarBuf.length}`,
+                    `Connection: ${isClose ? 'close' : 'keep-alive'}`,
+                    'Server: Stigix-CustomApp-HTTP/2.0',
+                    'X-Stigix-Security-Test: EICAR-Standard-Antivirus-Test',
+                    '',
+                    ''
+                ].join('\r\n');
+
+                const fullResp = Buffer.concat([Buffer.from(headers, 'utf8'), eicarBuf]);
+                socket.write(fullResp);
+                state.bytesSent += fullResp.length;
+                state.state = 'connected';
+                this.metricsTracker.recordServerTx(fullResp.length);
+                this.metricsTracker.totalResponses++;
+
+                if (isClose) {
+                    socket.end();
+                }
+                return;
             }
 
             const statusCode = isError ? '500 Internal Server Error' : '200 OK';
@@ -593,12 +622,14 @@ export class TcpServerRuntime extends EventEmitter {
             if (socket.destroyed) return;
 
             const isAck = behavior.mode === 'acknowledge';
+            const isEicar = behavior.mode === 'eicar_response';
+            const eicarPayload = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
             const resp = buildResponse({
                 requestId: req.requestId,
                 clientSessionId: req.clientSessionId,
                 seq: req.seq,
-                payloadSize: isAck ? 0 : (req.payloadSize || 0),
-                data: isAck ? undefined : req.data,
+                payloadSize: isAck ? 0 : isEicar ? eicarPayload.length : (req.payloadSize || 0),
+                data: isAck ? undefined : isEicar ? eicarPayload : req.data,
                 simulated: delayMs > 0 ? { applied: true, delayMs } : { applied: false }
             });
 

@@ -13,7 +13,8 @@ export type ServerBehaviorMode =
     | 'looping_delay'
     | 'drop_response'
     | 'close_connection'
-    | 'error_response';
+    | 'error_response'
+    | 'eicar_response';
 
 export type ClientWorkloadMode =
     | 'heartbeat'

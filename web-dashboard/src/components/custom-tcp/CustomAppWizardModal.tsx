@@ -60,6 +60,11 @@ const SERVER_BEHAVIOR_INFO: Record<ServerBehaviorMode, { title: string; explanat
         title: 'Error Response Simulation',
         explanation: 'Returns a simulated application-level error payload frame with a custom error code.',
         example: 'Validates client error handling, fallback logic, and monitoring alarm thresholds.'
+    },
+    eicar_response: {
+        title: 'EICAR Security Anti-Malware Test',
+        explanation: 'Returns the standard EICAR anti-virus test file signature in response to requests.',
+        example: 'Validates Palo Alto Networks / Prisma SASE Antivirus, WildFire, and Threat Prevention blocking policies.'
     }
 };
 
@@ -603,7 +608,8 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                         { id: 'looping_delay', label: 'Looping Delay', desc: 'Alternates normal/slow phases' },
                                         { id: 'drop_response', label: 'Drop Response', desc: 'Simulates response loss' },
                                         { id: 'close_connection', label: 'Close Connection', desc: 'Closes socket after N requests' },
-                                        { id: 'error_response', label: 'Error Response', desc: 'Simulates server application errors' }
+                                        { id: 'error_response', label: 'Error Response', desc: 'Simulates server application errors' },
+                                        { id: 'eicar_response', label: 'EICAR Security Test', desc: 'Emulates malware payload for AV/NGFW' }
                                     ].map(m => (
                                         <button
                                             key={m.id}
