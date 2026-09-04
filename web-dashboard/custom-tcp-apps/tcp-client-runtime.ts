@@ -5,6 +5,7 @@
 
 import net from 'net';
 import crypto from 'crypto';
+import os from 'os';
 import { EventEmitter } from 'events';
 import {
     CustomTcpApplicationConfig,
@@ -70,14 +71,85 @@ export class TcpClientRuntime extends EventEmitter {
         this.localIdentity.displayName = newIdentity.displayName;
     }
 
+    /**
+     * Determines whether a target peer corresponds to the local node itself.
+     */
+    public isSelfPeer(peer: PeerConfig): boolean {
+        if (!peer) return false;
+
+        const ownSiteName = (this.localIdentity?.siteName || '').trim().toLowerCase();
+        const ownDisplayName = (this.localIdentity?.displayName || '').trim().toLowerCase();
+        const ownHostname = (this.localIdentity?.hostname || '').trim().toLowerCase();
+        const ownInstanceId = (this.localIdentity?.instanceId || '').trim().toLowerCase();
+
+        const peerSiteName = (peer.siteName || '').trim().toLowerCase();
+        const peerName = (peer.name || '').trim().toLowerCase();
+        const peerId = (peer.id || '').trim().toLowerCase();
+        const peerHost = (peer.host || '').trim().toLowerCase();
+
+        // 1. Exact or normalized Site Name / Display Name / Hostname matches
+        if (ownSiteName && (peerSiteName === ownSiteName || peerName === ownSiteName)) {
+            return true;
+        }
+        if (ownDisplayName && (peerSiteName === ownDisplayName || peerName === ownDisplayName)) {
+            return true;
+        }
+        if (ownHostname && (peerSiteName === ownHostname || peerName === ownHostname || peerHost === ownHostname)) {
+            return true;
+        }
+
+        // 2. Exact Instance ID or synthetic registry ID matches (e.g. reg-self-DC1-Ubuntu)
+        if (ownInstanceId && peerId === ownInstanceId) {
+            return true;
+        }
+        if (ownSiteName && (peerId === `reg-self-${ownSiteName}` || peerId === `target-${ownSiteName}`)) {
+            return true;
+        }
+
+        // 3. Localhost / Loopback addresses
+        if (peerHost === '127.0.0.1' || peerHost === 'localhost' || peerHost === '::1' || peerHost === '0.0.0.0') {
+            return true;
+        }
+
+        // 4. Match against all local network interface IPv4/IPv6 addresses
+        try {
+            const ifaces = os.networkInterfaces();
+            for (const ifaceList of Object.values(ifaces)) {
+                if (!ifaceList) continue;
+                for (const iface of ifaceList) {
+                    if (iface.address && iface.address.toLowerCase() === peerHost) {
+                        return true;
+                    }
+                }
+            }
+        } catch {}
+
+        return false;
+    }
+
     public async start(targetPeerIds?: string[]): Promise<void> {
         if (this.isRunning) return;
         this.isRunning = true;
         this.metricsTracker.clientWorkloadRunning = true;
 
-        const enabledPeers = (this.appConfig.peers || []).filter(
+        const allConfiguredPeers = (this.appConfig.peers || []).filter(
             p => p.enabled && (!targetPeerIds || targetPeerIds.includes(p.id))
         );
+
+        // Auto-exclusion: if there are multiple peers in the mesh, filter out self to avoid local loopback traffic
+        let enabledPeers = allConfiguredPeers.filter(p => {
+            const isSelf = this.isSelfPeer(p);
+            if (isSelf && allConfiguredPeers.length > 1) {
+                console.log(`[CUSTOM_TCP_CLIENT] Auto-excluded local self peer "${p.name || p.siteName || p.host}" from outgoing workload for app "${this.appConfig.name}".`);
+                return false;
+            }
+            return true;
+        });
+
+        // Fallback: If only self was configured (e.g. standalone single-node test), keep it so user can still test
+        if (enabledPeers.length === 0 && allConfiguredPeers.length > 0) {
+            enabledPeers = allConfiguredPeers;
+        }
 
         for (const peer of enabledPeers) {
             const conns = peer.connectionsOverride || this.appConfig.clientDefaults.connectionsPerPeer || 2;
