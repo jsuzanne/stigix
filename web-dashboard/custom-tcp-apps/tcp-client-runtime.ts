@@ -475,15 +475,25 @@ export class TcpClientRuntime extends EventEmitter {
     private startWorkloadLoop(session: ActiveClientSession): void {
         if (!this.isRunning || session.isStopping) return;
 
-        const intervalMs = session.peer.intervalOverrideMs || this.appConfig.clientDefaults.intervalMs || 1000;
+        const baseIntervalMs = session.peer.intervalOverrideMs || this.appConfig.clientDefaults.intervalMs || 1000;
         const mode = this.appConfig.clientDefaults.mode || 'persistent_request_reply';
 
         const scheduleNext = () => {
             if (!this.isRunning || session.isStopping || session.state.state !== 'connected') return;
+
+            // Calculate next delay based on workload mode
+            let nextDelayMs = baseIntervalMs;
+            if (mode === 'stochastic') {
+                // Stochastic / Human Think-Time: Poisson-like variable interval (0.4x to 2.2x baseInterval)
+                // e.g. for 1000ms baseline: randomized between 400ms and 2200ms with natural human think jitter
+                const jitterFactor = 0.4 + Math.random() * 1.8;
+                nextDelayMs = Math.max(100, Math.round(baseIntervalMs * jitterFactor));
+            }
+
             session.workloadTimer = setTimeout(() => {
                 this.executeWorkloadTick(session);
                 scheduleNext();
-            }, intervalMs);
+            }, nextDelayMs);
         };
 
         scheduleNext();

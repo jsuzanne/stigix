@@ -20,7 +20,8 @@ export type ClientWorkloadMode =
     | 'transactional'
     | 'persistent_request_reply'
     | 'bulk_burst'
-    | 'continuous_stream';
+    | 'continuous_stream'
+    | 'stochastic';
 
 export type SessionState =
     | 'connecting'

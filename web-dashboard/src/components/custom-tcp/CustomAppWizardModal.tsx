@@ -88,6 +88,11 @@ const CLIENT_WORKLOAD_INFO: Record<ClientWorkloadMode, { title: string; explanat
         title: 'Continuous Streaming',
         explanation: 'Generates uninterrupted high-frequency bidirectional TCP frames as fast as allowable.',
         example: 'Simulates real-time telemetry pipelines, IoT sensor streams, and high-throughput data replication.'
+    },
+    stochastic: {
+        title: 'Stochastic / Human Think-Time',
+        explanation: 'Injects realistic randomized think-time intervals between requests (Poisson-like variation).',
+        example: 'Simulates human user interaction patterns to validate AI-driven behavioral analytics without repetitive cadence.'
     }
 };
 
@@ -770,6 +775,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                             className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
                                         >
                                             <option value="persistent_request_reply">Persistent Sessions</option>
+                                            <option value="stochastic">Stochastic / Human Think-Time</option>
                                             <option value="transactional">Transactional</option>
                                             <option value="heartbeat">Heartbeat</option>
                                             <option value="bulk_burst">Bulk Burst</option>
