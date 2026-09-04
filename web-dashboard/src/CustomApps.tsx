@@ -306,6 +306,23 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
 
+    const formatBitrate = (bps?: number) => {
+        if (!bps || bps <= 0) return '0 bps';
+        if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(2)} Mbps`;
+        if (bps >= 1_000) return `${(bps / 1_000).toFixed(1)} Kbps`;
+        return `${bps} bps`;
+    };
+
+    const formatUptime = (seconds?: number) => {
+        if (!seconds || seconds <= 0) return '< 1m';
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        if (mins < 60) return `${mins}m ${secs}s`;
+        const hours = Math.floor(mins / 60);
+        const remMins = mins % 60;
+        return `${hours}h ${remMins}m`;
+    };
+
     return (
         <div className="p-6 max-w-[1600px] mx-auto space-y-6 text-text-primary animate-fadeIn">
             {/* Top Node Identity Bar */}
@@ -528,9 +545,19 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
             {(() => {
                 const serverRx = incomingSessions.reduce((acc, s) => acc + (s.bytesReceived || 0), 0) || (metrics?.serverRxBytes ?? (metrics?.totalRxBytes || 0));
                 const serverTx = incomingSessions.reduce((acc, s) => acc + (s.bytesSent || 0), 0) || (metrics?.serverTxBytes ?? 0);
+                const liveServerRxBps = incomingSessions.reduce((acc, s) => acc + (s.rxBps || 0), 0) || (metrics?.liveRxBps ?? 0);
+                const liveServerTxBps = incomingSessions.reduce((acc, s) => acc + (s.txBps || 0), 0) || (metrics?.liveTxBps ?? 0);
+                const liveServerTps = Number((incomingSessions.reduce((acc, s) => acc + (s.tps || 0), 0) || (metrics?.liveTps ?? 0)).toFixed(1));
 
                 const clientTx = outgoingSessions.reduce((acc, s) => acc + (s.bytesSent || 0), 0) || (metrics?.clientTxBytes ?? (metrics?.clientWorkloadRunning ? metrics?.totalTxBytes || 0 : 0));
                 const clientRx = outgoingSessions.reduce((acc, s) => acc + (s.bytesReceived || 0), 0) || (metrics?.clientRxBytes ?? 0);
+                const liveClientTxBps = outgoingSessions.reduce((acc, s) => acc + (s.txBps || 0), 0) || (metrics?.liveTxBps ?? 0);
+                const liveClientRxBps = outgoingSessions.reduce((acc, s) => acc + (s.rxBps || 0), 0) || (metrics?.liveRxBps ?? 0);
+                const liveClientTps = Number((outgoingSessions.reduce((acc, s) => acc + (s.tps || 0), 0) || (metrics?.liveTps ?? 0)).toFixed(1));
+
+                const avgJitter = metrics?.jitterMs ?? (outgoingSessions.length > 0
+                    ? Number((outgoingSessions.reduce((acc, s) => acc + (s.rttMs?.jitterMs || 0), 0) / outgoingSessions.length).toFixed(1))
+                    : 0);
 
                 return (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -547,11 +574,16 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                 <div className="text-right text-[11px] font-mono space-y-0.5">
                                     <div className="text-text-muted">RX: <span className="text-emerald-500 font-bold">{formatBytes(serverRx)}</span></div>
                                     <div className="text-text-muted">TX: <span className="text-indigo-400 font-bold">{formatBytes(serverTx)}</span></div>
+                                    {liveServerRxBps > 0 && (
+                                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold tracking-tight">
+                                            ⚡ {formatBitrate(liveServerRxBps)}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
                                 <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.serverBehavior?.mode.replace('_', ' ')}</strong></span>
-                                <span>Handled: <strong className="text-text-secondary">{metrics?.totalRequests || 0}</strong></span>
+                                <span>Handled: <strong className="text-text-secondary">{metrics?.totalRequests || 0}</strong> {liveServerTps > 0 && <span className="text-indigo-500 font-mono text-[10px]">({liveServerTps} tps)</span>}</span>
                             </div>
                         </div>
 
@@ -568,58 +600,68 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                 <div className="text-right text-[11px] font-mono space-y-0.5">
                                     <div className="text-text-muted">TX: <span className="text-indigo-400 font-bold">{formatBytes(clientTx)}</span></div>
                                     <div className="text-text-muted">RX: <span className="text-emerald-500 font-bold">{formatBytes(clientRx)}</span></div>
+                                    {liveClientTxBps > 0 && (
+                                        <div className="text-[10px] text-indigo-500 font-bold tracking-tight">
+                                            ⚡ {formatBitrate(liveClientTxBps)}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
                                 <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.clientDefaults?.mode.replace(/_/g, ' ')}</strong></span>
-                                <span>Replies: <strong className="text-text-secondary">{metrics?.totalResponses || 0}</strong></span>
+                                <span>Replies: <strong className="text-text-secondary">{metrics?.totalResponses || 0}</strong> {liveClientTps > 0 && <span className="text-emerald-500 font-mono text-[10px]">({liveClientTps} tps)</span>}</span>
                             </div>
                         </div>
 
-                {/* 3. Application Latency Card */}
-                <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-                            <Zap size={16} /> App Latency (RTT)
-                        </span>
-                        <span className="font-mono text-[11px] text-text-muted">Rolling Window</span>
-                    </div>
-                    <div className="mt-3 flex items-baseline justify-between">
-                        <div className="text-3xl font-black text-amber-600 dark:text-amber-400">{metrics?.avgRttMs || 0} <span className="text-xs font-normal text-text-muted">ms avg</span></div>
-                        <div className="text-right text-[11px] text-text-muted font-mono flex items-center gap-1.5">
-                            <span>p50: <strong className="text-text-primary font-bold">{metrics?.p50RttMs ?? metrics?.avgRttMs ?? 0} ms</strong></span>
-                            <span className="text-border">|</span>
-                            <span>p95: <strong className="text-amber-600 dark:text-amber-400 font-bold">{metrics?.p95RttMs || 0} ms</strong></span>
+                        {/* 3. Application Latency Card */}
+                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="font-semibold flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                                    <Zap size={16} /> App Latency (RTT)
+                                </span>
+                                <span className="font-mono text-[11px] text-text-muted">Rolling Window</span>
+                            </div>
+                            <div className="mt-3 flex items-baseline justify-between">
+                                <div className="text-3xl font-black text-amber-600 dark:text-amber-400">{metrics?.avgRttMs || 0} <span className="text-xs font-normal text-text-muted">ms avg</span></div>
+                                <div className="text-right text-[11px] text-text-muted font-mono space-y-0.5">
+                                    <div className="flex items-center gap-1.5 justify-end">
+                                        <span>p50: <strong className="text-text-primary font-bold">{metrics?.p50RttMs ?? metrics?.avgRttMs ?? 0} ms</strong></span>
+                                        <span className="text-border">|</span>
+                                        <span>p95: <strong className="text-amber-600 dark:text-amber-400 font-bold">{metrics?.p95RttMs || 0} ms</strong></span>
+                                    </div>
+                                    <div className="text-[10px] text-cyan-500 font-bold">
+                                        Jitter: ± {avgJitter} ms
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
+                                <span>Timeouts: <strong className="text-rose-500 font-bold">{metrics?.totalTimeouts || 0}</strong></span>
+                                <span>Errors: <strong className="text-rose-500 font-bold">{metrics?.totalErrors || 0}</strong></span>
+                            </div>
                         </div>
-                    </div>
-                    <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
-                        <span>Timeouts: <strong className="text-rose-500 font-bold">{metrics?.totalTimeouts || 0}</strong></span>
-                        <span>Errors: <strong className="text-rose-500 font-bold">{metrics?.totalErrors || 0}</strong></span>
-                    </div>
-                </div>
 
-                {/* 4. Stability & Simulation Card */}
-                <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold flex items-center gap-1.5 text-cyan-600 dark:text-cyan-400">
-                            <Activity size={16} /> Stability & Chaos
-                        </span>
-                        <span className="font-mono text-[11px] text-text-muted">Failover</span>
-                    </div>
-                    <div className="mt-3 flex items-baseline justify-between">
-                        <div className="text-3xl font-black text-text-primary">{metrics?.totalReconnects || 0} <span className="text-xs font-normal text-text-muted">reconnects</span></div>
-                        <div className="text-right text-[11px] text-text-muted font-mono">
-                            Drops: <span className="text-amber-600 dark:text-amber-400 font-bold">{metrics?.totalSimulatedDrops || 0}</span>
+                        {/* 4. Stability & Simulation Card */}
+                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="font-semibold flex items-center gap-1.5 text-cyan-600 dark:text-cyan-400">
+                                    <Activity size={16} /> Stability & Chaos
+                                </span>
+                                <span className="font-mono text-[11px] text-text-muted">Failover</span>
+                            </div>
+                            <div className="mt-3 flex items-baseline justify-between">
+                                <div className="text-3xl font-black text-text-primary">{metrics?.totalReconnects || 0} <span className="text-xs font-normal text-text-muted">reconnects</span></div>
+                                <div className="text-right text-[11px] text-text-muted font-mono">
+                                    Drops: <span className="text-amber-600 dark:text-amber-400 font-bold">{metrics?.totalSimulatedDrops || 0}</span>
+                                </div>
+                            </div>
+                            <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
+                                <span>TCP Keepalive: <strong className="text-text-secondary">Enabled</strong></span>
+                                <span>Backoff: <strong className="text-text-secondary">Jittered</strong></span>
+                            </div>
                         </div>
                     </div>
-                    <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
-                        <span>TCP Keepalive: <strong className="text-text-secondary">Enabled</strong></span>
-                        <span>Backoff: <strong className="text-text-secondary">Jittered</strong></span>
-                    </div>
-                </div>
-            </div>
-        );
-    })()}
+                );
+            })()}
 
             {/* LIVE TABLES SECTION */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -660,7 +702,14 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                     {incomingSessions.map(s => (
                                         <tr key={s.sessionId} className="hover:bg-card-secondary/50 transition-colors">
                                             <td className="py-3 font-semibold text-text-primary">
-                                                <div>{s.declaredSiteName}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <span>{s.declaredSiteName}</span>
+                                                    {(s.uptimeSec ?? 0) > 0 && (
+                                                        <span className="px-1.5 py-0.2 bg-card-secondary border border-border text-text-muted rounded text-[9px] font-mono font-normal">
+                                                            up {formatUptime(s.uptimeSec)}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <div className="text-[10px] text-text-muted font-mono">{s.declaredHostname || s.sessionId}</div>
                                             </td>
                                             <td className="py-3 font-mono text-text-secondary text-[11px]">
@@ -686,7 +735,14 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                 </span>
                                             </td>
                                             <td className="py-3 text-right font-mono text-[11px]">
-                                                <span className="text-emerald-600 dark:text-emerald-400 font-bold">{formatBytes(s.bytesReceived)}</span> / <span className="text-indigo-600 dark:text-indigo-400 font-bold">{formatBytes(s.bytesSent)}</span>
+                                                <div>
+                                                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">{formatBytes(s.bytesReceived)}</span> / <span className="text-indigo-600 dark:text-indigo-400 font-bold">{formatBytes(s.bytesSent)}</span>
+                                                </div>
+                                                {(s.rxBps ?? 0) > 0 && (
+                                                    <div className="text-[10px] text-emerald-500 font-bold tracking-tight">
+                                                        ⚡ {formatBitrate(s.rxBps)}
+                                                    </div>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
@@ -768,16 +824,36 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                     {s.peerHost}:{s.peerPort}
                                                 </td>
                                                 <td className="py-3">
-                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                                        s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
-                                                        s.state === 'reconnecting' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse' :
-                                                        'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                                                    }`}>
-                                                        {s.state}
-                                                    </span>
+                                                    <div>
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                                            s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
+                                                            s.state === 'reconnecting' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse' :
+                                                            'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                                                        }`}>
+                                                            {s.state}
+                                                        </span>
+                                                    </div>
+                                                    {(s.uptimeSec ?? 0) > 0 && (
+                                                        <div className="text-[9px] text-text-muted font-mono mt-0.5">
+                                                            up {formatUptime(s.uptimeSec)}
+                                                        </div>
+                                                    )}
                                                 </td>
-                                                <td className="py-3 text-right font-mono text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
-                                                    {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
+                                                <td className="py-3 text-right font-mono text-[11px]">
+                                                    <div className="text-amber-600 dark:text-amber-400 font-semibold">
+                                                        {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
+                                                    </div>
+                                                    {s.rttMs.avg > 0 && (
+                                                        <div className="text-[10px] text-cyan-500 flex items-center justify-end gap-1 font-sans">
+                                                            <span>Jitter: ± {s.rttMs.jitterMs ?? 0} ms</span>
+                                                            {(s.txBps ?? 0) > 0 && (
+                                                                <>
+                                                                    <span className="text-text-muted">•</span>
+                                                                    <span className="text-indigo-400 font-mono font-bold">{formatBitrate(s.txBps)}</span>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </td>
                                                 <td className="py-3 text-right font-mono text-[11px] text-text-muted">
                                                     {s.reconnects}

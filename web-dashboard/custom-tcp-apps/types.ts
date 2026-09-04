@@ -277,6 +277,10 @@ export interface IncomingSessionState {
     requestsHandled: number;
     simulatedDrops: number;
     simulatedErrors: number;
+    uptimeSec?: number;
+    rxBps?: number;
+    txBps?: number;
+    tps?: number;
 }
 
 export interface RttStats {
@@ -287,6 +291,7 @@ export interface RttStats {
     p95: number;
     max: number;
     samples: number;
+    jitterMs?: number;
 }
 
 export interface OutgoingSessionState {
@@ -308,6 +313,10 @@ export interface OutgoingSessionState {
     bytesSent: number;
     bytesReceived: number;
     lastError?: string;
+    uptimeSec?: number;
+    txBps?: number;
+    rxBps?: number;
+    tps?: number;
 }
 
 export interface AppRuntimeMetrics {
@@ -334,6 +343,10 @@ export interface AppRuntimeMetrics {
     avgRttMs: number;
     p50RttMs: number;
     p95RttMs: number;
+    jitterMs?: number;
+    liveTxBps?: number;
+    liveRxBps?: number;
+    liveTps?: number;
     health: AppHealthState;
 }
 

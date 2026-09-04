@@ -6,6 +6,8 @@ import { RttStats, AppRuntimeMetrics, ListenerState, AppHealthState } from './ty
 
 export class RollingRttTracker {
     private samples: number[] = [];
+    private prevRttMs?: number;
+    private jitterSamples: number[] = [];
     private readonly maxSamples: number;
 
     constructor(maxSamples: number = 100) {
@@ -18,11 +20,20 @@ export class RollingRttTracker {
         if (this.samples.length > this.maxSamples) {
             this.samples.shift();
         }
+
+        if (this.prevRttMs !== undefined) {
+            const delta = Math.abs(rttMs - this.prevRttMs);
+            this.jitterSamples.push(delta);
+            if (this.jitterSamples.length > this.maxSamples) {
+                this.jitterSamples.shift();
+            }
+        }
+        this.prevRttMs = rttMs;
     }
 
     public getStats(): RttStats {
         if (this.samples.length === 0) {
-            return { last: 0, min: 0, avg: 0, p50: 0, p95: 0, max: 0, samples: 0 };
+            return { last: 0, min: 0, avg: 0, p50: 0, p95: 0, max: 0, samples: 0, jitterMs: 0 };
         }
 
         const sorted = [...this.samples].sort((a, b) => a - b);
@@ -39,11 +50,20 @@ export class RollingRttTracker {
         const p50 = Number(sorted[p50Idx].toFixed(2));
         const p95 = Number(sorted[p95Idx].toFixed(2));
 
-        return { last: Number(last.toFixed(2)), min, avg, p50, p95, max, samples: count };
+        // Jitter (mean absolute consecutive RTT difference)
+        let jitterMs = 0;
+        if (this.jitterSamples.length > 0) {
+            const jSum = this.jitterSamples.reduce((acc, val) => acc + val, 0);
+            jitterMs = Number((jSum / this.jitterSamples.length).toFixed(2));
+        }
+
+        return { last: Number(last.toFixed(2)), min, avg, p50, p95, max, samples: count, jitterMs };
     }
 
     public reset(): void {
         this.samples = [];
+        this.jitterSamples = [];
+        this.prevRttMs = undefined;
     }
 }
 
@@ -68,6 +88,15 @@ export class AppMetricsTracker {
     public totalReconnects: number = 0;
     public totalSimulatedDrops: number = 0;
 
+    // Rate calculations
+    private lastRateCalcTs: number = Date.now();
+    private prevTxBytes: number = 0;
+    private prevRxBytes: number = 0;
+    private prevRequests: number = 0;
+    private liveTxBps: number = 0;
+    private liveRxBps: number = 0;
+    private liveTps: number = 0;
+
     private readonly globalRttTracker = new RollingRttTracker(200);
 
     constructor(appId: string, appName: string, port: number) {
@@ -89,6 +118,13 @@ export class AppMetricsTracker {
         this.totalErrors = 0;
         this.totalReconnects = 0;
         this.totalSimulatedDrops = 0;
+        this.prevTxBytes = 0;
+        this.prevRxBytes = 0;
+        this.prevRequests = 0;
+        this.liveTxBps = 0;
+        this.liveRxBps = 0;
+        this.liveTps = 0;
+        this.lastRateCalcTs = Date.now();
         this.globalRttTracker.reset();
     }
 
@@ -127,6 +163,19 @@ export class AppMetricsTracker {
     public getSnapshot(activeIncoming: number, activeOutgoing: number): AppRuntimeMetrics {
         const rttStats = this.globalRttTracker.getStats();
 
+        // Calculate live throughput rates (bps and TPS)
+        const now = Date.now();
+        const deltaSec = (now - this.lastRateCalcTs) / 1000;
+        if (deltaSec >= 0.8) {
+            this.liveTxBps = Math.max(0, Math.round(((this.totalTxBytes - this.prevTxBytes) * 8) / deltaSec));
+            this.liveRxBps = Math.max(0, Math.round(((this.totalRxBytes - this.prevRxBytes) * 8) / deltaSec));
+            this.liveTps = Number((Math.max(0, (this.totalRequests - this.prevRequests)) / deltaSec).toFixed(1));
+            this.prevTxBytes = this.totalTxBytes;
+            this.prevRxBytes = this.totalRxBytes;
+            this.prevRequests = this.totalRequests;
+            this.lastRateCalcTs = now;
+        }
+
         // Calculate health state
         let health: AppHealthState = 'healthy';
         if (this.listenerState === 'bind_error' || this.listenerState === 'port_conflict') {
@@ -163,6 +212,10 @@ export class AppMetricsTracker {
             avgRttMs: rttStats.avg,
             p50RttMs: rttStats.p50,
             p95RttMs: rttStats.p95,
+            jitterMs: rttStats.jitterMs,
+            liveTxBps: this.liveTxBps,
+            liveRxBps: this.liveRxBps,
+            liveTps: this.liveTps,
             health
         };
     }

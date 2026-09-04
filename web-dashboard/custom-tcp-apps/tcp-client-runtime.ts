@@ -41,6 +41,13 @@ interface ActiveClientSession {
     pendingRequests: Map<string, { sentTs: number; timer: NodeJS.Timeout }>;
     seq: number;
     isStopping: boolean;
+    lastRateCalcTs?: number;
+    prevTxBytes?: number;
+    prevRxBytes?: number;
+    prevReqCount?: number;
+    liveTxBps?: number;
+    liveRxBps?: number;
+    liveTps?: number;
 }
 
 export class TcpClientRuntime extends EventEmitter {
@@ -183,10 +190,37 @@ export class TcpClientRuntime extends EventEmitter {
     }
 
     public getOutgoingSessions(): OutgoingSessionState[] {
-        return Array.from(this.sessions.values()).map(s => ({
-            ...s.state,
-            rttMs: s.rttTracker.getStats()
-        }));
+        const now = Date.now();
+        return Array.from(this.sessions.values()).map(s => {
+            const lastCalc = s.lastRateCalcTs || now;
+            const deltaSec = (now - lastCalc) / 1000;
+            if (deltaSec >= 0.8) {
+                const prevTx = s.prevTxBytes || 0;
+                const prevRx = s.prevRxBytes || 0;
+                const prevReq = s.prevReqCount || 0;
+                s.liveTxBps = Math.max(0, Math.round(((s.state.bytesSent - prevTx) * 8) / deltaSec));
+                s.liveRxBps = Math.max(0, Math.round(((s.state.bytesReceived - prevRx) * 8) / deltaSec));
+                s.liveTps = Number((Math.max(0, (s.state.requestsSent - prevReq)) / deltaSec).toFixed(1));
+                s.prevTxBytes = s.state.bytesSent;
+                s.prevRxBytes = s.state.bytesReceived;
+                s.prevReqCount = s.state.requestsSent;
+                s.lastRateCalcTs = now;
+            }
+
+            const connectedAt = s.state.connectedAt || 0;
+            const uptimeSec = (s.state.state === 'connected' && connectedAt > 0)
+                ? Math.floor((now - connectedAt) / 1000)
+                : 0;
+
+            return {
+                ...s.state,
+                uptimeSec,
+                txBps: s.liveTxBps || 0,
+                rxBps: s.liveRxBps || 0,
+                tps: s.liveTps || 0,
+                rttMs: s.rttTracker.getStats()
+            };
+        });
     }
 
     public getActiveSessionsCount(): number {

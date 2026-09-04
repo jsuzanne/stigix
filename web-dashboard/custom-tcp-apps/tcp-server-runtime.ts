@@ -38,6 +38,13 @@ interface TrackedIncomingClient {
     idleTimer?: NodeJS.Timeout;
     requestCount: number;
     startedAt: number;
+    lastRateCalcTs?: number;
+    prevRxBytes?: number;
+    prevTxBytes?: number;
+    prevReqCount?: number;
+    liveRxBps?: number;
+    liveTxBps?: number;
+    liveTps?: number;
 }
 
 export class TcpServerRuntime extends EventEmitter {
@@ -124,7 +131,34 @@ export class TcpServerRuntime extends EventEmitter {
     }
 
     public getIncomingSessions(): IncomingSessionState[] {
-        return Array.from(this.clients.values()).map(c => ({ ...c.state }));
+        const now = Date.now();
+        return Array.from(this.clients.values()).map(c => {
+            const lastCalc = c.lastRateCalcTs || now;
+            const deltaSec = (now - lastCalc) / 1000;
+            if (deltaSec >= 0.8) {
+                const prevRx = c.prevRxBytes || 0;
+                const prevTx = c.prevTxBytes || 0;
+                const prevReq = c.prevReqCount || 0;
+                c.liveRxBps = Math.max(0, Math.round(((c.state.bytesReceived - prevRx) * 8) / deltaSec));
+                c.liveTxBps = Math.max(0, Math.round(((c.state.bytesSent - prevTx) * 8) / deltaSec));
+                c.liveTps = Number((Math.max(0, (c.state.requestsHandled - prevReq)) / deltaSec).toFixed(1));
+                c.prevRxBytes = c.state.bytesReceived;
+                c.prevTxBytes = c.state.bytesSent;
+                c.prevReqCount = c.state.requestsHandled;
+                c.lastRateCalcTs = now;
+            }
+
+            const connectedAt = c.state.connectedAt || c.startedAt || 0;
+            const uptimeSec = connectedAt > 0 ? Math.floor((now - connectedAt) / 1000) : 0;
+
+            return {
+                ...c.state,
+                uptimeSec,
+                rxBps: c.liveRxBps || 0,
+                txBps: c.liveTxBps || 0,
+                tps: c.liveTps || 0
+            };
+        });
     }
 
     public getActiveSessionsCount(): number {
