@@ -326,6 +326,28 @@ export const SessionDeepDiveDrawer: React.FC<SessionDeepDiveDrawerProps> = ({
                                                 Awaiting rolling workload data points...
                                             </div>
                                         )}
+
+                                        {/* SLA & Percentiles Explanatory Footnote */}
+                                        <div className="p-3.5 bg-card/60 border border-border/80 rounded-xl text-[11px] text-text-muted space-y-1.5 leading-relaxed mt-2">
+                                            <div className="font-semibold text-text-primary flex items-center gap-1.5 text-xs">
+                                                <Info size={13} className="text-indigo-400" />
+                                                Understanding Latency Metrics & Percentiles
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] pt-1">
+                                                <div>
+                                                    <strong className="text-text-primary font-mono">Median (P50):</strong> 50% of requests are faster than this value. Represents typical baseline performance.
+                                                </div>
+                                                <div>
+                                                    <strong className="text-amber-500 font-mono">Tail Latency (P95):</strong> 95% of requests complete within this delay. Highlights SD-WAN tunnel jitter and micro-burst queuing.
+                                                </div>
+                                                <div>
+                                                    <strong className="text-emerald-500 font-mono">Minimum:</strong> Best observed physical transport floor across underlay/overlay tunnels.
+                                                </div>
+                                                <div>
+                                                    <strong className="text-rose-500 font-mono">Peak (Max):</strong> Worst-case outlier transaction recorded in the sliding window.
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </>
                             ) : (

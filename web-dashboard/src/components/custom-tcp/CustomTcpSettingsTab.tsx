@@ -221,7 +221,7 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
                                                 <div className="text-[10px] text-text-muted font-mono font-normal">{app.id}</div>
                                             </td>
                                             <td className="py-3 px-4 font-mono font-bold text-amber-400">
-                                                :{app.listener?.port}
+                                                {app.listener?.port}
                                             </td>
                                             <td className="py-3 px-4">
                                                 <button

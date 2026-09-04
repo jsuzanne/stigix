@@ -7,7 +7,7 @@ import {
     Play, Square, RefreshCw, Server, Globe, Activity, Plus,
     Copy, Trash2, Edit3, Shield, AlertTriangle, CheckCircle2,
     Clock, Cpu, ArrowDownRight, ArrowUpRight, Zap, ExternalLink,
-    Layers, Cloud
+    Layers, Cloud, Search, X, Info
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type {
@@ -33,6 +33,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const [metrics, setMetrics] = useState<AppRuntimeMetrics | null>(null);
     const [incomingSessions, setIncomingSessions] = useState<IncomingSessionState[]>([]);
     const [outgoingSessions, setOutgoingSessions] = useState<OutgoingSessionState[]>([]);
+    const [sessionSearch, setSessionSearch] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false);
     const [isActionLoading, setIsActionLoading] = useState(false);
 
@@ -87,8 +88,10 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
             if (res.ok) {
                 const data = await res.json();
                 const map: Record<string, any> = {};
-                (data.applications || []).forEach((app: any) => {
-                    map[app.id] = app;
+                const list = data.statuses || data.applications || [];
+                list.forEach((app: any) => {
+                    const key = app.appId || app.id;
+                    if (key) map[key] = app;
                 });
                 setAllAppSummaries(map);
             }
@@ -344,6 +347,32 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         return `${hours}h ${remMins}m`;
     };
 
+    const filteredIncomingSessions = incomingSessions.filter(s => {
+        if (!sessionSearch.trim()) return true;
+        const q = sessionSearch.toLowerCase().trim();
+        return (
+            (s.declaredSiteName && s.declaredSiteName.toLowerCase().includes(q)) ||
+            (s.declaredHostname && s.declaredHostname.toLowerCase().includes(q)) ||
+            (s.remoteIp && s.remoteIp.toLowerCase().includes(q)) ||
+            String(s.remotePort).includes(q) ||
+            (s.matchedPeerName && s.matchedPeerName.toLowerCase().includes(q)) ||
+            (s.state && s.state.toLowerCase().includes(q)) ||
+            (s.sessionId && s.sessionId.toLowerCase().includes(q))
+        );
+    });
+
+    const filteredOutgoingSessions = outgoingSessions.filter(s => {
+        if (!sessionSearch.trim()) return true;
+        const q = sessionSearch.toLowerCase().trim();
+        return (
+            (s.peerName && s.peerName.toLowerCase().includes(q)) ||
+            (s.peerHost && s.peerHost.toLowerCase().includes(q)) ||
+            String(s.peerPort).includes(q) ||
+            (s.state && s.state.toLowerCase().includes(q)) ||
+            (s.sessionId && s.sessionId.toLowerCase().includes(q))
+        );
+    });
+
     return (
         <div className="p-6 max-w-[1700px] w-full mx-auto space-y-6 text-text-primary animate-fadeIn">
             {/* Top Node Identity Bar */}
@@ -366,21 +395,14 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                 </div>
 
                 {instanceInfo && (
-                    <div className="flex items-center gap-3 bg-card-secondary border border-border px-4 py-2 rounded-xl text-xs shadow-sm">
-                        <div>
-                            <span className="text-text-muted">Local Site:</span>{' '}
-                            <span className="font-bold text-text-primary">{instanceInfo.siteName}</span>
-                        </div>
-                        <div className="text-border">|</div>
-                        <div>
-                            <span className="text-text-muted">UUID:</span>{' '}
-                            <span className="font-mono text-indigo-600 dark:text-indigo-400 font-medium">{instanceInfo.instanceId.substring(0, 8)}...</span>
-                        </div>
+                    <div className="flex items-center gap-2 bg-card-secondary border border-border px-3.5 py-1.5 rounded-xl text-xs shadow-sm">
+                        <span className="text-text-muted font-medium">Local Site:</span>
+                        <span className="font-bold text-text-primary font-mono">{instanceInfo.siteName}</span>
                     </div>
                 )}
             </div>
 
-            {/* Application Switcher Tab Bar (All Applications) */}
+            {/* Application Switcher Tab Bar (All Applications with Live Traffic Badges) */}
             <div className="bg-card border border-border rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm">
                 <div className="flex items-center gap-2 text-text-primary font-semibold">
                     <Layers size={16} className="text-indigo-500" />
@@ -389,8 +411,12 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                 <div className="flex items-center gap-2 flex-wrap flex-1 justify-start">
                     {applications.map(app => {
                         const sum = allAppSummaries[app.id];
-                        const isL = sum?.listener?.state === 'listening';
-                        const isC = sum?.clientWorkload?.state === 'running';
+                        const inSess = sum?.serverSessionCount || 0;
+                        const outSess = sum?.clientSessionCount || 0;
+                        const totalSess = inSess + outSess;
+                        const isL = sum?.listenerState === 'listening' || sum?.listener?.state === 'listening';
+                        const isC = sum?.clientWorkloadRunning || sum?.clientWorkload?.state === 'running';
+                        const hasTraffic = totalSess > 0 || (sum?.throughput?.rxBps || 0) > 0 || (sum?.throughput?.txBps || 0) > 0;
                         const isSel = app.id === selectedAppId;
                         return (
                             <button
@@ -402,10 +428,27 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                         : 'bg-card-secondary hover:bg-card-hover border-border text-text-secondary hover:text-text-primary'
                                 }`}
                             >
-                                <span className={`w-2 h-2 rounded-full ${isL ? 'bg-emerald-400' : 'bg-text-muted/40'}`} />
+                                <span className={`w-2 h-2 rounded-full ${
+                                    hasTraffic ? 'bg-emerald-400 animate-pulse' :
+                                    (isL || isC) ? 'bg-emerald-500/70' : 'bg-text-muted/40'
+                                }`} />
                                 <span>{app.name}</span>
-                                <span className={`text-[10px] font-mono ${isSel ? 'text-indigo-200' : 'text-amber-500'}`}>:{app.listener?.port}</span>
-                                {isC && <span className={`text-[9px] px-1 rounded font-mono font-bold ${isSel ? 'bg-white/20 text-white' : 'bg-emerald-500/20 text-emerald-400'}`}>TX</span>}
+                                <span className={`text-[10px] font-mono ${isSel ? 'text-indigo-200' : 'text-amber-500'}`}>Port {app.listener?.port}</span>
+                                {hasTraffic ? (
+                                    <span
+                                        className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-1 ${
+                                            isSel ? 'bg-white/20 text-white' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                        }`}
+                                        title={`Active Traffic: ${inSess} incoming sessions, ${outSess} outgoing sessions`}
+                                    >
+                                        <Activity size={10} className="animate-pulse" />
+                                        {totalSess > 0 ? `${totalSess} sess` : 'Active'}
+                                    </span>
+                                ) : isC ? (
+                                    <span className={`text-[9px] px-1 rounded font-mono font-bold ${isSel ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-400'}`}>
+                                        TX on
+                                    </span>
+                                ) : null}
                             </button>
                         );
                     })}
@@ -434,7 +477,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             <div className="flex items-center gap-2">
                                 <h2 className="text-base font-bold text-text-primary">{currentApp?.name}</h2>
                                 <span className="font-mono text-xs text-indigo-500 font-bold bg-indigo-500/10 border border-indigo-500/30 px-2 py-0.5 rounded-lg">
-                                    Port :{currentApp?.listener?.port}
+                                    Port {currentApp?.listener?.port}
                                 </span>
                             </div>
                             <p className="text-[11px] text-text-muted mt-0.5">
@@ -487,10 +530,10 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                         <button
                             onClick={() => setIsPrismaModalOpen(true)}
                             className="h-[38px] px-3.5 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                            title="Prisma SD-WAN Appdef Sync & Flow Browser Classification"
+                            title="Push and register this custom application definition to Prisma SD-WAN via Cloud Controller API"
                         >
                             <Cloud size={14} />
-                            <span>Prisma SD-WAN</span>
+                            <span>Push to Prisma SD-WAN</span>
                         </button>
                     </div>
                 </div>
@@ -542,7 +585,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                     {/* Quick Metadata Info */}
                     <div className="flex items-center gap-3 text-text-muted text-[11px] font-mono">
                         <span className="bg-card-secondary px-2 py-0.5 rounded border border-border font-semibold text-text-primary">
-                            TCP :{currentApp?.listener?.port}
+                            TCP Port {currentApp?.listener?.port}
                         </span>
                         <span>•</span>
                         <span>{currentApp?.peers?.length || 0} Target Peer(s)</span>
@@ -578,7 +621,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                 <span className="font-semibold flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
                                     <ArrowDownRight size={16} /> Incoming Sessions (Server)
                                 </span>
-                                <span className="font-mono text-[11px] text-text-muted">:{currentApp?.listener?.port}</span>
+                                <span className="font-mono text-[11px] text-text-muted">Port {currentApp?.listener?.port}</span>
                             </div>
                             <div className="mt-3 flex items-baseline justify-between">
                                 <div className="text-3xl font-black text-text-primary">{incomingSessions.length} <span className="text-xs font-normal text-text-muted">active</span></div>
@@ -633,45 +676,47 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             </div>
                         </div>
 
-                        {/* 3. Application Latency Card */}
+                        {/* 3. Latency & Jitter Card */}
                         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
                             <div className="flex items-center justify-between text-xs">
-                                <span className="font-semibold flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                                <span className="font-semibold flex items-center gap-1.5 text-amber-500">
                                     <Zap size={16} /> App Latency (RTT)
                                 </span>
                                 <span className="font-mono text-[11px] text-text-muted">Rolling Window</span>
                             </div>
                             <div className="mt-3 flex items-baseline justify-between">
-                                <div className="text-3xl font-black text-amber-600 dark:text-amber-400">{metrics?.avgRttMs || 0} <span className="text-xs font-normal text-text-muted">ms avg</span></div>
-                                <div className="text-right text-[11px] text-text-muted font-mono space-y-0.5">
-                                    <div className="flex items-center gap-1.5 justify-end">
-                                        <span>p50: <strong className="text-text-primary font-bold">{metrics?.p50RttMs ?? metrics?.avgRttMs ?? 0} ms</strong></span>
-                                        <span className="text-border">|</span>
-                                        <span>p95: <strong className="text-amber-600 dark:text-amber-400 font-bold">{metrics?.p95RttMs || 0} ms</strong></span>
+                                <div className="text-3xl font-black text-amber-500 font-mono">
+                                    {metrics?.avgRttMs || 0} <span className="text-xs font-normal text-text-muted">ms avg</span>
+                                </div>
+                                <div className="text-right text-[11px] font-mono space-y-0.5">
+                                    <div className="text-text-muted">
+                                        p50: <span className="text-text-primary font-bold">{metrics?.p50RttMs || 0} ms</span> | p95: <span className="text-amber-500 font-bold">{metrics?.p95RttMs || 0} ms</span>
                                     </div>
-                                    <div className="text-[10px] text-cyan-500 font-bold">
+                                    <div className="text-cyan-500 font-bold text-[10px]">
                                         Jitter: ± {avgJitter} ms
                                     </div>
                                 </div>
                             </div>
                             <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
-                                <span>Timeouts: <strong className="text-rose-500 font-bold">{metrics?.totalTimeouts || 0}</strong></span>
-                                <span>Errors: <strong className="text-rose-500 font-bold">{metrics?.totalErrors || 0}</strong></span>
+                                <span>Timeouts: <strong className={metrics?.totalTimeouts ? 'text-rose-500 font-bold' : 'text-text-secondary'}>{metrics?.totalTimeouts || 0}</strong></span>
+                                <span>Errors: <strong className={metrics?.totalErrors ? 'text-rose-500 font-bold' : 'text-text-secondary'}>{metrics?.totalErrors || 0}</strong></span>
                             </div>
                         </div>
 
-                        {/* 4. Stability & Simulation Card */}
+                        {/* 4. Chaos & Stability Card */}
                         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
                             <div className="flex items-center justify-between text-xs">
-                                <span className="font-semibold flex items-center gap-1.5 text-cyan-600 dark:text-cyan-400">
+                                <span className="font-semibold flex items-center gap-1.5 text-cyan-500">
                                     <Activity size={16} /> Stability & Chaos
                                 </span>
                                 <span className="font-mono text-[11px] text-text-muted">Failover</span>
                             </div>
                             <div className="mt-3 flex items-baseline justify-between">
-                                <div className="text-3xl font-black text-text-primary">{metrics?.totalReconnects || 0} <span className="text-xs font-normal text-text-muted">reconnects</span></div>
-                                <div className="text-right text-[11px] text-text-muted font-mono">
-                                    Drops: <span className="text-amber-600 dark:text-amber-400 font-bold">{metrics?.totalSimulatedDrops || 0}</span>
+                                <div className="text-3xl font-black text-text-primary font-mono">
+                                    {metrics?.totalReconnects || 0} <span className="text-xs font-normal text-text-muted">reconnects</span>
+                                </div>
+                                <div className="text-right text-[11px] font-mono space-y-0.5">
+                                    <div className="text-text-muted">Drops: <span className={metrics?.totalSimulatedDrops ? 'text-rose-500 font-bold' : 'text-text-primary font-bold'}>{metrics?.totalSimulatedDrops || 0}</span></div>
                                 </div>
                             </div>
                             <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
@@ -682,6 +727,37 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                     </div>
                 );
             })()}
+
+            {/* REAL-TIME SESSION SEARCH & FILTER BAR */}
+            <div className="bg-card border border-border rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+                <div className="relative flex-1 min-w-[280px]">
+                    <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
+                    <input
+                        type="text"
+                        value={sessionSearch}
+                        onChange={e => setSessionSearch(e.target.value)}
+                        placeholder="Filter sessions in real-time by site name, peer, IP, port, or state (e.g. DC1, BR5, connected, 8443)..."
+                        className="w-full pl-9 pr-8 py-2 bg-card-secondary/70 border border-border focus:border-indigo-500 rounded-xl text-xs text-text-primary placeholder:text-text-muted outline-none transition-all font-sans"
+                    />
+                    {sessionSearch && (
+                        <button
+                            onClick={() => setSessionSearch('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-text-muted hover:text-text-primary rounded-md"
+                            title="Clear filter"
+                        >
+                            <X size={14} />
+                        </button>
+                    )}
+                </div>
+                {sessionSearch && (
+                    <div className="flex items-center gap-2 text-xs font-mono">
+                        <span className="text-text-muted font-sans">Filtered:</span>
+                        <span className="px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[11px] font-bold">
+                            {filteredIncomingSessions.length} incoming / {filteredOutgoingSessions.length} outgoing
+                        </span>
+                    </div>
+                )}
+            </div>
 
             {/* LIVE TABLES SECTION */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -694,11 +770,11 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             </div>
                             <div>
                                 <h3 className="text-sm font-bold text-text-primary">Incoming Client Sessions</h3>
-                                <p className="text-[11px] text-text-muted">Remote Stigix nodes connecting to local port :{currentApp?.listener?.port}</p>
+                                <p className="text-[11px] text-text-muted">Remote Stigix nodes connecting to local port {currentApp?.listener?.port}</p>
                             </div>
                         </div>
                         <span className="text-xs bg-card-secondary border border-border px-3 py-1 rounded-xl text-indigo-600 dark:text-indigo-400 font-bold shadow-sm">
-                            {incomingSessions.length} Connected
+                            {sessionSearch ? `${filteredIncomingSessions.length} / ${incomingSessions.length}` : `${incomingSessions.length}`} Connected
                         </span>
                     </div>
 
@@ -706,6 +782,10 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                         {incomingSessions.length === 0 ? (
                             <div className="py-14 text-center text-xs text-text-muted italic">
                                 No incoming sessions currently connected to this listener.
+                            </div>
+                        ) : filteredIncomingSessions.length === 0 ? (
+                            <div className="py-14 text-center text-xs text-text-muted italic">
+                                No incoming sessions match "{sessionSearch}".
                             </div>
                         ) : (
                             <table className="w-full text-left text-xs border-collapse">
@@ -719,7 +799,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
-                                    {incomingSessions.map(s => (
+                                    {filteredIncomingSessions.map(s => (
                                         <tr
                                             key={s.sessionId}
                                             onClick={() => setDeepDiveSession({ ...s, isIncoming: true })}
@@ -791,7 +871,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             </div>
                         </div>
                         <span className="text-xs bg-card-secondary border border-border px-3 py-1 rounded-xl text-emerald-600 dark:text-emerald-400 font-bold shadow-sm">
-                            {outgoingSessions.length} Targets
+                            {sessionSearch ? `${filteredOutgoingSessions.length} / ${outgoingSessions.length}` : `${outgoingSessions.length}`} Targets
                         </span>
                     </div>
 
@@ -805,8 +885,8 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                         <p className="text-text-muted">No remote target peers configured for this application.</p>
                                         <button
                                             onClick={() => {
-                                                setEditingApp(currentApp || null);
-                                                setIsWizardOpen(true);
+                                                 setEditingApp(currentApp || null);
+                                                 setIsWizardOpen(true);
                                             }}
                                             className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                                         >
@@ -816,6 +896,10 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                 ) : (
                                     <div className="italic">Client workload is currently stopped. Click "Start Client Workload" above.</div>
                                 )}
+                            </div>
+                        ) : filteredOutgoingSessions.length === 0 ? (
+                            <div className="py-12 text-center text-xs text-text-muted italic">
+                                No outgoing workload targets match "{sessionSearch}".
                             </div>
                         ) : (
                             <table className="w-full text-left text-xs border-collapse">
@@ -830,7 +914,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
-                                    {outgoingSessions.map(s => {
+                                    {filteredOutgoingSessions.map(s => {
                                         const peerSessions = outgoingSessions.filter(x => x.peerId === s.peerId || x.peerName === s.peerName);
                                         const sessionIndex = peerSessions.findIndex(x => x.sessionId === s.sessionId) + 1;
                                         const streamBadge = peerSessions.length > 1 ? `Stream #${sessionIndex}` : null;
