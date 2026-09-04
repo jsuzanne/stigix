@@ -787,7 +787,7 @@ const secs = seconds % 60;
                                         <th className="pb-3 px-3 whitespace-nowrap">Target Peer</th>
                                         <th className="pb-3 px-3 whitespace-nowrap">Remote Endpoint</th>
                                         <th className="pb-3 px-3 whitespace-nowrap">State & Uptime</th>
-                                        <th className="pb-3 px-4 text-right whitespace-nowrap">RTT Wave & Latency</th>
+                                        <th className="pb-3 px-4 text-right whitespace-nowrap min-w-[200px]">RTT Wave & Latency</th>
                                         <th className="pb-3 px-3 text-center whitespace-nowrap">Reconnects</th>
                                         <th className="pb-3 px-3 text-center whitespace-nowrap">Action</th>
                                     </tr>
@@ -834,25 +834,29 @@ const secs = seconds % 60;
                                                     </div>
                                                 </td>
                                                 <td className="py-3 px-4 text-right font-mono text-[11px] whitespace-nowrap">
-                                                    <div className="flex items-center justify-end gap-2.5">
+                                                    <div className="flex items-center justify-end gap-3.5">
                                                         {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 && (
-                                                            <MicroSparkline samples={s.rttMs.recentSamples} width={64} height={18} />
+                                                            <div className="shrink-0">
+                                                                <MicroSparkline samples={s.rttMs.recentSamples} width={58} height={20} />
+                                                            </div>
                                                         )}
-                                                        <span className="text-amber-600 dark:text-amber-400 font-semibold whitespace-nowrap">
-                                                            {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
-                                                        </span>
-                                                    </div>
-                                                    {s.rttMs.avg > 0 && (
-                                                        <div className="text-[10px] text-cyan-500 flex items-center justify-end gap-1 font-sans mt-0.5 whitespace-nowrap">
-                                                            <span>Jitter: ± {s.rttMs.jitterMs ?? 0} ms</span>
-                                                            {(s.txBps ?? 0) > 0 && (
-                                                                <>
-                                                                    <span className="text-text-muted">•</span>
-                                                                    <span className="text-indigo-400 font-mono font-bold">{formatBitrate(s.txBps)}</span>
-                                                                </>
+                                                        <div className="text-right">
+                                                            <div className="text-amber-600 dark:text-amber-400 font-semibold whitespace-nowrap">
+                                                                {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
+                                                            </div>
+                                                            {s.rttMs.avg > 0 && (
+                                                                <div className="text-[10px] text-cyan-500 flex items-center justify-end gap-1 font-sans mt-0.5 whitespace-nowrap">
+                                                                    <span>Jitter: ± {s.rttMs.jitterMs ?? 0} ms</span>
+                                                                    {(s.txBps ?? 0) > 0 && (
+                                                                        <>
+                                                                            <span className="text-text-muted">•</span>
+                                                                            <span className="text-indigo-400 font-mono font-bold">{formatBitrate(s.txBps)}</span>
+                                                                        </>
+                                                                    )}
+                                                                </div>
                                                             )}
                                                         </div>
-                                                    )}
+                                                    </div>
                                                 </td>
                                                 <td className="py-3 px-3 text-center font-mono text-[11px] text-text-muted whitespace-nowrap">
                                                     {s.reconnects}
