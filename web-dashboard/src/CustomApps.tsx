@@ -1023,7 +1023,7 @@ const secs = seconds % 60;
                                                     </div>
                                                 </td>
                                                 <td className="py-3 px-4 text-right font-mono text-[11px] whitespace-nowrap">
-                                                    <div className="flex items-center justify-end gap-3">
+                                                    <div className="flex items-center justify-end gap-3 min-w-[260px]">
                                                         {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 ? (
                                                             <div className="w-[56px] shrink-0 flex items-center justify-center">
                                                                 <MicroSparkline samples={s.rttMs.recentSamples} width={56} height={18} />
@@ -1031,7 +1031,7 @@ const secs = seconds % 60;
                                                         ) : (
                                                             <div className="w-[56px] shrink-0" />
                                                         )}
-                                                        <div className="w-[135px] shrink-0 text-right">
+                                                        <div className="min-w-[175px] shrink-0 text-right">
                                                             <div className="text-amber-600 dark:text-amber-400 font-semibold whitespace-nowrap tabular-nums">
                                                                 {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
                                                             </div>
