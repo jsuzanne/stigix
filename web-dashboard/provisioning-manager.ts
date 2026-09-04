@@ -763,12 +763,8 @@ export class ProvisioningManager {
                     }
                 }
 
-                // Preserve any local-only applications created on this node
-                for (const localApp of localApps) {
-                    if (!incomingIdSet.has(localApp.id)) {
-                        mergedApps.push(localApp);
-                    }
-                }
+                // Note: Applications deleted on the Leader are cleanly removed on peers.
+                // We do not resurrect old local apps that are not in incomingApps.
 
                 mergedPayload = {
                     version: 1,
