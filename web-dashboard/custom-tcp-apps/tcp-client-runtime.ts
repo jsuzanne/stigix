@@ -444,28 +444,37 @@ export class TcpClientRuntime extends EventEmitter {
             const delayMatch = raw.match(/X-Stigix-Server-Delay:\s*(\d+)ms/i);
             const serverDelayMs = delayMatch ? parseInt(delayMatch[1], 10) : 0;
 
-            if (session.pendingRequests.size > 0) {
+            const reqIdMatch = raw.match(/X-Stigix-Request-Id:\s*([^\r\n]+)/i);
+            const respReqId = reqIdMatch ? reqIdMatch[1].trim() : undefined;
+
+            let targetReqId = respReqId;
+            let pending = respReqId ? session.pendingRequests.get(respReqId) : undefined;
+
+            if (!pending && session.pendingRequests.size > 0) {
                 const firstEntry = session.pendingRequests.entries().next().value;
                 if (firstEntry) {
-                    const [reqId, pending] = firstEntry;
-                    clearTimeout(pending.timer);
-                    session.pendingRequests.delete(reqId);
+                    [targetReqId, pending] = firstEntry;
+                }
+            }
 
-                    const rtt = Date.now() - pending.sentTs;
-                    const networkRttMs = Math.max(0, rtt - serverDelayMs);
+            if (pending && targetReqId) {
+                clearTimeout(pending.timer);
+                session.pendingRequests.delete(targetReqId);
 
-                    session.rttTracker.record(rtt, serverDelayMs, networkRttMs);
-                    this.metricsTracker.recordRtt(rtt);
+                const rtt = Date.now() - pending.sentTs;
+                const networkRttMs = Math.max(0, rtt - serverDelayMs);
 
-                    if (statusCode >= 400) {
-                        session.state.errors++;
-                        session.state.lastError = `HTTP ${statusCode}`;
-                        this.metricsTracker.totalErrors++;
-                    } else {
-                        session.state.responsesReceived++;
-                        session.state.lastSuccessAt = Date.now();
-                        this.metricsTracker.totalResponses++;
-                    }
+                session.rttTracker.record(rtt, serverDelayMs, networkRttMs);
+                this.metricsTracker.recordRtt(rtt);
+
+                if (statusCode >= 400) {
+                    session.state.errors++;
+                    session.state.lastError = `HTTP ${statusCode}`;
+                    this.metricsTracker.totalErrors++;
+                } else {
+                    session.state.responsesReceived++;
+                    session.state.lastSuccessAt = Date.now();
+                    this.metricsTracker.totalResponses++;
                 }
             }
 
@@ -552,6 +561,12 @@ export class TcpClientRuntime extends EventEmitter {
 
     private executeWorkloadTick(session: ActiveClientSession): void {
         if (!session.socket || session.socket.destroyed || !session.handshakeCompleted) return;
+
+        // Prevent in-flight pipeline request queueing over the same socket (avoids lag inflation during reconnects/slowdowns)
+        const mode = this.appConfig.clientDefaults.mode || 'persistent_request_reply';
+        if (mode !== 'bulk_burst' && mode !== 'continuous_stream' && session.pendingRequests.size >= 1) {
+            return;
+        }
 
         session.seq++;
         const requestId = `req-${session.sessionId}-${session.seq}`;

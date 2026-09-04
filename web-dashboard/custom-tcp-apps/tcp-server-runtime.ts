@@ -364,7 +364,8 @@ export class TcpServerRuntime extends EventEmitter {
             }
         }
 
-const EICAR_TEST_STRING = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
+        const reqIdMatch = rawText.match(/X-Stigix-Request-Id:\s*([^\r\n]+)/i);
+        const clientReqId = reqIdMatch ? reqIdMatch[1].trim() : undefined;
 
         const sendHttpResponse = () => {
             if (socket.destroyed) return;
@@ -387,6 +388,7 @@ const EICAR_TEST_STRING = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS
                     `Connection: ${isClose ? 'close' : 'keep-alive'}`,
                     'Server: Stigix-CustomApp-HTTP/2.0',
                     'X-Stigix-Security-Test: EICAR-Standard-Antivirus-Test',
+                    ...(clientReqId ? [`X-Stigix-Request-Id: ${clientReqId}`] : []),
                     '',
                     ''
                 ].join('\r\n');
@@ -411,6 +413,7 @@ const EICAR_TEST_STRING = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS
                 serverSessionId: client.sessionId,
                 serverSite: this.localIdentity.siteName,
                 seq: client.requestCount,
+                requestId: clientReqId,
                 simulatedDelayMs: delayMs,
                 timestamp: Date.now()
             };
@@ -424,6 +427,7 @@ const EICAR_TEST_STRING = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS
                 `Connection: ${isClose ? 'close' : 'keep-alive'}`,
                 'Server: Stigix-CustomApp-HTTP/2.0',
                 `X-Stigix-Server-Delay: ${delayMs}ms`,
+                ...(clientReqId ? [`X-Stigix-Request-Id: ${clientReqId}`] : []),
                 '',
                 ''
             ].join('\r\n');
