@@ -9829,8 +9829,7 @@ app.get('/api/admin/system/dashboard-data', authenticateToken, async (req, res) 
             dem: demData,
             registry: {
                 ...registryManager.getStatus(),
-                mode: process.env.STIGIX_REGISTRY_MODE || 'peer',
-                local_registry_active: process.env.STIGIX_REGISTRY_MODE === 'leader'
+                local_registry_active: registryManager.getStatus()?.mode === 'leader'
             },
             timestamp: Date.now()
         });
