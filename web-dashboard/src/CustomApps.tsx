@@ -787,9 +787,7 @@ const secs = seconds % 60;
                                         <th className="pb-3 px-3 whitespace-nowrap">Target Peer</th>
                                         <th className="pb-3 px-3 whitespace-nowrap">Remote Endpoint</th>
                                         <th className="pb-3 px-3 whitespace-nowrap">State & Uptime</th>
-                                        <th className="pb-3 px-4 text-right whitespace-nowrap w-[240px] min-w-[240px]">RTT Wave & Latency</th>
-                                        <th className="pb-3 px-3 text-center whitespace-nowrap w-[90px] min-w-[90px]">Reconnects</th>
-                                        <th className="pb-3 px-3 text-center whitespace-nowrap w-[70px] min-w-[70px]">Action</th>
+                                        <th className="pb-3 px-4 text-right whitespace-nowrap">RTT Wave & Latency</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
@@ -831,9 +829,14 @@ const secs = seconds % 60;
                                                                 {formatUptime(s.uptimeSec)}
                                                             </span>
                                                         )}
+                                                        {(s.reconnects ?? 0) > 0 && (
+                                                            <span className="text-[10px] text-amber-500 font-mono font-semibold whitespace-nowrap" title={`${s.reconnects} reconnect(s)`}>
+                                                                • {s.reconnects} rec
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-4 text-right font-mono text-[11px] whitespace-nowrap w-[240px] min-w-[240px]">
+                                                <td className="py-3 px-4 text-right font-mono text-[11px] whitespace-nowrap">
                                                     <div className="flex items-center justify-end gap-3">
                                                         {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 ? (
                                                             <div className="w-[56px] shrink-0 flex items-center justify-center">
@@ -859,27 +862,6 @@ const secs = seconds % 60;
                                                             )}
                                                         </div>
                                                     </div>
-                                                </td>
-                                                <td className="py-3 px-3 text-center font-mono text-[11px] text-text-muted whitespace-nowrap w-[90px] min-w-[90px]">
-                                                    {s.reconnects}
-                                                </td>
-                                                <td className="py-3 px-3 text-center whitespace-nowrap w-[70px] min-w-[70px]" onClick={e => e.stopPropagation()}>
-                                                    <button
-                                                        onClick={() => {
-                                                            setPeerTestModal({
-                                                                isOpen: true,
-                                                                peerId: s.peerId,
-                                                                peerName: s.peerName,
-                                                                host: s.peerHost,
-                                                                port: s.peerPort
-                                                            });
-                                                            handleTestPeer(s.peerId);
-                                                        }}
-                                                        className="p-1.5 text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-card-secondary rounded-lg transition-colors cursor-pointer"
-                                                        title="Test Handshake"
-                                                    >
-                                                        <Zap size={14} />
-                                                    </button>
                                                 </td>
                                             </tr>
                                         );
