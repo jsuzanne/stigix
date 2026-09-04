@@ -1925,9 +1925,9 @@ docker compose restart</pre>
         </div>
 
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the 8 server simulation and chaos injection modes?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the 9 server simulation and chaos injection modes?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>Stigix provides 8 realistic server response modes:</p>
+            <p>Stigix provides 9 realistic server response modes:</p>
             <ol>
               <li><code>echo</code> — Immediate full payload reflection without delay.</li>
               <li><code>acknowledge</code> — Ultra-compact ACK reply (12 bytes, zero payload) for high-frequency transactions.</li>
@@ -1937,7 +1937,21 @@ docker compose restart</pre>
               <li><code>drop_response</code> — Silently drops responses with configurable probability while keeping the TCP socket open (simulating application freeze/timeout).</li>
               <li><code>close_connection</code> — Abruptly closes the TCP connection after N requests (simulating server crash).</li>
               <li><code>error_response</code> — Replies with an application error frame carrying custom error codes (e.g. <code>SIMULATED_DB_ERROR</code>).</li>
+              <li><code>eicar_response</code> — Emulates a malware payload returning the standard EICAR anti-virus signature, validating Next-Gen Firewall / SASE (Palo Alto Networks Antivirus / WildFire) inline inspection and blocking.</li>
             </ol>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the difference between Stigix Native TCP and HTTP/1.1 REST Wire Protocols, and why is HTTP/1.1 needed for SD-WAN SRT?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In Stigix, you can choose between two Wire Protocols for each custom application:</p>
+            <ul>
+              <li><strong>⚡ Stigix Native TCP (L4 Binary):</strong> Uses length-prefixed binary framing (4-byte length prefix). It has zero HTTP overhead, making it ideal for pure underlay throughput benchmarks and transport-level failover validation.</li>
+              <li><strong>🌐 HTTP/1.1 REST API (L7 Native):</strong> Formats transactions as RFC-compliant HTTP/1.1 request-response cycles while injecting <code>X-Stigix-*</code> telemetry headers.</li>
+            </ul>
+            <p><strong>Why is HTTP/1.1 needed for SD-WAN Server Response Time (SRT)?</strong></p>
+            <p>At Layer 4 (raw TCP), an SD-WAN appliance (e.g., Prisma SD-WAN / ION) only sees kernel TCP ACKs (which return in &lt; 2 ms) and cannot delineate where a transaction starts or ends. By selecting <strong>HTTP/1.1 REST API</strong>, the SD-WAN App-ID engine identifies the HTTP request and response boundaries, allowing it to compute and display true <strong>Server Response Time (SRT)</strong> (e.g., ~800 ms) in the Flow Browser alongside transport <strong>RTT</strong> (~8 ms).</p>
           </div></div></div>
         </div>
 

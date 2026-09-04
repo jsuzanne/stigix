@@ -8,20 +8,23 @@
 2. [Core Concepts & Dual-Role Architecture](#2-core-concepts--dual-role-architecture)
 3. [Network Deployment Blueprints](#3-network-deployment-blueprints)
 4. [Step-by-Step Guide: Creating an Application](#4-step-by-step-guide-creating-an-application)
-   - [Step 1: Identity & Host Listening Port](#step-1-identity--host-listening-port-server)
+   - [Step 1: Identity & Wire Protocol](#step-1-identity--host-listening-port-server)
    - [Step 2: Server Behaviors & Chaos Injection](#step-2-server-behaviors--chaos-injection)
    - [Step 3: Client Workload & Target Peers](#step-3-client-workload-generation--peers)
    - [Step 4: Port Review & Validation](#step-4-port-review--validation)
 5. [Centralized Deployment via Global Provisioning](#5-centralized-deployment-via-global-provisioning)
 6. [Dashboard Monitoring & Health Score (0-100)](#6-dashboard-monitoring--health-score-0-100)
-7. [5 Ready-to-Use Recipes (Real-World Use Cases)](#7-5-ready-to-use-recipes-real-world-use-cases)
+7. [Deep Dive: Layer 4 TCP vs Layer 7 HTTP & SD-WAN SRT Mechanics](#7-deep-dive-layer-4-tcp-vs-layer-7-http--sd-wan-srt-mechanics)
+8. [7 Ready-to-Use Recipes (Real-World Use Cases)](#8-7-ready-to-use-recipes-real-world-use-cases)
    - [Recipe 1: Transactional ERP (SAP / Oracle)](#recipe-1-transactional-erp-sap--oracle-port-8443)
    - [Recipe 2: Retail POS Checkout Terminals](#recipe-2-retail-pos-checkout-terminals-port-9100)
    - [Recipe 3: Database Replication](#recipe-3-database-replication-port-5432)
    - [Recipe 4: SD-WAN SLA Failover by Degradation (Chaos Looping)](#recipe-4-sd-wan-sla-failover-by-degradation-chaos-looping-port-8083)
    - [Recipe 5: Industrial Telemetry / SCADA (Lightweight Heartbeat)](#recipe-5-industrial-telemetry--scada-port-8883)
-8. [Command-Line Control (`stigix-cli`)](#8-command-line-control-stigix-cli)
-9. [FAQ & Troubleshooting](#9-faq--troubleshooting)
+   - [Recipe 6: L7 Web API & SD-WAN SRT Degradation Simulation (Prisma SD-WAN Flow Browser)](#recipe-6-l7-web-api--sd-wan-srt-degradation-simulation-port-8095)
+   - [Recipe 7: Next-Gen Firewall / SASE EICAR Antivirus Block Test](#recipe-7-next-gen-firewall--sase-eicar-antivirus-block-test-port-8096)
+9. [Command-Line Control (`stigix-cli`)](#9-command-line-control-stigix-cli)
+10. [FAQ & Troubleshooting](#10-faq--troubleshooting)
 
 ---
 
@@ -112,18 +115,23 @@ An interactive 4-step wizard will guide you:
 | :--- | :--- | :--- |
 | **Application Name** | Human-readable name for your business service. | `ERP-Production`, `Retail-POS-Checkout` |
 | **Application ID** | Unique system identifier (auto-generated from name). | `erp-prod`, `pos-checkout` |
-| **TCP Port (Host)** | TCP port on which the Stigix host listener binds *(1024 - 65535)*. | `8443`, `8083`, `9100`, `5432` |
+| **Wire Protocol** | Transport framing format: **`Stigix Native TCP`** (L4) or **`HTTP/1.1 REST API`** (L7). | `http_1_1` (for SD-WAN SRT & NGFW) |
+| **TCP Port (Host)** | TCP port on which the Stigix host listener binds *(1024 - 65535)*. | `8443`, `8083`, `9100`, `5432`, `8095` |
 | **Bind Address** | Local listening IP address (`0.0.0.0` to listen on all interfaces). | `0.0.0.0` |
 | **Max Connections** | Maximum concurrent client TCP sessions accepted. | `100` |
 | **Idle Timeout (ms)** | Inactivity timeout before closing idle sockets (0 = disabled). | `60000` (60 sec) |
 | **Allowed CIDRs (Optional)** | IPv4 subnet allowlist restricting allowed client IP addresses. | `192.168.0.0/16, 10.0.0.0/8` |
 | **Pre-shared Auth Token** | Secret token for secure inter-site validation. | *(Leave empty or specify secret)* |
 
+#### 🌐 Choosing the Wire Protocol:
+* **⚡ `Stigix Native TCP (L4 Binary)`**: Ultra-compact 4-byte length-prefixed binary framing. Zero HTTP overhead. Best for pure underlay bandwidth, transport stress, and millisecond failover testing.
+* **🌐 `HTTP/1.1 REST API (L7 Native & SRT)`**: Standard HTTP/1.1 Request/Response format with `X-Stigix-*` telemetry headers. **Required if you want SD-WAN appliances (Prisma SD-WAN Flow Browser, ADEM, ThousandEyes) to calculate Server Response Time (SRT)** or NGFWs to inspect payloads.
+
 ---
 
 ### Step 2: Server Behaviors & Chaos Injection
 
-This step defines **how the server replies** when receiving client requests. Stigix includes **8 realistic simulation modes**:
+This step defines **how the server replies** when receiving client requests. Stigix includes **9 realistic simulation modes**:
 
 ```
                                   SERVER RESPONSE MODES
@@ -138,10 +146,13 @@ This step defines **how the server replies** when receiving client requests. Sti
   │ 🕳️ Drop Response │ Receives request but sends no reply (simulates application timeout/freeze). │
   │ 💥 Close Conn    │ Abruptly resets/closes socket after N requests (simulates server crash).    │
   │ ❌ Error Resp    │ Replies with an application error frame (e.g. `DB_CONNECTION_LOST`).        │
+  │ 🛡️ EICAR Test    │ Returns standard EICAR anti-malware string to test NGFW / AV interception.  │
   └─────────────────┴─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 > 💡 **SD-WAN Tip**: The **`Looping Delay`** mode is ideal for verifying SLA-based dynamic routing policies: configure 60 seconds of normal phase (10 ms latency) followed by 60 seconds of degraded phase (1500 ms latency) and observe your SD-WAN router switch paths seamlessly!
+>
+> 💡 **Prisma SD-WAN Tip**: Combine **`HTTP/1.1 REST API`** with **`Fixed Delay`** (e.g. 800 ms) to observe Prisma SD-WAN Flow Browser immediately record **`SRT: ~800 ms`** while keeping **`RTT: ~8 ms`**!
 
 ---
 
@@ -224,13 +235,43 @@ $$\text{Score} = \text{Listener Active}(25\text{ pts}) + \text{Sessions Establis
 
 ---
 
-## 7. 5 Ready-to-Use Recipes (Real-World Use Cases)
+---
+
+## 7. Deep Dive: Layer 4 TCP vs Layer 7 HTTP & SD-WAN SRT Mechanics
+
+A common point of confusion for network engineers testing with SD-WAN appliances (e.g., **Palo Alto Networks Prisma SD-WAN / CloudGenix**, ThousandEyes, Cisco Catalyst SD-WAN) is why server-side delay is not always visible as **SRT (Server Response Time)**.
+
+### 🧠 Why SD-WAN Engines Cannot Measure SRT on Raw TCP (L4)
+When a client sends data over a raw TCP stream, the server host's Linux kernel TCP stack immediately acknowledges the packet with a `TCP ACK (Len=0)` within **< 1–2 ms**.
+
+```text
+1. Client -> Server  [PSH, ACK] (Payload 1 KB)   --> Client sends request
+2. Server -> Client  [ACK]      (Len=0)          --> Server OS kernel ACKs immediately (< 2 ms)
+                                                     (SD-WAN router measures RTT ~ 10 ms)
+   ... ⏳ Server application processing for 800 ms ...
+3. Server -> Client  [PSH, ACK] (Payload 2 KB)   --> Server application returns response
+```
+
+* **The Problem**: At Layer 4, TCP is an opaque, bidirectional byte stream. Without knowing the application protocol, the SD-WAN router **cannot know whether packet #3 is a response to packet #1, an unsolicited server push, or part of a continuous streaming flow**.
+* Therefore, in raw TCP mode, the SD-WAN router only measures **Network RTT** (the round-trip time of the kernel TCP ACK) and cannot populate the **SRT** metric.
+
+### 🌐 How `HTTP/1.1 REST API` Solves This for SD-WAN & DEM
+When you select **`HTTP/1.1 REST API`** in Step 1 of the Stigix Wizard:
+1. **L7 Transaction Boundaries**: The client emits standard `POST /api/stigix/v2/custom-app HTTP/1.1` and the server replies with `HTTP/1.1 200 OK`.
+2. **App-ID Inspection**: The SD-WAN engine (Prisma SD-WAN Flow Browser) recognizes the HTTP transaction boundaries:
+   $$\text{SRT} = (\text{Time of HTTP 200 OK}) - (\text{Time of HTTP Request}) - \text{Network RTT} \approx \mathbf{800\text{ ms}}$$
+3. **Identity Preservation**: Stigix injects `X-Stigix-Site-Name`, `X-Stigix-Instance-Id`, and `X-Stigix-App-Id` headers into every HTTP request, preserving 100% of the mesh telemetry and topology mapping.
+
+---
+
+## 8. 7 Ready-to-Use Recipes (Real-World Use Cases)
 
 Here are standard configuration blueprints you can directly apply:
 
 ### Recipe 1: Transactional ERP (SAP / Oracle) — Port :8443
 * **Objective**: Simulate enterprise users performing ERP transactions with a 150 ms server processing delay.
 * **Configuration**:
+  * **Wire Protocol**: `stigix_tcp`
   * **Port**: `8443`
   * **Server Behavior**: `fixed_delay` with `fixedDelayMs: 150`
   * **Client Mode**: `persistent_request_reply`
@@ -240,6 +281,7 @@ Here are standard configuration blueprints you can directly apply:
 ### Recipe 2: Retail POS Checkout Terminals — Port :9100
 * **Objective**: Simulate cash registers opening a new connection for each credit card transaction.
 * **Configuration**:
+  * **Wire Protocol**: `stigix_tcp`
   * **Port**: `9100`
   * **Server Behavior**: `acknowledge` (fast ACK response)
   * **Client Mode**: `transactional` (Open TCP $\rightarrow$ 1 transaction $\rightarrow$ Close TCP)
@@ -249,6 +291,7 @@ Here are standard configuration blueprints you can directly apply:
 ### Recipe 3: Database Replication — Port :5432
 * **Objective**: Simulate high-throughput data replication between two data centers.
 * **Configuration**:
+  * **Wire Protocol**: `stigix_tcp`
   * **Port**: `5432`
   * **Server Behavior**: `echo`
   * **Client Mode**: `continuous_stream`
@@ -259,6 +302,7 @@ Here are standard configuration blueprints you can directly apply:
 ### Recipe 4: SD-WAN SLA Failover by Degradation (Chaos Looping) — Port :8083
 * **Objective**: Verify that your SD-WAN gateway fails over to backup LTE/5G or MPLS when the primary link experiences application degradation.
 * **Configuration**:
+  * **Wire Protocol**: `stigix_tcp`
   * **Port**: `8083`
   * **Server Behavior**: `looping_delay`
     * *Normal phase*: `60 seconds` (normal latency: 5 ms)
@@ -269,15 +313,39 @@ Here are standard configuration blueprints you can directly apply:
 ### Recipe 5: Industrial Telemetry / SCADA — Port :8883
 * **Objective**: Simulate IoT sensors or industrial PLCs sending periodic health keepalives.
 * **Configuration**:
+  * **Wire Protocol**: `stigix_tcp`
   * **Port**: `8883`
   * **Server Behavior**: `acknowledge`
   * **Client Mode**: `heartbeat`
   * **Interval**: `5000 ms` (every 5 seconds) | **Payload**: `64 bytes`
   * **Peers**: All network nodes (`Add All Discovered`)
 
+### Recipe 6: L7 Web API & SD-WAN SRT Degradation Simulation — Port :8095
+* **Objective**: Populate **Server Response Time (SRT)** in Prisma SD-WAN Flow Browser / ADEM and test application-level SLA routing policies.
+* **Configuration**:
+  * **Wire Protocol**: `http_1_1` (HTTP/1.1 REST API)
+  * **Port**: `8095`
+  * **Server Behavior**: `fixed_delay` (`800 ms`) or `looping_delay`
+  * **Client Mode**: `persistent_request_reply` | **Interval**: `1000 ms`
+  * **Peers**: `DC1` (`192.168.203.100:8095`)
+* **Expected Result in Prisma SD-WAN**:
+  * `SRT: ~800 ms` (Server Response Time)
+  * `RTT: ~10 ms` (Transport Round-Trip Time)
+
+### Recipe 7: Next-Gen Firewall / SASE EICAR Antivirus Block Test — Port :8096
+* **Objective**: Validate that Next-Gen Firewalls (Palo Alto Networks Antivirus / WildFire, Prisma Access) inspect inline traffic, block the malware payload, and trigger security threat logs.
+* **Configuration**:
+  * **Wire Protocol**: `http_1_1`
+  * **Port**: `8096`
+  * **Server Behavior**: `eicar_response` (EICAR Security Anti-Malware Test)
+  * **Client Mode**: `persistent_request_reply` | **Interval**: `2000 ms`
+  * **Peers**: `DC1`
+* **Expected Result**:
+  * The firewall detects the EICAR signature in the HTTP body, resets the TCP connection (`ECONNRESET`), and logs a **Threat / Virus** event in the security management console.
+
 ---
 
-## 8. Command-Line Control (`stigix-cli`)
+## 9. Command-Line Control (`stigix-cli`)
 
 All dashboard actions can be automated via the Stigix CLI:
 
@@ -308,16 +376,20 @@ stigix-cli --exec "provision publish custom-tcp-apps"
 
 ---
 
-## 9. FAQ & Troubleshooting
+## 10. FAQ & Troubleshooting
+
+### Q: Why do I see low RTT in Prisma SD-WAN Flow Browser when using raw TCP with simulated delay?
+* As explained in [Section 7](#7-deep-dive-layer-4-tcp-vs-layer-7-http--sd-wan-srt-mechanics), SD-WAN appliances measure kernel TCP ACKs (RTT) and cannot compute **SRT** without Layer 7 transaction framing. Switch the application's **Wire Protocol** to **`HTTP/1.1 REST API`** in Step 1 of the wizard.
 
 ### Q: Outgoing sessions show `RECONNECTING` in a loop with a `25/100 CRITICAL` score. Why?
-1. **Is the remote server listening?** Check that on the target node (`DC1`), the application listener is running on port `:8083`.
-2. **Is the firewall or router blocking the port?** Ensure security rules on your firewall / VyOS router allow TCP traffic on that port.
-3. **Is the SD-WAN tunnel up?** Check the *Topology* or *Failover* tabs to confirm IP reachability to `192.168.203.100`.
-4. **Diagnostic Test**: Click the lightning bolt **`⚡`** icon on the session row to inspect the system error code (`ECONNREFUSED`, `ETIMEDOUT`, or `HANDSHAKE_TIMEOUT`).
+1. **Is the remote server listening?** Check that on the target node (`DC1`), the application listener is running on the matching port (e.g. `:8095`).
+2. **Did you configure the correct peer port?** Ensure the Target Peer port in Step 3 matches the destination application's listener port (not `:8443` if the app runs on `:8095`).
+3. **Is the firewall or router blocking the port?** Ensure security rules on your firewall / VyOS router allow TCP traffic on that port.
+4. **Is the SD-WAN tunnel up?** Check the *Topology* or *Failover* tabs to confirm IP reachability to `192.168.203.100`.
+5. **Diagnostic Test**: Click the lightning bolt **`⚡`** icon on the session row to inspect the system error code (`ECONNREFUSED`, `ETIMEDOUT`, or `HANDSHAKE_TIMEOUT`).
 
 ### Q: Why does port `:8083` fail to start (*EADDRINUSE*)?
-* Another service or another application profile on the host is already using that port. Change the port number (e.g. `:8084`, `:8123`, `:8443`) in Step 1 of the wizard.
+* Another service or another application profile on the host is already using that port. Change the port number (e.g. `:8084`, `:8095`, `:8123`) in Step 1 of the wizard.
 
 ### Q: Do offline branches receive configuration updates once they reconnect?
 * **Yes!** As soon as a branch reconnects to the Leader, it compares its local revision against the latest published revision (`rev-N.json`) and automatically synchronizes with zero manual intervention.
