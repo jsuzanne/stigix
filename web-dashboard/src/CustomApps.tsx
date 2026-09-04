@@ -711,11 +711,11 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
-                                        <th className="pb-3 px-3">Declared Origin</th>
-                                        <th className="pb-3 px-3">Observed Socket IP</th>
-                                        <th className="pb-3 px-3">Peer Match</th>
-                                        <th className="pb-3 px-3">State & Uptime</th>
-                                        <th className="pb-3 px-4 text-right">RX / TX</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap">Declared Origin</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap">Observed Socket IP</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap">Peer Match</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap">State & Uptime</th>
+                                        <th className="pb-3 px-4 text-right whitespace-nowrap">RX / TX</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
@@ -726,15 +726,15 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                             className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
                                             title="Click to open full Session Deep Dive"
                                         >
-                                            <td className="py-3 px-3 font-semibold text-text-primary">
+                                            <td className="py-3 px-3 font-semibold text-text-primary whitespace-nowrap">
                                                 <span className="group-hover:text-indigo-500 transition-colors" title={`Hostname: ${s.declaredHostname || 'n/a'} | ID: ${s.sessionId}`}>
                                                     {s.declaredSiteName || s.declaredHostname || s.sessionId}
                                                 </span>
                                             </td>
-                                            <td className="py-3 px-3 font-mono text-text-secondary text-[11px]">
+                                            <td className="py-3 px-3 font-mono text-text-secondary text-[11px] whitespace-nowrap">
                                                 {s.remoteIp}:{s.remotePort}
                                             </td>
-                                            <td className="py-3 px-3">
+                                            <td className="py-3 px-3 whitespace-nowrap">
                                                 {s.isConfiguredPeer ? (
                                                     <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold">
                                                         Matched ({s.matchedPeerName})
@@ -745,7 +745,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                     </span>
                                                 )}
                                             </td>
-                                            <td className="py-3 px-3">
+                                            <td className="py-3 px-3 whitespace-nowrap">
                                                 <div className="flex items-center gap-2">
                                                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                                                         s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
@@ -760,7 +760,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="py-3 px-4 text-right font-mono text-[11px]">
+                                            <td className="py-3 px-4 text-right font-mono text-[11px] whitespace-nowrap">
                                                 <div>
                                                     <span className="text-emerald-600 dark:text-emerald-400 font-bold">{formatBytes(s.bytesReceived)}</span> / <span className="text-indigo-600 dark:text-indigo-400 font-bold">{formatBytes(s.bytesSent)}</span>
                                                 </div>
@@ -821,12 +821,12 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
-                                        <th className="pb-3 px-3">Target Peer</th>
-                                        <th className="pb-3 px-3">Remote Endpoint</th>
-                                        <th className="pb-3 px-3">State & Uptime</th>
-                                        <th className="pb-3 px-4 text-right">RTT Wave & Latency</th>
-                                        <th className="pb-3 px-3 text-center">Reconnects</th>
-                                        <th className="pb-3 px-3 text-center">Action</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap">Target Peer</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap">Remote Endpoint</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap">State & Uptime</th>
+                                        <th className="pb-3 px-4 text-right whitespace-nowrap">RTT Wave & Latency</th>
+                                        <th className="pb-3 px-3 text-center whitespace-nowrap">Reconnects</th>
+                                        <th className="pb-3 px-3 text-center whitespace-nowrap">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
@@ -841,7 +841,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                 className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
                                                 title="Click to open full Session Deep Dive"
                                             >
-                                                <td className="py-3 px-3 font-semibold text-text-primary">
+                                                <td className="py-3 px-3 font-semibold text-text-primary whitespace-nowrap">
                                                     <div className="flex items-center gap-2">
                                                         <span className="group-hover:text-emerald-500 transition-colors">{s.peerName}</span>
                                                         {streamBadge && (
@@ -851,10 +851,10 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-3 font-mono text-text-secondary text-[11px]">
+                                                <td className="py-3 px-3 font-mono text-text-secondary text-[11px] whitespace-nowrap">
                                                     {s.peerHost}:{s.peerPort}
                                                 </td>
-                                                <td className="py-3 px-3">
+                                                <td className="py-3 px-3 whitespace-nowrap">
                                                     <div className="flex items-center gap-2">
                                                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                                                             s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
@@ -870,17 +870,17 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-4 text-right font-mono text-[11px]">
+                                                <td className="py-3 px-4 text-right font-mono text-[11px] whitespace-nowrap">
                                                     <div className="flex items-center justify-end gap-2.5">
                                                         {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 && (
                                                             <MicroSparkline samples={s.rttMs.recentSamples} width={64} height={18} />
                                                         )}
-                                                        <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                                                        <span className="text-amber-600 dark:text-amber-400 font-semibold whitespace-nowrap">
                                                             {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
                                                         </span>
                                                     </div>
                                                     {s.rttMs.avg > 0 && (
-                                                        <div className="text-[10px] text-cyan-500 flex items-center justify-end gap-1 font-sans mt-0.5">
+                                                        <div className="text-[10px] text-cyan-500 flex items-center justify-end gap-1 font-sans mt-0.5 whitespace-nowrap">
                                                             <span>Jitter: ± {s.rttMs.jitterMs ?? 0} ms</span>
                                                             {(s.txBps ?? 0) > 0 && (
                                                                 <>
@@ -891,10 +891,10 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="py-3 px-3 text-center font-mono text-[11px] text-text-muted">
+                                                <td className="py-3 px-3 text-center font-mono text-[11px] text-text-muted whitespace-nowrap">
                                                     {s.reconnects}
                                                 </td>
-                                                <td className="py-3 px-3 text-center" onClick={e => e.stopPropagation()}>
+                                                <td className="py-3 px-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
                                                     <button
                                                         onClick={() => {
                                                             setPeerTestModal({
