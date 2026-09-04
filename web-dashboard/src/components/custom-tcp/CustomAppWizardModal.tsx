@@ -20,6 +20,87 @@ function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
 }
 
+const SERVER_BEHAVIOR_INFO: Record<ServerBehaviorMode, { title: string; explanation: string; example: string }> = {
+    echo: {
+        title: 'Echo Mode',
+        explanation: 'Immediately reflects back the exact TCP payload received from the client with zero synthetic delay.',
+        example: 'Ideal for baseline latency (RTT) measurement, bandwidth benchmarks, and standard bidirectional traffic testing.'
+    },
+    acknowledge: {
+        title: 'Acknowledge Mode',
+        explanation: 'Returns an ultra-compact lightweight ACK header without echoing the payload bytes.',
+        example: 'Minimizes server-to-client bandwidth consumption while confirming message delivery and tracking round-trip time.'
+    },
+    fixed_delay: {
+        title: 'Fixed Delay Simulation',
+        explanation: 'Injects a constant synthetic delay on every server response frame.',
+        example: 'Simulates predictable high-latency WAN, transcontinental links, or slow backend database processing.'
+    },
+    random_delay: {
+        title: 'Random Jittered Delay',
+        explanation: 'Applies a jittered delay chosen randomly between Min and Max for every outgoing response.',
+        example: 'Simulates network jitter, bufferbloat, and variable cellular/satellite link conditions.'
+    },
+    looping_delay: {
+        title: 'Cyclic SLA Degradation (Looping Delay)',
+        explanation: 'Cycles periodically between a Normal Phase (0 ms injected) and a Slow Phase (+latency delay).',
+        example: 'e.g. 60s @ 0ms delay, then 60s @ +1000ms delay. Tests SD-WAN Dynamic Path Selection (DPS) SLA failover and hold-down failback without pulling cables.'
+    },
+    drop_response: {
+        title: 'Drop Response (Packet Loss)',
+        explanation: 'Silently drops server responses at the configured probability rate while keeping TCP sessions established.',
+        example: 'Tests client timeout handling, retransmission behavior, and socket recovery under partial packet loss.'
+    },
+    close_connection: {
+        title: 'Close Connection',
+        explanation: 'Abruptly terminates the TCP connection after receiving requests on the socket.',
+        example: 'Validates client auto-reconnect resilience, TCP handshake overhead, and session re-establishment.'
+    },
+    error_response: {
+        title: 'Error Response Simulation',
+        explanation: 'Returns a simulated application-level error payload frame with a custom error code.',
+        example: 'Validates client error handling, fallback logic, and monitoring alarm thresholds.'
+    },
+    eicar_response: {
+        title: 'EICAR Security Anti-Malware Test',
+        explanation: 'Returns the standard EICAR anti-virus test file signature in response to requests.',
+        example: 'Validates Palo Alto Networks / Prisma SASE Antivirus, WildFire, and Threat Prevention blocking policies.'
+    }
+};
+
+const CLIENT_WORKLOAD_INFO: Record<ClientWorkloadMode, { title: string; explanation: string; example: string }> = {
+    persistent_request_reply: {
+        title: 'Persistent Sessions (Default)',
+        explanation: 'Maintains long-lived stateful TCP connections and periodically exchanges request/reply frames at the configured cadence.',
+        example: 'Simulates persistent enterprise workloads like ERP, database connections, and interactive client-server sessions.'
+    },
+    transactional: {
+        title: 'Transactional Mode',
+        explanation: 'Opens a fresh TCP connection for each request, completes the transaction, and closes the socket immediately.',
+        example: 'Simulates REST APIs, microservices, and short-lived HTTP/HTTPS web transactions.'
+    },
+    heartbeat: {
+        title: 'Heartbeat Probing',
+        explanation: 'Sends ultra-lightweight keepalive probes at steady intervals with minimal bandwidth consumption.',
+        example: 'Ideal for continuous background tunnel liveness, path SLA monitoring, and link health telemetry.'
+    },
+    bulk_burst: {
+        title: 'Bulk Burst Traffic',
+        explanation: 'Emits high-density batches of requests in rapid bursts followed by quiet idle cooldown periods.',
+        example: 'Simulates file transfers, periodic database replication syncs, and large batch data export spikes.'
+    },
+    continuous_stream: {
+        title: 'Continuous Streaming',
+        explanation: 'Generates uninterrupted high-frequency bidirectional TCP frames as fast as allowable.',
+        example: 'Simulates real-time telemetry pipelines, IoT sensor streams, and high-throughput data replication.'
+    },
+    stochastic: {
+        title: 'Stochastic / Human Think-Time',
+        explanation: 'Injects realistic randomized think-time intervals between requests (Poisson-like variation).',
+        example: 'Simulates human user interaction patterns to validate AI-driven behavioral analytics without repetitive cadence.'
+    }
+};
+
 interface CustomAppWizardModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -47,6 +128,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
     const [formData, setFormData] = useState<CustomTcpApplicationConfig>(() => {
         if (editingApp) {
             const cloned = JSON.parse(JSON.stringify(editingApp));
+            cloned.protocol = cloned.protocol || 'stigix_tcp';
             cloned.startup = {
                 startListener: cloned.startup?.startListener !== false,
                 startClientWorkload: cloned.startup?.startClientWorkload ?? false
@@ -58,6 +140,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
             name: '',
             description: '',
             enabled: true,
+            protocol: 'stigix_tcp',
             listener: {
                 bindAddress: '0.0.0.0',
                 port: 8443,
@@ -106,10 +189,16 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
         name: '',
         siteName: '',
         host: '',
-        port: 8443,
+        port: editingApp?.listener?.port || 8443,
         enabled: true,
         tags: []
     });
+
+    useEffect(() => {
+        if (formData.listener?.port && (!newPeer.port || newPeer.port === 8443)) {
+            setNewPeer(prev => ({ ...prev, port: formData.listener.port }));
+        }
+    }, [formData.listener?.port]);
 
     useEffect(() => {
         if (isOpen) {
@@ -392,6 +481,48 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                 />
                             </div>
 
+                            {/* Application Wire Protocol */}
+                            <div className="p-4 bg-card-secondary/40 border border-border rounded-2xl space-y-3">
+                                <label className="block text-xs font-semibold text-text-secondary">Application Wire Protocol</label>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData((prev: CustomTcpApplicationConfig) => ({ ...prev, protocol: 'stigix_tcp' }))}
+                                        className={`p-3.5 rounded-2xl border text-left transition-all ${
+                                            (formData.protocol || 'stigix_tcp') === 'stigix_tcp'
+                                                ? 'bg-indigo-500/10 border-indigo-500 text-text-primary shadow-sm'
+                                                : 'bg-card-secondary border-border text-text-muted hover:border-border hover:bg-card-hover'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-2 font-bold text-xs text-indigo-600 dark:text-indigo-400">
+                                            <Layers size={15} />
+                                            <span>Stigix Native TCP (Length-Prefixed)</span>
+                                        </div>
+                                        <div className="text-[11px] text-text-muted mt-1 leading-relaxed">
+                                            High-performance length-prefixed JSON framing. Ideal for micro-telemetry and raw socket RTT measurements.
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData((prev: CustomTcpApplicationConfig) => ({ ...prev, protocol: 'http_1_1' }))}
+                                        className={`p-3.5 rounded-2xl border text-left transition-all ${
+                                            formData.protocol === 'http_1_1'
+                                                ? 'bg-emerald-500/10 border-emerald-500 text-text-primary shadow-sm'
+                                                : 'bg-card-secondary border-border text-text-muted hover:border-border hover:bg-card-hover'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-2 font-bold text-xs text-emerald-600 dark:text-emerald-400">
+                                            <Globe size={15} />
+                                            <span>HTTP/1.1 REST API (Native L7 & SRT)</span>
+                                        </div>
+                                        <div className="text-[11px] text-text-muted mt-1 leading-relaxed">
+                                            Standard HTTP/1.1 Request-Response with <code className="font-mono text-emerald-500">X-Stigix-*</code> headers. Recognized by Prisma SD-WAN / ADEM to calculate live <strong>Server Response Time (SRT)</strong>.
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+
                             <div className="p-4 bg-card-secondary/40 border border-border rounded-2xl space-y-4">
                                 <h3 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
                                     <Server size={16} /> Local Host TCP Listener Settings
@@ -483,7 +614,8 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                         { id: 'looping_delay', label: 'Looping Delay', desc: 'Alternates normal/slow phases' },
                                         { id: 'drop_response', label: 'Drop Response', desc: 'Simulates response loss' },
                                         { id: 'close_connection', label: 'Close Connection', desc: 'Closes socket after N requests' },
-                                        { id: 'error_response', label: 'Error Response', desc: 'Simulates server application errors' }
+                                        { id: 'error_response', label: 'Error Response', desc: 'Simulates server application errors' },
+                                        { id: 'eicar_response', label: 'EICAR Security Test', desc: 'Emulates malware payload for AV/NGFW' }
                                     ].map(m => (
                                         <button
                                             key={m.id}
@@ -646,6 +778,24 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Contextual Mode Helper / Real-World Scenario */}
+                                {SERVER_BEHAVIOR_INFO[formData.serverBehavior.mode] && (
+                                    <div className="p-3 bg-card border border-border rounded-xl flex items-start gap-2.5 text-xs shadow-inner">
+                                        <HelpCircle size={15} className="text-indigo-500 flex-shrink-0 mt-0.5" />
+                                        <div className="space-y-0.5">
+                                            <div className="font-semibold text-text-primary text-xs">
+                                                {SERVER_BEHAVIOR_INFO[formData.serverBehavior.mode].title}
+                                            </div>
+                                            <p className="text-text-muted leading-relaxed text-[11px]">
+                                                {SERVER_BEHAVIOR_INFO[formData.serverBehavior.mode].explanation}{' '}
+                                                <span className="text-indigo-600 dark:text-indigo-300 font-medium">
+                                                    {SERVER_BEHAVIOR_INFO[formData.serverBehavior.mode].example}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -681,6 +831,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                             className="w-full bg-card border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary shadow-sm"
                                         >
                                             <option value="persistent_request_reply">Persistent Sessions</option>
+                                            <option value="stochastic">Stochastic / Human Think-Time</option>
                                             <option value="transactional">Transactional</option>
                                             <option value="heartbeat">Heartbeat</option>
                                             <option value="bulk_burst">Bulk Burst</option>
@@ -745,6 +896,24 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                         <span className="text-[10px] text-text-muted mt-1 block">Max wait for server reply</span>
                                     </div>
                                 </div>
+
+                                {/* Dynamic Workload Mode Contextual Helper */}
+                                {CLIENT_WORKLOAD_INFO[formData.clientDefaults.mode] && (
+                                    <div className="p-3 bg-card border border-border rounded-xl flex items-start gap-2.5 text-xs shadow-inner">
+                                        <HelpCircle size={15} className="text-emerald-500 flex-shrink-0 mt-0.5" />
+                                        <div className="space-y-0.5">
+                                            <div className="font-semibold text-text-primary text-xs">
+                                                {CLIENT_WORKLOAD_INFO[formData.clientDefaults.mode].title}
+                                            </div>
+                                            <p className="text-text-muted leading-relaxed text-[11px]">
+                                                {CLIENT_WORKLOAD_INFO[formData.clientDefaults.mode].explanation}{' '}
+                                                <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                                                    {CLIENT_WORKLOAD_INFO[formData.clientDefaults.mode].example}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Peers Table */}
@@ -847,7 +1016,14 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                     <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                                                     <div>
                                                         <div className="font-semibold text-text-primary">{p.name} <span className="text-text-muted font-mono text-[10px]">({p.siteName})</span></div>
-                                                        <div className="text-text-secondary font-mono text-[11px]">{p.host}:{p.port}</div>
+                                                        <div className="flex items-center gap-2 mt-0.5">
+                                                            <span className="text-text-secondary font-mono text-[11px]">{p.host}:{p.port}</span>
+                                                            {p.port !== formData.listener.port && (
+                                                                <span className="px-1.5 py-0.2 rounded text-[8.5px] font-bold bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                                                                    Target Port :{p.port} ≠ Listener :{formData.listener.port}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <button
@@ -913,7 +1089,12 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                 <div className="flex items-center justify-between border-b border-border pb-3">
                                     <div>
                                         <h3 className="text-base font-bold text-text-primary">{formData.name || 'Unnamed Application'}</h3>
-                                        <p className="text-xs text-text-muted font-mono">ID: {formData.id} | TCP Port: :{formData.listener.port}</p>
+                                        <p className="text-xs text-text-muted font-mono">
+                                            ID: {formData.id} | TCP Port: :{formData.listener.port} | Protocol:{' '}
+                                            <span className={formData.protocol === 'http_1_1' ? 'text-emerald-500 font-bold' : 'text-indigo-500 font-bold'}>
+                                                {formData.protocol === 'http_1_1' ? 'HTTP/1.1 REST API' : 'Stigix Native TCP'}
+                                            </span>
+                                        </p>
                                     </div>
                                     <button
                                         type="button"

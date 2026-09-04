@@ -5,6 +5,7 @@
 
 import net from 'net';
 import crypto from 'crypto';
+import os from 'os';
 import { EventEmitter } from 'events';
 import {
     CustomTcpApplicationConfig,
@@ -40,6 +41,13 @@ interface ActiveClientSession {
     pendingRequests: Map<string, { sentTs: number; timer: NodeJS.Timeout }>;
     seq: number;
     isStopping: boolean;
+    lastRateCalcTs?: number;
+    prevTxBytes?: number;
+    prevRxBytes?: number;
+    prevReqCount?: number;
+    liveTxBps?: number;
+    liveRxBps?: number;
+    liveTps?: number;
 }
 
 export class TcpClientRuntime extends EventEmitter {
@@ -70,14 +78,85 @@ export class TcpClientRuntime extends EventEmitter {
         this.localIdentity.displayName = newIdentity.displayName;
     }
 
+    /**
+     * Determines whether a target peer corresponds to the local node itself.
+     */
+    public isSelfPeer(peer: PeerConfig): boolean {
+        if (!peer) return false;
+
+        const ownSiteName = (this.localIdentity?.siteName || '').trim().toLowerCase();
+        const ownDisplayName = (this.localIdentity?.displayName || '').trim().toLowerCase();
+        const ownHostname = (this.localIdentity?.hostname || '').trim().toLowerCase();
+        const ownInstanceId = (this.localIdentity?.instanceId || '').trim().toLowerCase();
+
+        const peerSiteName = (peer.siteName || '').trim().toLowerCase();
+        const peerName = (peer.name || '').trim().toLowerCase();
+        const peerId = (peer.id || '').trim().toLowerCase();
+        const peerHost = (peer.host || '').trim().toLowerCase();
+
+        // 1. Exact or normalized Site Name / Display Name / Hostname matches
+        if (ownSiteName && (peerSiteName === ownSiteName || peerName === ownSiteName)) {
+            return true;
+        }
+        if (ownDisplayName && (peerSiteName === ownDisplayName || peerName === ownDisplayName)) {
+            return true;
+        }
+        if (ownHostname && (peerSiteName === ownHostname || peerName === ownHostname || peerHost === ownHostname)) {
+            return true;
+        }
+
+        // 2. Exact Instance ID or synthetic registry ID matches (e.g. reg-self-DC1-Ubuntu)
+        if (ownInstanceId && peerId === ownInstanceId) {
+            return true;
+        }
+        if (ownSiteName && (peerId === `reg-self-${ownSiteName}` || peerId === `target-${ownSiteName}`)) {
+            return true;
+        }
+
+        // 3. Localhost / Loopback addresses
+        if (peerHost === '127.0.0.1' || peerHost === 'localhost' || peerHost === '::1' || peerHost === '0.0.0.0') {
+            return true;
+        }
+
+        // 4. Match against all local network interface IPv4/IPv6 addresses
+        try {
+            const ifaces = os.networkInterfaces();
+            for (const ifaceList of Object.values(ifaces)) {
+                if (!ifaceList) continue;
+                for (const iface of ifaceList) {
+                    if (iface.address && iface.address.toLowerCase() === peerHost) {
+                        return true;
+                    }
+                }
+            }
+        } catch {}
+
+        return false;
+    }
+
     public async start(targetPeerIds?: string[]): Promise<void> {
         if (this.isRunning) return;
         this.isRunning = true;
         this.metricsTracker.clientWorkloadRunning = true;
 
-        const enabledPeers = (this.appConfig.peers || []).filter(
+        const allConfiguredPeers = (this.appConfig.peers || []).filter(
             p => p.enabled && (!targetPeerIds || targetPeerIds.includes(p.id))
         );
+
+        // Auto-exclusion: if there are multiple peers in the mesh, filter out self to avoid local loopback traffic
+        let enabledPeers = allConfiguredPeers.filter(p => {
+            const isSelf = this.isSelfPeer(p);
+            if (isSelf && allConfiguredPeers.length > 1) {
+                console.log(`[CUSTOM_TCP_CLIENT] Auto-excluded local self peer "${p.name || p.siteName || p.host}" from outgoing workload for app "${this.appConfig.name}".`);
+                return false;
+            }
+            return true;
+        });
+
+        // Fallback: If only self was configured (e.g. standalone single-node test), keep it so user can still test
+        if (enabledPeers.length === 0 && allConfiguredPeers.length > 0) {
+            enabledPeers = allConfiguredPeers;
+        }
 
         for (const peer of enabledPeers) {
             const conns = peer.connectionsOverride || this.appConfig.clientDefaults.connectionsPerPeer || 2;
@@ -111,10 +190,54 @@ export class TcpClientRuntime extends EventEmitter {
     }
 
     public getOutgoingSessions(): OutgoingSessionState[] {
-        return Array.from(this.sessions.values()).map(s => ({
-            ...s.state,
-            rttMs: s.rttTracker.getStats()
-        }));
+        const now = Date.now();
+        return Array.from(this.sessions.values()).map(s => {
+            const now = Date.now();
+            const deltaSec = (now - (s.lastRateCalcTs || (now - 1000))) / 1000;
+            if (deltaSec >= 0.5) {
+                const prevTx = s.prevTxBytes || 0;
+                const prevRx = s.prevRxBytes || 0;
+                const prevReq = s.prevReqCount || 0;
+                const instTxBps = Math.max(0, Math.round(((s.state.bytesSent - prevTx) * 8) / deltaSec));
+                const instRxBps = Math.max(0, Math.round(((s.state.bytesReceived - prevRx) * 8) / deltaSec));
+                const instTps = Number((Math.max(0, (s.state.requestsSent - prevReq)) / deltaSec).toFixed(1));
+
+                // Smooth rates using EMA (alpha = 0.5) if previous rate exists
+                s.liveTxBps = s.liveTxBps !== undefined ? Math.round(s.liveTxBps * 0.5 + instTxBps * 0.5) : instTxBps;
+                s.liveRxBps = s.liveRxBps !== undefined ? Math.round(s.liveRxBps * 0.5 + instRxBps * 0.5) : instRxBps;
+                s.liveTps = s.liveTps !== undefined ? Number((s.liveTps * 0.5 + instTps * 0.5).toFixed(1)) : instTps;
+
+                // If session is active and total bytes > 0, ensure lifetime avg fallback if idle between ticks
+                if (s.liveTxBps === 0 && s.state.requestsSent > 0 && s.state.connectedAt) {
+                    const totalUptimeSec = Math.max(1, Math.floor((now - s.state.connectedAt) / 1000));
+                    const avgTxBps = Math.round((s.state.bytesSent * 8) / totalUptimeSec);
+                    const avgRxBps = Math.round((s.state.bytesReceived * 8) / totalUptimeSec);
+                    const avgTps = Number((s.state.requestsSent / totalUptimeSec).toFixed(1));
+                    s.liveTxBps = avgTxBps;
+                    s.liveRxBps = avgRxBps;
+                    s.liveTps = avgTps;
+                }
+
+                s.prevTxBytes = s.state.bytesSent;
+                s.prevRxBytes = s.state.bytesReceived;
+                s.prevReqCount = s.state.requestsSent;
+                s.lastRateCalcTs = now;
+            }
+
+            const connectedAt = s.state.connectedAt || 0;
+            const uptimeSec = (s.state.state === 'connected' && connectedAt > 0)
+                ? Math.floor((now - connectedAt) / 1000)
+                : 0;
+
+            return {
+                ...s.state,
+                uptimeSec,
+                txBps: s.liveTxBps || 0,
+                rxBps: s.liveRxBps || 0,
+                tps: s.liveTps || 0,
+                rttMs: s.rttTracker.getStats()
+            };
+        });
     }
 
     public getActiveSessionsCount(): number {
@@ -249,33 +372,46 @@ export class TcpClientRuntime extends EventEmitter {
             socket.setKeepAlive(true, 10000);
         }
 
+        const startConnectTs = Date.now();
         socket.connect(session.peer.port, session.peer.host, () => {
-            session.state.state = 'handshaking';
             session.state.connectedAt = Date.now();
+            session.state.tcpConnectMs = Math.max(1, Date.now() - startConnectTs);
             session.reconnectAttempts = 0; // Reset backoff upon successful TCP connect
 
-            // Send CLIENT_HELLO
-            const hello = buildClientHello({
-                appId: this.appConfig.id,
-                clientSessionId: session.sessionId,
-                origin: {
-                    instanceId: this.localIdentity.instanceId,
-                    siteName: this.localIdentity.siteName,
-                    hostname: this.localIdentity.hostname
-                },
-                authToken: session.peer.token || this.appConfig.listener.auth?.token
-            });
+            if (this.appConfig.protocol === 'http_1_1') {
+                session.handshakeCompleted = true;
+                session.state.state = 'connected';
+                this.startWorkloadLoop(session);
+            } else {
+                session.state.state = 'handshaking';
+                // Send CLIENT_HELLO
+                const hello = buildClientHello({
+                    appId: this.appConfig.id,
+                    clientSessionId: session.sessionId,
+                    origin: {
+                        instanceId: this.localIdentity.instanceId,
+                        siteName: this.localIdentity.siteName,
+                        hostname: this.localIdentity.hostname
+                    },
+                    authToken: session.peer.token || this.appConfig.listener.auth?.token
+                });
 
-            const buf = encodeFrame(hello);
-            socket.write(buf);
-            session.state.bytesSent += buf.length;
-            this.metricsTracker.recordClientTx(buf.length);
+                const buf = encodeFrame(hello);
+                socket.write(buf);
+                session.state.bytesSent += buf.length;
+                this.metricsTracker.recordClientTx(buf.length);
+            }
         });
 
         socket.on('data', chunk => {
             session.state.bytesReceived += chunk.length;
             this.metricsTracker.recordClientRx(chunk.length);
-            session.parser.push(chunk);
+
+            if (this.appConfig.protocol === 'http_1_1') {
+                this.handleHttpData(session, chunk);
+            } else {
+                session.parser.push(chunk);
+            }
         });
 
         session.parser.on('message', msg => {
@@ -297,6 +433,46 @@ export class TcpClientRuntime extends EventEmitter {
         socket.on('close', () => {
             this.handleSessionClose(session);
         });
+    }
+
+    private handleHttpData(session: ActiveClientSession, chunk: Buffer): void {
+        const raw = chunk.toString('utf8');
+        if (raw.startsWith('HTTP/1.1 ') || raw.startsWith('HTTP/1.0 ')) {
+            const statusMatch = raw.match(/HTTP\/1\.[01]\s+(\d{3})/);
+            const statusCode = statusMatch ? parseInt(statusMatch[1], 10) : 200;
+
+            const delayMatch = raw.match(/X-Stigix-Server-Delay:\s*(\d+)ms/i);
+            const serverDelayMs = delayMatch ? parseInt(delayMatch[1], 10) : 0;
+
+            if (session.pendingRequests.size > 0) {
+                const firstEntry = session.pendingRequests.entries().next().value;
+                if (firstEntry) {
+                    const [reqId, pending] = firstEntry;
+                    clearTimeout(pending.timer);
+                    session.pendingRequests.delete(reqId);
+
+                    const rtt = Date.now() - pending.sentTs;
+                    const networkRttMs = Math.max(0, rtt - serverDelayMs);
+
+                    session.rttTracker.record(rtt, serverDelayMs, networkRttMs);
+                    this.metricsTracker.recordRtt(rtt);
+
+                    if (statusCode >= 400) {
+                        session.state.errors++;
+                        session.state.lastError = `HTTP ${statusCode}`;
+                        this.metricsTracker.totalErrors++;
+                    } else {
+                        session.state.responsesReceived++;
+                        session.state.lastSuccessAt = Date.now();
+                        this.metricsTracker.totalResponses++;
+                    }
+                }
+            }
+
+            if (this.appConfig.clientDefaults.mode === 'transactional' || raw.includes('Connection: close')) {
+                session.socket?.destroy();
+            }
+        }
     }
 
     private handleIncomingMessage(session: ActiveClientSession, msg: any): void {
@@ -322,7 +498,10 @@ export class TcpClientRuntime extends EventEmitter {
                 session.pendingRequests.delete(resp.requestId);
 
                 const rtt = Date.now() - pending.sentTs;
-                session.rttTracker.record(rtt);
+                const serverDelayMs = resp.simulated?.delayMs || 0;
+                const networkRttMs = Math.max(0, rtt - serverDelayMs);
+
+                session.rttTracker.record(rtt, serverDelayMs, networkRttMs);
                 this.metricsTracker.recordRtt(rtt);
 
                 session.state.responsesReceived++;
@@ -347,15 +526,25 @@ export class TcpClientRuntime extends EventEmitter {
     private startWorkloadLoop(session: ActiveClientSession): void {
         if (!this.isRunning || session.isStopping) return;
 
-        const intervalMs = session.peer.intervalOverrideMs || this.appConfig.clientDefaults.intervalMs || 1000;
+        const baseIntervalMs = session.peer.intervalOverrideMs || this.appConfig.clientDefaults.intervalMs || 1000;
         const mode = this.appConfig.clientDefaults.mode || 'persistent_request_reply';
 
         const scheduleNext = () => {
             if (!this.isRunning || session.isStopping || session.state.state !== 'connected') return;
+
+            // Calculate next delay based on workload mode
+            let nextDelayMs = baseIntervalMs;
+            if (mode === 'stochastic') {
+                // Stochastic / Human Think-Time: Poisson-like variable interval (0.4x to 2.2x baseInterval)
+                // e.g. for 1000ms baseline: randomized between 400ms and 2200ms with natural human think jitter
+                const jitterFactor = 0.4 + Math.random() * 1.8;
+                nextDelayMs = Math.max(100, Math.round(baseIntervalMs * jitterFactor));
+            }
+
             session.workloadTimer = setTimeout(() => {
                 this.executeWorkloadTick(session);
                 scheduleNext();
-            }, intervalMs);
+            }, nextDelayMs);
         };
 
         scheduleNext();
@@ -368,6 +557,46 @@ export class TcpClientRuntime extends EventEmitter {
         const requestId = `req-${session.sessionId}-${session.seq}`;
         const payloadSize = this.appConfig.clientDefaults.payloadBytes || 1024;
         const requestTimeoutMs = this.appConfig.clientDefaults.requestTimeoutMs || 5000;
+
+        if (this.appConfig.protocol === 'http_1_1') {
+            const isTransactional = this.appConfig.clientDefaults.mode === 'transactional';
+            const httpHeaders = [
+                `GET /api/v1/workload?seq=${session.seq}&payload=${payloadSize}&t=${Date.now()} HTTP/1.1`,
+                `Host: ${session.peer.host}:${session.peer.port}`,
+                `User-Agent: Stigix-App-Emulator/2.0 (${this.localIdentity.siteName})`,
+                `X-Stigix-Site-Name: ${this.localIdentity.siteName}`,
+                `X-Stigix-Instance-Id: ${this.localIdentity.instanceId}`,
+                `X-Stigix-Hostname: ${this.localIdentity.hostname}`,
+                `X-Stigix-App-Id: ${this.appConfig.id}`,
+                `X-Stigix-Session-Id: ${session.sessionId}`,
+                `X-Stigix-Request-Id: ${requestId}`,
+                `Connection: ${isTransactional ? 'close' : 'keep-alive'}`,
+                '',
+                ''
+            ].join('\r\n');
+
+            const buf = Buffer.from(httpHeaders, 'utf8');
+            session.socket.write(buf);
+            session.state.requestsSent++;
+            session.state.bytesSent += buf.length;
+            this.metricsTracker.totalRequests++;
+            this.metricsTracker.recordClientTx(buf.length);
+
+            const timer = setTimeout(() => {
+                session.pendingRequests.delete(requestId);
+                session.state.timeouts++;
+                this.metricsTracker.totalTimeouts++;
+                if (isTransactional) {
+                    session.socket?.destroy();
+                }
+            }, requestTimeoutMs);
+
+            session.pendingRequests.set(requestId, {
+                sentTs: Date.now(),
+                timer
+            });
+            return;
+        }
 
         // Generate synthetic payload string
         const sampleData = 'X'.repeat(Math.min(payloadSize, 4096));

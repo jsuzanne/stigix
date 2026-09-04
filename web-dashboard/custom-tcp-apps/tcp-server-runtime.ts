@@ -38,6 +38,13 @@ interface TrackedIncomingClient {
     idleTimer?: NodeJS.Timeout;
     requestCount: number;
     startedAt: number;
+    lastRateCalcTs?: number;
+    prevRxBytes?: number;
+    prevTxBytes?: number;
+    prevReqCount?: number;
+    liveRxBps?: number;
+    liveTxBps?: number;
+    liveTps?: number;
 }
 
 export class TcpServerRuntime extends EventEmitter {
@@ -124,7 +131,45 @@ export class TcpServerRuntime extends EventEmitter {
     }
 
     public getIncomingSessions(): IncomingSessionState[] {
-        return Array.from(this.clients.values()).map(c => ({ ...c.state }));
+        const now = Date.now();
+        return Array.from(this.clients.values()).map(c => {
+            const deltaSec = (now - (c.lastRateCalcTs || (now - 1000))) / 1000;
+            if (deltaSec >= 0.5) {
+                const prevRx = c.prevRxBytes || 0;
+                const prevTx = c.prevTxBytes || 0;
+                const prevReq = c.prevReqCount || 0;
+                const instRxBps = Math.max(0, Math.round(((c.state.bytesReceived - prevRx) * 8) / deltaSec));
+                const instTxBps = Math.max(0, Math.round(((c.state.bytesSent - prevTx) * 8) / deltaSec));
+                const instTps = Number((Math.max(0, (c.state.requestsHandled - prevReq)) / deltaSec).toFixed(1));
+
+                c.liveRxBps = c.liveRxBps !== undefined ? Math.round(c.liveRxBps * 0.5 + instRxBps * 0.5) : instRxBps;
+                c.liveTxBps = c.liveTxBps !== undefined ? Math.round(c.liveTxBps * 0.5 + instTxBps * 0.5) : instTxBps;
+                c.liveTps = c.liveTps !== undefined ? Number((c.liveTps * 0.5 + instTps * 0.5).toFixed(1)) : instTps;
+
+                if (c.liveRxBps === 0 && c.state.requestsHandled > 0 && c.state.connectedAt) {
+                    const totalUptimeSec = Math.max(1, Math.floor((now - c.state.connectedAt) / 1000));
+                    c.liveRxBps = Math.round((c.state.bytesReceived * 8) / totalUptimeSec);
+                    c.liveTxBps = Math.round((c.state.bytesSent * 8) / totalUptimeSec);
+                    c.liveTps = Number((c.state.requestsHandled / totalUptimeSec).toFixed(1));
+                }
+
+                c.prevRxBytes = c.state.bytesReceived;
+                c.prevTxBytes = c.state.bytesSent;
+                c.prevReqCount = c.state.requestsHandled;
+                c.lastRateCalcTs = now;
+            }
+
+            const connectedAt = c.state.connectedAt || c.startedAt || 0;
+            const uptimeSec = connectedAt > 0 ? Math.floor((now - connectedAt) / 1000) : 0;
+
+            return {
+                ...c.state,
+                uptimeSec,
+                rxBps: c.liveRxBps || 0,
+                txBps: c.liveTxBps || 0,
+                tps: c.liveTps || 0
+            };
+        });
     }
 
     public getActiveSessionsCount(): number {
@@ -214,7 +259,17 @@ export class TcpServerRuntime extends EventEmitter {
             sessionState.lastActivityAt = Date.now();
             this.metricsTracker.recordServerRx(chunk.length);
             this.resetIdleTimer(tracked);
-            parser.push(chunk);
+
+            const isHttp = this.appConfig.protocol === 'http_1_1' ||
+                chunk.slice(0, 5).toString('utf8').startsWith('GET ') ||
+                chunk.slice(0, 5).toString('utf8').startsWith('POST') ||
+                chunk.slice(0, 5).toString('utf8').startsWith('HEAD');
+
+            if (isHttp) {
+                this.handleHttpRequest(tracked, chunk);
+            } else {
+                parser.push(chunk);
+            }
         });
 
         parser.on('message', msg => {
@@ -235,6 +290,162 @@ export class TcpServerRuntime extends EventEmitter {
             sessionState.state = 'closed';
             this.cleanupClient(serverSessionId);
         });
+    }
+
+    private handleHttpRequest(client: TrackedIncomingClient, chunk: Buffer): void {
+        const { socket, state } = client;
+        const rawText = chunk.toString('utf8');
+
+        // Extract custom HTTP headers if present
+        const siteHeaderMatch = rawText.match(/X-Stigix-Site-Name:\s*([^\r\n]+)/i);
+        const instHeaderMatch = rawText.match(/X-Stigix-Instance-Id:\s*([^\r\n]+)/i);
+        const hostHeaderMatch = rawText.match(/X-Stigix-Hostname:\s*([^\r\n]+)/i);
+        const uaHeaderMatch = rawText.match(/User-Agent:\s*([^\r\n]+)/i);
+
+        if (!client.handshakeCompleted) {
+            if (client.handshakeTimer) clearTimeout(client.handshakeTimer);
+            client.handshakeCompleted = true;
+            state.state = 'connected';
+
+            if (siteHeaderMatch && siteHeaderMatch[1]) {
+                state.declaredSiteName = siteHeaderMatch[1].trim();
+            } else {
+                state.declaredSiteName = uaHeaderMatch ? `HTTP Client (${uaHeaderMatch[1].trim().split(' ')[0]})` : 'External HTTP Client';
+            }
+
+            if (instHeaderMatch && instHeaderMatch[1]) {
+                state.declaredInstanceId = instHeaderMatch[1].trim();
+            }
+            if (hostHeaderMatch && hostHeaderMatch[1]) {
+                state.declaredHostname = hostHeaderMatch[1].trim();
+            }
+
+            // Match against configured peers
+            const matchedPeer = (this.appConfig.peers || []).find(
+                p => (state.declaredSiteName && p.siteName.toLowerCase() === state.declaredSiteName.toLowerCase()) || p.host === state.remoteIp
+            );
+            if (matchedPeer) {
+                state.isConfiguredPeer = true;
+                state.matchedPeerName = matchedPeer.name;
+            }
+        }
+
+        client.requestCount++;
+        state.requestsHandled++;
+        this.metricsTracker.totalRequests++;
+
+        const behavior = this.appConfig.serverBehavior;
+
+        // 1. Drop Response simulation
+        if (behavior.mode === 'drop_response' || (behavior.dropProbability && behavior.dropProbability > 0)) {
+            const prob = behavior.dropProbability || 10;
+            if (Math.random() * 100 < prob) {
+                state.simulatedDrops++;
+                this.metricsTracker.totalSimulatedDrops++;
+                return;
+            }
+        }
+
+        // 2. Calculate Delay
+        let delayMs = 0;
+        if (behavior.mode === 'fixed_delay') {
+            delayMs = behavior.fixedDelayMs || 500;
+        } else if (behavior.mode === 'random_delay') {
+            const min = behavior.randomDelayMinMs || 100;
+            const max = behavior.randomDelayMaxMs || 1000;
+            delayMs = Math.floor(min + Math.random() * (max - min));
+        } else if (behavior.mode === 'looping_delay') {
+            const normalSec = behavior.loopingNormalSec || 60;
+            const slowSec = behavior.loopingSlowSec || 60;
+            const cycleMs = (normalSec + slowSec) * 1000;
+            const posInCycle = (Date.now() - client.startedAt) % cycleMs;
+            if (posInCycle >= normalSec * 1000) {
+                delayMs = behavior.loopingSlowDelayMs || 1000;
+            }
+        }
+
+const EICAR_TEST_STRING = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
+
+        const sendHttpResponse = () => {
+            if (socket.destroyed) return;
+
+            const isClose = rawText.includes('Connection: close') || behavior.mode === 'close_connection';
+            const isError = behavior.mode === 'error_response' || ((behavior.errorProbability || 0) > 0 && Math.random() * 100 < (behavior.errorProbability || 0));
+
+            if (isError) {
+                state.simulatedErrors++;
+                this.metricsTracker.totalErrors++;
+            }
+
+            if (behavior.mode === 'eicar_response') {
+                const eicarBody = EICAR_TEST_STRING + '\n';
+                const eicarBuf = Buffer.from(eicarBody, 'utf8');
+                const headers = [
+                    'HTTP/1.1 200 OK',
+                    'Content-Type: text/plain',
+                    `Content-Length: ${eicarBuf.length}`,
+                    `Connection: ${isClose ? 'close' : 'keep-alive'}`,
+                    'Server: Stigix-CustomApp-HTTP/2.0',
+                    'X-Stigix-Security-Test: EICAR-Standard-Antivirus-Test',
+                    '',
+                    ''
+                ].join('\r\n');
+
+                const fullResp = Buffer.concat([Buffer.from(headers, 'utf8'), eicarBuf]);
+                socket.write(fullResp);
+                state.bytesSent += fullResp.length;
+                state.state = 'connected';
+                this.metricsTracker.recordServerTx(fullResp.length);
+                this.metricsTracker.totalResponses++;
+
+                if (isClose) {
+                    socket.end();
+                }
+                return;
+            }
+
+            const statusCode = isError ? '500 Internal Server Error' : '200 OK';
+            const bodyObj = {
+                status: isError ? 'error' : 'ok',
+                appId: this.appConfig.id,
+                serverSessionId: client.sessionId,
+                serverSite: this.localIdentity.siteName,
+                seq: client.requestCount,
+                simulatedDelayMs: delayMs,
+                timestamp: Date.now()
+            };
+            const bodyStr = JSON.stringify(bodyObj) + '\n';
+            const bodyBuf = Buffer.from(bodyStr, 'utf8');
+
+            const headers = [
+                `HTTP/1.1 ${statusCode}`,
+                'Content-Type: application/json',
+                `Content-Length: ${bodyBuf.length}`,
+                `Connection: ${isClose ? 'close' : 'keep-alive'}`,
+                'Server: Stigix-CustomApp-HTTP/2.0',
+                `X-Stigix-Server-Delay: ${delayMs}ms`,
+                '',
+                ''
+            ].join('\r\n');
+
+            const fullResp = Buffer.concat([Buffer.from(headers, 'utf8'), bodyBuf]);
+            socket.write(fullResp);
+            state.bytesSent += fullResp.length;
+            state.state = 'connected';
+            this.metricsTracker.recordServerTx(fullResp.length);
+            this.metricsTracker.totalResponses++;
+
+            if (isClose) {
+                socket.end();
+            }
+        };
+
+        if (delayMs > 0) {
+            state.state = 'delayed';
+            setTimeout(sendHttpResponse, delayMs);
+        } else {
+            sendHttpResponse();
+        }
     }
 
     private handleMessage(client: TrackedIncomingClient, msg: any): void {
@@ -411,12 +622,14 @@ export class TcpServerRuntime extends EventEmitter {
             if (socket.destroyed) return;
 
             const isAck = behavior.mode === 'acknowledge';
+            const isEicar = behavior.mode === 'eicar_response';
+            const eicarPayload = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
             const resp = buildResponse({
                 requestId: req.requestId,
                 clientSessionId: req.clientSessionId,
                 seq: req.seq,
-                payloadSize: isAck ? 0 : (req.payloadSize || 0),
-                data: isAck ? undefined : req.data,
+                payloadSize: isAck ? 0 : isEicar ? eicarPayload.length : (req.payloadSize || 0),
+                data: isAck ? undefined : isEicar ? eicarPayload : req.data,
                 simulated: delayMs > 0 ? { applied: true, delayMs } : { applied: false }
             });
 

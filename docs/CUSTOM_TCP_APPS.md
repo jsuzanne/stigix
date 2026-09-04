@@ -334,8 +334,26 @@ When testing custom TCP applications over an SD-WAN overlay, ION branch and data
 
 ---
 
+## Roadmap & Future Extensions (V2)
+
+For deep design specifications and architectural proposals, refer to the [Custom TCP Applications V2 PRD](file:///Users/jsuzanne/Github/stigix/PRD/Custom%20TCP%20APP/PRD_Custom_TCP_InterSite_Applications_V2_Stigix.md).
+
+### Upcoming V2 Capabilities
+
+| Capability | Scope | Description & SD-WAN Testing Value |
+| :--- | :--- | :--- |
+| **Universal DSCP / QoS Marking** | Client Option (Universal) | Layer-3 IP ToS marking (`CS0`, `AF31`, `AF41`, `EF`, `CS1`) applied universally across all workload modes to test priority queues and bandwidth reservations during WAN link saturation. |
+| **Asymmetric Multiplier (`asymmetric_multiplier`)** | Server Behavior | Small request in (e.g., 128 bytes) triggering heavy response out (e.g., 50x-500x multiplier or 1 MB payload). Accurately emulates download-heavy enterprise workloads (ERP, DB reporting) on asymmetric WAN links (FTTH, Starlink, 5G). |
+| **Stochastic / Human Think-Time (`stochastic`)** | Client Workload | *(Shipped in v2.0.8)* Injects realistic Poisson-distributed think-time variations between requests (0.4x to 2.2x base cadence) to simulate authentic human interactive sessions. |
+| **Slow Trickle (`slow_trickle`)** | Server Behavior | Fragmented chunk-by-chunk delivery over time to stress test Next-Gen Firewall (NGFW) content inspection buffers, SSL decryption proxies, and WAN acceleration cache memory. |
+| **Hard TCP RST Injection (`tcp_rst`)** | Server Behavior | Abrupt socket termination with TCP RST packets to validate client recovery, connection pooling resilience, and firewall state-table teardown logging. |
+| **Ramping / Staircase Load (`ramping_load`)** | Client Workload | Automated incremental step-up and step-down connection ramping to benchmark gateway concurrent session capacity limits. |
+
+---
+
 ## Related Documentation
 
+- [Product Requirements Document V2 (PRD)](file:///Users/jsuzanne/Github/stigix/PRD/Custom%20TCP%20APP/PRD_Custom_TCP_InterSite_Applications_V2_Stigix.md): Detailed specifications for upcoming Custom TCP Applications V2 features.
 - [Network Impairment & SD-WAN Failover Validation Guide](./CUSTOM_TCP_NETWORK_IMPAIRMENTS.md): Deep dive into validating VyOS netem impairments, packet loss, jitter, and sub-second failover recovery using Custom TCP Apps.
 - [Central Global Provisioning Guide](./GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md): Multi-node distribution and Zero-Touch Auto-Start orchestration.
 - [CLI Reference Manual](./STIGIX_CLI.md): Terminal management with `stigix-cli`.

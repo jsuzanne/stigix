@@ -13,14 +13,16 @@ export type ServerBehaviorMode =
     | 'looping_delay'
     | 'drop_response'
     | 'close_connection'
-    | 'error_response';
+    | 'error_response'
+    | 'eicar_response';
 
 export type ClientWorkloadMode =
     | 'heartbeat'
     | 'transactional'
     | 'persistent_request_reply'
     | 'bulk_burst'
-    | 'continuous_stream';
+    | 'continuous_stream'
+    | 'stochastic';
 
 export type SessionState =
     | 'connecting'
@@ -236,11 +238,14 @@ export interface PeerConfig {
     tags: string[];
 }
 
+export type ApplicationWireProtocol = 'stigix_tcp' | 'http_1_1';
+
 export interface CustomTcpApplicationConfig {
     id: string;
     name: string;
     description?: string;
     enabled: boolean;
+    protocol?: ApplicationWireProtocol; // 'stigix_tcp' (default length-prefixed) or 'http_1_1' (REST/HTTP)
     listener: CustomTcpListenerConfig;
     serverBehavior: ServerBehaviorConfig;
     clientDefaults: ClientDefaultsConfig;
@@ -277,6 +282,11 @@ export interface IncomingSessionState {
     requestsHandled: number;
     simulatedDrops: number;
     simulatedErrors: number;
+    uptimeSec?: number;
+    rxBps?: number;
+    txBps?: number;
+    tps?: number;
+    tcpConnectMs?: number;
 }
 
 export interface RttStats {
@@ -287,6 +297,12 @@ export interface RttStats {
     p95: number;
     max: number;
     samples: number;
+    jitterMs?: number;
+    recentSamples?: number[];
+    serverDelayMs?: number;
+    networkRttMs?: number;
+    avgServerDelayMs?: number;
+    avgNetworkRttMs?: number;
 }
 
 export interface OutgoingSessionState {
@@ -308,6 +324,11 @@ export interface OutgoingSessionState {
     bytesSent: number;
     bytesReceived: number;
     lastError?: string;
+    uptimeSec?: number;
+    txBps?: number;
+    rxBps?: number;
+    tps?: number;
+    tcpConnectMs?: number;
 }
 
 export interface AppRuntimeMetrics {
@@ -334,6 +355,10 @@ export interface AppRuntimeMetrics {
     avgRttMs: number;
     p50RttMs: number;
     p95RttMs: number;
+    jitterMs?: number;
+    liveTxBps?: number;
+    liveRxBps?: number;
+    liveTps?: number;
     health: AppHealthState;
 }
 
