@@ -189,10 +189,16 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
         name: '',
         siteName: '',
         host: '',
-        port: 8443,
+        port: editingApp?.listener?.port || 8443,
         enabled: true,
         tags: []
     });
+
+    useEffect(() => {
+        if (formData.listener?.port && (!newPeer.port || newPeer.port === 8443)) {
+            setNewPeer(prev => ({ ...prev, port: formData.listener.port }));
+        }
+    }, [formData.listener?.port]);
 
     useEffect(() => {
         if (isOpen) {
@@ -1010,7 +1016,14 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                     <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                                                     <div>
                                                         <div className="font-semibold text-text-primary">{p.name} <span className="text-text-muted font-mono text-[10px]">({p.siteName})</span></div>
-                                                        <div className="text-text-secondary font-mono text-[11px]">{p.host}:{p.port}</div>
+                                                        <div className="flex items-center gap-2 mt-0.5">
+                                                            <span className="text-text-secondary font-mono text-[11px]">{p.host}:{p.port}</span>
+                                                            {p.port !== formData.listener.port && (
+                                                                <span className="px-1.5 py-0.2 rounded text-[8.5px] font-bold bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                                                                    Target Port :{p.port} ≠ Listener :{formData.listener.port}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <button
