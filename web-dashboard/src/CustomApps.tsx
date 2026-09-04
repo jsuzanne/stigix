@@ -74,6 +74,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                 if (data.applications?.length > 0 && !selectedAppId) {
                     setSelectedAppId(data.applications[0].id);
                 }
+                loadAllSummaries();
             }
         } catch (err: any) {
             console.error('Failed to load Custom TCP Apps config:', err);
@@ -411,13 +412,18 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                 <div className="flex items-center gap-2 flex-wrap flex-1 justify-start">
                     {applications.map(app => {
                         const sum = allAppSummaries[app.id];
-                        const inSess = sum?.serverSessionCount || 0;
-                        const outSess = sum?.clientSessionCount || 0;
+                        const inSess = (app.id === selectedAppId ? incomingSessions.length : 0) || sum?.activeIncomingSessions || sum?.serverSessionCount || 0;
+                        const outSess = (app.id === selectedAppId ? outgoingSessions.filter(s => s.state === 'connected').length : 0) || sum?.activeOutgoingSessions || sum?.clientSessionCount || 0;
                         const totalSess = inSess + outSess;
-                        const isL = sum?.listenerState === 'listening' || sum?.listener?.state === 'listening';
-                        const isC = sum?.clientWorkloadRunning || sum?.clientWorkload?.state === 'running';
-                        const hasTraffic = totalSess > 0 || (sum?.throughput?.rxBps || 0) > 0 || (sum?.throughput?.txBps || 0) > 0;
+                        const isL = (app.id === selectedAppId ? metrics?.listenerState : sum?.listenerState) === 'listening' || sum?.listener?.state === 'listening';
+                        const isC = (app.id === selectedAppId ? metrics?.clientWorkloadRunning : sum?.clientWorkloadRunning) || sum?.clientWorkload?.state === 'running';
+                        const liveRx = (app.id === selectedAppId ? (incomingSessions.reduce((acc, s) => acc + (s.rxBps || 0), 0) || metrics?.liveRxBps || 0) : (sum?.liveRxBps || sum?.throughput?.rxBps || 0));
+                        const liveTx = (app.id === selectedAppId ? (outgoingSessions.reduce((acc, s) => acc + (s.txBps || 0), 0) || metrics?.liveTxBps || 0) : (sum?.liveTxBps || sum?.throughput?.txBps || 0));
+                        const hasRxTraffic = inSess > 0 || liveRx > 0;
+                        const hasTxTraffic = outSess > 0 || (isC && liveTx > 0);
+                        const hasTraffic = hasRxTraffic || hasTxTraffic || totalSess > 0;
                         const isSel = app.id === selectedAppId;
+
                         return (
                             <button
                                 key={app.id}
@@ -434,19 +440,36 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                 }`} />
                                 <span>{app.name}</span>
                                 <span className={`text-[10px] font-mono ${isSel ? 'text-indigo-200' : 'text-amber-500'}`}>Port {app.listener?.port}</span>
-                                {hasTraffic ? (
+
+                                {hasRxTraffic && (hasTxTraffic || isC) ? (
+                                    <span
+                                        className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-1 ${
+                                            isSel ? 'bg-white/20 text-white' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                                        }`}
+                                        title={`Active RX & TX: ${inSess} incoming server session(s), ${outSess} outgoing client session(s)`}
+                                    >
+                                        <Activity size={10} className="animate-pulse" />
+                                        RX+TX on {totalSess > 0 ? `(${totalSess})` : ''}
+                                    </span>
+                                ) : hasRxTraffic ? (
                                     <span
                                         className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-1 ${
                                             isSel ? 'bg-white/20 text-white' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                                         }`}
-                                        title={`Active Traffic: ${inSess} incoming sessions, ${outSess} outgoing sessions`}
+                                        title={`Receiving Server Traffic: ${inSess} active incoming client session(s)`}
                                     >
-                                        <Activity size={10} className="animate-pulse" />
-                                        {totalSess > 0 ? `${totalSess} sess` : 'Active'}
+                                        <ArrowDownRight size={10} className="animate-pulse" />
+                                        RX on {inSess > 0 ? `(${inSess})` : ''}
                                     </span>
-                                ) : isC ? (
-                                    <span className={`text-[9px] px-1 rounded font-mono font-bold ${isSel ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-400'}`}>
-                                        TX on
+                                ) : hasTxTraffic || isC ? (
+                                    <span
+                                        className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-1 ${
+                                            isSel ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                        }`}
+                                        title={`Transmitting Client Traffic: ${outSess} active peer session(s)`}
+                                    >
+                                        <ArrowUpRight size={10} className={outSess > 0 ? "animate-pulse" : ""} />
+                                        TX on {outSess > 0 ? `(${outSess})` : ''}
                                     </span>
                                 ) : null}
                             </button>
@@ -570,6 +593,20 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                             {metrics.listenerState}
                                         </strong>
                                     </span>
+
+                                    {incomingSessions.length > 0 && (
+                                        <span className="h-8 text-xs text-emerald-500 bg-emerald-500/10 border border-emerald-500/30 px-3 rounded-lg flex items-center gap-1.5 shadow-sm font-bold" title={`${incomingSessions.length} active incoming server session(s) currently connected and receiving traffic`}>
+                                            <ArrowDownRight size={12} className="animate-pulse" />
+                                            <span>RX Active ({incomingSessions.length})</span>
+                                        </span>
+                                    )}
+
+                                    {metrics.clientWorkloadRunning && (
+                                        <span className="h-8 text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/30 px-3 rounded-lg flex items-center gap-1.5 shadow-sm font-bold" title={`${outgoingSessions.filter(s => s.state === 'connected').length} active outgoing client session(s) transmitting traffic`}>
+                                            <ArrowUpRight size={12} className="animate-pulse" />
+                                            <span>TX Active ({outgoingSessions.filter(s => s.state === 'connected').length})</span>
+                                        </span>
+                                    )}
 
                                     {currentApp?.startup?.startClientWorkload && (
                                         <span className="h-8 text-xs text-amber-500 bg-amber-500/10 border border-amber-500/30 px-3 rounded-lg flex items-center gap-1.5 shadow-sm font-bold" title="Zero-Touch Auto-Start enabled: client workload starts automatically on sync and boot">
