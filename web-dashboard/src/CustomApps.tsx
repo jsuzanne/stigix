@@ -351,12 +351,14 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const filteredIncomingSessions = incomingSessions.filter(s => {
         if (!sessionSearch.trim()) return true;
         const q = sessionSearch.toLowerCase().trim();
+        const peerType = s.isConfiguredPeer ? 'configured' : (s.declaredSiteName ? 'dynamic peer' : 'external ingress');
         return (
             (s.declaredSiteName && s.declaredSiteName.toLowerCase().includes(q)) ||
             (s.declaredHostname && s.declaredHostname.toLowerCase().includes(q)) ||
             (s.remoteIp && s.remoteIp.toLowerCase().includes(q)) ||
             String(s.remotePort).includes(q) ||
             (s.matchedPeerName && s.matchedPeerName.toLowerCase().includes(q)) ||
+            peerType.includes(q) ||
             (s.state && s.state.toLowerCase().includes(q)) ||
             (s.sessionId && s.sessionId.toLowerCase().includes(q))
         );
@@ -830,7 +832,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                     <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
                                         <th className="pb-3 px-3 whitespace-nowrap">Declared Origin</th>
                                         <th className="pb-3 px-3 whitespace-nowrap">Observed Socket IP</th>
-                                        <th className="pb-3 px-3 whitespace-nowrap">Peer Match</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap">Peer Source</th>
                                         <th className="pb-3 px-3 whitespace-nowrap">State & Uptime</th>
                                         <th className="pb-3 px-4 text-right whitespace-nowrap">RX / TX</th>
                                     </tr>
@@ -853,12 +855,17 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                             </td>
                                             <td className="py-3 px-3 whitespace-nowrap">
                                                 {s.isConfiguredPeer ? (
-                                                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold">
-                                                        Matched ({s.matchedPeerName})
+                                                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold" title={`Configured Target: ${s.matchedPeerName}`}>
+                                                        Configured ({s.matchedPeerName})
+                                                    </span>
+                                                ) : s.declaredSiteName ? (
+                                                    <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/30 text-[10px] font-semibold inline-flex items-center gap-1" title={`Dynamically connected peer from branch site: ${s.declaredSiteName}`}>
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>
+                                                        Dynamic Peer
                                                     </span>
                                                 ) : (
-                                                    <span className="px-2 py-0.5 rounded bg-card-secondary text-text-muted border border-border text-[10px]">
-                                                        Unconfigured
+                                                    <span className="px-2 py-0.5 rounded bg-card-secondary text-text-muted border border-border text-[10px]" title="Generic TCP client connection">
+                                                        External Ingress
                                                     </span>
                                                 )}
                                             </td>
