@@ -355,9 +355,11 @@ export class TcpClientRuntime extends EventEmitter {
             socket.setKeepAlive(true, 10000);
         }
 
+        const startConnectTs = Date.now();
         socket.connect(session.peer.port, session.peer.host, () => {
             session.state.state = 'handshaking';
             session.state.connectedAt = Date.now();
+            session.state.tcpConnectMs = Math.max(1, Date.now() - startConnectTs);
             session.reconnectAttempts = 0; // Reset backoff upon successful TCP connect
 
             // Send CLIENT_HELLO
@@ -428,7 +430,10 @@ export class TcpClientRuntime extends EventEmitter {
                 session.pendingRequests.delete(resp.requestId);
 
                 const rtt = Date.now() - pending.sentTs;
-                session.rttTracker.record(rtt);
+                const serverDelayMs = resp.simulated?.delayMs || 0;
+                const networkRttMs = Math.max(0, rtt - serverDelayMs);
+
+                session.rttTracker.record(rtt, serverDelayMs, networkRttMs);
                 this.metricsTracker.recordRtt(rtt);
 
                 session.state.responsesReceived++;

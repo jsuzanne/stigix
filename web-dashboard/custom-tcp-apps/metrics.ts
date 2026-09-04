@@ -6,6 +6,8 @@ import { RttStats, AppRuntimeMetrics, ListenerState, AppHealthState } from './ty
 
 export class RollingRttTracker {
     private samples: number[] = [];
+    private serverDelays: number[] = [];
+    private networkRtts: number[] = [];
     private prevRttMs?: number;
     private jitterSamples: number[] = [];
     private readonly maxSamples: number;
@@ -14,12 +16,18 @@ export class RollingRttTracker {
         this.maxSamples = maxSamples;
     }
 
-    public record(rttMs: number): void {
+    public record(rttMs: number, serverDelayMs: number = 0, networkRttMs?: number): void {
         if (typeof rttMs !== 'number' || isNaN(rttMs) || rttMs < 0) return;
         this.samples.push(rttMs);
         if (this.samples.length > this.maxSamples) {
             this.samples.shift();
         }
+
+        const netRtt = networkRttMs !== undefined ? networkRttMs : Math.max(0, rttMs - serverDelayMs);
+        this.serverDelays.push(serverDelayMs);
+        this.networkRtts.push(netRtt);
+        if (this.serverDelays.length > this.maxSamples) this.serverDelays.shift();
+        if (this.networkRtts.length > this.maxSamples) this.networkRtts.shift();
 
         if (this.prevRttMs !== undefined) {
             const delta = Math.abs(rttMs - this.prevRttMs);
@@ -33,7 +41,11 @@ export class RollingRttTracker {
 
     public getStats(): RttStats {
         if (this.samples.length === 0) {
-            return { last: 0, min: 0, avg: 0, p50: 0, p95: 0, max: 0, samples: 0, jitterMs: 0 };
+            return {
+                last: 0, min: 0, avg: 0, p50: 0, p95: 0, max: 0, samples: 0,
+                jitterMs: 0, recentSamples: [], serverDelayMs: 0, networkRttMs: 0,
+                avgServerDelayMs: 0, avgNetworkRttMs: 0
+            };
         }
 
         const sorted = [...this.samples].sort((a, b) => a - b);
@@ -57,11 +69,41 @@ export class RollingRttTracker {
             jitterMs = Number((jSum / this.jitterSamples.length).toFixed(2));
         }
 
-        return { last: Number(last.toFixed(2)), min, avg, p50, p95, max, samples: count, jitterMs };
+        // Recent samples (last 20 points for sparkline)
+        const recentSamples = this.samples.slice(-20);
+
+        // Server Delay vs Network RTT averages
+        const lastServerDelay = this.serverDelays.length > 0 ? this.serverDelays[this.serverDelays.length - 1] : 0;
+        const lastNetworkRtt = this.networkRtts.length > 0 ? this.networkRtts[this.networkRtts.length - 1] : last;
+
+        const avgServerDelay = this.serverDelays.length > 0
+            ? Number((this.serverDelays.reduce((a, b) => a + b, 0) / this.serverDelays.length).toFixed(2))
+            : 0;
+        const avgNetworkRtt = this.networkRtts.length > 0
+            ? Number((this.networkRtts.reduce((a, b) => a + b, 0) / this.networkRtts.length).toFixed(2))
+            : avg;
+
+        return {
+            last: Number(last.toFixed(2)),
+            min,
+            avg,
+            p50,
+            p95,
+            max,
+            samples: count,
+            jitterMs,
+            recentSamples,
+            serverDelayMs: lastServerDelay,
+            networkRttMs: lastNetworkRtt,
+            avgServerDelayMs: avgServerDelay,
+            avgNetworkRttMs: avgNetworkRtt
+        };
     }
 
     public reset(): void {
         this.samples = [];
+        this.serverDelays = [];
+        this.networkRtts = [];
         this.jitterSamples = [];
         this.prevRttMs = undefined;
     }

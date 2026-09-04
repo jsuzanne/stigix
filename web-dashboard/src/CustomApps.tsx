@@ -18,6 +18,8 @@ import type {
 } from '../custom-tcp-apps/types.js';
 import { CustomAppWizardModal } from './components/custom-tcp/CustomAppWizardModal';
 import { PrismaAppSyncModal } from './components/custom-tcp/PrismaAppSyncModal';
+import { MicroSparkline } from './components/custom-tcp/MicroSparkline';
+import { SessionDeepDiveDrawer } from './components/custom-tcp/SessionDeepDiveDrawer';
 
 interface CustomAppsProps {
     token: string | null;
@@ -33,6 +35,9 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const [outgoingSessions, setOutgoingSessions] = useState<OutgoingSessionState[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isActionLoading, setIsActionLoading] = useState(false);
+
+    // Deep Dive Drawer Session
+    const [deepDiveSession, setDeepDiveSession] = useState<(IncomingSessionState & { isIncoming?: boolean }) | (OutgoingSessionState & { isIncoming?: boolean }) | null>(null);
 
     // Modals
     const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -104,11 +109,27 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
             }
             if (inRes.ok) {
                 const inData = await inRes.json();
-                setIncomingSessions(inData.sessions || []);
+                const incList: IncomingSessionState[] = inData.sessions || [];
+                setIncomingSessions(incList);
+                setDeepDiveSession(curr => {
+                    if (curr && ('declaredSiteName' in curr || curr.isIncoming)) {
+                        const found = incList.find(s => s.sessionId === curr.sessionId);
+                        return found ? { ...found, isIncoming: true } : curr;
+                    }
+                    return curr;
+                });
             }
             if (outRes.ok) {
                 const outData = await outRes.json();
-                setOutgoingSessions(outData.sessions || []);
+                const outList: OutgoingSessionState[] = outData.sessions || [];
+                setOutgoingSessions(outList);
+                setDeepDiveSession(curr => {
+                    if (curr && (!('declaredSiteName' in curr) && !curr.isIncoming)) {
+                        const found = outList.find(s => s.sessionId === curr.sessionId);
+                        return found ? { ...found, isIncoming: false } : curr;
+                    }
+                    return curr;
+                });
             }
             loadAllSummaries();
         } catch (err) {
@@ -700,10 +721,15 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
                                     {incomingSessions.map(s => (
-                                        <tr key={s.sessionId} className="hover:bg-card-secondary/50 transition-colors">
+                                        <tr
+                                            key={s.sessionId}
+                                            onClick={() => setDeepDiveSession({ ...s, isIncoming: true })}
+                                            className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
+                                            title="Click to open full Session Deep Dive"
+                                        >
                                             <td className="py-3 font-semibold text-text-primary">
                                                 <div className="flex items-center gap-2">
-                                                    <span>{s.declaredSiteName}</span>
+                                                    <span className="group-hover:text-indigo-500 transition-colors">{s.declaredSiteName}</span>
                                                     {(s.uptimeSec ?? 0) > 0 && (
                                                         <span className="px-1.5 py-0.2 bg-card-secondary border border-border text-text-muted rounded text-[9px] font-mono font-normal">
                                                             up {formatUptime(s.uptimeSec)}
@@ -798,7 +824,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                         <th className="pb-2.5">Target Peer</th>
                                         <th className="pb-2.5">Remote Endpoint</th>
                                         <th className="pb-2.5">State</th>
-                                        <th className="pb-2.5 text-right">RTT (Avg/p50/p95)</th>
+                                        <th className="pb-2.5 text-right">RTT Wave & Latency</th>
                                         <th className="pb-2.5 text-right">Reconnects</th>
                                         <th className="pb-2.5 text-center">Action</th>
                                     </tr>
@@ -809,10 +835,15 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                         const sessionIndex = peerSessions.findIndex(x => x.sessionId === s.sessionId) + 1;
                                         const streamBadge = peerSessions.length > 1 ? `Stream #${sessionIndex}` : null;
                                         return (
-                                            <tr key={s.sessionId} className="hover:bg-card-secondary/50 transition-colors">
+                                            <tr
+                                                key={s.sessionId}
+                                                onClick={() => setDeepDiveSession({ ...s, isIncoming: false })}
+                                                className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
+                                                title="Click to open full Session Deep Dive"
+                                            >
                                                 <td className="py-3 font-semibold text-text-primary">
                                                     <div className="flex items-center gap-2">
-                                                        <span>{s.peerName}</span>
+                                                        <span className="group-hover:text-emerald-500 transition-colors">{s.peerName}</span>
                                                         {streamBadge && (
                                                             <span className="px-1.5 py-0.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded text-[9px] font-mono font-bold">
                                                                 {streamBadge}
@@ -840,11 +871,16 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                     )}
                                                 </td>
                                                 <td className="py-3 text-right font-mono text-[11px]">
-                                                    <div className="text-amber-600 dark:text-amber-400 font-semibold">
-                                                        {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
+                                                    <div className="flex items-center justify-end gap-2.5">
+                                                        {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 && (
+                                                            <MicroSparkline samples={s.rttMs.recentSamples} width={64} height={18} />
+                                                        )}
+                                                        <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                                                            {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
+                                                        </span>
                                                     </div>
                                                     {s.rttMs.avg > 0 && (
-                                                        <div className="text-[10px] text-cyan-500 flex items-center justify-end gap-1 font-sans">
+                                                        <div className="text-[10px] text-cyan-500 flex items-center justify-end gap-1 font-sans mt-0.5">
                                                             <span>Jitter: ± {s.rttMs.jitterMs ?? 0} ms</span>
                                                             {(s.txBps ?? 0) > 0 && (
                                                                 <>
@@ -858,7 +894,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                 <td className="py-3 text-right font-mono text-[11px] text-text-muted">
                                                     {s.reconnects}
                                                 </td>
-                                                <td className="py-3 text-center">
+                                                <td className="py-3 text-center" onClick={e => e.stopPropagation()}>
                                                     <button
                                                         onClick={() => {
                                                             setPeerTestModal({
@@ -940,6 +976,29 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                     </div>
                 </div>
             )}
+
+            {/* Session Deep Dive Drawer (Side panel) */}
+            <SessionDeepDiveDrawer
+                session={deepDiveSession}
+                appPort={currentApp?.listener?.port}
+                appName={currentApp?.name}
+                onClose={() => setDeepDiveSession(null)}
+                onTestPeer={(peerId) => {
+                    if (currentApp) {
+                        const p = currentApp.peers?.find(x => x.id === peerId);
+                        if (p) {
+                            setPeerTestModal({
+                                isOpen: true,
+                                peerId: p.id,
+                                peerName: p.name,
+                                host: p.host,
+                                port: p.port
+                            });
+                            handleTestPeer(p.id);
+                        }
+                    }
+                }}
+            />
 
             {/* Creation / Edition Wizard Modal */}
             <CustomAppWizardModal

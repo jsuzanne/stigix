@@ -281,6 +281,7 @@ export interface IncomingSessionState {
     rxBps?: number;
     txBps?: number;
     tps?: number;
+    tcpConnectMs?: number;
 }
 
 export interface RttStats {
@@ -292,6 +293,11 @@ export interface RttStats {
     max: number;
     samples: number;
     jitterMs?: number;
+    recentSamples?: number[];
+    serverDelayMs?: number;
+    networkRttMs?: number;
+    avgServerDelayMs?: number;
+    avgNetworkRttMs?: number;
 }
 
 export interface OutgoingSessionState {
@@ -317,6 +323,7 @@ export interface OutgoingSessionState {
     txBps?: number;
     rxBps?: number;
     tps?: number;
+    tcpConnectMs?: number;
 }
 
 export interface AppRuntimeMetrics {
