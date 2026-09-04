@@ -3842,7 +3842,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                             </div>
                                                         </td>
                                                         <td className="py-3.5 px-5 text-[10px] text-text-muted font-bold whitespace-nowrap">
-                                                            {new Date(inst.last_seen).toLocaleTimeString()}
+                                                            {(() => {
+                                                                const fmt = formatTargetTimestamp(inst.last_seen);
+                                                                if (!fmt) return <span className="opacity-50">—</span>;
+                                                                return (
+                                                                    <span className="font-mono text-[9px] bg-card-secondary px-1.5 py-0.5 rounded border border-border/80" title={`Last seen: ${fmt.full}`}>
+                                                                        {fmt.relative}
+                                                                    </span>
+                                                                );
+                                                            })()}
                                                         </td>
                                                     </tr>
                                                 ))}

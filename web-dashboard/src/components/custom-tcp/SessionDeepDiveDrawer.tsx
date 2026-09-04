@@ -92,14 +92,16 @@ export const SessionDeepDiveDrawer: React.FC<SessionDeepDiveDrawerProps> = ({
                         <div>
                             <div className="flex items-center gap-2">
                                 <h2 className="text-lg font-bold text-text-primary">
-                                    {isIncoming ? (incoming?.declaredSiteName || 'Incoming Stream') : (outgoing?.peerName || 'Outgoing Stream')}
+                                    {isIncoming
+                                        ? ((incoming?.declaredSiteName && incoming?.declaredSiteName !== 'Handshaking...' ? incoming.declaredSiteName : incoming?.declaredHostname) || (incoming?.state === 'handshaking' ? 'Handshaking...' : 'External Client'))
+                                        : (outgoing?.peerName || 'Outgoing Session')}
                                 </h2>
                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                                     isIncoming
                                         ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30'
                                         : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
                                 }`}>
-                                    {isIncoming ? 'Incoming Client' : 'Outgoing Peer'}
+                                    {isIncoming ? 'Incoming Session' : 'Outgoing Session'}
                                 </span>
                             </div>
                             <div className="flex items-center gap-2.5 text-xs text-text-muted mt-1 font-mono">
@@ -353,7 +355,7 @@ export const SessionDeepDiveDrawer: React.FC<SessionDeepDiveDrawerProps> = ({
                             ) : (
                                 <div className="p-8 text-center space-y-3 bg-card-secondary/20 rounded-2xl border border-border">
                                     <Server size={32} className="mx-auto text-indigo-400" />
-                                    <div className="font-semibold text-text-primary text-sm">Server-side Incoming Stream</div>
+                                    <div className="font-semibold text-text-primary text-sm">Server-side Incoming Session</div>
                                     <p className="text-xs text-text-muted max-w-md mx-auto">
                                         Round-trip latency (RTT) is measured by the client initiating requests. As a receiver listener, this node tracks incoming throughput, handled requests, and payload execution.
                                     </p>
@@ -447,6 +449,39 @@ export const SessionDeepDiveDrawer: React.FC<SessionDeepDiveDrawerProps> = ({
                                         <span className="text-text-muted">Session UUID</span>
                                         <span className="text-text-primary font-semibold">{session.sessionId}</span>
                                     </div>
+                                    {isIncoming ? (
+                                        <>
+                                            <div className="py-2 flex justify-between">
+                                                <span className="text-text-muted">Declared Origin</span>
+                                                <span className="text-text-primary font-semibold">
+                                                    {incoming?.declaredSiteName && incoming?.declaredSiteName !== 'Handshaking...'
+                                                        ? incoming.declaredSiteName
+                                                        : (incoming?.declaredHostname || (incoming?.state === 'handshaking' ? 'Handshaking...' : 'External Client'))}
+                                                </span>
+                                            </div>
+                                            <div className="py-2 flex justify-between">
+                                                <span className="text-text-muted">Source IP</span>
+                                                <span className="text-text-primary font-semibold">{incoming?.remoteIp}:{incoming?.remotePort}</span>
+                                            </div>
+                                            {incoming?.declaredHostname && incoming.declaredHostname !== incoming.declaredSiteName && (
+                                                <div className="py-2 flex justify-between">
+                                                    <span className="text-text-muted">Declared Hostname</span>
+                                                    <span className="text-text-primary font-semibold">{incoming.declaredHostname}</span>
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="py-2 flex justify-between">
+                                                <span className="text-text-muted">Target Peer</span>
+                                                <span className="text-text-primary font-semibold">{outgoing?.peerName}</span>
+                                            </div>
+                                            <div className="py-2 flex justify-between">
+                                                <span className="text-text-muted">Remote Endpoint</span>
+                                                <span className="text-text-primary font-semibold">{outgoing?.peerHost}:{outgoing?.peerPort}</span>
+                                            </div>
+                                        </>
+                                    )}
                                     <div className="py-2 flex justify-between">
                                         <span className="text-text-muted">TCP Initial Handshake Time</span>
                                         <span className="text-text-primary font-semibold">{session.tcpConnectMs || 2} ms</span>

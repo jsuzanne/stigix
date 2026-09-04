@@ -341,7 +341,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const formatUptime = (seconds?: number) => {
         if (!seconds || seconds <= 0) return '< 1m';
         const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
+const secs = seconds % 60;
         if (mins < 60) return `${mins}m ${secs}s`;
         const hours = Math.floor(mins / 60);
         const remMins = mins % 60;
@@ -351,14 +351,14 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const filteredIncomingSessions = incomingSessions.filter(s => {
         if (!sessionSearch.trim()) return true;
         const q = sessionSearch.toLowerCase().trim();
-        const peerType = s.isConfiguredPeer ? 'configured' : (s.declaredSiteName ? 'dynamic peer' : 'external ingress');
+        const originName = (s.declaredSiteName && s.declaredSiteName !== 'Handshaking...') ? s.declaredSiteName : (s.declaredHostname || 'external client');
         return (
+            originName.toLowerCase().includes(q) ||
             (s.declaredSiteName && s.declaredSiteName.toLowerCase().includes(q)) ||
             (s.declaredHostname && s.declaredHostname.toLowerCase().includes(q)) ||
             (s.remoteIp && s.remoteIp.toLowerCase().includes(q)) ||
             String(s.remotePort).includes(q) ||
             (s.matchedPeerName && s.matchedPeerName.toLowerCase().includes(q)) ||
-            peerType.includes(q) ||
             (s.state && s.state.toLowerCase().includes(q)) ||
             (s.sessionId && s.sessionId.toLowerCase().includes(q))
         );
@@ -378,77 +378,82 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
 
     return (
         <div className="p-6 max-w-[1700px] w-full mx-auto space-y-6 text-text-primary animate-fadeIn">
-            {/* Top Node Identity Bar */}
-            <div className="bg-card border border-border rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 shadow-sm">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
-                        <Activity size={24} />
+            {/* Real-time Telemetry Stream Banner */}
+            <div className="flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-card to-card-secondary border border-border rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
+                        <Activity size={20} className="animate-pulse" />
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
-                            <h1 className="text-xl font-bold text-text-primary tracking-wide">Custom TCP Applications</h1>
-                            <span className="px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 rounded text-[10px] font-bold uppercase tracking-wider">
-                                East-West SD-WAN Simulator
+                            <h1 className="text-base font-black tracking-tight text-text-primary">
+                                Custom TCP Inter-Site Applications
+                            </h1>
+                            <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-full">
+                                v2.0 Runtime
                             </span>
                         </div>
                         <p className="text-xs text-text-muted mt-0.5">
-                            Simulate stateful multi-site application traffic across overlay tunnels with live RTT, failover observation, and chaos injection.
+                            Real-time socket telemetry, bidirectional SD-WAN emulation & protocol diagnostics
                         </p>
                     </div>
                 </div>
 
-                {instanceInfo && (
-                    <div className="flex items-center gap-2 bg-card-secondary border border-border px-3.5 py-1.5 rounded-xl text-xs shadow-sm">
-                        <span className="text-text-muted font-medium">Local Site:</span>
-                        <span className="font-bold text-text-primary font-mono">{instanceInfo.siteName}</span>
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-card-secondary border border-border rounded-xl text-xs font-mono text-text-secondary shadow-sm">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>Live Telemetry: 1.5s</span>
                     </div>
-                )}
+
+                    <button
+                        onClick={() => loadAppStatus(selectedAppId)}
+                        className="p-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-text-muted hover:text-text-primary transition-colors cursor-pointer shadow-sm"
+                        title="Refresh Telemetry Now"
+                    >
+                        <RefreshCw size={14} className={isActionLoading ? 'animate-spin' : ''} />
+                    </button>
+                </div>
             </div>
 
-            {/* Application Switcher Tab Bar (All Applications with Live Traffic Badges) */}
-            <div className="bg-card border border-border rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm">
-                <div className="flex items-center gap-2 text-text-primary font-semibold">
-                    <Layers size={16} className="text-indigo-500" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Applications ({applications.length}):</span>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap flex-1 justify-start">
+            {/* Application Switcher Tab Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+                <div className="flex flex-wrap items-center gap-2">
                     {applications.map(app => {
-                        const sum = allAppSummaries[app.id];
-                        const inSess = (app.id === selectedAppId ? incomingSessions.length : 0) || sum?.activeIncomingSessions || sum?.serverSessionCount || 0;
-                        const outSess = (app.id === selectedAppId ? outgoingSessions.filter(s => s.state === 'connected').length : 0) || sum?.activeOutgoingSessions || sum?.clientSessionCount || 0;
-                        const totalSess = inSess + outSess;
-                        const isL = (app.id === selectedAppId ? metrics?.listenerState : sum?.listenerState) === 'listening' || sum?.listener?.state === 'listening';
-                        const isC = (app.id === selectedAppId ? metrics?.clientWorkloadRunning : sum?.clientWorkloadRunning) || sum?.clientWorkload?.state === 'running';
-                        const liveRx = (app.id === selectedAppId ? (incomingSessions.reduce((acc, s) => acc + (s.rxBps || 0), 0) || metrics?.liveRxBps || 0) : (sum?.liveRxBps || sum?.throughput?.rxBps || 0));
-                        const liveTx = (app.id === selectedAppId ? (outgoingSessions.reduce((acc, s) => acc + (s.txBps || 0), 0) || metrics?.liveTxBps || 0) : (sum?.liveTxBps || sum?.throughput?.txBps || 0));
-                        const hasRxTraffic = inSess > 0 || liveRx > 0;
-                        const hasTxTraffic = outSess > 0 || (isC && liveTx > 0);
-                        const hasTraffic = hasRxTraffic || hasTxTraffic || totalSess > 0;
                         const isSel = app.id === selectedAppId;
+                        const sum = allAppSummaries[app.id];
+                        const inSess = (app.id === selectedAppId ? incomingSessions.length : 0) || sum?.activeIncomingSessions || 0;
+                        const outSess = (app.id === selectedAppId ? outgoingSessions.filter(s => s.state === 'connected').length : 0) || sum?.activeOutgoingSessions || 0;
+                        const totalSess = inSess + outSess;
+                        const isL = (app.id === selectedAppId ? metrics?.listenerState : sum?.listenerState) === 'listening';
+                        const isC = (app.id === selectedAppId ? metrics?.clientWorkloadRunning : sum?.clientWorkloadRunning);
+                        const hasRxTraffic = inSess > 0;
+                        const hasTxTraffic = outSess > 0;
 
                         return (
                             <button
                                 key={app.id}
                                 onClick={() => setSelectedAppId(app.id)}
-                                className={`px-3.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                                className={`h-[36px] px-3.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-sm ${
                                     isSel
-                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                                        : 'bg-card-secondary hover:bg-card-hover border-border text-text-secondary hover:text-text-primary'
+                                        ? 'bg-indigo-600 text-white shadow-indigo-500/20'
+                                        : 'bg-card hover:bg-card-secondary text-text-secondary border border-border'
                                 }`}
                             >
-                                <span className={`w-2 h-2 rounded-full ${
-                                    hasTraffic ? 'bg-emerald-400 animate-pulse' :
-                                    (isL || isC) ? 'bg-emerald-500/70' : 'bg-text-muted/40'
-                                }`} />
+                                <span className={`w-2 h-2 rounded-full ${isL ? 'bg-emerald-400' : 'bg-text-muted'}`} />
                                 <span>{app.name}</span>
-                                <span className={`text-[10px] font-mono ${isSel ? 'text-indigo-200' : 'text-amber-500'}`}>Port {app.listener?.port}</span>
+                                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                                    isSel ? 'bg-white/20 text-white' : 'bg-card-secondary text-text-muted'
+                                }`}>
+                                    :{app.listener?.port}
+                                </span>
 
-                                {hasRxTraffic && (hasTxTraffic || isC) ? (
+                                {/* Traffic flow badges */}
+                                {hasRxTraffic && hasTxTraffic ? (
                                     <span
                                         className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-1 ${
-                                            isSel ? 'bg-white/20 text-white' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                                            isSel ? 'bg-white/20 text-white' : 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
                                         }`}
-                                        title={`Active RX & TX: ${inSess} incoming server session(s), ${outSess} outgoing client session(s)`}
+                                        title={`Active RX & TX: ${inSess} incoming session(s), ${outSess} outgoing session(s)`}
                                     >
                                         <Activity size={10} className="animate-pulse" />
                                         RX+TX on {totalSess > 0 ? `(${totalSess})` : ''}
@@ -458,7 +463,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                         className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-1 ${
                                             isSel ? 'bg-white/20 text-white' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                                         }`}
-                                        title={`Receiving Server Traffic: ${inSess} active incoming client session(s)`}
+                                        title={`Receiving Server Traffic: ${inSess} active incoming session(s)`}
                                     >
                                         <ArrowDownRight size={10} className="animate-pulse" />
                                         RX on {inSess > 0 ? `(${inSess})` : ''}
@@ -468,7 +473,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                         className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-bold flex items-center gap-1 ${
                                             isSel ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                                         }`}
-                                        title={`Transmitting Client Traffic: ${outSess} active peer session(s)`}
+                                        title={`Transmitting Client Traffic: ${outSess} active outgoing session(s)`}
                                     >
                                         <ArrowUpRight size={10} className={outSess > 0 ? "animate-pulse" : ""} />
                                         TX on {outSess > 0 ? `(${outSess})` : ''}
@@ -478,174 +483,18 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                         );
                     })}
                 </div>
-                <button
-                    onClick={() => {
-                        setEditingApp(null);
-                        setIsWizardOpen(true);
-                    }}
-                    className="h-[32px] px-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                >
-                    <Plus size={14} /> New App
-                </button>
-            </div>
-
-            {/* Application Toolbar & Primary Controls */}
-            <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm space-y-3.5">
-                {/* Row 1: Selected App Overview & Primary Actions */}
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
-                    {/* Left: Active App Identity (no duplicate select) */}
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
-                            <Server size={20} />
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <h2 className="text-base font-bold text-text-primary">{currentApp?.name}</h2>
-                                <span className="font-mono text-xs text-indigo-500 font-bold bg-indigo-500/10 border border-indigo-500/30 px-2 py-0.5 rounded-lg">
-                                    Port {currentApp?.listener?.port}
-                                </span>
-                            </div>
-                            <p className="text-[11px] text-text-muted mt-0.5">
-                                {currentApp?.peers?.length || 0} Target Peer(s) • Mode: <span className="capitalize">{currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}</span>
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Right: Primary Control & Config Buttons */}
-                    <div className="flex flex-wrap items-center gap-2">
-                        <button
-                            onClick={handleToggleListener}
-                            disabled={isActionLoading}
-                            className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
-                                metrics?.listenerState === 'listening'
-                                    ? 'bg-card-secondary hover:bg-card-hover text-amber-600 dark:text-amber-400 border border-amber-500/30'
-                                    : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-                            }`}
-                        >
-                            <Server size={14} />
-                            {metrics?.listenerState === 'listening' ? 'Stop Listener' : 'Start Listener'}
-                        </button>
-
-                        <button
-                            onClick={handleToggleClient}
-                            disabled={isActionLoading}
-                            title={!currentApp?.peers?.length ? 'No target peers configured — click to configure peers' : ''}
-                            className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
-                                metrics?.clientWorkloadRunning
-                                    ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40'
-                                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
-                            }`}
-                        >
-                            {metrics?.clientWorkloadRunning ? <Square size={14} /> : <Play size={14} />}
-                            {metrics?.clientWorkloadRunning ? 'Stop Client Workload' : 'Start Client Workload'}
-                        </button>
-
-                        <div className="h-5 w-px bg-border mx-1 hidden sm:block" />
-
-                        <button
-                            onClick={() => {
-                                setEditingApp(currentApp || null);
-                                setIsWizardOpen(true);
-                            }}
-                            className="h-[38px] px-3 py-2 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                        >
-                            <Edit3 size={14} /> Edit Profile
-                        </button>
-
-                        <button
-                            onClick={() => setIsPrismaModalOpen(true)}
-                            className="h-[38px] px-3.5 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                            title="Push and register this custom application definition to Prisma SD-WAN via Cloud Controller API"
-                        >
-                            <Cloud size={14} />
-                            <span>Push to Prisma SD-WAN</span>
-                        </button>
-                    </div>
-                </div>
-
-                {/* Row 2: Live Status Badges & Quick Context Details */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border/70 text-xs">
-                    {/* Live Status Badges */}
-                    <div className="flex flex-wrap items-center gap-2">
-                        {metrics && (() => {
-                            const health = calculateHealthScore();
-                            return (
-                                <>
-                                    <div
-                                        title={health.reason}
-                                        className={`h-8 px-3 rounded-lg text-xs font-black border flex items-center gap-1.5 cursor-help transition-all shadow-sm ${
-                                            health.color === 'emerald'
-                                                ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
-                                                : health.color === 'amber'
-                                                ? 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400'
-                                                : 'bg-rose-500/15 border-rose-500/50 text-rose-600 dark:text-rose-400 animate-pulse'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-1 font-mono">
-                                            <span className="text-[12px]">{health.score}</span>
-                                            <span className="text-[9px] opacity-70">/100</span>
-                                        </div>
-                                        <span className="text-[10px] uppercase tracking-wider font-extrabold">{health.label}</span>
-                                    </div>
-
-                                    <span className="h-8 text-xs text-text-muted bg-card-secondary border border-border px-3 rounded-lg flex items-center gap-1.5 shadow-sm">
-                                        <Server size={12} className={metrics.listenerState === 'listening' ? 'text-emerald-500' : 'text-text-muted'} />
-                                        <span>Listener:</span>
-                                        <strong className={`uppercase font-bold ${metrics.listenerState === 'listening' ? 'text-emerald-600 dark:text-emerald-400' : 'text-text-muted'}`}>
-                                            {metrics.listenerState}
-                                        </strong>
-                                    </span>
-
-                                    {incomingSessions.length > 0 && (
-                                        <span className="h-8 text-xs text-emerald-500 bg-emerald-500/10 border border-emerald-500/30 px-3 rounded-lg flex items-center gap-1.5 shadow-sm font-bold" title={`${incomingSessions.length} active incoming server session(s) currently connected and receiving traffic`}>
-                                            <ArrowDownRight size={12} className="animate-pulse" />
-                                            <span>RX Active ({incomingSessions.length})</span>
-                                        </span>
-                                    )}
-
-                                    {metrics.clientWorkloadRunning && (
-                                        <span className="h-8 text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/30 px-3 rounded-lg flex items-center gap-1.5 shadow-sm font-bold" title={`${outgoingSessions.filter(s => s.state === 'connected').length} active outgoing client session(s) transmitting traffic`}>
-                                            <ArrowUpRight size={12} className="animate-pulse" />
-                                            <span>TX Active ({outgoingSessions.filter(s => s.state === 'connected').length})</span>
-                                        </span>
-                                    )}
-
-                                    {currentApp?.startup?.startClientWorkload && (
-                                        <span className="h-8 text-xs text-amber-500 bg-amber-500/10 border border-amber-500/30 px-3 rounded-lg flex items-center gap-1.5 shadow-sm font-bold" title="Zero-Touch Auto-Start enabled: client workload starts automatically on sync and boot">
-                                            <Zap size={12} className="fill-amber-500" />
-                                            <span>ZTP Auto-Start</span>
-                                        </span>
-                                    )}
-                                </>
-                            );
-                        })()}
-                    </div>
-
-                    {/* Quick Metadata Info */}
-                    <div className="flex items-center gap-3 text-text-muted text-[11px] font-mono">
-                        <span className="bg-card-secondary px-2 py-0.5 rounded border border-border font-semibold text-text-primary">
-                            TCP Port {currentApp?.listener?.port}
-                        </span>
-                        <span>•</span>
-                        <span>{currentApp?.peers?.length || 0} Target Peer(s)</span>
-                        <span>•</span>
-                        <span className="capitalize">{currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}</span>
-                    </div>
-                </div>
             </div>
 
             {/* Metrics Overview Cards */}
             {(() => {
-                const serverRx = incomingSessions.reduce((acc, s) => acc + (s.bytesReceived || 0), 0) || (metrics?.serverRxBytes ?? (metrics?.totalRxBytes || 0));
+                const serverRx = incomingSessions.reduce((acc, s) => acc + (s.bytesReceived || 0), 0) || (metrics?.serverRxBytes ?? 0);
                 const serverTx = incomingSessions.reduce((acc, s) => acc + (s.bytesSent || 0), 0) || (metrics?.serverTxBytes ?? 0);
                 const liveServerRxBps = incomingSessions.reduce((acc, s) => acc + (s.rxBps || 0), 0) || (metrics?.liveRxBps ?? 0);
-                const liveServerTxBps = incomingSessions.reduce((acc, s) => acc + (s.txBps || 0), 0) || (metrics?.liveTxBps ?? 0);
                 const liveServerTps = Number((incomingSessions.reduce((acc, s) => acc + (s.tps || 0), 0) || (metrics?.liveTps ?? 0)).toFixed(1));
 
-                const clientTx = outgoingSessions.reduce((acc, s) => acc + (s.bytesSent || 0), 0) || (metrics?.clientTxBytes ?? (metrics?.clientWorkloadRunning ? metrics?.totalTxBytes || 0 : 0));
+                const clientTx = outgoingSessions.reduce((acc, s) => acc + (s.bytesSent || 0), 0) || (metrics?.clientTxBytes ?? 0);
                 const clientRx = outgoingSessions.reduce((acc, s) => acc + (s.bytesReceived || 0), 0) || (metrics?.clientRxBytes ?? 0);
                 const liveClientTxBps = outgoingSessions.reduce((acc, s) => acc + (s.txBps || 0), 0) || (metrics?.liveTxBps ?? 0);
-                const liveClientRxBps = outgoingSessions.reduce((acc, s) => acc + (s.rxBps || 0), 0) || (metrics?.liveRxBps ?? 0);
                 const liveClientTps = Number((outgoingSessions.reduce((acc, s) => acc + (s.tps || 0), 0) || (metrics?.liveTps ?? 0)).toFixed(1));
 
                 const avgJitter = metrics?.jitterMs ?? (outgoingSessions.length > 0
@@ -658,7 +507,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
                             <div className="flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
-                                    <ArrowDownRight size={16} /> Incoming Sessions (Server)
+                                    <ArrowDownRight size={16} /> Incoming Sessions
                                 </span>
                                 <span className="font-mono text-[11px] text-text-muted">Port {currentApp?.listener?.port}</span>
                             </div>
@@ -684,7 +533,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
                             <div className="flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                                    <ArrowUpRight size={16} /> Outgoing Sessions (Client)
+                                    <ArrowUpRight size={16} /> Outgoing Sessions
                                 </span>
                                 <span className="font-mono text-[11px] text-text-muted">{currentApp?.peers?.length || 0} peers</span>
                             </div>
@@ -703,9 +552,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             <div className="mt-2 text-[11px] text-text-muted flex items-center justify-between pt-2.5 border-t border-border">
                                 <span className="truncate max-w-[55%]">
                                     Mode: <strong className="text-text-secondary font-medium">
-                                        {currentApp?.clientDefaults?.mode === 'persistent_request_reply'
-                                            ? 'Persistent Req/Reply'
-                                            : currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}
+                                        {currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}
                                     </strong>
                                 </span>
                                 <span className="whitespace-nowrap">
@@ -775,7 +622,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                         type="text"
                         value={sessionSearch}
                         onChange={e => setSessionSearch(e.target.value)}
-                        placeholder="Filter sessions in real-time by site name, peer, IP, port, or state (e.g. DC1, BR5, connected, 8443)..."
+                        placeholder="Filter sessions in real-time by origin, site, peer, IP, port, or state (e.g. DC1, BR5, connected, 8443)..."
                         className="w-full pl-9 pr-8 py-2 bg-card-secondary/70 border border-border focus:border-indigo-500 rounded-xl text-xs text-text-primary placeholder:text-text-muted outline-none transition-all font-sans"
                     />
                     {sessionSearch && (
@@ -788,14 +635,6 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                         </button>
                     )}
                 </div>
-                {sessionSearch && (
-                    <div className="flex items-center gap-2 text-xs font-mono">
-                        <span className="text-text-muted font-sans">Filtered:</span>
-                        <span className="px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[11px] font-bold">
-                            {filteredIncomingSessions.length} incoming / {filteredOutgoingSessions.length} outgoing
-                        </span>
-                    </div>
-                )}
             </div>
 
             {/* LIVE TABLES SECTION */}
@@ -808,8 +647,8 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                 <ArrowDownRight size={18} />
                             </div>
                             <div>
-                                <h3 className="text-sm font-bold text-text-primary">Incoming Client Sessions</h3>
-                                <p className="text-[11px] text-text-muted">Remote Stigix nodes connecting to local port {currentApp?.listener?.port}</p>
+                                <h3 className="text-sm font-bold text-text-primary">Incoming Sessions</h3>
+                                <p className="text-[11px] text-text-muted">Remote nodes connecting to local port {currentApp?.listener?.port}</p>
                             </div>
                         </div>
                         <span className="text-xs bg-card-secondary border border-border px-3 py-1 rounded-xl text-indigo-600 dark:text-indigo-400 font-bold shadow-sm">
@@ -831,71 +670,67 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                 <thead>
                                     <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
                                         <th className="pb-3 px-3 whitespace-nowrap">Declared Origin</th>
-                                        <th className="pb-3 px-3 whitespace-nowrap">Observed Socket IP</th>
-                                        <th className="pb-3 px-3 whitespace-nowrap">Peer Source</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap">Source IP</th>
                                         <th className="pb-3 px-3 whitespace-nowrap">State & Uptime</th>
                                         <th className="pb-3 px-4 text-right whitespace-nowrap">RX / TX</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
-                                    {filteredIncomingSessions.map(s => (
-                                        <tr
-                                            key={s.sessionId}
-                                            onClick={() => setDeepDiveSession({ ...s, isIncoming: true })}
-                                            className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
-                                            title="Click to open full Session Deep Dive"
-                                        >
-                                            <td className="py-3 px-3 font-semibold text-text-primary whitespace-nowrap">
-                                                <span className="group-hover:text-indigo-500 transition-colors" title={`Hostname: ${s.declaredHostname || 'n/a'} | ID: ${s.sessionId}`}>
-                                                    {s.declaredSiteName || s.declaredHostname || s.sessionId}
-                                                </span>
-                                            </td>
-                                            <td className="py-3 px-3 font-mono text-text-secondary text-[11px] whitespace-nowrap">
-                                                {s.remoteIp}:{s.remotePort}
-                                            </td>
-                                            <td className="py-3 px-3 whitespace-nowrap">
-                                                {s.isConfiguredPeer ? (
-                                                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold" title={`Configured Target: ${s.matchedPeerName}`}>
-                                                        Configured ({s.matchedPeerName})
-                                                    </span>
-                                                ) : s.declaredSiteName ? (
-                                                    <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/30 text-[10px] font-semibold inline-flex items-center gap-1" title={`Dynamically connected peer from branch site: ${s.declaredSiteName}`}>
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>
-                                                        Dynamic Peer
-                                                    </span>
-                                                ) : (
-                                                    <span className="px-2 py-0.5 rounded bg-card-secondary text-text-muted border border-border text-[10px]" title="Generic TCP client connection">
-                                                        External Ingress
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="py-3 px-3 whitespace-nowrap">
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                                        s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
-                                                        s.state === 'delayed' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30' : 'bg-card-secondary text-text-muted border border-border'
-                                                    }`}>
-                                                        {s.state}
-                                                    </span>
-                                                    {(s.uptimeSec ?? 0) > 0 && (
-                                                        <span className="text-[10px] text-text-muted font-mono whitespace-nowrap">
-                                                            {formatUptime(s.uptimeSec)}
+                                    {filteredIncomingSessions.map(s => {
+                                        const isStigixPeer = Boolean((s.declaredSiteName && s.declaredSiteName !== 'Handshaking...') || s.declaredHostname || s.matchedPeerName);
+                                        const originLabel = isStigixPeer
+                                            ? ((s.declaredSiteName && s.declaredSiteName !== 'Handshaking...' ? s.declaredSiteName : (s.declaredHostname || s.matchedPeerName)) || s.sessionId)
+                                            : (s.state === 'handshaking' ? 'Handshaking...' : 'External Client');
+
+                                        return (
+                                            <tr
+                                                key={s.sessionId}
+                                                onClick={() => setDeepDiveSession({ ...s, isIncoming: true })}
+                                                className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
+                                                title="Click to open full Session Deep Dive"
+                                            >
+                                                <td className="py-3 px-3 font-semibold text-text-primary whitespace-nowrap">
+                                                    {isStigixPeer ? (
+                                                        <span className="group-hover:text-indigo-500 transition-colors" title={`Hostname: ${s.declaredHostname || 'n/a'} | ID: ${s.sessionId}`}>
+                                                            {originLabel}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-text-muted italic font-normal" title={`External TCP client connection | ID: ${s.sessionId}`}>
+                                                            {originLabel}
                                                         </span>
                                                     )}
-                                                </div>
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-mono text-[11px] whitespace-nowrap">
-                                                <div>
-                                                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">{formatBytes(s.bytesReceived)}</span> / <span className="text-indigo-600 dark:text-indigo-400 font-bold">{formatBytes(s.bytesSent)}</span>
-                                                </div>
-                                                {(s.rxBps ?? 0) > 0 && (
-                                                    <div className="text-[10px] text-emerald-500 font-bold tracking-tight">
-                                                        ⚡ {formatBitrate(s.rxBps)}
+                                                </td>
+                                                <td className="py-3 px-3 font-mono text-text-secondary text-[11px] whitespace-nowrap">
+                                                    {s.remoteIp}:{s.remotePort}
+                                                </td>
+                                                <td className="py-3 px-3 whitespace-nowrap">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                                            s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
+                                                            s.state === 'delayed' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30' : 'bg-card-secondary text-text-muted border border-border'
+                                                        }`}>
+                                                            {s.state}
+                                                        </span>
+                                                        {(s.uptimeSec ?? 0) > 0 && (
+                                                            <span className="text-[10px] text-text-muted font-mono whitespace-nowrap">
+                                                                {formatUptime(s.uptimeSec)}
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                </td>
+                                                <td className="py-3 px-4 text-right font-mono text-[11px] whitespace-nowrap">
+                                                    <div>
+                                                        <span className="text-emerald-600 dark:text-emerald-400 font-bold">{formatBytes(s.bytesReceived)}</span> / <span className="text-indigo-600 dark:text-indigo-400 font-bold">{formatBytes(s.bytesSent)}</span>
+                                                    </div>
+                                                    {(s.rxBps ?? 0) > 0 && (
+                                                        <div className="text-[10px] text-emerald-500 font-bold tracking-tight">
+                                                            ⚡ {formatBitrate(s.rxBps)}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         )}
@@ -910,8 +745,8 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                 <ArrowUpRight size={18} />
                             </div>
                             <div>
-                                <h3 className="text-sm font-bold text-text-primary">Outgoing Client Workload</h3>
-                                <p className="text-[11px] text-text-muted">Active sessions opened from this node to remote peers</p>
+                                <h3 className="text-sm font-bold text-text-primary">Outgoing Sessions</h3>
+                                <p className="text-[11px] text-text-muted">Active streams opened from this node to remote peers</p>
                             </div>
                         </div>
                         <span className="text-xs bg-card-secondary border border-border px-3 py-1 rounded-xl text-emerald-600 dark:text-emerald-400 font-bold shadow-sm">
@@ -938,12 +773,12 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                         </button>
                                     </div>
                                 ) : (
-                                    <div className="italic">Client workload is currently stopped. Click "Start Client Workload" above.</div>
+                                    <div className="italic">Client is currently stopped. Click "Start Client" above.</div>
                                 )}
                             </div>
                         ) : filteredOutgoingSessions.length === 0 ? (
                             <div className="py-12 text-center text-xs text-text-muted italic">
-                                No outgoing workload targets match "{sessionSearch}".
+                                No outgoing sessions match "{sessionSearch}".
                             </div>
                         ) : (
                             <table className="w-full text-left text-xs border-collapse">
@@ -961,7 +796,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                     {filteredOutgoingSessions.map(s => {
                                         const peerSessions = outgoingSessions.filter(x => x.peerId === s.peerId || x.peerName === s.peerName);
                                         const sessionIndex = peerSessions.findIndex(x => x.sessionId === s.sessionId) + 1;
-                                        const streamBadge = peerSessions.length > 1 ? `Stream #${sessionIndex}` : null;
+                                        const streamBadge = peerSessions.length > 1 ? `#${sessionIndex}` : null;
                                         return (
                                             <tr
                                                 key={s.sessionId}
