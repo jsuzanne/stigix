@@ -70,9 +70,9 @@ export const MicroSparkline: React.FC<MicroSparklineProps> = ({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                 />
-                {/* Pulsing endpoint */}
+                {/* Crisp endpoint indicator */}
                 <circle cx={lastPoint.x} cy={lastPoint.y} r="2" fill={color} />
-                <circle cx={lastPoint.x} cy={lastPoint.y} r="4" fill={color} opacity="0.4" className="animate-ping" />
+                <circle cx={lastPoint.x} cy={lastPoint.y} r="3.5" fill={color} opacity="0.25" />
             </svg>
         </div>
     );

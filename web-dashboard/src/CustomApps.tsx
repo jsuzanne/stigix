@@ -787,9 +787,9 @@ const secs = seconds % 60;
                                         <th className="pb-3 px-3 whitespace-nowrap">Target Peer</th>
                                         <th className="pb-3 px-3 whitespace-nowrap">Remote Endpoint</th>
                                         <th className="pb-3 px-3 whitespace-nowrap">State & Uptime</th>
-                                        <th className="pb-3 px-4 text-right whitespace-nowrap min-w-[200px]">RTT Wave & Latency</th>
-                                        <th className="pb-3 px-3 text-center whitespace-nowrap">Reconnects</th>
-                                        <th className="pb-3 px-3 text-center whitespace-nowrap">Action</th>
+                                        <th className="pb-3 px-4 text-right whitespace-nowrap w-[240px] min-w-[240px]">RTT Wave & Latency</th>
+                                        <th className="pb-3 px-3 text-center whitespace-nowrap w-[90px] min-w-[90px]">Reconnects</th>
+                                        <th className="pb-3 px-3 text-center whitespace-nowrap w-[70px] min-w-[70px]">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
@@ -833,19 +833,21 @@ const secs = seconds % 60;
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-4 text-right font-mono text-[11px] whitespace-nowrap">
-                                                    <div className="flex items-center justify-end gap-3.5">
-                                                        {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 && (
-                                                            <div className="shrink-0">
-                                                                <MicroSparkline samples={s.rttMs.recentSamples} width={58} height={20} />
+                                                <td className="py-3 px-4 text-right font-mono text-[11px] whitespace-nowrap w-[240px] min-w-[240px]">
+                                                    <div className="flex items-center justify-end gap-3">
+                                                        {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 ? (
+                                                            <div className="w-[56px] shrink-0 flex items-center justify-center">
+                                                                <MicroSparkline samples={s.rttMs.recentSamples} width={56} height={18} />
                                                             </div>
+                                                        ) : (
+                                                            <div className="w-[56px] shrink-0" />
                                                         )}
-                                                        <div className="text-right">
-                                                            <div className="text-amber-600 dark:text-amber-400 font-semibold whitespace-nowrap">
+                                                        <div className="w-[135px] shrink-0 text-right">
+                                                            <div className="text-amber-600 dark:text-amber-400 font-semibold whitespace-nowrap tabular-nums">
                                                                 {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
                                                             </div>
                                                             {s.rttMs.avg > 0 && (
-                                                                <div className="text-[10px] text-cyan-500 flex items-center justify-end gap-1 font-sans mt-0.5 whitespace-nowrap">
+                                                                <div className="text-[10px] text-cyan-500 flex items-center justify-end gap-1 font-sans mt-0.5 whitespace-nowrap tabular-nums">
                                                                     <span>Jitter: ± {s.rttMs.jitterMs ?? 0} ms</span>
                                                                     {(s.txBps ?? 0) > 0 && (
                                                                         <>
@@ -858,10 +860,10 @@ const secs = seconds % 60;
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-3 text-center font-mono text-[11px] text-text-muted whitespace-nowrap">
+                                                <td className="py-3 px-3 text-center font-mono text-[11px] text-text-muted whitespace-nowrap w-[90px] min-w-[90px]">
                                                     {s.reconnects}
                                                 </td>
-                                                <td className="py-3 px-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                                                <td className="py-3 px-3 text-center whitespace-nowrap w-[70px] min-w-[70px]" onClick={e => e.stopPropagation()}>
                                                     <button
                                                         onClick={() => {
                                                             setPeerTestModal({
