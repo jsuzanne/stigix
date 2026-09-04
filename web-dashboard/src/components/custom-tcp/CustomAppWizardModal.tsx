@@ -20,6 +20,77 @@ function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
 }
 
+const SERVER_BEHAVIOR_INFO: Record<ServerBehaviorMode, { title: string; explanation: string; example: string }> = {
+    echo: {
+        title: 'Echo Mode',
+        explanation: 'Immediately reflects back the exact TCP payload received from the client with zero synthetic delay.',
+        example: 'Ideal for baseline latency (RTT) measurement, bandwidth benchmarks, and standard bidirectional traffic testing.'
+    },
+    acknowledge: {
+        title: 'Acknowledge Mode',
+        explanation: 'Returns an ultra-compact lightweight ACK header without echoing the payload bytes.',
+        example: 'Minimizes server-to-client bandwidth consumption while confirming message delivery and tracking round-trip time.'
+    },
+    fixed_delay: {
+        title: 'Fixed Delay Simulation',
+        explanation: 'Injects a constant synthetic delay on every server response frame.',
+        example: 'Simulates predictable high-latency WAN, transcontinental links, or slow backend database processing.'
+    },
+    random_delay: {
+        title: 'Random Jittered Delay',
+        explanation: 'Applies a jittered delay chosen randomly between Min and Max for every outgoing response.',
+        example: 'Simulates network jitter, bufferbloat, and variable cellular/satellite link conditions.'
+    },
+    looping_delay: {
+        title: 'Cyclic SLA Degradation (Looping Delay)',
+        explanation: 'Cycles periodically between a Normal Phase (0 ms injected) and a Slow Phase (+latency delay).',
+        example: 'e.g. 60s @ 0ms delay, then 60s @ +1000ms delay. Tests SD-WAN Dynamic Path Selection (DPS) SLA failover and hold-down failback without pulling cables.'
+    },
+    drop_response: {
+        title: 'Drop Response (Packet Loss)',
+        explanation: 'Silently drops server responses at the configured probability rate while keeping TCP sessions established.',
+        example: 'Tests client timeout handling, retransmission behavior, and socket recovery under partial packet loss.'
+    },
+    close_connection: {
+        title: 'Close Connection',
+        explanation: 'Abruptly terminates the TCP connection after receiving requests on the socket.',
+        example: 'Validates client auto-reconnect resilience, TCP handshake overhead, and session re-establishment.'
+    },
+    error_response: {
+        title: 'Error Response Simulation',
+        explanation: 'Returns a simulated application-level error payload frame with a custom error code.',
+        example: 'Validates client error handling, fallback logic, and monitoring alarm thresholds.'
+    }
+};
+
+const CLIENT_WORKLOAD_INFO: Record<ClientWorkloadMode, { title: string; explanation: string; example: string }> = {
+    persistent_request_reply: {
+        title: 'Persistent Sessions (Default)',
+        explanation: 'Maintains long-lived stateful TCP connections and periodically exchanges request/reply frames at the configured cadence.',
+        example: 'Simulates persistent enterprise workloads like ERP, database connections, and interactive client-server sessions.'
+    },
+    transactional: {
+        title: 'Transactional Mode',
+        explanation: 'Opens a fresh TCP connection for each request, completes the transaction, and closes the socket immediately.',
+        example: 'Simulates REST APIs, microservices, and short-lived HTTP/HTTPS web transactions.'
+    },
+    heartbeat: {
+        title: 'Heartbeat Probing',
+        explanation: 'Sends ultra-lightweight keepalive probes at steady intervals with minimal bandwidth consumption.',
+        example: 'Ideal for continuous background tunnel liveness, path SLA monitoring, and link health telemetry.'
+    },
+    bulk_burst: {
+        title: 'Bulk Burst Traffic',
+        explanation: 'Emits high-density batches of requests in rapid bursts followed by quiet idle cooldown periods.',
+        example: 'Simulates file transfers, periodic database replication syncs, and large batch data export spikes.'
+    },
+    continuous_stream: {
+        title: 'Continuous Streaming',
+        explanation: 'Generates uninterrupted high-frequency bidirectional TCP frames as fast as allowable.',
+        example: 'Simulates real-time telemetry pipelines, IoT sensor streams, and high-throughput data replication.'
+    }
+};
+
 interface CustomAppWizardModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -646,6 +717,24 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Contextual Mode Helper / Real-World Scenario */}
+                                {SERVER_BEHAVIOR_INFO[formData.serverBehavior.mode] && (
+                                    <div className="p-3 bg-card border border-border rounded-xl flex items-start gap-2.5 text-xs shadow-inner">
+                                        <HelpCircle size={15} className="text-indigo-500 flex-shrink-0 mt-0.5" />
+                                        <div className="space-y-0.5">
+                                            <div className="font-semibold text-text-primary text-xs">
+                                                {SERVER_BEHAVIOR_INFO[formData.serverBehavior.mode].title}
+                                            </div>
+                                            <p className="text-text-muted leading-relaxed text-[11px]">
+                                                {SERVER_BEHAVIOR_INFO[formData.serverBehavior.mode].explanation}{' '}
+                                                <span className="text-indigo-600 dark:text-indigo-300 font-medium">
+                                                    {SERVER_BEHAVIOR_INFO[formData.serverBehavior.mode].example}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -745,6 +834,24 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                         <span className="text-[10px] text-text-muted mt-1 block">Max wait for server reply</span>
                                     </div>
                                 </div>
+
+                                {/* Dynamic Workload Mode Contextual Helper */}
+                                {CLIENT_WORKLOAD_INFO[formData.clientDefaults.mode] && (
+                                    <div className="p-3 bg-card border border-border rounded-xl flex items-start gap-2.5 text-xs shadow-inner">
+                                        <HelpCircle size={15} className="text-emerald-500 flex-shrink-0 mt-0.5" />
+                                        <div className="space-y-0.5">
+                                            <div className="font-semibold text-text-primary text-xs">
+                                                {CLIENT_WORKLOAD_INFO[formData.clientDefaults.mode].title}
+                                            </div>
+                                            <p className="text-text-muted leading-relaxed text-[11px]">
+                                                {CLIENT_WORKLOAD_INFO[formData.clientDefaults.mode].explanation}{' '}
+                                                <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                                                    {CLIENT_WORKLOAD_INFO[formData.clientDefaults.mode].example}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Peers Table */}
