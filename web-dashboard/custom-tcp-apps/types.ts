@@ -346,6 +346,10 @@ export interface AppRuntimeMetrics {
     serverRxBytes?: number;
     clientTxBytes?: number;
     clientRxBytes?: number;
+    serverRequestsHandled?: number;
+    clientRequestsSent?: number;
+    serverResponsesSent?: number;
+    clientResponsesReceived?: number;
     totalRequests: number;
     totalResponses: number;
     totalTimeouts: number;
@@ -359,6 +363,12 @@ export interface AppRuntimeMetrics {
     liveTxBps?: number;
     liveRxBps?: number;
     liveTps?: number;
+    liveServerTxBps?: number;
+    liveServerRxBps?: number;
+    liveServerTps?: number;
+    liveClientTxBps?: number;
+    liveClientRxBps?: number;
+    liveClientTps?: number;
     health: AppHealthState;
 }
 
