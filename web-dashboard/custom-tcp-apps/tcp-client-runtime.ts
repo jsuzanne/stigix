@@ -474,7 +474,7 @@ export class TcpClientRuntime extends EventEmitter {
                 } else {
                     session.state.responsesReceived++;
                     session.state.lastSuccessAt = Date.now();
-                    this.metricsTracker.totalResponses++;
+                    this.metricsTracker.recordClientResponse();
                 }
             }
 
@@ -515,7 +515,7 @@ export class TcpClientRuntime extends EventEmitter {
 
                 session.state.responsesReceived++;
                 session.state.lastSuccessAt = Date.now();
-                this.metricsTracker.totalResponses++;
+                this.metricsTracker.recordClientResponse();
             }
         } else if (msg.type === 'ERROR') {
             const err = msg as ErrorMessage;
@@ -594,7 +594,7 @@ export class TcpClientRuntime extends EventEmitter {
             session.socket.write(buf);
             session.state.requestsSent++;
             session.state.bytesSent += buf.length;
-            this.metricsTracker.totalRequests++;
+            this.metricsTracker.recordClientRequest();
             this.metricsTracker.recordClientTx(buf.length);
 
             const timer = setTimeout(() => {
@@ -628,7 +628,7 @@ export class TcpClientRuntime extends EventEmitter {
         session.socket.write(buf);
         session.state.requestsSent++;
         session.state.bytesSent += buf.length;
-        this.metricsTracker.totalRequests++;
+        this.metricsTracker.recordClientRequest();
         this.metricsTracker.recordClientTx(buf.length);
 
         // Track timeout for this specific request

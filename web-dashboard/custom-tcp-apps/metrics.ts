@@ -123,6 +123,10 @@ export class AppMetricsTracker {
     public serverRxBytes: number = 0;
     public clientTxBytes: number = 0;
     public clientRxBytes: number = 0;
+    public serverRequestsHandled: number = 0;
+    public clientRequestsSent: number = 0;
+    public serverResponsesSent: number = 0;
+    public clientResponsesReceived: number = 0;
     public totalRequests: number = 0;
     public totalResponses: number = 0;
     public totalTimeouts: number = 0;
@@ -135,9 +139,22 @@ export class AppMetricsTracker {
     private prevTxBytes: number = 0;
     private prevRxBytes: number = 0;
     private prevRequests: number = 0;
+    private prevServerTxBytes: number = 0;
+    private prevServerRxBytes: number = 0;
+    private prevServerRequests: number = 0;
+    private prevClientTxBytes: number = 0;
+    private prevClientRxBytes: number = 0;
+    private prevClientRequests: number = 0;
+
     private liveTxBps: number = 0;
     private liveRxBps: number = 0;
     private liveTps: number = 0;
+    private liveServerTxBps: number = 0;
+    private liveServerRxBps: number = 0;
+    private liveServerTps: number = 0;
+    private liveClientTxBps: number = 0;
+    private liveClientRxBps: number = 0;
+    private liveClientTps: number = 0;
 
     private readonly globalRttTracker = new RollingRttTracker(200);
 
@@ -154,6 +171,10 @@ export class AppMetricsTracker {
         this.serverRxBytes = 0;
         this.clientTxBytes = 0;
         this.clientRxBytes = 0;
+        this.serverRequestsHandled = 0;
+        this.clientRequestsSent = 0;
+        this.serverResponsesSent = 0;
+        this.clientResponsesReceived = 0;
         this.totalRequests = 0;
         this.totalResponses = 0;
         this.totalTimeouts = 0;
@@ -163,9 +184,21 @@ export class AppMetricsTracker {
         this.prevTxBytes = 0;
         this.prevRxBytes = 0;
         this.prevRequests = 0;
+        this.prevServerTxBytes = 0;
+        this.prevServerRxBytes = 0;
+        this.prevServerRequests = 0;
+        this.prevClientTxBytes = 0;
+        this.prevClientRxBytes = 0;
+        this.prevClientRequests = 0;
         this.liveTxBps = 0;
         this.liveRxBps = 0;
         this.liveTps = 0;
+        this.liveServerTxBps = 0;
+        this.liveServerRxBps = 0;
+        this.liveServerTps = 0;
+        this.liveClientTxBps = 0;
+        this.liveClientRxBps = 0;
+        this.liveClientTps = 0;
         this.lastRateCalcTs = Date.now();
         this.globalRttTracker.reset();
     }
@@ -192,6 +225,16 @@ export class AppMetricsTracker {
         this.totalRxBytes += bytes;
     }
 
+    public recordServerRequest(): void {
+        this.serverRequestsHandled++;
+        this.totalRequests++;
+    }
+
+    public recordServerResponse(): void {
+        this.serverResponsesSent++;
+        this.totalResponses++;
+    }
+
     public recordClientTx(bytes: number): void {
         this.clientTxBytes += bytes;
         this.totalTxBytes += bytes;
@@ -200,6 +243,16 @@ export class AppMetricsTracker {
     public recordClientRx(bytes: number): void {
         this.clientRxBytes += bytes;
         this.totalRxBytes += bytes;
+    }
+
+    public recordClientRequest(): void {
+        this.clientRequestsSent++;
+        this.totalRequests++;
+    }
+
+    public recordClientResponse(): void {
+        this.clientResponsesReceived++;
+        this.totalResponses++;
     }
 
     public getSnapshot(activeIncoming: number, activeOutgoing: number): AppRuntimeMetrics {
@@ -212,9 +265,38 @@ export class AppMetricsTracker {
             this.liveTxBps = Math.max(0, Math.round(((this.totalTxBytes - this.prevTxBytes) * 8) / deltaSec));
             this.liveRxBps = Math.max(0, Math.round(((this.totalRxBytes - this.prevRxBytes) * 8) / deltaSec));
             this.liveTps = Number((Math.max(0, (this.totalRequests - this.prevRequests)) / deltaSec).toFixed(1));
+
+            // Separate Server Rates (0 if no incoming sessions)
+            if (activeIncoming > 0) {
+                this.liveServerTxBps = Math.max(0, Math.round(((this.serverTxBytes - this.prevServerTxBytes) * 8) / deltaSec));
+                this.liveServerRxBps = Math.max(0, Math.round(((this.serverRxBytes - this.prevServerRxBytes) * 8) / deltaSec));
+                this.liveServerTps = Number((Math.max(0, (this.serverRequestsHandled - this.prevServerRequests)) / deltaSec).toFixed(1));
+            } else {
+                this.liveServerTxBps = 0;
+                this.liveServerRxBps = 0;
+                this.liveServerTps = 0;
+            }
+
+            // Separate Client Rates (0 if no outgoing sessions)
+            if (activeOutgoing > 0) {
+                this.liveClientTxBps = Math.max(0, Math.round(((this.clientTxBytes - this.prevClientTxBytes) * 8) / deltaSec));
+                this.liveClientRxBps = Math.max(0, Math.round(((this.clientRxBytes - this.prevClientRxBytes) * 8) / deltaSec));
+                this.liveClientTps = Number((Math.max(0, (this.clientRequestsSent - this.prevClientRequests)) / deltaSec).toFixed(1));
+            } else {
+                this.liveClientTxBps = 0;
+                this.liveClientRxBps = 0;
+                this.liveClientTps = 0;
+            }
+
             this.prevTxBytes = this.totalTxBytes;
             this.prevRxBytes = this.totalRxBytes;
             this.prevRequests = this.totalRequests;
+            this.prevServerTxBytes = this.serverTxBytes;
+            this.prevServerRxBytes = this.serverRxBytes;
+            this.prevServerRequests = this.serverRequestsHandled;
+            this.prevClientTxBytes = this.clientTxBytes;
+            this.prevClientRxBytes = this.clientRxBytes;
+            this.prevClientRequests = this.clientRequestsSent;
             this.lastRateCalcTs = now;
         }
 
@@ -245,6 +327,10 @@ export class AppMetricsTracker {
             serverRxBytes: this.serverRxBytes,
             clientTxBytes: this.clientTxBytes,
             clientRxBytes: this.clientRxBytes,
+            serverRequestsHandled: this.serverRequestsHandled,
+            clientRequestsSent: this.clientRequestsSent,
+            serverResponsesSent: this.serverResponsesSent,
+            clientResponsesReceived: this.clientResponsesReceived,
             totalRequests: this.totalRequests,
             totalResponses: this.totalResponses,
             totalTimeouts: this.totalTimeouts,
@@ -258,6 +344,12 @@ export class AppMetricsTracker {
             liveTxBps: this.liveTxBps,
             liveRxBps: this.liveRxBps,
             liveTps: this.liveTps,
+            liveServerTxBps: this.liveServerTxBps,
+            liveServerRxBps: this.liveServerRxBps,
+            liveServerTps: this.liveServerTps,
+            liveClientTxBps: this.liveClientTxBps,
+            liveClientRxBps: this.liveClientRxBps,
+            liveClientTps: this.liveClientTps,
             health
         };
     }

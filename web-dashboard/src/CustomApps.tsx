@@ -675,13 +675,16 @@ const secs = seconds % 60;
             {(() => {
                 const serverRx = incomingSessions.reduce((acc, s) => acc + (s.bytesReceived || 0), 0) || (metrics?.serverRxBytes ?? 0);
                 const serverTx = incomingSessions.reduce((acc, s) => acc + (s.bytesSent || 0), 0) || (metrics?.serverTxBytes ?? 0);
-                const liveServerRxBps = incomingSessions.reduce((acc, s) => acc + (s.rxBps || 0), 0) || (metrics?.liveRxBps ?? 0);
-                const liveServerTps = Number((incomingSessions.reduce((acc, s) => acc + (s.tps || 0), 0) || (metrics?.liveTps ?? 0)).toFixed(1));
+                const liveServerRxBps = incomingSessions.reduce((acc, s) => acc + (s.rxBps || 0), 0) || (metrics?.liveServerRxBps ?? 0);
+                const liveServerTps = Number((incomingSessions.reduce((acc, s) => acc + (s.tps || 0), 0) || (metrics?.liveServerTps ?? 0)).toFixed(1));
 
                 const clientTx = outgoingSessions.reduce((acc, s) => acc + (s.bytesSent || 0), 0) || (metrics?.clientTxBytes ?? 0);
                 const clientRx = outgoingSessions.reduce((acc, s) => acc + (s.bytesReceived || 0), 0) || (metrics?.clientRxBytes ?? 0);
-                const liveClientTxBps = outgoingSessions.reduce((acc, s) => acc + (s.txBps || 0), 0) || (metrics?.liveTxBps ?? 0);
-                const liveClientTps = Number((outgoingSessions.reduce((acc, s) => acc + (s.tps || 0), 0) || (metrics?.liveTps ?? 0)).toFixed(1));
+                const liveClientTxBps = outgoingSessions.reduce((acc, s) => acc + (s.txBps || 0), 0) || (metrics?.liveClientTxBps ?? 0);
+                const liveClientTps = Number((outgoingSessions.reduce((acc, s) => acc + (s.tps || 0), 0) || (metrics?.liveClientTps ?? 0)).toFixed(1));
+
+                const serverHandled = metrics?.serverRequestsHandled ?? (incomingSessions.length > 0 ? (metrics?.totalRequests || 0) : 0);
+                const clientReplies = metrics?.clientResponsesReceived ?? (outgoingSessions.length > 0 ? (metrics?.totalResponses || 0) : 0);
 
                 const avgJitter = metrics?.jitterMs ?? (outgoingSessions.length > 0
                     ? Number((outgoingSessions.reduce((acc, s) => acc + (s.rttMs?.jitterMs || 0), 0) / outgoingSessions.length).toFixed(1))
@@ -702,7 +705,7 @@ const secs = seconds % 60;
                                 <div className="text-right text-[11px] font-mono space-y-0.5">
                                     <div className="text-text-muted">RX: <span className="text-emerald-500 font-bold">{formatBytes(serverRx)}</span></div>
                                     <div className="text-text-muted">TX: <span className="text-indigo-400 font-bold">{formatBytes(serverTx)}</span></div>
-                                    {liveServerRxBps > 0 && (
+                                    {liveServerRxBps > 0 && incomingSessions.length > 0 && (
                                         <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold tracking-tight">
                                             ⚡ {formatBitrate(liveServerRxBps)}
                                         </div>
@@ -711,7 +714,7 @@ const secs = seconds % 60;
                             </div>
                             <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
                                 <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.serverBehavior?.mode.replace('_', ' ')}</strong></span>
-                                <span>Handled: <strong className="text-text-secondary">{metrics?.totalRequests || 0}</strong> {liveServerTps > 0 && <span className="text-indigo-500 font-mono text-[10px]">({liveServerTps} tps)</span>}</span>
+                                <span>Handled: <strong className="text-text-secondary">{serverHandled}</strong> {liveServerTps > 0 && incomingSessions.length > 0 && <span className="text-indigo-500 font-mono text-[10px]">({liveServerTps} tps)</span>}</span>
                             </div>
                         </div>
 
@@ -742,7 +745,7 @@ const secs = seconds % 60;
                                     </strong>
                                 </span>
                                 <span className="whitespace-nowrap">
-                                    Replies: <strong className="text-text-secondary">{metrics?.totalResponses || 0}</strong>{' '}
+                                    Replies: <strong className="text-text-secondary">{clientReplies}</strong>{' '}
                                     {liveClientTps > 0 && <span className="text-emerald-500 font-mono text-[10px] font-bold">({liveClientTps} tps)</span>}
                                 </span>
                             </div>

@@ -332,7 +332,7 @@ export class TcpServerRuntime extends EventEmitter {
 
         client.requestCount++;
         state.requestsHandled++;
-        this.metricsTracker.totalRequests++;
+        this.metricsTracker.recordServerRequest();
 
         const behavior = this.appConfig.serverBehavior;
 
@@ -398,7 +398,7 @@ export class TcpServerRuntime extends EventEmitter {
                 state.bytesSent += fullResp.length;
                 state.state = 'connected';
                 this.metricsTracker.recordServerTx(fullResp.length);
-                this.metricsTracker.totalResponses++;
+                this.metricsTracker.recordServerResponse();
 
                 if (isClose) {
                     socket.end();
@@ -437,7 +437,7 @@ export class TcpServerRuntime extends EventEmitter {
             state.bytesSent += fullResp.length;
             state.state = 'connected';
             this.metricsTracker.recordServerTx(fullResp.length);
-            this.metricsTracker.totalResponses++;
+            this.metricsTracker.recordServerResponse();
 
             if (isClose) {
                 socket.end();
@@ -554,7 +554,7 @@ export class TcpServerRuntime extends EventEmitter {
         const { socket, state } = client;
         client.requestCount++;
         state.requestsHandled++;
-        this.metricsTracker.totalRequests++;
+        this.metricsTracker.recordServerRequest();
 
         const behavior = this.appConfig.serverBehavior;
 
@@ -642,7 +642,7 @@ export class TcpServerRuntime extends EventEmitter {
             state.bytesSent += respBuf.length;
             state.state = 'connected';
             this.metricsTracker.recordServerTx(respBuf.length);
-            this.metricsTracker.totalResponses++;
+            this.metricsTracker.recordServerResponse();
         };
 
         if (delayMs > 0) {
