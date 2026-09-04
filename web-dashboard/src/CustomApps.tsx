@@ -345,7 +345,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     };
 
     return (
-        <div className="p-6 max-w-[1600px] mx-auto space-y-6 text-text-primary animate-fadeIn">
+        <div className="p-6 max-w-[1700px] w-full mx-auto space-y-6 text-text-primary animate-fadeIn">
             {/* Top Node Identity Bar */}
             <div className="bg-card border border-border rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 shadow-sm">
                 <div className="flex items-center gap-4">
@@ -380,66 +380,66 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                 )}
             </div>
 
-            {/* Multi-App Global Overview Matrix */}
-            {applications.length > 1 && (
-                <div className="bg-card border border-border rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm">
-                    <div className="flex items-center gap-2 text-text-primary font-semibold">
-                        <Layers size={15} className="text-indigo-500" />
-                        <span>Active Multi-App Matrix ({applications.length} apps configured):</span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                        {applications.map(app => {
-                            const sum = allAppSummaries[app.id];
-                            const isL = sum?.listener?.state === 'listening';
-                            const isC = sum?.clientWorkload?.state === 'running';
-                            const isSel = app.id === selectedAppId;
-                            return (
-                                <button
-                                    key={app.id}
-                                    onClick={() => setSelectedAppId(app.id)}
-                                    className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all ${
-                                        isSel
-                                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                                            : 'bg-card-secondary hover:bg-card-hover border-border text-text-secondary hover:text-text-primary'
-                                    }`}
-                                >
-                                    <span className={`w-2 h-2 rounded-full ${isL ? 'bg-emerald-500' : 'bg-text-muted/40'}`} />
-                                    <span>{app.name}</span>
-                                    <span className={`text-[10px] font-mono ${isSel ? 'text-indigo-100' : 'text-amber-600 dark:text-amber-400'}`}>:{app.listener?.port}</span>
-                                    {isC && <span className={`text-[9px] px-1 rounded font-mono font-bold ${isSel ? 'bg-white/20 text-white' : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'}`}>TX</span>}
-                                </button>
-                            );
-                        })}
-                    </div>
+            {/* Application Switcher Tab Bar (All Applications) */}
+            <div className="bg-card border border-border rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm">
+                <div className="flex items-center gap-2 text-text-primary font-semibold">
+                    <Layers size={16} className="text-indigo-500" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Applications ({applications.length}):</span>
                 </div>
-            )}
-
-            {/* Application Selector & Control Header */}
-            {/* Top Toolbar & Application Selector */}
-            <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm space-y-3.5">
-                {/* Row 1: Application Select & Primary Actions */}
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
-                    {/* Left: Application Select Dropdown */}
-                    <div className="flex items-center gap-3 flex-1">
-                        <span className="text-xs font-bold text-text-muted uppercase tracking-wider whitespace-nowrap">
-                            Application:
-                        </span>
-                        <div className="w-full max-w-sm">
-                            <select
-                                value={selectedAppId}
-                                onChange={e => setSelectedAppId(e.target.value)}
-                                className="w-full h-[38px] bg-card-secondary hover:bg-card-hover border border-border rounded-xl px-3.5 text-sm text-text-primary font-medium focus:outline-none focus:border-indigo-500 shadow-sm transition-colors cursor-pointer"
+                <div className="flex items-center gap-2 flex-wrap flex-1 justify-start">
+                    {applications.map(app => {
+                        const sum = allAppSummaries[app.id];
+                        const isL = sum?.listener?.state === 'listening';
+                        const isC = sum?.clientWorkload?.state === 'running';
+                        const isSel = app.id === selectedAppId;
+                        return (
+                            <button
+                                key={app.id}
+                                onClick={() => setSelectedAppId(app.id)}
+                                className={`px-3.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                                    isSel
+                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                        : 'bg-card-secondary hover:bg-card-hover border-border text-text-secondary hover:text-text-primary'
+                                }`}
                             >
-                                {applications.map(app => {
-                                    const sum = allAppSummaries[app.id];
-                                    const isL = sum?.listener?.state === 'listening';
-                                    return (
-                                        <option key={app.id} value={app.id}>
-                                            {isL ? '🟢' : '⚪'} {app.name} (Port :{app.listener?.port})
-                                        </option>
-                                    );
-                                })}
-                            </select>
+                                <span className={`w-2 h-2 rounded-full ${isL ? 'bg-emerald-400' : 'bg-text-muted/40'}`} />
+                                <span>{app.name}</span>
+                                <span className={`text-[10px] font-mono ${isSel ? 'text-indigo-200' : 'text-amber-500'}`}>:{app.listener?.port}</span>
+                                {isC && <span className={`text-[9px] px-1 rounded font-mono font-bold ${isSel ? 'bg-white/20 text-white' : 'bg-emerald-500/20 text-emerald-400'}`}>TX</span>}
+                            </button>
+                        );
+                    })}
+                </div>
+                <button
+                    onClick={() => {
+                        setEditingApp(null);
+                        setIsWizardOpen(true);
+                    }}
+                    className="h-[32px] px-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                >
+                    <Plus size={14} /> New App
+                </button>
+            </div>
+
+            {/* Application Toolbar & Primary Controls */}
+            <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm space-y-3.5">
+                {/* Row 1: Selected App Overview & Primary Actions */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+                    {/* Left: Active App Identity (no duplicate select) */}
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
+                            <Server size={20} />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-base font-bold text-text-primary">{currentApp?.name}</h2>
+                                <span className="font-mono text-xs text-indigo-500 font-bold bg-indigo-500/10 border border-indigo-500/30 px-2 py-0.5 rounded-lg">
+                                    Port :{currentApp?.listener?.port}
+                                </span>
+                            </div>
+                            <p className="text-[11px] text-text-muted mt-0.5">
+                                {currentApp?.peers?.length || 0} Target Peer(s) • Mode: <span className="capitalize">{currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}</span>
+                            </p>
                         </div>
                     </div>
 
@@ -448,7 +448,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                         <button
                             onClick={handleToggleListener}
                             disabled={isActionLoading}
-                            className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm ${
+                            className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
                                 metrics?.listenerState === 'listening'
                                     ? 'bg-card-secondary hover:bg-card-hover text-amber-600 dark:text-amber-400 border border-amber-500/30'
                                     : 'bg-indigo-600 hover:bg-indigo-500 text-white'
@@ -462,7 +462,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             onClick={handleToggleClient}
                             disabled={isActionLoading}
                             title={!currentApp?.peers?.length ? 'No target peers configured — click to configure peers' : ''}
-                            className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm ${
+                            className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
                                 metrics?.clientWorkloadRunning
                                     ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40'
                                     : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
@@ -482,16 +482,6 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             className="h-[38px] px-3 py-2 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                         >
                             <Edit3 size={14} /> Edit Profile
-                        </button>
-
-                        <button
-                            onClick={() => {
-                                setEditingApp(null);
-                                setIsWizardOpen(true);
-                            }}
-                            className="h-[38px] px-3 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                        >
-                            <Plus size={14} /> New App
                         </button>
 
                         <button
@@ -628,9 +618,18 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                     )}
                                 </div>
                             </div>
-                            <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
-                                <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.clientDefaults?.mode.replace(/_/g, ' ')}</strong></span>
-                                <span>Replies: <strong className="text-text-secondary">{metrics?.totalResponses || 0}</strong> {liveClientTps > 0 && <span className="text-emerald-500 font-mono text-[10px]">({liveClientTps} tps)</span>}</span>
+                            <div className="mt-2 text-[11px] text-text-muted flex items-center justify-between pt-2.5 border-t border-border">
+                                <span className="truncate max-w-[55%]">
+                                    Mode: <strong className="text-text-secondary font-medium">
+                                        {currentApp?.clientDefaults?.mode === 'persistent_request_reply'
+                                            ? 'Persistent Req/Reply'
+                                            : currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}
+                                    </strong>
+                                </span>
+                                <span className="whitespace-nowrap">
+                                    Replies: <strong className="text-text-secondary">{metrics?.totalResponses || 0}</strong>{' '}
+                                    {liveClientTps > 0 && <span className="text-emerald-500 font-mono text-[10px] font-bold">({liveClientTps} tps)</span>}
+                                </span>
                             </div>
                         </div>
 
@@ -712,11 +711,11 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
-                                        <th className="pb-2.5">Declared Origin</th>
-                                        <th className="pb-2.5">Observed Socket IP</th>
-                                        <th className="pb-2.5">Peer Match</th>
-                                        <th className="pb-2.5">State</th>
-                                        <th className="pb-2.5 text-right">RX / TX</th>
+                                        <th className="pb-3 px-3">Declared Origin</th>
+                                        <th className="pb-3 px-3">Observed Socket IP</th>
+                                        <th className="pb-3 px-3">Peer Match</th>
+                                        <th className="pb-3 px-3">State & Uptime</th>
+                                        <th className="pb-3 px-4 text-right">RX / TX</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
@@ -727,21 +726,15 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                             className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
                                             title="Click to open full Session Deep Dive"
                                         >
-                                            <td className="py-3 font-semibold text-text-primary">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="group-hover:text-indigo-500 transition-colors">{s.declaredSiteName}</span>
-                                                    {(s.uptimeSec ?? 0) > 0 && (
-                                                        <span className="px-1.5 py-0.2 bg-card-secondary border border-border text-text-muted rounded text-[9px] font-mono font-normal">
-                                                            up {formatUptime(s.uptimeSec)}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="text-[10px] text-text-muted font-mono">{s.declaredHostname || s.sessionId}</div>
+                                            <td className="py-3 px-3 font-semibold text-text-primary">
+                                                <span className="group-hover:text-indigo-500 transition-colors" title={`Hostname: ${s.declaredHostname || 'n/a'} | ID: ${s.sessionId}`}>
+                                                    {s.declaredSiteName || s.declaredHostname || s.sessionId}
+                                                </span>
                                             </td>
-                                            <td className="py-3 font-mono text-text-secondary text-[11px]">
+                                            <td className="py-3 px-3 font-mono text-text-secondary text-[11px]">
                                                 {s.remoteIp}:{s.remotePort}
                                             </td>
-                                            <td className="py-3">
+                                            <td className="py-3 px-3">
                                                 {s.isConfiguredPeer ? (
                                                     <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold">
                                                         Matched ({s.matchedPeerName})
@@ -752,15 +745,22 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                     </span>
                                                 )}
                                             </td>
-                                            <td className="py-3">
-                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                                    s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
-                                                    s.state === 'delayed' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30' : 'bg-card-secondary text-text-muted border border-border'
-                                                }`}>
-                                                    {s.state}
-                                                </span>
+                                            <td className="py-3 px-3">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                                        s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
+                                                        s.state === 'delayed' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30' : 'bg-card-secondary text-text-muted border border-border'
+                                                    }`}>
+                                                        {s.state}
+                                                    </span>
+                                                    {(s.uptimeSec ?? 0) > 0 && (
+                                                        <span className="text-[10px] text-text-muted font-mono whitespace-nowrap">
+                                                            {formatUptime(s.uptimeSec)}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
-                                            <td className="py-3 text-right font-mono text-[11px]">
+                                            <td className="py-3 px-4 text-right font-mono text-[11px]">
                                                 <div>
                                                     <span className="text-emerald-600 dark:text-emerald-400 font-bold">{formatBytes(s.bytesReceived)}</span> / <span className="text-indigo-600 dark:text-indigo-400 font-bold">{formatBytes(s.bytesSent)}</span>
                                                 </div>
@@ -808,7 +808,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                 setEditingApp(currentApp || null);
                                                 setIsWizardOpen(true);
                                             }}
-                                            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-sm"
+                                            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                                         >
                                             <Plus size={14} /> Add Target Peer
                                         </button>
@@ -821,12 +821,12 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
-                                        <th className="pb-2.5">Target Peer</th>
-                                        <th className="pb-2.5">Remote Endpoint</th>
-                                        <th className="pb-2.5">State</th>
-                                        <th className="pb-2.5 text-right">RTT Wave & Latency</th>
-                                        <th className="pb-2.5 text-right">Reconnects</th>
-                                        <th className="pb-2.5 text-center">Action</th>
+                                        <th className="pb-3 px-3">Target Peer</th>
+                                        <th className="pb-3 px-3">Remote Endpoint</th>
+                                        <th className="pb-3 px-3">State & Uptime</th>
+                                        <th className="pb-3 px-4 text-right">RTT Wave & Latency</th>
+                                        <th className="pb-3 px-3 text-center">Reconnects</th>
+                                        <th className="pb-3 px-3 text-center">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
@@ -841,7 +841,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                 className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
                                                 title="Click to open full Session Deep Dive"
                                             >
-                                                <td className="py-3 font-semibold text-text-primary">
+                                                <td className="py-3 px-3 font-semibold text-text-primary">
                                                     <div className="flex items-center gap-2">
                                                         <span className="group-hover:text-emerald-500 transition-colors">{s.peerName}</span>
                                                         {streamBadge && (
@@ -851,26 +851,26 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="py-3 font-mono text-text-secondary text-[11px]">
+                                                <td className="py-3 px-3 font-mono text-text-secondary text-[11px]">
                                                     {s.peerHost}:{s.peerPort}
                                                 </td>
-                                                <td className="py-3">
-                                                    <div>
-                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                                <td className="py-3 px-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                                                             s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
                                                             s.state === 'reconnecting' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse' :
                                                             'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
                                                         }`}>
                                                             {s.state}
                                                         </span>
+                                                        {(s.uptimeSec ?? 0) > 0 && (
+                                                            <span className="text-[10px] text-text-muted font-mono whitespace-nowrap">
+                                                                {formatUptime(s.uptimeSec)}
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                    {(s.uptimeSec ?? 0) > 0 && (
-                                                        <div className="text-[9px] text-text-muted font-mono mt-0.5">
-                                                            up {formatUptime(s.uptimeSec)}
-                                                        </div>
-                                                    )}
                                                 </td>
-                                                <td className="py-3 text-right font-mono text-[11px]">
+                                                <td className="py-3 px-4 text-right font-mono text-[11px]">
                                                     <div className="flex items-center justify-end gap-2.5">
                                                         {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 && (
                                                             <MicroSparkline samples={s.rttMs.recentSamples} width={64} height={18} />
@@ -891,10 +891,10 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="py-3 text-right font-mono text-[11px] text-text-muted">
+                                                <td className="py-3 px-3 text-center font-mono text-[11px] text-text-muted">
                                                     {s.reconnects}
                                                 </td>
-                                                <td className="py-3 text-center" onClick={e => e.stopPropagation()}>
+                                                <td className="py-3 px-3 text-center" onClick={e => e.stopPropagation()}>
                                                     <button
                                                         onClick={() => {
                                                             setPeerTestModal({
@@ -906,7 +906,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                                                             });
                                                             handleTestPeer(s.peerId);
                                                         }}
-                                                        className="p-1.5 text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-card-secondary rounded-lg transition-colors"
+                                                        className="p-1.5 text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-card-secondary rounded-lg transition-colors cursor-pointer"
                                                         title="Test Handshake"
                                                     >
                                                         <Zap size={14} />

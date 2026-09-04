@@ -341,63 +341,77 @@ export const SessionDeepDiveDrawer: React.FC<SessionDeepDiveDrawerProps> = ({
                     )}
 
                     {/* ═══ TAB 2: FLOW & BITRATES ═══ */}
-                    {activeTab === 'throughput' && (
-                        <div className="space-y-6 animate-fadeIn">
-                            {/* Live Rate Gauges */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-card-secondary/40 border border-border p-5 rounded-2xl space-y-2">
-                                    <div className="flex items-center justify-between text-xs text-text-muted font-mono">
-                                        <span>LIVE TRANSMIT (TX)</span>
-                                        <ArrowUpRight size={16} className="text-indigo-400" />
-                                    </div>
-                                    <div className="text-2xl font-black text-indigo-400 font-mono">
-                                        {formatBitrate(session.txBps)}
-                                    </div>
-                                    <div className="text-[11px] text-text-muted font-mono">
-                                        Total Cumulative: <strong className="text-text-primary">{formatBytes(session.bytesSent)}</strong>
-                                    </div>
-                                </div>
+                    {activeTab === 'throughput' && (() => {
+                        const uptimeSec = Math.max(1, session.uptimeSec || 1);
+                        const avgTxBps = Math.round(((session.bytesSent || 0) * 8) / uptimeSec);
+                        const avgRxBps = Math.round(((session.bytesReceived || 0) * 8) / uptimeSec);
+                        const displayTxBps = (session.txBps && session.txBps > 0) ? session.txBps : avgTxBps;
+                        const displayRxBps = (session.rxBps && session.rxBps > 0) ? session.rxBps : avgRxBps;
+                        const totalReqs = isIncoming ? (incoming?.requestsHandled || 0) : (outgoing?.requestsSent || 0);
+                        const avgTps = Number((totalReqs / uptimeSec).toFixed(1));
+                        const displayTps = (session.tps && session.tps > 0) ? session.tps : avgTps;
 
-                                <div className="bg-card-secondary/40 border border-border p-5 rounded-2xl space-y-2">
-                                    <div className="flex items-center justify-between text-xs text-text-muted font-mono">
-                                        <span>LIVE RECEIVE (RX)</span>
-                                        <ArrowDownRight size={16} className="text-emerald-500" />
-                                    </div>
-                                    <div className="text-2xl font-black text-emerald-500 font-mono">
-                                        {formatBitrate(session.rxBps)}
-                                    </div>
-                                    <div className="text-[11px] text-text-muted font-mono">
-                                        Total Cumulative: <strong className="text-text-primary">{formatBytes(session.bytesReceived)}</strong>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Transaction & Message Counts */}
-                            <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-4">
-                                <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
-                                    <Activity size={14} /> Transactions & Cadence
-                                </h4>
-                                <div className="grid grid-cols-3 gap-4 text-center">
-                                    <div className="p-3 bg-card border border-border rounded-xl">
-                                        <div className="text-[10px] text-text-muted font-mono uppercase">Rate (TPS)</div>
-                                        <div className="text-lg font-black text-text-primary font-mono mt-0.5">{session.tps || 0} /s</div>
-                                    </div>
-                                    <div className="p-3 bg-card border border-border rounded-xl">
-                                        <div className="text-[10px] text-text-muted font-mono uppercase">{isIncoming ? 'Handled Reqs' : 'Sent Reqs'}</div>
-                                        <div className="text-lg font-black text-text-primary font-mono mt-0.5">
-                                            {isIncoming ? incoming?.requestsHandled : outgoing?.requestsSent}
+                        return (
+                            <div className="space-y-6 animate-fadeIn">
+                                {/* Live Rate Gauges */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-card-secondary/40 border border-border p-5 rounded-2xl space-y-2">
+                                        <div className="flex items-center justify-between text-xs text-text-muted font-mono">
+                                            <span>LIVE TRANSMIT (TX)</span>
+                                            <ArrowUpRight size={16} className="text-indigo-400" />
+                                        </div>
+                                        <div className="text-2xl font-black text-indigo-400 font-mono">
+                                            {formatBitrate(displayTxBps)}
+                                        </div>
+                                        <div className="text-[11px] text-text-muted font-mono">
+                                            Total Cumulative: <strong className="text-text-primary">{formatBytes(session.bytesSent)}</strong>
+                                            {avgTxBps > 0 && <span className="text-[10px] opacity-75 ml-1.5">(avg {formatBitrate(avgTxBps)})</span>}
                                         </div>
                                     </div>
-                                    <div className="p-3 bg-card border border-border rounded-xl">
-                                        <div className="text-[10px] text-text-muted font-mono uppercase">{isIncoming ? 'Drops / Errs' : 'Replies Recv'}</div>
-                                        <div className="text-lg font-black text-text-primary font-mono mt-0.5">
-                                            {isIncoming ? `${incoming?.simulatedDrops || 0} / ${incoming?.simulatedErrors || 0}` : outgoing?.responsesReceived}
+
+                                    <div className="bg-card-secondary/40 border border-border p-5 rounded-2xl space-y-2">
+                                        <div className="flex items-center justify-between text-xs text-text-muted font-mono">
+                                            <span>LIVE RECEIVE (RX)</span>
+                                            <ArrowDownRight size={16} className="text-emerald-500" />
+                                        </div>
+                                        <div className="text-2xl font-black text-emerald-500 font-mono">
+                                            {formatBitrate(displayRxBps)}
+                                        </div>
+                                        <div className="text-[11px] text-text-muted font-mono">
+                                            Total Cumulative: <strong className="text-text-primary">{formatBytes(session.bytesReceived)}</strong>
+                                            {avgRxBps > 0 && <span className="text-[10px] opacity-75 ml-1.5">(avg {formatBitrate(avgRxBps)})</span>}
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Transaction & Message Counts */}
+                                <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-4">
+                                    <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                                        <Activity size={14} /> Transactions & Cadence
+                                    </h4>
+                                    <div className="grid grid-cols-3 gap-4 text-center">
+                                        <div className="p-3 bg-card border border-border rounded-xl">
+                                            <div className="text-[10px] text-text-muted font-mono uppercase">Rate (TPS)</div>
+                                            <div className="text-lg font-black text-text-primary font-mono mt-0.5">{displayTps} /s</div>
+                                            {avgTps > 0 && <div className="text-[9px] text-text-muted font-mono mt-0.5">avg {avgTps}/s</div>}
+                                        </div>
+                                        <div className="p-3 bg-card border border-border rounded-xl">
+                                            <div className="text-[10px] text-text-muted font-mono uppercase">{isIncoming ? 'Handled Reqs' : 'Sent Reqs'}</div>
+                                            <div className="text-lg font-black text-text-primary font-mono mt-0.5">
+                                                {totalReqs}
+                                            </div>
+                                        </div>
+                                        <div className="p-3 bg-card border border-border rounded-xl">
+                                            <div className="text-[10px] text-text-muted font-mono uppercase">{isIncoming ? 'Drops / Errs' : 'Replies Recv'}</div>
+                                            <div className="text-lg font-black text-text-primary font-mono mt-0.5">
+                                                {isIncoming ? `${incoming?.simulatedDrops || 0} / ${incoming?.simulatedErrors || 0}` : (outgoing?.responsesReceived || 0)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     {/* ═══ TAB 3: SOCKET & PROTOCOL DIAGNOSTICS ═══ */}
                     {activeTab === 'diagnostics' && (

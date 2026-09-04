@@ -192,15 +192,32 @@ export class TcpClientRuntime extends EventEmitter {
     public getOutgoingSessions(): OutgoingSessionState[] {
         const now = Date.now();
         return Array.from(this.sessions.values()).map(s => {
-            const lastCalc = s.lastRateCalcTs || now;
-            const deltaSec = (now - lastCalc) / 1000;
-            if (deltaSec >= 0.8) {
+            const now = Date.now();
+            const deltaSec = (now - (s.lastRateCalcTs || (now - 1000))) / 1000;
+            if (deltaSec >= 0.5) {
                 const prevTx = s.prevTxBytes || 0;
                 const prevRx = s.prevRxBytes || 0;
                 const prevReq = s.prevReqCount || 0;
-                s.liveTxBps = Math.max(0, Math.round(((s.state.bytesSent - prevTx) * 8) / deltaSec));
-                s.liveRxBps = Math.max(0, Math.round(((s.state.bytesReceived - prevRx) * 8) / deltaSec));
-                s.liveTps = Number((Math.max(0, (s.state.requestsSent - prevReq)) / deltaSec).toFixed(1));
+                const instTxBps = Math.max(0, Math.round(((s.state.bytesSent - prevTx) * 8) / deltaSec));
+                const instRxBps = Math.max(0, Math.round(((s.state.bytesReceived - prevRx) * 8) / deltaSec));
+                const instTps = Number((Math.max(0, (s.state.requestsSent - prevReq)) / deltaSec).toFixed(1));
+
+                // Smooth rates using EMA (alpha = 0.5) if previous rate exists
+                s.liveTxBps = s.liveTxBps !== undefined ? Math.round(s.liveTxBps * 0.5 + instTxBps * 0.5) : instTxBps;
+                s.liveRxBps = s.liveRxBps !== undefined ? Math.round(s.liveRxBps * 0.5 + instRxBps * 0.5) : instRxBps;
+                s.liveTps = s.liveTps !== undefined ? Number((s.liveTps * 0.5 + instTps * 0.5).toFixed(1)) : instTps;
+
+                // If session is active and total bytes > 0, ensure lifetime avg fallback if idle between ticks
+                if (s.liveTxBps === 0 && s.state.requestsSent > 0 && s.state.connectedAt) {
+                    const totalUptimeSec = Math.max(1, Math.floor((now - s.state.connectedAt) / 1000));
+                    const avgTxBps = Math.round((s.state.bytesSent * 8) / totalUptimeSec);
+                    const avgRxBps = Math.round((s.state.bytesReceived * 8) / totalUptimeSec);
+                    const avgTps = Number((s.state.requestsSent / totalUptimeSec).toFixed(1));
+                    s.liveTxBps = avgTxBps;
+                    s.liveRxBps = avgRxBps;
+                    s.liveTps = avgTps;
+                }
+
                 s.prevTxBytes = s.state.bytesSent;
                 s.prevRxBytes = s.state.bytesReceived;
                 s.prevReqCount = s.state.requestsSent;

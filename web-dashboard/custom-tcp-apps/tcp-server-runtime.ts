@@ -133,15 +133,26 @@ export class TcpServerRuntime extends EventEmitter {
     public getIncomingSessions(): IncomingSessionState[] {
         const now = Date.now();
         return Array.from(this.clients.values()).map(c => {
-            const lastCalc = c.lastRateCalcTs || now;
-            const deltaSec = (now - lastCalc) / 1000;
-            if (deltaSec >= 0.8) {
+            const deltaSec = (now - (c.lastRateCalcTs || (now - 1000))) / 1000;
+            if (deltaSec >= 0.5) {
                 const prevRx = c.prevRxBytes || 0;
                 const prevTx = c.prevTxBytes || 0;
                 const prevReq = c.prevReqCount || 0;
-                c.liveRxBps = Math.max(0, Math.round(((c.state.bytesReceived - prevRx) * 8) / deltaSec));
-                c.liveTxBps = Math.max(0, Math.round(((c.state.bytesSent - prevTx) * 8) / deltaSec));
-                c.liveTps = Number((Math.max(0, (c.state.requestsHandled - prevReq)) / deltaSec).toFixed(1));
+                const instRxBps = Math.max(0, Math.round(((c.state.bytesReceived - prevRx) * 8) / deltaSec));
+                const instTxBps = Math.max(0, Math.round(((c.state.bytesSent - prevTx) * 8) / deltaSec));
+                const instTps = Number((Math.max(0, (c.state.requestsHandled - prevReq)) / deltaSec).toFixed(1));
+
+                c.liveRxBps = c.liveRxBps !== undefined ? Math.round(c.liveRxBps * 0.5 + instRxBps * 0.5) : instRxBps;
+                c.liveTxBps = c.liveTxBps !== undefined ? Math.round(c.liveTxBps * 0.5 + instTxBps * 0.5) : instTxBps;
+                c.liveTps = c.liveTps !== undefined ? Number((c.liveTps * 0.5 + instTps * 0.5).toFixed(1)) : instTps;
+
+                if (c.liveRxBps === 0 && c.state.requestsHandled > 0 && c.state.connectedAt) {
+                    const totalUptimeSec = Math.max(1, Math.floor((now - c.state.connectedAt) / 1000));
+                    c.liveRxBps = Math.round((c.state.bytesReceived * 8) / totalUptimeSec);
+                    c.liveTxBps = Math.round((c.state.bytesSent * 8) / totalUptimeSec);
+                    c.liveTps = Number((c.state.requestsHandled / totalUptimeSec).toFixed(1));
+                }
+
                 c.prevRxBytes = c.state.bytesReceived;
                 c.prevTxBytes = c.state.bytesSent;
                 c.prevReqCount = c.state.requestsHandled;
