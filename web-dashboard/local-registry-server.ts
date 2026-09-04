@@ -128,7 +128,7 @@ export class LocalRegistryServer {
             if (!provisioningManager) {
                 return res.status(503).json({ error: 'provisioning_unavailable' });
             }
-            const type = req.params.type as 'applications' | 'connectivity-probes';
+            const type = req.params.type as any;
             const revision = parseInt(req.params.revision, 10);
             if (isNaN(revision)) {
                 return res.status(400).json({ error: 'invalid_revision' });
