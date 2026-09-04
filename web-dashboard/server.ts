@@ -10808,7 +10808,9 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     const iotPending = provisioningManager.hasUnpublishedChanges('iot-config', readJson(IOT_DEVICES_FILE));
     const customTcpPending = provisioningManager.hasUnpublishedChanges('custom-tcp-apps', readJson(path.join(APP_CONFIG.configDir, 'custom-tcp-applications.json')));
 
-    const isLeader = registryManager ? registryManager.isLeader() : false;
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
 
     res.json({
         is_leader: isLeader,

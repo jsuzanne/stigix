@@ -107,12 +107,31 @@ type TargetDefinition = {
         xfr?: number;
     };
     source?: 'managed' | 'synthesized';
+    created_at?: string;
+    updated_at?: string;
     meta?: {
         registry?: boolean;
         location?: any;
         ip_public?: string;
         last_seen?: string;
         [key: string]: any;
+    };
+};
+
+const formatTargetTimestamp = (isoStr?: string) => {
+    if (!isoStr) return null;
+    const date = new Date(isoStr);
+    if (isNaN(date.getTime())) return null;
+    const diffSec = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+    let relative = '';
+    if (diffSec < 60) relative = `${diffSec}s ago`;
+    else if (diffSec < 3600) relative = `${Math.floor(diffSec / 60)}m ago`;
+    else if (diffSec < 86400) relative = `${Math.floor(diffSec / 3600)}h ago`;
+    else relative = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return {
+        relative,
+        time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        full: date.toLocaleString()
     };
 };
 
@@ -4708,6 +4727,21 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                     <Zap size={8} className="animate-pulse" /> Learned
                                                 </span>
                                             )}
+
+                                            {(() => {
+                                                const ts = t.meta?.last_seen || t.updated_at || t.created_at;
+                                                const formatted = formatTargetTimestamp(ts);
+                                                if (!formatted) return null;
+                                                return (
+                                                    <span 
+                                                        className="px-1.5 py-0.5 rounded text-[8px] font-mono text-text-muted bg-card-secondary border border-border/80 flex items-center gap-1 shadow-sm shrink-0" 
+                                                        title={`Last sync / update: ${formatted.full}`}
+                                                    >
+                                                        <Clock size={8} className="opacity-60 text-blue-400" />
+                                                        <span>{formatted.relative}</span>
+                                                    </span>
+                                                );
+                                            })()}
                                         </div>
                                         <div className="text-[10px] text-text-muted font-mono tracking-tighter opacity-70 flex items-center gap-2">
                                             <span>{t.host}</span>

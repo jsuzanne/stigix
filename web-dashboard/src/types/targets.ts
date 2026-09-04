@@ -27,6 +27,8 @@ export type TargetDefinition = {
         xfr?: number; // default 5201
     };
     source?: 'managed' | 'synthesized';
+    created_at?: string;
+    updated_at?: string;
     meta?: {
         registry?: boolean;
         leader_provided?: boolean;

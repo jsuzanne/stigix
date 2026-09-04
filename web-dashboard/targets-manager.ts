@@ -78,10 +78,13 @@ export class TargetsManager {
 
     createTarget(data: Omit<TargetDefinition, 'id' | 'source'>): TargetDefinition {
         const targets = this.loadTargets();
+        const now = new Date().toISOString();
         const newTarget: TargetDefinition = {
             ...data,
             id: makeId(),
             source: 'managed',
+            created_at: now,
+            updated_at: now,
         };
         targets.push(newTarget);
         this.saveTargets(targets);
@@ -91,8 +94,9 @@ export class TargetsManager {
     updateTarget(id: string, data: Partial<Omit<TargetDefinition, 'id' | 'source'>>): TargetDefinition | null {
         const targets = this.loadTargets();
         const idx = targets.findIndex(t => t.id === id);
+        const now = new Date().toISOString();
         
-        const updatedTarget = idx !== -1 ? (targets[idx] = { ...targets[idx], ...data, id, source: 'managed' }) : null;
+        const updatedTarget = idx !== -1 ? (targets[idx] = { ...targets[idx], ...data, id, source: 'managed', updated_at: now }) : null;
         let result = updatedTarget;
 
         if (!result) {
@@ -102,7 +106,9 @@ export class TargetsManager {
                     ...synthTarget,
                     ...data,
                     id: makeId(), // Assign a new managed ID
-                    source: 'managed'
+                    source: 'managed',
+                    created_at: synthTarget.created_at || now,
+                    updated_at: now,
                 };
                 delete promoted.meta;
                 targets.push(promoted);
@@ -410,7 +416,8 @@ export class TargetsManager {
                 source: 'synthesized' as const,
                 meta: {
                     registry: true,
-                    self: true
+                    self: true,
+                    last_seen: new Date().toISOString()
                 }
             };
         }
@@ -494,7 +501,14 @@ export class TargetsManager {
                         ...t.meta,
                         registry: existing.meta?.registry || t.meta.registry,
                         leader_provided: existing.meta?.leader_provided || t.meta.leader_provided,
+                        last_seen: t.meta?.last_seen || existing.meta?.last_seen,
                     };
+                }
+                if (t.updated_at && !existing.updated_at) {
+                    existing.updated_at = t.updated_at;
+                }
+                if (t.created_at && !existing.created_at) {
+                    existing.created_at = t.created_at;
                 }
                 
                 // Prefer authoritative registry names or friendly site names over raw IP address names

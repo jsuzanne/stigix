@@ -696,6 +696,12 @@ export class RegistryManager {
         };
     }
 
+    public isLeader(): boolean {
+        if (this.directMode) return false;
+        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
+        return mode === 'leader';
+    }
+
     /**
      * Hot-reload: reinitialize the registry client with fresh credentials from env.
      * Call this after PRISMA_SDWAN_TSGID or STIGIX_REGISTRY_API_KEY changes at runtime.
