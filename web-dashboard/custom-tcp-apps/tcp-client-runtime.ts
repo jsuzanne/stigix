@@ -374,33 +374,44 @@ export class TcpClientRuntime extends EventEmitter {
 
         const startConnectTs = Date.now();
         socket.connect(session.peer.port, session.peer.host, () => {
-            session.state.state = 'handshaking';
             session.state.connectedAt = Date.now();
             session.state.tcpConnectMs = Math.max(1, Date.now() - startConnectTs);
             session.reconnectAttempts = 0; // Reset backoff upon successful TCP connect
 
-            // Send CLIENT_HELLO
-            const hello = buildClientHello({
-                appId: this.appConfig.id,
-                clientSessionId: session.sessionId,
-                origin: {
-                    instanceId: this.localIdentity.instanceId,
-                    siteName: this.localIdentity.siteName,
-                    hostname: this.localIdentity.hostname
-                },
-                authToken: session.peer.token || this.appConfig.listener.auth?.token
-            });
+            if (this.appConfig.protocol === 'http_1_1') {
+                session.handshakeCompleted = true;
+                session.state.state = 'connected';
+                this.startWorkloadLoop(session);
+            } else {
+                session.state.state = 'handshaking';
+                // Send CLIENT_HELLO
+                const hello = buildClientHello({
+                    appId: this.appConfig.id,
+                    clientSessionId: session.sessionId,
+                    origin: {
+                        instanceId: this.localIdentity.instanceId,
+                        siteName: this.localIdentity.siteName,
+                        hostname: this.localIdentity.hostname
+                    },
+                    authToken: session.peer.token || this.appConfig.listener.auth?.token
+                });
 
-            const buf = encodeFrame(hello);
-            socket.write(buf);
-            session.state.bytesSent += buf.length;
-            this.metricsTracker.recordClientTx(buf.length);
+                const buf = encodeFrame(hello);
+                socket.write(buf);
+                session.state.bytesSent += buf.length;
+                this.metricsTracker.recordClientTx(buf.length);
+            }
         });
 
         socket.on('data', chunk => {
             session.state.bytesReceived += chunk.length;
             this.metricsTracker.recordClientRx(chunk.length);
-            session.parser.push(chunk);
+
+            if (this.appConfig.protocol === 'http_1_1') {
+                this.handleHttpData(session, chunk);
+            } else {
+                session.parser.push(chunk);
+            }
         });
 
         session.parser.on('message', msg => {
@@ -422,6 +433,46 @@ export class TcpClientRuntime extends EventEmitter {
         socket.on('close', () => {
             this.handleSessionClose(session);
         });
+    }
+
+    private handleHttpData(session: ActiveClientSession, chunk: Buffer): void {
+        const raw = chunk.toString('utf8');
+        if (raw.startsWith('HTTP/1.1 ') || raw.startsWith('HTTP/1.0 ')) {
+            const statusMatch = raw.match(/HTTP\/1\.[01]\s+(\d{3})/);
+            const statusCode = statusMatch ? parseInt(statusMatch[1], 10) : 200;
+
+            const delayMatch = raw.match(/X-Stigix-Server-Delay:\s*(\d+)ms/i);
+            const serverDelayMs = delayMatch ? parseInt(delayMatch[1], 10) : 0;
+
+            if (session.pendingRequests.size > 0) {
+                const firstEntry = session.pendingRequests.entries().next().value;
+                if (firstEntry) {
+                    const [reqId, pending] = firstEntry;
+                    clearTimeout(pending.timer);
+                    session.pendingRequests.delete(reqId);
+
+                    const rtt = Date.now() - pending.sentTs;
+                    const networkRttMs = Math.max(0, rtt - serverDelayMs);
+
+                    session.rttTracker.record(rtt, serverDelayMs, networkRttMs);
+                    this.metricsTracker.recordRtt(rtt);
+
+                    if (statusCode >= 400) {
+                        session.state.errors++;
+                        session.state.lastError = `HTTP ${statusCode}`;
+                        this.metricsTracker.totalErrors++;
+                    } else {
+                        session.state.responsesReceived++;
+                        session.state.lastSuccessAt = Date.now();
+                        this.metricsTracker.totalResponses++;
+                    }
+                }
+            }
+
+            if (this.appConfig.clientDefaults.mode === 'transactional' || raw.includes('Connection: close')) {
+                session.socket?.destroy();
+            }
+        }
     }
 
     private handleIncomingMessage(session: ActiveClientSession, msg: any): void {
@@ -506,6 +557,46 @@ export class TcpClientRuntime extends EventEmitter {
         const requestId = `req-${session.sessionId}-${session.seq}`;
         const payloadSize = this.appConfig.clientDefaults.payloadBytes || 1024;
         const requestTimeoutMs = this.appConfig.clientDefaults.requestTimeoutMs || 5000;
+
+        if (this.appConfig.protocol === 'http_1_1') {
+            const isTransactional = this.appConfig.clientDefaults.mode === 'transactional';
+            const httpHeaders = [
+                `GET /api/v1/workload?seq=${session.seq}&payload=${payloadSize}&t=${Date.now()} HTTP/1.1`,
+                `Host: ${session.peer.host}:${session.peer.port}`,
+                `User-Agent: Stigix-App-Emulator/2.0 (${this.localIdentity.siteName})`,
+                `X-Stigix-Site-Name: ${this.localIdentity.siteName}`,
+                `X-Stigix-Instance-Id: ${this.localIdentity.instanceId}`,
+                `X-Stigix-Hostname: ${this.localIdentity.hostname}`,
+                `X-Stigix-App-Id: ${this.appConfig.id}`,
+                `X-Stigix-Session-Id: ${session.sessionId}`,
+                `X-Stigix-Request-Id: ${requestId}`,
+                `Connection: ${isTransactional ? 'close' : 'keep-alive'}`,
+                '',
+                ''
+            ].join('\r\n');
+
+            const buf = Buffer.from(httpHeaders, 'utf8');
+            session.socket.write(buf);
+            session.state.requestsSent++;
+            session.state.bytesSent += buf.length;
+            this.metricsTracker.totalRequests++;
+            this.metricsTracker.recordClientTx(buf.length);
+
+            const timer = setTimeout(() => {
+                session.pendingRequests.delete(requestId);
+                session.state.timeouts++;
+                this.metricsTracker.totalTimeouts++;
+                if (isTransactional) {
+                    session.socket?.destroy();
+                }
+            }, requestTimeoutMs);
+
+            session.pendingRequests.set(requestId, {
+                sentTs: Date.now(),
+                timer
+            });
+            return;
+        }
 
         // Generate synthetic payload string
         const sampleData = 'X'.repeat(Math.min(payloadSize, 4096));

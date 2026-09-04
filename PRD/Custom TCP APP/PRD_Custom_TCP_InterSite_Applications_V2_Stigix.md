@@ -24,6 +24,7 @@ The **Stigix Custom TCP Applications Engine (V1)** established a robust, bi-dire
 
 | Capability | V1 Baseline | V2 Evolution | Primary SD-WAN / SASE Value |
 | :--- | :--- | :--- | :--- |
+| **Layer-7 Wire Protocol** | Stigix Binary / Length-Prefixed only | **HTTP/1.1 REST Emulation (`http_1_1`)** *(Shipped)* | Triggers native Palo Alto / Prisma SD-WAN Layer-7 App-ID inspection and activates **Server Response Time (SRT)** tracking in Flow Browser. |
 | **QoS / DSCP Tagging** | Best-Effort (OS default CS0) | **Universal DSCP Layer-3 Marking** (Dropdown on all client modes) | Validate QoS class priority, queue starvation, and bandwidth reservations during WAN congestion. |
 | **Traffic Symmetry** | Symmetric (Echo payload / fixed size) | **Asymmetric Multiplier (`asymmetric_multiplier`)** | Emulate heavy downlink applications (SAP ERP, reporting, video, DB downloads) on asymmetric WAN links (FTTH, Starlink, 5G). |
 | **Human Realism** | Fixed interval scheduling (e.g. 1000 ms) | **Stochastic / Human Think-Time (`stochastic`)** *(Shipped)* | Prevent AI-driven analytics (e.g., Palo Alto ADEM) from filtering out robotic synthetic pulses. |
@@ -36,7 +37,53 @@ The **Stigix Custom TCP Applications Engine (V1)** established a robust, bi-dire
 
 ## 3. Detailed Feature Specifications
 
-### 3.1. Universal DSCP / ToS IP Socket Marking (Client Option)
+### 3.1. Layer-7 HTTP/1.1 Wire Protocol Emulation (`protocol: 'http_1_1'`) *(Shipped)*
+
+#### 3.1.1. Problem Statement & Operational Rationale
+Prisma SD-WAN (CloudGenix ION / PAN-OS ADEM) monitors two distinct latency dimensions:
+1. **RTT (Network Round-Trip Time)**: Calculated from Layer-4 transport handshakes (`TCP SYN` $\rightarrow$ `SYN-ACK`) and kernel TCP `ACK` replies.
+2. **SRT (Server Response Time)**: Calculated from the time the server ACKs the client request to the moment the **first application-level data payload byte** is returned by the server.
+
+On generic, length-prefixed binary TCP protocols without a registered Layer-7 App-ID decoder, deep packet inspection engines cannot reliably delimit application request/response boundaries, causing synthetic delay injection to be attributed to network transition time (**NTTn**) rather than **SRT**.
+
+By supporting standard **HTTP/1.1 REST Protocol Emulation**, Stigix enables full L7 transaction awareness in Prisma SD-WAN, ADEM, Zscaler, and NGFW firewalls, causing **SRT graphs to accurately reflect server delays (`fixed_delay`, `looping_delay`, `random_delay`)**.
+
+#### 3.1.2. Protocol Framing & Identity Headers
+In `http_1_1` mode, Stigix client and server exchange RFC 7230 compliant HTTP messages while preserving 100% of Stigix device identity through custom headers:
+
+**Client Request (`GET /api/v1/workload`)**:
+```http
+GET /api/v1/workload?seq=123&t=1725468120000 HTTP/1.1\r\n
+Host: 192.168.203.100:8089\r\n
+User-Agent: Stigix-App-Emulator/2.0 (BR8-Ubuntu)\r\n
+X-Stigix-Site-Name: BR8-Ubuntu\r\n
+X-Stigix-Instance-Id: aac819a7-8f12-4c22-921a\r\n
+X-Stigix-Hostname: BR8-Ubuntu\r\n
+X-Stigix-App-Id: app-8089\r\n
+X-Stigix-Session-Id: sess-br8-1\r\n
+X-Stigix-Request-Id: req-br8-1-123\r\n
+Connection: keep-alive\r\n
+\r\n
+```
+
+**Server Response (`HTTP/1.1 200 OK` after simulated delay)**:
+```http
+HTTP/1.1 200 OK\r\n
+Content-Type: application/json\r\n
+Content-Length: 142\r\n
+Connection: keep-alive\r\n
+Server: Stigix-CustomApp-HTTP/2.0\r\n
+X-Stigix-Server-Delay: 1000ms\r\n
+\r\n
+{"status":"ok","appId":"app-8089","serverSite":"DC1-Ubuntu","seq":123,"simulatedDelayMs":1000,"timestamp":1725468121000}\r\n
+```
+
+#### 3.1.3. Auto-Coherence & Integration
+Configuring `protocol: 'http_1_1'` in Step 1 of the Custom App Wizard automatically aligns both the local listener and all outbound client generators. External HTTP clients (e.g. `curl`, Postman, health probes) can also connect to the listener and receive authentic HTTP responses.
+
+---
+
+### 3.2. Universal DSCP / ToS IP Socket Marking (Client Option)
 
 #### 3.1.1. Rationale & Architecture
 Quality of Service (QoS) is fundamental to enterprise SD-WAN. DSCP (Differentiated Services Code Point) is an **IP header byte (Layer 3 / ToS)**. Therefore, DSCP must **NOT** be an isolated workload mode, but a **universal client parameter** available across all workload types (`persistent`, `stochastic`, `transactional`, `heartbeat`, `bulk_burst`, `continuous_stream`).

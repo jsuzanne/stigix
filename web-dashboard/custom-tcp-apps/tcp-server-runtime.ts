@@ -259,7 +259,17 @@ export class TcpServerRuntime extends EventEmitter {
             sessionState.lastActivityAt = Date.now();
             this.metricsTracker.recordServerRx(chunk.length);
             this.resetIdleTimer(tracked);
-            parser.push(chunk);
+
+            const isHttp = this.appConfig.protocol === 'http_1_1' ||
+                chunk.slice(0, 5).toString('utf8').startsWith('GET ') ||
+                chunk.slice(0, 5).toString('utf8').startsWith('POST') ||
+                chunk.slice(0, 5).toString('utf8').startsWith('HEAD');
+
+            if (isHttp) {
+                this.handleHttpRequest(tracked, chunk);
+            } else {
+                parser.push(chunk);
+            }
         });
 
         parser.on('message', msg => {
@@ -280,6 +290,133 @@ export class TcpServerRuntime extends EventEmitter {
             sessionState.state = 'closed';
             this.cleanupClient(serverSessionId);
         });
+    }
+
+    private handleHttpRequest(client: TrackedIncomingClient, chunk: Buffer): void {
+        const { socket, state } = client;
+        const rawText = chunk.toString('utf8');
+
+        // Extract custom HTTP headers if present
+        const siteHeaderMatch = rawText.match(/X-Stigix-Site-Name:\s*([^\r\n]+)/i);
+        const instHeaderMatch = rawText.match(/X-Stigix-Instance-Id:\s*([^\r\n]+)/i);
+        const hostHeaderMatch = rawText.match(/X-Stigix-Hostname:\s*([^\r\n]+)/i);
+        const uaHeaderMatch = rawText.match(/User-Agent:\s*([^\r\n]+)/i);
+
+        if (!client.handshakeCompleted) {
+            if (client.handshakeTimer) clearTimeout(client.handshakeTimer);
+            client.handshakeCompleted = true;
+            state.state = 'connected';
+
+            if (siteHeaderMatch && siteHeaderMatch[1]) {
+                state.declaredSiteName = siteHeaderMatch[1].trim();
+            } else {
+                state.declaredSiteName = uaHeaderMatch ? `HTTP Client (${uaHeaderMatch[1].trim().split(' ')[0]})` : 'External HTTP Client';
+            }
+
+            if (instHeaderMatch && instHeaderMatch[1]) {
+                state.declaredInstanceId = instHeaderMatch[1].trim();
+            }
+            if (hostHeaderMatch && hostHeaderMatch[1]) {
+                state.declaredHostname = hostHeaderMatch[1].trim();
+            }
+
+            // Match against configured peers
+            const matchedPeer = (this.appConfig.peers || []).find(
+                p => (state.declaredSiteName && p.siteName.toLowerCase() === state.declaredSiteName.toLowerCase()) || p.host === state.remoteIp
+            );
+            if (matchedPeer) {
+                state.isConfiguredPeer = true;
+                state.matchedPeerName = matchedPeer.name;
+            }
+        }
+
+        client.requestCount++;
+        state.requestsHandled++;
+        this.metricsTracker.totalRequests++;
+
+        const behavior = this.appConfig.serverBehavior;
+
+        // 1. Drop Response simulation
+        if (behavior.mode === 'drop_response' || (behavior.dropProbability && behavior.dropProbability > 0)) {
+            const prob = behavior.dropProbability || 10;
+            if (Math.random() * 100 < prob) {
+                state.simulatedDrops++;
+                this.metricsTracker.totalSimulatedDrops++;
+                return;
+            }
+        }
+
+        // 2. Calculate Delay
+        let delayMs = 0;
+        if (behavior.mode === 'fixed_delay') {
+            delayMs = behavior.fixedDelayMs || 500;
+        } else if (behavior.mode === 'random_delay') {
+            const min = behavior.randomDelayMinMs || 100;
+            const max = behavior.randomDelayMaxMs || 1000;
+            delayMs = Math.floor(min + Math.random() * (max - min));
+        } else if (behavior.mode === 'looping_delay') {
+            const normalSec = behavior.loopingNormalSec || 60;
+            const slowSec = behavior.loopingSlowSec || 60;
+            const cycleMs = (normalSec + slowSec) * 1000;
+            const posInCycle = (Date.now() - client.startedAt) % cycleMs;
+            if (posInCycle >= normalSec * 1000) {
+                delayMs = behavior.loopingSlowDelayMs || 1000;
+            }
+        }
+
+        const sendHttpResponse = () => {
+            if (socket.destroyed) return;
+
+            const isClose = rawText.includes('Connection: close') || behavior.mode === 'close_connection';
+            const isError = behavior.mode === 'error_response' || ((behavior.errorProbability || 0) > 0 && Math.random() * 100 < (behavior.errorProbability || 0));
+
+            if (isError) {
+                state.simulatedErrors++;
+                this.metricsTracker.totalErrors++;
+            }
+
+            const statusCode = isError ? '500 Internal Server Error' : '200 OK';
+            const bodyObj = {
+                status: isError ? 'error' : 'ok',
+                appId: this.appConfig.id,
+                serverSessionId: client.sessionId,
+                serverSite: this.localIdentity.siteName,
+                seq: client.requestCount,
+                simulatedDelayMs: delayMs,
+                timestamp: Date.now()
+            };
+            const bodyStr = JSON.stringify(bodyObj) + '\n';
+            const bodyBuf = Buffer.from(bodyStr, 'utf8');
+
+            const headers = [
+                `HTTP/1.1 ${statusCode}`,
+                'Content-Type: application/json',
+                `Content-Length: ${bodyBuf.length}`,
+                `Connection: ${isClose ? 'close' : 'keep-alive'}`,
+                'Server: Stigix-CustomApp-HTTP/2.0',
+                `X-Stigix-Server-Delay: ${delayMs}ms`,
+                '',
+                ''
+            ].join('\r\n');
+
+            const fullResp = Buffer.concat([Buffer.from(headers, 'utf8'), bodyBuf]);
+            socket.write(fullResp);
+            state.bytesSent += fullResp.length;
+            state.state = 'connected';
+            this.metricsTracker.recordServerTx(fullResp.length);
+            this.metricsTracker.totalResponses++;
+
+            if (isClose) {
+                socket.end();
+            }
+        };
+
+        if (delayMs > 0) {
+            state.state = 'delayed';
+            setTimeout(sendHttpResponse, delayMs);
+        } else {
+            sendHttpResponse();
+        }
     }
 
     private handleMessage(client: TrackedIncomingClient, msg: any): void {

@@ -123,6 +123,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
     const [formData, setFormData] = useState<CustomTcpApplicationConfig>(() => {
         if (editingApp) {
             const cloned = JSON.parse(JSON.stringify(editingApp));
+            cloned.protocol = cloned.protocol || 'stigix_tcp';
             cloned.startup = {
                 startListener: cloned.startup?.startListener !== false,
                 startClientWorkload: cloned.startup?.startClientWorkload ?? false
@@ -134,6 +135,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
             name: '',
             description: '',
             enabled: true,
+            protocol: 'stigix_tcp',
             listener: {
                 bindAddress: '0.0.0.0',
                 port: 8443,
@@ -466,6 +468,48 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                     placeholder="e.g. Core ERP transactional workload between Branch and DC"
                                     className="w-full bg-card-secondary border border-border rounded-xl px-3.5 py-2 text-sm text-text-primary focus:outline-none focus:border-indigo-500 shadow-sm"
                                 />
+                            </div>
+
+                            {/* Application Wire Protocol */}
+                            <div className="p-4 bg-card-secondary/40 border border-border rounded-2xl space-y-3">
+                                <label className="block text-xs font-semibold text-text-secondary">Application Wire Protocol</label>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData((prev: CustomTcpApplicationConfig) => ({ ...prev, protocol: 'stigix_tcp' }))}
+                                        className={`p-3.5 rounded-2xl border text-left transition-all ${
+                                            (formData.protocol || 'stigix_tcp') === 'stigix_tcp'
+                                                ? 'bg-indigo-500/10 border-indigo-500 text-text-primary shadow-sm'
+                                                : 'bg-card-secondary border-border text-text-muted hover:border-border hover:bg-card-hover'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-2 font-bold text-xs text-indigo-600 dark:text-indigo-400">
+                                            <Layers size={15} />
+                                            <span>Stigix Native TCP (Length-Prefixed)</span>
+                                        </div>
+                                        <div className="text-[11px] text-text-muted mt-1 leading-relaxed">
+                                            High-performance length-prefixed JSON framing. Ideal for micro-telemetry and raw socket RTT measurements.
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData((prev: CustomTcpApplicationConfig) => ({ ...prev, protocol: 'http_1_1' }))}
+                                        className={`p-3.5 rounded-2xl border text-left transition-all ${
+                                            formData.protocol === 'http_1_1'
+                                                ? 'bg-emerald-500/10 border-emerald-500 text-text-primary shadow-sm'
+                                                : 'bg-card-secondary border-border text-text-muted hover:border-border hover:bg-card-hover'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-2 font-bold text-xs text-emerald-600 dark:text-emerald-400">
+                                            <Globe size={15} />
+                                            <span>HTTP/1.1 REST API (Native L7 & SRT)</span>
+                                        </div>
+                                        <div className="text-[11px] text-text-muted mt-1 leading-relaxed">
+                                            Standard HTTP/1.1 Request-Response with <code className="font-mono text-emerald-500">X-Stigix-*</code> headers. Recognized by Prisma SD-WAN / ADEM to calculate live <strong>Server Response Time (SRT)</strong>.
+                                        </div>
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="p-4 bg-card-secondary/40 border border-border rounded-2xl space-y-4">
@@ -1026,7 +1070,12 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                 <div className="flex items-center justify-between border-b border-border pb-3">
                                     <div>
                                         <h3 className="text-base font-bold text-text-primary">{formData.name || 'Unnamed Application'}</h3>
-                                        <p className="text-xs text-text-muted font-mono">ID: {formData.id} | TCP Port: :{formData.listener.port}</p>
+                                        <p className="text-xs text-text-muted font-mono">
+                                            ID: {formData.id} | TCP Port: :{formData.listener.port} | Protocol:{' '}
+                                            <span className={formData.protocol === 'http_1_1' ? 'text-emerald-500 font-bold' : 'text-indigo-500 font-bold'}>
+                                                {formData.protocol === 'http_1_1' ? 'HTTP/1.1 REST API' : 'Stigix Native TCP'}
+                                            </span>
+                                        </p>
                                     </div>
                                     <button
                                         type="button"

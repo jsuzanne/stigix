@@ -464,6 +464,14 @@ const secs = seconds % 60;
                                     Port {app.listener?.port}
                                 </span>
 
+                                {app.protocol === 'http_1_1' && (
+                                    <span className={`text-[9px] font-mono font-black uppercase px-1.5 py-0.5 rounded-md border ${
+                                        isSel ? 'bg-white/20 border-white/40 text-white' : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                    }`}>
+                                        HTTP
+                                    </span>
+                                )}
+
                                 {/* Traffic flow badges */}
                                 {hasRxTraffic && hasTxTraffic ? (
                                     <span
@@ -525,6 +533,13 @@ const secs = seconds % 60;
                                 <h2 className="text-base font-bold text-text-primary">{currentApp?.name}</h2>
                                 <span className="font-mono text-xs text-indigo-500 font-bold bg-indigo-500/10 border border-indigo-500/30 px-2 py-0.5 rounded-lg">
                                     Port {currentApp?.listener?.port}
+                                </span>
+                                <span className={`font-mono text-[10px] font-black px-2 py-0.5 rounded-lg border uppercase tracking-wider ${
+                                    currentApp?.protocol === 'http_1_1'
+                                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                        : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400'
+                                }`}>
+                                    {currentApp?.protocol === 'http_1_1' ? 'HTTP/1.1 REST' : 'TCP Native'}
                                 </span>
                             </div>
                             <p className="text-[11px] text-text-muted mt-0.5">

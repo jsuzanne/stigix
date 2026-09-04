@@ -237,11 +237,14 @@ export interface PeerConfig {
     tags: string[];
 }
 
+export type ApplicationWireProtocol = 'stigix_tcp' | 'http_1_1';
+
 export interface CustomTcpApplicationConfig {
     id: string;
     name: string;
     description?: string;
     enabled: boolean;
+    protocol?: ApplicationWireProtocol; // 'stigix_tcp' (default length-prefixed) or 'http_1_1' (REST/HTTP)
     listener: CustomTcpListenerConfig;
     serverBehavior: ServerBehaviorConfig;
     clientDefaults: ClientDefaultsConfig;
