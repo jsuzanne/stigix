@@ -378,28 +378,43 @@ const secs = seconds % 60;
 
     return (
         <div className="p-6 max-w-[1700px] w-full mx-auto space-y-6 text-text-primary animate-fadeIn">
-            {/* Real-time Telemetry Stream Banner */}
-            <div className="flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-card to-card-secondary border border-border rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
-                        <Activity size={20} className="animate-pulse" />
+            {/* Top Node Identity Bar */}
+            <div className="bg-card border border-border rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 shadow-sm">
+                <div className="flex items-center gap-4">
+                    <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-600 dark:text-indigo-400">
+                        <Activity size={24} />
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
-                            <h1 className="text-base font-black tracking-tight text-text-primary">
-                                Custom TCP Inter-Site Applications
+                            <h1 className="text-xl font-bold text-text-primary tracking-wide">
+                                Custom TCP Applications
                             </h1>
-                            <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-full">
-                                v2.0 Runtime
+                            <span className="px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 rounded text-[10px] font-bold uppercase tracking-wider">
+                                East-West SD-WAN Simulator
                             </span>
                         </div>
                         <p className="text-xs text-text-muted mt-0.5">
-                            Real-time socket telemetry, bidirectional SD-WAN emulation & protocol diagnostics
+                            Simulate stateful multi-site application traffic across overlay tunnels with live RTT, failover observation, and chaos injection.
                         </p>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                    {instanceInfo && (
+                        <div className="flex items-center gap-2 bg-card-secondary border border-border px-3.5 py-1.5 rounded-xl text-xs shadow-sm">
+                            <span className="text-text-muted font-medium">Local Site:</span>
+                            <span className="font-bold text-text-primary font-mono">{instanceInfo.siteName}</span>
+                            {instanceInfo.instanceId && (
+                                <>
+                                    <span className="text-text-muted">•</span>
+                                    <span className="text-text-muted font-mono text-[11px]" title={instanceInfo.instanceId}>
+                                        UUID: {instanceInfo.instanceId.substring(0, 8)}...
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                    )}
+
                     <div className="flex items-center gap-1.5 px-3 py-1.5 bg-card-secondary border border-border rounded-xl text-xs font-mono text-text-secondary shadow-sm">
                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                         <span>Live Telemetry: 1.5s</span>
@@ -415,9 +430,13 @@ const secs = seconds % 60;
                 </div>
             </div>
 
-            {/* Application Switcher Tab Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
-                <div className="flex flex-wrap items-center gap-2 flex-1">
+            {/* Application Switcher Tab Bar (All Applications with Live Traffic Badges) */}
+            <div className="bg-card border border-border rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm">
+                <div className="flex items-center gap-2 text-text-primary font-semibold">
+                    <Layers size={16} className="text-indigo-500" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Applications ({applications.length}):</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap flex-1 justify-start">
                     {applications.map(app => {
                         const isSel = app.id === selectedAppId;
                         const sum = allAppSummaries[app.id];
@@ -433,18 +452,16 @@ const secs = seconds % 60;
                             <button
                                 key={app.id}
                                 onClick={() => setSelectedAppId(app.id)}
-                                className={`h-[36px] px-3.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-sm ${
+                                className={`px-3.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
                                     isSel
-                                        ? 'bg-indigo-600 text-white shadow-indigo-500/20'
-                                        : 'bg-card hover:bg-card-secondary text-text-secondary border border-border'
+                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                        : 'bg-card-secondary hover:bg-card-hover border-border text-text-secondary hover:text-text-primary'
                                 }`}
                             >
                                 <span className={`w-2 h-2 rounded-full ${isL ? 'bg-emerald-400' : 'bg-text-muted'}`} />
                                 <span>{app.name}</span>
-                                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
-                                    isSel ? 'bg-white/20 text-white' : 'bg-card-secondary text-text-muted'
-                                }`}>
-                                    :{app.listener?.port}
+                                <span className={`text-[10px] font-mono ${isSel ? 'text-indigo-200' : 'text-amber-500'}`}>
+                                    Port {app.listener?.port}
                                 </span>
 
                                 {/* Traffic flow badges */}
@@ -488,7 +505,7 @@ const secs = seconds % 60;
                         setEditingApp(null);
                         setIsWizardOpen(true);
                     }}
-                    className="h-[36px] px-3.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer shrink-0"
+                    className="h-[32px] px-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer shrink-0"
                 >
                     <Plus size={14} /> New App
                 </button>
