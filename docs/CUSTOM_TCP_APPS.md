@@ -77,6 +77,14 @@ RTT Samples Sorted: [ 10ms, 10ms, 11ms, 12ms ... 15ms ... 45ms ... 1000ms ]
 
 ---
 
+*Real-time Custom TCP Applications Dashboard with multi-app profiles, client/server status, and live latency percentiles:*
+![Custom Apps Dashboard Overview](screenshots/11-Custom-Apps/01-custom-apps-dashboard-overview.png)
+
+*Detailed incoming/outgoing TCP sessions table with live RTT sparklines, p50/p95 percentiles, and site correlation:*
+![Custom App Server Client Sessions](screenshots/11-Custom-Apps/02-custom-app-server-client-sessions.png)
+
+---
+
 ## Framing & Protocol Specification
 
 All communication occurs over standard stream-oriented TCP sockets using 4-byte Big-Endian Length Prefixes:
@@ -304,6 +312,9 @@ When testing custom TCP applications over an SD-WAN overlay, ION branch and data
    - **Register in Prisma**: 1-click provisioning of individual applications into the tenant.
    - **Sync All to Prisma**: Delta sync of all active custom applications in a single pass.
    - **Clean All**: Safely removes all Stigix-created (`STX_`) definitions when tearing down a lab.
+
+*Prisma SD-WAN Application Definitions Auto-Sync & Tenant Registration Modal:*
+![Prisma SD-WAN Custom AppDefs Synchronization](screenshots/11-Custom-Apps/04-custom-app-prisma-sync-modal.png)
 
 ---
 

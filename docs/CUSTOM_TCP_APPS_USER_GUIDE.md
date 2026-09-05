@@ -154,6 +154,9 @@ This step defines **how the server replies** when receiving client requests. Sti
 >
 > 💡 **Prisma SD-WAN Tip**: Combine **`HTTP/1.1 REST API`** with **`Fixed Delay`** (e.g. 800 ms) to observe Prisma SD-WAN Flow Browser immediately record **`SRT: ~800 ms`** while keeping **`RTT: ~8 ms`**!
 
+*Interactive Server Behaviors and Chaos Configuration Wizard:*
+![Custom App Network Impairments & Behavior Wizard](screenshots/11-Custom-Apps/03-custom-app-network-impairments-modal.png)
+
 ---
 
 ### Step 3: Client Workload Generation & Peers
@@ -232,6 +235,12 @@ $$\text{Score} = \text{Listener Active}(25\text{ pts}) + \text{Sessions Establis
 ### 3. Inbound & Outbound Session Tables
 * **Incoming Client Sessions**: Displays all clients connected to the local listener. Compares **Declared Site ID** vs **Underlying TCP Remote IP** (helpful to verify IPsec tunnel routing vs NAT).
 * **Outgoing Client Workload**: Lists active connections to remote peers. If `connectionsPerPeer: 2`, streams are identified as **`DC1 (Stream #1)`** and **`DC1 (Stream #2)`**. The lightning button **`⚡`** triggers a 1-shot handshake test.
+
+*Live Operational Dashboard showing real-time latency percentiles (p50/p95), multi-app profiles, and Health Score:*
+![Custom Apps Dashboard Overview](screenshots/11-Custom-Apps/01-custom-apps-dashboard-overview.png)
+
+*Incoming and Outgoing Session Tables with live RTT sparklines, site correlation, and instant diagnostic trigger:*
+![Custom App Server Client Sessions](screenshots/11-Custom-Apps/02-custom-app-server-client-sessions.png)
 
 ---
 
@@ -331,6 +340,9 @@ Here are standard configuration blueprints you can directly apply:
 * **Expected Result in Prisma SD-WAN**:
   * `SRT: ~800 ms` (Server Response Time)
   * `RTT: ~10 ms` (Transport Round-Trip Time)
+
+*Prisma SD-WAN Integration Modal — 1-click Application Definitions synchronization with Prisma tenant:*
+![Prisma SD-WAN Flow Browser AppDef Sync](screenshots/11-Custom-Apps/04-custom-app-prisma-sync-modal.png)
 
 ### Recipe 7: Next-Gen Firewall / SASE EICAR Antivirus Block Test — Port :8096
 * **Objective**: Validate that Next-Gen Firewalls (Palo Alto Networks Antivirus / WildFire, Prisma Access) inspect inline traffic, block the malware payload, and trigger security threat logs.
