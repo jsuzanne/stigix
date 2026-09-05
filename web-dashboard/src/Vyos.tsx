@@ -499,6 +499,64 @@ export default function Vyos(props: VyosProps) {
         }
     };
 
+    const [replayingId, setReplayingId] = useState<string | null>(null);
+
+    const handleReplayAction = async (log: any, event?: React.MouseEvent) => {
+        if (event) event.stopPropagation();
+        const actionKey = `${log.timestamp}-${log.action_id || log.command}-${log.interface || ''}`;
+        setReplayingId(actionKey);
+        try {
+            const res = await fetch('/api/vyos/direct-action', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    routerId: log.router_id,
+                    interface: log.interface,
+                    command: log.command,
+                    params: log.parameters,
+                    source: `Replay: ${log.command} (${log.sequence_name || 'Chronicle'})`
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                toast.success(`Replayed: ${log.command} on ${log.router_id}`);
+                await fetchData();
+                if (log.router_id) {
+                    await fetchRouterState(log.router_id);
+                }
+            } else {
+                toast.error(`Replay failed: ${data.error || 'Unknown error'}`);
+            }
+        } catch (err: any) {
+            toast.error(`Replay error: ${err.message}`);
+        } finally {
+            setReplayingId(null);
+        }
+    };
+
+    const handleReplaySequence = async (sequenceId: string, groupKey: string, event?: React.MouseEvent) => {
+        if (event) event.stopPropagation();
+        if (!sequenceId) return;
+        setReplayingId(groupKey);
+        try {
+            const res = await fetch(`/api/vyos/sequences/run/${sequenceId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                toast.success('Sequence replay initiated!');
+                await fetchData();
+            } else {
+                toast.error(`Replay sequence failed: ${data.error || 'Unknown error'}`);
+            }
+        } catch (err: any) {
+            toast.error(`Replay sequence error: ${err.message}`);
+        } finally {
+            setReplayingId(null);
+        }
+    };
+
     const fetchRouterState = async (routerId: string) => {
         if (loadingStateId === routerId) return;
         setLoadingStateId(routerId);
@@ -1609,6 +1667,21 @@ export default function Vyos(props: VyosProps) {
                                                         <div className="flex items-center gap-3">
                                                             <span className="text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Run Sequence: {group[0].sequence_name}</span>
                                                             <div className="h-px flex-1 bg-border/20" />
+                                                            {group[0].sequence_id && (
+                                                                <button
+                                                                    onClick={(e) => handleReplaySequence(group[0].sequence_id, `seq-run-${gIdx}-${group[0].timestamp}`, e)}
+                                                                    disabled={replayingId === `seq-run-${gIdx}-${group[0].timestamp}`}
+                                                                    className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-purple-500/10 hover:bg-purple-600 text-purple-400 hover:text-white border border-purple-500/30 text-[9px] font-bold uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer shadow-sm active:scale-95"
+                                                                    title="Replay this full sequence run"
+                                                                >
+                                                                    {replayingId === `seq-run-${gIdx}-${group[0].timestamp}` ? (
+                                                                        <RefreshCw size={9} className="animate-spin text-purple-400" />
+                                                                    ) : (
+                                                                        <Play size={9} fill="currentColor" />
+                                                                    )}
+                                                                    <span>{replayingId === `seq-run-${gIdx}-${group[0].timestamp}` ? 'Replaying...' : 'Replay Sequence'}</span>
+                                                                </button>
+                                                            )}
                                                             <span className="text-[9px] font-mono text-text-muted/60">{new Date(group[0].timestamp).toLocaleString()}</span>
                                                         </div>
                                                     </td>
@@ -1678,10 +1751,23 @@ export default function Vyos(props: VyosProps) {
                                                                             {log.status}
                                                                         </div>
                                                                         {log.error && (
-                                                                            <div className="text-[10px] text-red-500/80 font-mono truncate" title={log.error}>
+                                                                            <div className="text-[10px] text-red-500/80 font-mono truncate max-w-[120px]" title={log.error}>
                                                                                 {log.error}
                                                                             </div>
                                                                         )}
+                                                                        <button
+                                                                            onClick={(e) => handleReplayAction(log, e)}
+                                                                            disabled={replayingId === `${log.timestamp}-${log.action_id || log.command}-${log.interface || ''}`}
+                                                                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-[9px] font-bold uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer shadow-sm active:scale-95 ml-1"
+                                                                            title={`Replay action: ${log.command} on ${log.router_id} (${log.interface || 'global'})`}
+                                                                        >
+                                                                            {replayingId === `${log.timestamp}-${log.action_id || log.command}-${log.interface || ''}` ? (
+                                                                                <RefreshCw size={9} className="animate-spin text-blue-400" />
+                                                                            ) : (
+                                                                                <Play size={9} fill="currentColor" />
+                                                                            )}
+                                                                            <span>{replayingId === `${log.timestamp}-${log.action_id || log.command}-${log.interface || ''}` ? 'Replaying...' : 'Replay'}</span>
+                                                                        </button>
                                                                         <span className={`ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black font-mono border transition-colors ${isExpanded ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'text-text-muted/40 border-border/30 hover:text-green-400 hover:border-green-500/20'}`}>
                                                                             {'>_'}
                                                                         </span>
@@ -1784,10 +1870,23 @@ export default function Vyos(props: VyosProps) {
                                                                 {log.status === 'success' ? 'OK' : 'Failed'}
                                                             </span>
                                                             {log.error && (
-                                                                <div className="text-[10px] text-red-500/80 font-mono truncate" title={log.error}>
+                                                                <div className="text-[10px] text-red-500/80 font-mono truncate max-w-[120px]" title={log.error}>
                                                                     {log.error}
                                                                 </div>
                                                             )}
+                                                            <button
+                                                                onClick={(e) => handleReplayAction(log, e)}
+                                                                disabled={replayingId === `${log.timestamp}-${log.action_id || log.command}-${log.interface || ''}`}
+                                                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-[9px] font-bold uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer shadow-sm active:scale-95 ml-1"
+                                                                title={`Replay action: ${log.command} on ${log.router_id} (${log.interface || 'global'})`}
+                                                            >
+                                                                {replayingId === `${log.timestamp}-${log.action_id || log.command}-${log.interface || ''}` ? (
+                                                                    <RefreshCw size={9} className="animate-spin text-blue-400" />
+                                                                ) : (
+                                                                    <Play size={9} fill="currentColor" />
+                                                                )}
+                                                                <span>{replayingId === `${log.timestamp}-${log.action_id || log.command}-${log.interface || ''}` ? 'Replaying...' : 'Replay'}</span>
+                                                            </button>
                                                             {hasCli && (
                                                                 <span className={`ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black font-mono border transition-colors ${isExpanded ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'text-text-muted/40 border-border/30 hover:text-green-400 hover:border-green-500/20'}`}>
                                                                     {'>_'}
