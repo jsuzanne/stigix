@@ -5159,6 +5159,119 @@ app.get('/api/convergence/history', authenticateToken, (req, res) => {
     }
 });
 
+/**
+ * POST /api/convergence/history/refresh-path
+ * Re-query Prisma SD-WAN flow browser for an existing historical test and persist the updated path sequence.
+ */
+app.post('/api/convergence/history/refresh-path', authenticateToken, async (req, res) => {
+    try {
+        const { testId, sourcePort: reqSourcePort, dstIp: reqDstIp, siteName: reqSiteName } = req.body;
+        if (!testId) {
+            return res.status(400).json({ success: false, error: 'Missing testId' });
+        }
+
+        let sourcePort = reqSourcePort;
+        if (!sourcePort && testId) {
+            const match = String(testId).match(/CONV-(\d+)/);
+            if (match && match[1]) {
+                const testNum = parseInt(match[1], 10);
+                sourcePort = 30000 + (testNum % 10000);
+            }
+        }
+
+        let dstIp = reqDstIp;
+        // Fallback: search history record to get destination IP
+        if (!dstIp && fs.existsSync(CONVERGENCE_HISTORY_FILE)) {
+            try {
+                const raw = fs.readFileSync(CONVERGENCE_HISTORY_FILE, 'utf-8');
+                const lines = raw.split('\n').filter(Boolean);
+                for (const line of lines) {
+                    try {
+                        const obj = JSON.parse(line);
+                        const recordId = obj.test_id || obj.testId || '';
+                        if (recordId === testId || recordId.startsWith(testId + ' ') || recordId.startsWith(testId + '(')) {
+                            dstIp = obj.target || obj.destination_ip || obj.dest_ip;
+                            if (!sourcePort && (obj.source_port || obj.sourcePort)) {
+                                sourcePort = obj.source_port || obj.sourcePort;
+                            }
+                            break;
+                        }
+                    } catch {}
+                }
+            } catch {}
+        }
+
+        if (!sourcePort || !dstIp) {
+            return res.status(400).json({ success: false, error: 'Missing sourcePort or destination IP for flow lookup' });
+        }
+
+        const siteInfo = siteManager.getSiteInfo();
+        const siteName = reqSiteName || siteInfo?.detected_site_name || process.env.STIGIX_SITE_NAME;
+
+        if (!siteName) {
+            return res.status(400).json({
+                success: false,
+                error: 'No local site name detected. Ensure Prisma SD-WAN credentials and site mapping are configured.'
+            });
+        }
+
+        log('CONV', `Refreshing historical path for test ${testId} (${siteName} -> dst ${dstIp}, UDP port ${sourcePort})`);
+        const result = await runGetflow(siteName, Number(sourcePort), String(dstIp));
+
+        if (result?.flows && result.flows.length > 0) {
+            const primaryFlow = result.flows[0];
+            const rawPath = primaryFlow.egress_path || primaryFlow.path_type || '';
+            const egressPath = rawPath.replace(/ to /g, ' → ');
+            const pathHistory = (primaryFlow.path_history || []).map((p: any) => ({
+                ...p,
+                path: p.path ? p.path.replace(/ to /g, ' → ') : p.path
+            }));
+            const pathEvolution = pathHistory.length > 1
+                ? pathHistory.map((p: any) => p.path).join(' ➔ ')
+                : egressPath;
+
+            await enrichConvergenceHistory(testId, {
+                egress_path: egressPath,
+                path_history: pathHistory,
+                path_evolution: pathEvolution
+            });
+
+            return res.json({
+                success: true,
+                found: true,
+                site_name: siteName,
+                source_port: sourcePort,
+                destination_ip: dstIp,
+                egress_path: egressPath,
+                path_history: pathHistory,
+                path_evolution: pathEvolution,
+                path_type: primaryFlow.path_type || null,
+                timestamp: new Date().toISOString()
+            });
+        } else if (result?.error) {
+            return res.json({
+                success: false,
+                error: result.error,
+                site_name: siteName,
+                source_port: sourcePort,
+                destination_ip: dstIp
+            });
+        } else {
+            return res.json({
+                success: true,
+                found: false,
+                site_name: siteName,
+                source_port: sourcePort,
+                destination_ip: dstIp,
+                message: 'No flow record found in Prisma SD-WAN for this test window.'
+            });
+        }
+    } catch (e: any) {
+        log('CONV', `Error refreshing historical path: ${e.message}`, 'error');
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // API: GET Convergence Configuration
 app.get('/api/config/convergence', authenticateToken, (req, res) => {
     try {
