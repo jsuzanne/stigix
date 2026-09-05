@@ -312,37 +312,6 @@ export default function Failover(props: FailoverProps) {
         return '????';
     };
 
-    const formatTimelineStep = (item: any, idx: number, arr: any[]) => {
-        const rawTime = item.time_ms || (item.time_iso ? new Date(item.time_iso).getTime() : (item.time ? new Date(item.time).getTime() : null));
-        const isCurrent = idx === arr.length - 1;
-        
-        let timeLabel = '';
-        let deltaLabel = '';
-        
-        if (rawTime) {
-            const d = new Date(rawTime);
-            const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const ms = String(d.getMilliseconds()).padStart(3, '0');
-            timeLabel = `${timeStr}.${ms}`;
-            
-            if (idx > 0) {
-                const prevRawTime = arr[idx - 1]?.time_ms || (arr[idx - 1]?.time_iso ? new Date(arr[idx - 1].time_iso).getTime() : (arr[idx - 1]?.time ? new Date(arr[idx - 1].time).getTime() : null));
-                if (prevRawTime) {
-                    const diffMs = rawTime - prevRawTime;
-                    if (diffMs > 0) {
-                        deltaLabel = diffMs < 1000 ? `+${diffMs}ms` : `+${(diffMs / 1000).toFixed(2)}s`;
-                    }
-                }
-            }
-        }
-        
-        return {
-            stepLabel: `T${idx}`,
-            timeLabel,
-            deltaLabel,
-            isCurrent
-        };
-    };
 
     const handleCheckLivePath = async (testIdKey: string, dstIp: string, sourcePortStr?: string) => {
         if (!testIdKey && !sourcePortStr) return;
@@ -744,53 +713,36 @@ export default function Failover(props: FailoverProps) {
                                                             </span>
                                                         </div>
 
-                                                        {/* If multiple path decisions exist, show the chronological timeline stepper with timestamps & deltas */}
+                                                        {/* If multiple path decisions exist, show the clean sequential progression (Path 1 -> Path 2) */}
                                                         {livePath.path_history && livePath.path_history.length > 1 ? (
                                                             <div className="flex items-center gap-2 flex-wrap font-mono text-[11px]">
                                                                 {livePath.path_history.map((histItem: any, hIdx: number, hArr: any[]) => {
-                                                                    const { stepLabel, timeLabel, deltaLabel, isCurrent } = formatTimelineStep(histItem, hIdx, hArr);
+                                                                    const isCurrent = hIdx === hArr.length - 1;
                                                                     return (
                                                                         <React.Fragment key={hIdx}>
                                                                             <div
                                                                                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all ${
                                                                                     isCurrent
                                                                                         ? 'bg-emerald-950/80 border-emerald-400/80 text-emerald-200 font-bold shadow-[0_0_12px_rgba(16,185,129,0.35)]'
-                                                                                        : 'bg-card-secondary/90 border-border/80 text-text-secondary opacity-90'
+                                                                                        : 'bg-card-secondary/80 border-border/80 text-text-muted opacity-80'
                                                                                 }`}
-                                                                                title={timeLabel ? `Decision recorded at ${timeLabel}` : undefined}
                                                                             >
                                                                                 <span className={`text-[8px] font-mono px-1 py-0.2 rounded font-black tracking-tight ${
-                                                                                    isCurrent ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                                                                    isCurrent ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-card border border-border text-text-muted'
                                                                                 }`}>
-                                                                                    {stepLabel}
+                                                                                    {hIdx + 1}
                                                                                 </span>
-                                                                                {timeLabel && (
-                                                                                    <span className="text-[9px] text-text-muted font-sans font-normal">
-                                                                                        {timeLabel}
-                                                                                    </span>
-                                                                                )}
-                                                                                <span className="font-bold text-text-primary tracking-tight">
+                                                                                <span className={`font-bold tracking-tight ${isCurrent ? 'text-text-primary' : 'line-through text-text-muted'}`}>
                                                                                     {histItem.path}
                                                                                 </span>
-                                                                                {isCurrent ? (
+                                                                                {isCurrent && (
                                                                                     <span className="text-[7px] bg-emerald-500 text-slate-950 font-black px-1.5 py-0.5 rounded uppercase tracking-wider ml-1">
                                                                                         ACTIVE
-                                                                                    </span>
-                                                                                ) : (
-                                                                                    <span className="text-[7px] bg-card text-text-muted px-1 rounded uppercase tracking-wider ml-0.5 border border-border">
-                                                                                        {hIdx === 0 ? 'START' : 'PREV'}
                                                                                     </span>
                                                                                 )}
                                                                             </div>
                                                                             {hIdx < hArr.length - 1 && (
-                                                                                <div className="flex items-center gap-1 text-orange-400 font-bold text-xs animate-pulse px-0.5" title={`Failover transition ${hArr[hIdx + 1] ? (formatTimelineStep(hArr[hIdx + 1], hIdx + 1, hArr).deltaLabel || '') : ''}`}>
-                                                                                    <span>➔</span>
-                                                                                    {hArr[hIdx + 1] && formatTimelineStep(hArr[hIdx + 1], hIdx + 1, hArr).deltaLabel && (
-                                                                                        <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-orange-500/15 border border-orange-500/30 text-orange-300 font-normal">
-                                                                                            {formatTimelineStep(hArr[hIdx + 1], hIdx + 1, hArr).deltaLabel}
-                                                                                        </span>
-                                                                                    )}
-                                                                                </div>
+                                                                                <span className="text-orange-400 font-bold text-xs">➔</span>
                                                                             )}
                                                                         </React.Fragment>
                                                                     );
@@ -1119,7 +1071,7 @@ export default function Failover(props: FailoverProps) {
                                                                     <div className="text-[8px] text-text-muted font-bold uppercase flex items-center justify-between">
                                                                         <div className="flex items-center gap-1">
                                                                             <ArrowRightLeft size={7} className="shrink-0 animate-pulse text-blue-400" />
-                                                                            <span>{test.path_history && test.path_history.length > 1 ? 'Failover Chronological Path Timeline' : 'Egress Path'}</span>
+                                                                            <span>{test.path_history && test.path_history.length > 1 ? 'Failover Path Sequence' : 'Egress Path'}</span>
                                                                         </div>
                                                                         <button
                                                                             onClick={(e) => {
@@ -1137,51 +1089,34 @@ export default function Failover(props: FailoverProps) {
                                                                         </button>
                                                                     </div>
                                                                     {test.path_history && test.path_history.length > 1 ? (
-                                                                        <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                                                        <div className="flex items-center gap-1.5 flex-wrap mt-1 font-mono text-[11px]">
                                                                             {test.path_history.map((pItem: any, pIdx: number, pArr: any[]) => {
-                                                                                const { stepLabel, timeLabel, deltaLabel, isCurrent } = formatTimelineStep(pItem, pIdx, pArr);
+                                                                                const isCurrent = pIdx === pArr.length - 1;
                                                                                 return (
                                                                                     <React.Fragment key={pIdx}>
                                                                                         <div
                                                                                             className={`flex items-center gap-1.5 px-2 py-0.5 rounded border transition-all ${
                                                                                                 isCurrent
-                                                                                                    ? 'bg-blue-600/20 border-blue-500/50 text-blue-300 font-bold shadow-[0_0_10px_rgba(59,130,246,0.25)]'
-                                                                                                    : 'bg-card-secondary/90 border-border text-text-secondary opacity-90'
+                                                                                                    ? 'bg-blue-600/20 border-blue-500/50 text-blue-200 font-bold shadow-[0_0_10px_rgba(59,130,246,0.25)]'
+                                                                                                    : 'bg-card-secondary/80 border-border text-text-muted opacity-80'
                                                                                             }`}
-                                                                                            title={timeLabel ? `Decision recorded at ${timeLabel}` : undefined}
                                                                                         >
                                                                                             <span className={`text-[8px] font-mono px-1 py-0.2 rounded font-black tracking-tight ${
                                                                                                 isCurrent ? 'bg-blue-500/30 text-blue-200' : 'bg-card border border-border text-text-muted'
                                                                                             }`}>
-                                                                                                {stepLabel}
+                                                                                                {pIdx + 1}
                                                                                             </span>
-                                                                                            {timeLabel && (
-                                                                                                <span className="text-[9px] text-text-muted font-sans font-normal">
-                                                                                                    {timeLabel}
-                                                                                                </span>
-                                                                                            )}
-                                                                                            <span className="text-xs font-mono font-bold text-text-primary">
+                                                                                            <span className={`font-bold tracking-tight ${isCurrent ? 'text-text-primary' : 'line-through text-text-muted'}`}>
                                                                                                 {pItem.path}
                                                                                             </span>
-                                                                                            {isCurrent ? (
-                                                                                                <span className="text-[7px] bg-blue-500 text-white font-black px-1 py-0.2 rounded uppercase tracking-wider ml-0.5">
+                                                                                            {isCurrent && (
+                                                                                                <span className="text-[7px] bg-blue-500 text-white font-black px-1.5 py-0.5 rounded uppercase tracking-wider ml-0.5">
                                                                                                     ACTIVE
-                                                                                                </span>
-                                                                                            ) : (
-                                                                                                <span className="text-[7px] bg-card text-text-muted px-1 py-0.2 rounded uppercase tracking-wider ml-0.5 border border-border">
-                                                                                                    {pIdx === 0 ? 'START' : 'PREV'}
                                                                                                 </span>
                                                                                             )}
                                                                                         </div>
                                                                                         {pIdx < pArr.length - 1 && (
-                                                                                            <div className="flex items-center gap-0.5 text-orange-400 font-bold text-xs animate-pulse" title={`Failover transition ${pArr[pIdx + 1] ? (formatTimelineStep(pArr[pIdx + 1], pIdx + 1, pArr).deltaLabel || '') : ''}`}>
-                                                                                                <span>➔</span>
-                                                                                                {pArr[pIdx + 1] && formatTimelineStep(pArr[pIdx + 1], pIdx + 1, pArr).deltaLabel && (
-                                                                                                    <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-orange-500/15 border border-orange-500/30 text-orange-300 font-normal">
-                                                                                                        {formatTimelineStep(pArr[pIdx + 1], pIdx + 1, pArr).deltaLabel}
-                                                                                                    </span>
-                                                                                                )}
-                                                                                            </div>
+                                                                                            <span className="text-orange-400 font-bold text-xs">➔</span>
                                                                                         )}
                                                                                     </React.Fragment>
                                                                                 );
