@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'recharts';
-import { Activity, Clock, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind } from 'lucide-react';
+import { Activity, Clock, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera } from 'lucide-react';
+import { toPng } from 'html-to-image';
 import { isValidIpOrFqdn } from './utils/validation';
 
 interface FailoverProps {
@@ -17,6 +18,8 @@ export default function Failover(props: FailoverProps) {
     const [convergenceTargets, setConvergenceTargets] = useState<any[]>([]);
     const [reachability, setReachability] = useState<Record<string, boolean | 'loading'>>({});
     const [searchQuery, setSearchQuery] = useState('');
+    const [nowTs, setNowTs] = useState(Date.now());
+    const [exportingPocId, setExportingPocId] = useState<string | null>(null);
 
     const allTargets = useMemo(() => {
         const combined = [...endpoints];
@@ -60,6 +63,12 @@ export default function Failover(props: FailoverProps) {
         error?: string | null;
         timestamp?: string;
     }>>({});
+
+    // Live 1-second ticker for smooth countdown timers and chronos
+    useEffect(() => {
+        const intv = setInterval(() => setNowTs(Date.now()), 1000);
+        return () => clearInterval(intv);
+    }, []);
 
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
@@ -263,9 +272,60 @@ export default function Failover(props: FailoverProps) {
         }
     };
 
+    const handleExportPocCard = async (elementId: string, filename: string, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        setExportingPocId(elementId);
+        try {
+            const dataUrl = await toPng(el, {
+                backgroundColor: '#0b0f19',
+                pixelRatio: 2,
+                filter: (node) => {
+                    if (node instanceof HTMLElement && node.dataset.noExport === 'true') return false;
+                    return true;
+                }
+            });
+            const link = document.createElement('a');
+            link.download = `${filename}.png`;
+            link.href = dataUrl;
+            link.click();
+        } catch (err: any) {
+            console.error('Failed to export PoC card image:', err);
+        } finally {
+            setExportingPocId(null);
+        }
+    };
+
     const stopTest = async (testId?: string) => {
         setIsStopping(true);
         try {
+            // Save metrics time series to server for historical curve rendering
+            if (testId && liveMetricsSeries[testId]?.length > 0) {
+                fetch('/api/convergence/history/save-metrics', {
+                    method: 'POST',
+                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        testId,
+                        metrics_series: liveMetricsSeries[testId]
+                    })
+                }).catch(() => {});
+            } else if (!testId) {
+                activeTests.forEach(t => {
+                    const s = liveMetricsSeries[t.testId];
+                    if (s && s.length > 0) {
+                        fetch('/api/convergence/history/save-metrics', {
+                            method: 'POST',
+                            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                testId: t.testId,
+                                metrics_series: s
+                            })
+                        }).catch(() => {});
+                    }
+                });
+            }
+
             await fetch('/api/convergence/stop', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -653,7 +713,7 @@ export default function Failover(props: FailoverProps) {
             {/* Active Tests Section */}
             <div className="space-y-4">
                 {activeTests.map((test) => (
-                    <div key={test.testId} className="bg-card border border-border rounded-2xl overflow-hidden shadow-xl flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-border">
+                    <div key={test.testId} id={`active-test-card-${test.testId}`} className="bg-card border border-border rounded-2xl overflow-hidden shadow-xl flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-border">
                         {/* Outage Stats */}
                         <div className="bg-card-secondary/30 p-4 md:w-56 shrink-0 flex flex-col justify-center items-center text-center space-y-4">
                             <div className="space-y-1">
@@ -826,15 +886,31 @@ export default function Failover(props: FailoverProps) {
                                         </div>
 
                                         <div className="flex flex-col items-end gap-1.5 shrink-0">
-                                            <div className="flex gap-2">
-                                                <div className="flex flex-col items-end">
-                                                    <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Packets Sent</span>
-                                                    <span className="text-sm font-bold text-green-600 dark:text-green-400 font-mono">{test.sent}</span>
-                                                </div>
-                                                <div className="w-[1px] h-6 bg-border self-center mx-1" />
-                                                <div className="flex flex-col items-end">
-                                                    <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Received</span>
-                                                    <span className="text-sm font-bold text-blue-600 dark:text-blue-400 font-mono">{test.received}</span>
+                                            <div className="flex items-center gap-3">
+                                                <button
+                                                    data-no-export="true"
+                                                    onClick={(e) => handleExportPocCard(`active-test-card-${test.testId}`, `stigix-poc-live-${test.testId}-${new Date().toISOString().slice(0, 10)}`, e)}
+                                                    disabled={exportingPocId === `active-test-card-${test.testId}`}
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary border border-border transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+                                                    title="Export full test card as HD PNG screenshot for client PoC reports"
+                                                >
+                                                    {exportingPocId === `active-test-card-${test.testId}` ? (
+                                                        <RotateCw size={11} className="animate-spin text-blue-400" />
+                                                    ) : (
+                                                        <Camera size={11} className="text-blue-400" />
+                                                    )}
+                                                    <span>{exportingPocId === `active-test-card-${test.testId}` ? 'Exporting...' : 'Export PoC Card'}</span>
+                                                </button>
+                                                <div className="flex gap-2">
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Packets Sent</span>
+                                                        <span className="text-sm font-bold text-green-600 dark:text-green-400 font-mono">{test.sent}</span>
+                                                    </div>
+                                                    <div className="w-[1px] h-6 bg-border self-center mx-1" />
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Received</span>
+                                                        <span className="text-sm font-bold text-blue-600 dark:text-blue-400 font-mono">{test.received}</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -1236,113 +1312,309 @@ export default function Failover(props: FailoverProps) {
                                             {isExpanded && (
                                                 <tr className="bg-background/80">
                                                     <td colSpan={5} className="px-6 py-4 border-l-2 border-blue-500">
-                                                        <div className="space-y-3">
-                                                            <div className="flex items-center justify-between">
-                                                                <h4 className="text-[10px] font-bold text-text-muted uppercase tracking-widest flex items-center gap-2">
-                                                                    <BarChart3 size={12} /> Historical Failover Timeline
-                                                                </h4>
-                                                                <div className="flex gap-3 text-[9px] font-bold">
-                                                                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm bg-blue-600" /> <span className="text-text-muted uppercase">Success</span></div>
-                                                                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm bg-red-500" /> <span className="text-text-muted uppercase">Drop / Outage</span></div>
-                                                                </div>
-                                                            </div>
-                                                            <div className="h-4 w-full flex gap-0.5 rounded overflow-hidden">
-                                                                {(test.history || Array(100).fill(1)).map((val: number, i: number) => (
-                                                                    <div
-                                                                        key={i}
-                                                                        className={`flex-1 min-w-[1px] ${val === 1 ? 'bg-blue-600/40' : 'bg-red-500 shadow-lg shadow-red-500/50'}`}
-                                                                    />
-                                                                ))}
-                                                            </div>
-                                                            <div className="grid grid-cols-5 gap-3 pt-2">
-                                                                <div className="bg-card-secondary p-2 rounded border border-border">
-                                                                    <div className="text-[8px] text-text-muted font-bold uppercase">Uplink Loss</div>
-                                                                    <div className="text-xs font-mono font-bold text-red-500">↑ {test.tx_loss_pct || 0}%</div>
-                                                                </div>
-                                                                <div className="bg-card-secondary p-2 rounded border border-border">
-                                                                    <div className="text-[8px] text-text-muted font-bold uppercase">Downlink Loss</div>
-                                                                    <div className="text-xs font-mono font-bold text-blue-500">↓ {test.rx_loss_pct || 0}%</div>
-                                                                </div>
-                                                                <div className="bg-card-secondary p-2 rounded border border-border">
-                                                                    <div className="text-[8px] text-text-muted font-bold uppercase">Avg Latency</div>
-                                                                    <div className="text-xs font-mono font-bold text-text-secondary">{test.avg_rtt_ms || 0}ms</div>
-                                                                </div>
-                                                                <div className="bg-card-secondary p-2 rounded border border-border">
-                                                                    <div className="text-[8px] text-text-muted font-bold uppercase">Jitter (ms)</div>
-                                                                    <div className="text-xs font-mono font-bold text-text-secondary">{test.jitter_ms || 0}ms</div>
-                                                                </div>
-                                                                <div className="bg-card-secondary p-2 rounded border border-border relative group/path">
-                                                                    <div className="text-[8px] text-text-muted font-bold uppercase flex items-center justify-between">
-                                                                        <div className="flex items-center gap-1">
-                                                                            <ArrowRightLeft size={7} className="shrink-0 animate-pulse text-blue-400" />
-                                                                            <span>{test.path_history && test.path_history.length > 1 ? 'Failover Path Sequence' : 'Egress Path'}</span>
+                                                        {(() => {
+                                                            const testKey = test.test_id || test.testId || '';
+                                                            const convId = test.test_id?.match(/CONV-\d+/)?.[0] || testKey;
+                                                            const series = test.metrics_series || liveMetricsSeries[testKey] || liveMetricsSeries[convId] || [];
+                                                            const hasSeries = Array.isArray(series) && series.length > 0;
+                                                            const cardDomId = `history-test-card-${convId}-${test.timestamp}`;
+
+                                                            return (
+                                                                <div id={cardDomId} className="p-4 rounded-xl bg-card border border-border/80 space-y-4 shadow-inner">
+                                                                    {/* Header with Title, Verdict, Legend and Export PoC Card Button */}
+                                                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-border/40 pb-3">
+                                                                        <div className="flex items-center gap-3 flex-wrap">
+                                                                            <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
+                                                                                <BarChart3 size={14} className="text-blue-400" /> PoC Test Analysis & Failover Curves
+                                                                            </h4>
+                                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded font-bold text-[9px] border ${verdict.bg.replace('400/10', '600/20')} ${verdict.color.replace('text-green-400', 'text-green-600 dark:text-green-400')} tracking-widest`}>
+                                                                                {verdict.label}
+                                                                            </span>
+                                                                            <span className="text-[10px] font-mono text-text-muted font-bold">
+                                                                                Max Outage: <span className={test.max_blackout_ms > 0 ? 'text-orange-400 font-bold' : 'text-text-secondary'}>{formatMs(test.max_blackout_ms || 0)}</span>
+                                                                            </span>
+                                                                            {test.duration_s && (
+                                                                                <span className="text-[10px] font-mono text-text-muted">
+                                                                                    • Duration: <span className="text-text-secondary font-bold">{test.duration_s}s</span>
+                                                                                </span>
+                                                                            )}
                                                                         </div>
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                handleRefreshHistoryPath(test);
-                                                                            }}
-                                                                            disabled={refreshingPathId === (test.test_id?.match(/CONV-\d+/)?.[0] || test.test_id)}
-                                                                            className="p-1 hover:bg-blue-500/20 rounded text-text-muted hover:text-blue-400 transition-all cursor-pointer opacity-80 group-hover/path:opacity-100 disabled:opacity-50"
-                                                                            title="Re-query Prisma SD-WAN Flow Browser to refresh and detect multi-path failovers for this test"
-                                                                        >
-                                                                            <RotateCw
-                                                                                size={10}
-                                                                                className={refreshingPathId === (test.test_id?.match(/CONV-\d+/)?.[0] || test.test_id) ? 'animate-spin text-blue-400' : ''}
-                                                                            />
-                                                                        </button>
+                                                                        <div className="flex items-center gap-3" data-no-export="true">
+                                                                            <div className="flex gap-2.5 text-[9px] font-bold">
+                                                                                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm bg-emerald-500" /> <span className="text-text-muted uppercase">RTT</span></div>
+                                                                                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm bg-amber-500" /> <span className="text-text-muted uppercase">Jitter</span></div>
+                                                                                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm bg-red-500" /> <span className="text-text-muted uppercase">Loss</span></div>
+                                                                            </div>
+                                                                            <button
+                                                                                data-no-export="true"
+                                                                                onClick={(e) => handleExportPocCard(cardDomId, `stigix-poc-history-${convId}-${test.timestamp}`, e)}
+                                                                                disabled={exportingPocId === cardDomId}
+                                                                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+                                                                                title="Export high-resolution PoC card screenshot with charts for presentations & slides"
+                                                                            >
+                                                                                {exportingPocId === cardDomId ? (
+                                                                                    <RotateCw size={11} className="animate-spin" />
+                                                                                ) : (
+                                                                                    <Camera size={11} />
+                                                                                )}
+                                                                                <span>{exportingPocId === cardDomId ? 'Exporting...' : 'Export PoC Card'}</span>
+                                                                            </button>
+                                                                        </div>
                                                                     </div>
-                                                                    {test.path_history && test.path_history.length > 1 ? (
-                                                                        <div className="flex items-center gap-1.5 flex-wrap mt-1 font-mono text-[11px]">
-                                                                            {test.path_history.map((pItem: any, pIdx: number, pArr: any[]) => {
-                                                                                const isCurrent = pIdx === pArr.length - 1;
-                                                                                return (
-                                                                                    <React.Fragment key={pIdx}>
-                                                                                        <div
-                                                                                            className={`flex items-center gap-1.5 px-2 py-0.5 rounded border transition-all ${
-                                                                                                isCurrent
-                                                                                                    ? 'bg-blue-600/20 border-blue-500/50 text-blue-200 font-bold shadow-[0_0_10px_rgba(59,130,246,0.25)]'
-                                                                                                    : 'bg-card-secondary/80 border-border text-text-muted opacity-80'
-                                                                                            }`}
-                                                                                        >
-                                                                                            <span className={`text-[8px] font-mono px-1 py-0.2 rounded font-black tracking-tight ${
-                                                                                                isCurrent ? 'bg-blue-500/30 text-blue-200' : 'bg-card border border-border text-text-muted'
-                                                                                            }`}>
-                                                                                                {pIdx + 1}
-                                                                                            </span>
-                                                                                            <span className={`font-bold tracking-tight ${isCurrent ? 'text-text-primary' : 'line-through text-text-muted'}`}>
-                                                                                                {pItem.path}
-                                                                                            </span>
-                                                                                            {isCurrent && (
-                                                                                                <span className="text-[7px] bg-blue-500 text-white font-black px-1.5 py-0.5 rounded uppercase tracking-wider ml-0.5">
-                                                                                                    ACTIVE
-                                                                                                </span>
-                                                                                            )}
-                                                                                        </div>
-                                                                                        {pIdx < pArr.length - 1 && (
-                                                                                            <span className="text-orange-400 font-bold text-xs">➔</span>
-                                                                                        )}
-                                                                                    </React.Fragment>
-                                                                                );
-                                                                            })}
+
+                                                                    {/* Historical AreaCharts (if time-series exists) */}
+                                                                    {hasSeries && (
+                                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                                            {/* Historical Latency Chart */}
+                                                                            <div className="bg-card-secondary/20 p-2.5 rounded-xl border border-border/40">
+                                                                                <div className="flex justify-between items-center mb-1.5">
+                                                                                    <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                                                                        <Activity size={11} className="text-emerald-400" /> RTT Latency
+                                                                                    </span>
+                                                                                    <span className="text-xs font-mono font-bold text-emerald-400">
+                                                                                        Avg: {test.avg_rtt_ms || 0}ms
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="h-[65px] w-full">
+                                                                                    <ResponsiveContainer width="100%" height="100%">
+                                                                                        <AreaChart data={series} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                                                                                            <defs>
+                                                                                                <linearGradient id={`histRtt-${idx}`} x1="0" y1="0" x2="0" y2="1">
+                                                                                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.35}/>
+                                                                                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                                                                                </linearGradient>
+                                                                                            </defs>
+                                                                                            <YAxis domain={[0, (dataMax: number) => Math.max(5, Math.ceil(dataMax * 1.15))]} hide />
+                                                                                            <XAxis dataKey="time" stroke="#475569" tick={{ fontSize: 7, fill: '#64748b' }} minTickGap={25} tickLine={false} axisLine={{ stroke: '#334155' }} height={12} />
+                                                                                            <Tooltip
+                                                                                                content={({ active, payload }) => {
+                                                                                                    if (active && payload && payload.length) {
+                                                                                                        const d = payload[0].payload;
+                                                                                                        return (
+                                                                                                            <div className="bg-slate-950/95 border border-slate-700 p-1.5 rounded shadow-xl text-[10px] font-mono">
+                                                                                                                <div className="text-slate-400 text-[8px]">{d.timeLabel || d.time} ({d.elapsedLabel || ''})</div>
+                                                                                                                <div className="text-emerald-400 font-bold">RTT: {d.rtt} ms</div>
+                                                                                                            </div>
+                                                                                                        );
+                                                                                                    }
+                                                                                                    return null;
+                                                                                                }}
+                                                                                            />
+                                                                                            <Area type="monotone" dataKey="rtt" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill={`url(#histRtt-${idx})`} isAnimationActive={false} />
+                                                                                        </AreaChart>
+                                                                                    </ResponsiveContainer>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {/* Historical Jitter Chart */}
+                                                                            <div className="bg-card-secondary/20 p-2.5 rounded-xl border border-border/40">
+                                                                                <div className="flex justify-between items-center mb-1.5">
+                                                                                    <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                                                                        <Activity size={11} className="text-amber-400" /> Jitter
+                                                                                    </span>
+                                                                                    <span className="text-xs font-mono font-bold text-amber-400">
+                                                                                        Avg: {test.jitter_ms || 0}ms
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="h-[65px] w-full">
+                                                                                    <ResponsiveContainer width="100%" height="100%">
+                                                                                        <AreaChart data={series} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                                                                                            <defs>
+                                                                                                <linearGradient id={`histJitter-${idx}`} x1="0" y1="0" x2="0" y2="1">
+                                                                                                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.35}/>
+                                                                                                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                                                                                                </linearGradient>
+                                                                                            </defs>
+                                                                                            <YAxis domain={[0, (dataMax: number) => Math.max(5, Math.ceil(dataMax * 1.15))]} hide />
+                                                                                            <XAxis dataKey="time" stroke="#475569" tick={{ fontSize: 7, fill: '#64748b' }} minTickGap={25} tickLine={false} axisLine={{ stroke: '#334155' }} height={12} />
+                                                                                            <Tooltip
+                                                                                                content={({ active, payload }) => {
+                                                                                                    if (active && payload && payload.length) {
+                                                                                                        const d = payload[0].payload;
+                                                                                                        return (
+                                                                                                            <div className="bg-slate-950/95 border border-slate-700 p-1.5 rounded shadow-xl text-[10px] font-mono">
+                                                                                                                <div className="text-slate-400 text-[8px]">{d.timeLabel || d.time} ({d.elapsedLabel || ''})</div>
+                                                                                                                <div className="text-amber-400 font-bold">Jitter: {d.jitter} ms</div>
+                                                                                                            </div>
+                                                                                                        );
+                                                                                                    }
+                                                                                                    return null;
+                                                                                                }}
+                                                                                            />
+                                                                                            <Area type="monotone" dataKey="jitter" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill={`url(#histJitter-${idx})`} isAnimationActive={false} />
+                                                                                        </AreaChart>
+                                                                                    </ResponsiveContainer>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {/* Historical Packet Loss Chart */}
+                                                                            <div className="bg-card-secondary/20 p-2.5 rounded-xl border border-border/40">
+                                                                                <div className="flex justify-between items-center mb-1.5">
+                                                                                    <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                                                                        <Activity size={11} className="text-red-400" /> Packet Loss Spike
+                                                                                    </span>
+                                                                                    <span className="text-xs font-mono font-bold text-red-400">
+                                                                                        Peak: {Math.max(...series.map((s: any) => s.loss || 0), 0)}%
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="h-[65px] w-full">
+                                                                                    <ResponsiveContainer width="100%" height="100%">
+                                                                                        <AreaChart data={series} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                                                                                            <defs>
+                                                                                                <linearGradient id={`histLoss-${idx}`} x1="0" y1="0" x2="0" y2="1">
+                                                                                                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.5}/>
+                                                                                                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0.05}/>
+                                                                                                </linearGradient>
+                                                                                            </defs>
+                                                                                            <YAxis domain={[0, (dataMax: number) => Math.max(10, Math.min(100, Math.ceil(dataMax * 1.5)))]} hide />
+                                                                                            <XAxis dataKey="time" stroke="#475569" tick={{ fontSize: 7, fill: '#64748b' }} minTickGap={25} tickLine={false} axisLine={{ stroke: '#334155' }} height={12} />
+                                                                                            <Tooltip
+                                                                                                content={({ active, payload }) => {
+                                                                                                    if (active && payload && payload.length) {
+                                                                                                        const d = payload[0].payload;
+                                                                                                        return (
+                                                                                                            <div className="bg-slate-950/95 border border-slate-700 p-1.5 rounded shadow-xl text-[10px] font-mono">
+                                                                                                                <div className="text-slate-400 text-[8px]">{d.timeLabel || d.time} ({d.elapsedLabel || ''})</div>
+                                                                                                                <div className="text-red-400 font-bold">Loss: {d.loss}%</div>
+                                                                                                            </div>
+                                                                                                        );
+                                                                                                    }
+                                                                                                    return null;
+                                                                                                }}
+                                                                                            />
+                                                                                            <Area type="monotone" dataKey="loss" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill={`url(#histLoss-${idx})`} isAnimationActive={false} />
+                                                                                        </AreaChart>
+                                                                                    </ResponsiveContainer>
+                                                                                </div>
+                                                                            </div>
                                                                         </div>
-                                                                    ) : (test.path_evolution || test.egress_path) ? (
-                                                                        <div className="text-xs font-mono font-bold text-blue-400 truncate flex items-center gap-1.5 mt-0.5" title={test.path_evolution || test.egress_path}>
-                                                                            {(test.path_evolution || test.egress_path).split(/ → | -> /).map((node: string, idx: number, arr: string[]) => (
-                                                                                <React.Fragment key={idx}>
-                                                                                    {node}
-                                                                                    {idx < arr.length - 1 && <span className="text-text-muted">⇢</span>}
-                                                                                </React.Fragment>
+                                                                    )}
+
+                                                                    {/* 100-Packet Sequence / Outage Bar */}
+                                                                    <div className="space-y-1">
+                                                                        <div className="flex justify-between items-center text-[9px] text-text-muted font-bold uppercase tracking-wider">
+                                                                            <span>100-Packet Sequence / Outage Detection</span>
+                                                                            <span className="font-mono">{test.sent ? `${test.received}/${test.sent} packets (${test.tx_loss_pct || 0}% tx loss)` : ''}</span>
+                                                                        </div>
+                                                                        <div className="h-3.5 w-full flex gap-0.5 rounded overflow-hidden bg-card-secondary/50 p-0.5 border border-border/30">
+                                                                            {(test.history || Array(100).fill(1)).map((val: number, i: number) => (
+                                                                                <div
+                                                                                    key={i}
+                                                                                    className={`flex-1 min-w-[1px] rounded-[0.5px] ${val === 1 ? 'bg-blue-600/50' : 'bg-gradient-to-t from-red-600 to-rose-400 shadow-md shadow-red-500/60'}`}
+                                                                                    title={val === 1 ? `Packet #${i + 1}: Received OK` : `Packet #${i + 1}: DROPPED (Outage gap)`}
+                                                                                />
                                                                             ))}
                                                                         </div>
-                                                                    ) : (Date.now() - (test.timestamp || 0)) < 3 * 60 * 1000 ? (
-                                                                        <div className="text-[9px] text-text-muted italic mt-0.5">⏳ fetching...</div>
-                                                                    ) : (
-                                                                        <div className="text-xs text-text-muted mt-0.5">—</div>
-                                                                    )}
+                                                                    </div>
+
+                                                                    {/* 5 Stat Cards + Dynamic SCM Countdown */}
+                                                                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-1">
+                                                                        <div className="bg-card-secondary/70 p-2.5 rounded-xl border border-border">
+                                                                            <div className="text-[8px] text-text-muted font-bold uppercase">Uplink Loss</div>
+                                                                            <div className="text-xs font-mono font-bold text-red-500 mt-0.5">↑ {test.tx_loss_pct || 0}%</div>
+                                                                        </div>
+                                                                        <div className="bg-card-secondary/70 p-2.5 rounded-xl border border-border">
+                                                                            <div className="text-[8px] text-text-muted font-bold uppercase">Downlink Loss</div>
+                                                                            <div className="text-xs font-mono font-bold text-blue-500 mt-0.5">↓ {test.rx_loss_pct || 0}%</div>
+                                                                        </div>
+                                                                        <div className="bg-card-secondary/70 p-2.5 rounded-xl border border-border">
+                                                                            <div className="text-[8px] text-text-muted font-bold uppercase">Avg Latency</div>
+                                                                            <div className="text-xs font-mono font-bold text-text-secondary mt-0.5">{test.avg_rtt_ms || 0}ms</div>
+                                                                        </div>
+                                                                        <div className="bg-card-secondary/70 p-2.5 rounded-xl border border-border">
+                                                                            <div className="text-[8px] text-text-muted font-bold uppercase">Jitter (ms)</div>
+                                                                            <div className="text-xs font-mono font-bold text-text-secondary mt-0.5">{test.jitter_ms || 0}ms</div>
+                                                                        </div>
+                                                                        <div className="col-span-2 sm:col-span-1 bg-card-secondary/70 p-2.5 rounded-xl border border-border relative group/path">
+                                                                            <div className="text-[8px] text-text-muted font-bold uppercase flex items-center justify-between">
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <ArrowRightLeft size={8} className="shrink-0 animate-pulse text-blue-400" />
+                                                                                    <span>{test.path_history && test.path_history.length > 1 ? 'Failover Path Sequence' : 'Egress Path'}</span>
+                                                                                </div>
+                                                                                <button
+                                                                                    data-no-export="true"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handleRefreshHistoryPath(test);
+                                                                                    }}
+                                                                                    disabled={refreshingPathId === convId}
+                                                                                    className="p-1 hover:bg-blue-500/20 rounded text-text-muted hover:text-blue-400 transition-all cursor-pointer opacity-80 group-hover/path:opacity-100 disabled:opacity-50"
+                                                                                    title="Re-query Prisma SD-WAN Flow Browser to refresh and detect multi-path failovers for this test"
+                                                                                >
+                                                                                    <RotateCw
+                                                                                        size={10}
+                                                                                        className={refreshingPathId === convId ? 'animate-spin text-blue-400' : ''}
+                                                                                    />
+                                                                                </button>
+                                                                            </div>
+                                                                            {test.path_history && test.path_history.length > 1 ? (
+                                                                                <div className="flex items-center gap-1.5 flex-wrap mt-1 font-mono text-[10px]">
+                                                                                    {test.path_history.map((pItem: any, pIdx: number, pArr: any[]) => {
+                                                                                        const isCurrent = pIdx === pArr.length - 1;
+                                                                                        return (
+                                                                                            <React.Fragment key={pIdx}>
+                                                                                                <div
+                                                                                                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded border transition-all ${
+                                                                                                        isCurrent
+                                                                                                            ? 'bg-blue-600/20 border-blue-500/50 text-blue-200 font-bold shadow-[0_0_10px_rgba(59,130,246,0.25)]'
+                                                                                                            : 'bg-card-secondary/80 border-border text-text-muted opacity-80'
+                                                                                                    }`}
+                                                                                                >
+                                                                                                    <span className={`text-[7px] font-mono px-1 py-0.2 rounded font-black tracking-tight ${
+                                                                                                        isCurrent ? 'bg-blue-500/30 text-blue-200' : 'bg-card border border-border text-text-muted'
+                                                                                                    }`}>
+                                                                                                        {pIdx + 1}
+                                                                                                    </span>
+                                                                                                    <span className={`font-bold tracking-tight ${isCurrent ? 'text-text-primary' : 'line-through text-text-muted'}`}>
+                                                                                                        {pItem.path}
+                                                                                                    </span>
+                                                                                                    {isCurrent && (
+                                                                                                        <span className="text-[6px] bg-blue-500 text-white font-black px-1 py-0.2 rounded uppercase tracking-wider ml-0.5">
+                                                                                                            ACTIVE
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                                {pIdx < pArr.length - 1 && (
+                                                                                                    <span className="text-orange-400 font-bold text-xs">➔</span>
+                                                                                                )}
+                                                                                            </React.Fragment>
+                                                                                        );
+                                                                                    })}
+                                                                                </div>
+                                                                            ) : (test.path_evolution || test.egress_path) ? (
+                                                                                <div className="text-xs font-mono font-bold text-blue-400 truncate flex items-center gap-1.5 mt-1" title={test.path_evolution || test.egress_path}>
+                                                                                    {(test.path_evolution || test.egress_path).split(/ → | -> /).map((node: string, idx: number, arr: string[]) => (
+                                                                                        <React.Fragment key={idx}>
+                                                                                            {node}
+                                                                                            {idx < arr.length - 1 && <span className="text-text-muted">⇢</span>}
+                                                                                        </React.Fragment>
+                                                                                    ))}
+                                                                                </div>
+                                                                            ) : (() => {
+                                                                                const ageSec = Math.max(0, Math.floor((nowTs - (test.timestamp || 0)) / 1000));
+                                                                                if (ageSec < 60) {
+                                                                                    return (
+                                                                                        <div className="text-[9px] text-blue-400 font-mono italic animate-pulse mt-1 flex items-center gap-1">
+                                                                                            <RotateCw size={9} className="animate-spin text-blue-400" />
+                                                                                            <span>SCM flow indexing ({60 - ageSec}s)</span>
+                                                                                        </div>
+                                                                                    );
+                                                                                } else if (ageSec < 180) {
+                                                                                    return (
+                                                                                        <div className="text-[9px] text-amber-400 font-mono italic mt-1 flex items-center gap-1">
+                                                                                            <RotateCw size={9} className="animate-spin text-amber-400" />
+                                                                                            <span>2nd SCM check ({180 - ageSec}s)</span>
+                                                                                        </div>
+                                                                                    );
+                                                                                } else {
+                                                                                    return <div className="text-xs text-text-muted mt-1">—</div>;
+                                                                                }
+                                                                            })()}
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        </div>
+                                                            );
+                                                        })()}
                                                     </td>
                                                 </tr>
                                             )}

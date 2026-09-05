@@ -4964,45 +4964,84 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
                     // Cleanup tmp file
                     fs.unlinkSync(statsFile);
 
-                    // ─── Fire-and-forget egress path enrichment ───────────────
-                    // 60s delay allows the SD-WAN flow to be indexed in Prisma
+                    // ─── Fire-and-forget egress path enrichment (1st check at 60s, 2nd at 180s) ───────────────
                     const testNum = parseInt(testId.replace('CONV-', ''));
                     const sourcePort = 30000 + testNum;
                     const enrichTarget = target; // capture target IP in closure
-                    console.log(`[${testId}] [CONV] Scheduling getflow enrichment in 60s (port ${sourcePort}, dst ${enrichTarget})`);
+                    console.log(`[${testId}] [CONV] Scheduling 1st getflow enrichment in 60s (port ${sourcePort}, dst ${enrichTarget})`);
                     setTimeout(async () => {
+                        let hasMultiPath = false;
                         try {
                             const siteInfo = siteManager.getSiteInfo();
                             const siteName = siteInfo?.detected_site_name;
-                            if (!siteName) {
-                                console.log(`[${testId}] [CONV] No site name detected, skipping getflow enrichment`);
-                                return;
-                            }
-                            const result = await runGetflow(siteName, sourcePort, enrichTarget);
-                            if (result?.flows && result.flows.length > 0) {
-                                const primaryFlow = result.flows[0];
-                                const rawPath = primaryFlow?.egress_path || '';
-                                const egressPath = rawPath.replace(/ to /g, ' → ');
-                                const pathHistory = (primaryFlow?.path_history || []).map((p: any) => ({
-                                    ...p,
-                                    path: p.path ? p.path.replace(/ to /g, ' → ') : p.path
-                                }));
-                                const pathEvolution = pathHistory.length > 1
-                                    ? pathHistory.map((p: any) => p.path).join(' ➔ ')
-                                    : egressPath;
+                            if (siteName) {
+                                const result = await runGetflow(siteName, sourcePort, enrichTarget);
+                                if (result?.flows && result.flows.length > 0) {
+                                    const primaryFlow = result.flows[0];
+                                    const rawPath = primaryFlow?.egress_path || '';
+                                    const egressPath = rawPath.replace(/ to /g, ' → ');
+                                    const pathHistory = (primaryFlow?.path_history || []).map((p: any) => ({
+                                        ...p,
+                                        path: p.path ? p.path.replace(/ to /g, ' → ') : p.path
+                                    }));
+                                    const pathEvolution = pathHistory.length > 1
+                                        ? pathHistory.map((p: any) => p.path).join(' ➔ ')
+                                        : egressPath;
 
-                                await enrichConvergenceHistory(testId, {
-                                    egress_path: egressPath,
-                                    path_history: pathHistory,
-                                    path_evolution: pathEvolution
-                                });
-                                console.log(`[${testId}] [CONV] Egress path enriched: ${pathEvolution}`);
-                            } else {
-                                console.log(`[${testId}] [CONV] Egress path: no flow found, skipping enrichment`);
+                                    await enrichConvergenceHistory(testId, {
+                                        egress_path: egressPath,
+                                        path_history: pathHistory,
+                                        path_evolution: pathEvolution
+                                    });
+                                    if (pathHistory.length > 1) {
+                                        hasMultiPath = true;
+                                    }
+                                    console.log(`[${testId}] [CONV] Egress path enriched (1st check 60s): ${pathEvolution}`);
+                                } else {
+                                    console.log(`[${testId}] [CONV] Egress path (1st check): no flow found yet`);
+                                }
                             }
                         } catch (e: any) {
-                            console.warn(`[${testId}] [CONV] getflow enrichment error: ${e.message}`);
+                            console.warn(`[${testId}] [CONV] 1st getflow enrichment error: ${e.message}`);
                         }
+
+                        // If failover multi-path is already detected, skip the 2nd check to save API calls
+                        if (hasMultiPath) {
+                            console.log(`[${testId}] [CONV] Failover multi-path verified at 60s. Skipping 2nd 180s query.`);
+                            return;
+                        }
+
+                        // 2nd conditional check at 180s (120s after 1st check)
+                        console.log(`[${testId}] [CONV] Scheduling 2nd conditional getflow enrichment at 180s (port ${sourcePort}, dst ${enrichTarget})`);
+                        setTimeout(async () => {
+                            try {
+                                const siteInfo = siteManager.getSiteInfo();
+                                const siteName = siteInfo?.detected_site_name;
+                                if (!siteName) return;
+                                const result = await runGetflow(siteName, sourcePort, enrichTarget, 10);
+                                if (result?.flows && result.flows.length > 0) {
+                                    const primaryFlow = result.flows[0];
+                                    const rawPath = primaryFlow?.egress_path || '';
+                                    const egressPath = rawPath.replace(/ to /g, ' → ');
+                                    const pathHistory = (primaryFlow?.path_history || []).map((p: any) => ({
+                                        ...p,
+                                        path: p.path ? p.path.replace(/ to /g, ' → ') : p.path
+                                    }));
+                                    const pathEvolution = pathHistory.length > 1
+                                        ? pathHistory.map((p: any) => p.path).join(' ➔ ')
+                                        : egressPath;
+
+                                    await enrichConvergenceHistory(testId, {
+                                        egress_path: egressPath,
+                                        path_history: pathHistory,
+                                        path_evolution: pathEvolution
+                                    });
+                                    console.log(`[${testId}] [CONV] Egress path enriched (2nd check 180s): ${pathEvolution}`);
+                                }
+                            } catch (e: any) {
+                                console.warn(`[${testId}] [CONV] 2nd getflow enrichment error: ${e.message}`);
+                            }
+                        }, 120_000);
                     }, 60_000); // Fire-and-forget — never awaited
                     // ──────────────────────────────────────────────────────────
 
@@ -5156,6 +5195,29 @@ app.get('/api/convergence/history', authenticateToken, (req, res) => {
         res.json(history);
     } catch (e) {
         res.status(500).json({ error: 'Failed to read history' });
+    }
+});
+
+/**
+ * POST /api/convergence/history/save-metrics
+ * Persist client-side / orchestrator metrics time series to the corresponding history record.
+ */
+app.post('/api/convergence/history/save-metrics', authenticateToken, async (req, res) => {
+    try {
+        const { testId, metrics_series } = req.body;
+        if (!testId || !Array.isArray(metrics_series)) {
+            return res.status(400).json({ error: 'Missing testId or metrics_series' });
+        }
+        // Downsample slightly if series is huge (e.g. max 600 points) to keep jsonl lean
+        let seriesToSave = metrics_series;
+        if (seriesToSave.length > 600) {
+            const step = Math.ceil(seriesToSave.length / 600);
+            seriesToSave = seriesToSave.filter((_, idx) => idx % step === 0 || idx === seriesToSave.length - 1);
+        }
+        const updated = await enrichConvergenceHistory(testId, { metrics_series: seriesToSave });
+        res.json({ success: updated, count: seriesToSave.length });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
     }
 });
 
