@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, ResponsiveContainer, YAxis } from 'recharts';
-import { Activity, Clock, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft } from 'lucide-react';
+import { Activity, Clock, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw } from 'lucide-react';
 import { isValidIpOrFqdn } from './utils/validation';
 
 interface FailoverProps {
@@ -45,6 +45,16 @@ export default function Failover(props: FailoverProps) {
     const [isStarting, setIsStarting] = useState(false);
     const [isStopping, setIsStopping] = useState(false);
     const [liveMetricsSeries, setLiveMetricsSeries] = useState<Record<string, any[]>>({});
+    const [livePaths, setLivePaths] = useState<Record<string, {
+        loading?: boolean;
+        found?: boolean;
+        egress_path?: string | null;
+        path_type?: string | null;
+        site_name?: string | null;
+        message?: string | null;
+        error?: string | null;
+        timestamp?: string;
+    }>>({});
 
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
@@ -299,6 +309,65 @@ export default function Failover(props: FailoverProps) {
         return '????';
     };
 
+    const handleCheckLivePath = async (testIdKey: string, dstIp: string, sourcePortStr?: string) => {
+        if (!testIdKey && !sourcePortStr) return;
+        const testId = testIdKey.match(/(CONV-\d+)/)?.[1] || testIdKey;
+        const sourcePort = sourcePortStr && sourcePortStr !== '????' ? parseInt(sourcePortStr, 10) : undefined;
+
+        setLivePaths(prev => ({
+            ...prev,
+            [testIdKey]: { ...prev[testIdKey], loading: true, error: undefined, message: undefined }
+        }));
+
+        try {
+            const res = await fetch('/api/convergence/live-path', {
+                method: 'POST',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    testId,
+                    sourcePort,
+                    dstIp
+                })
+            });
+
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setLivePaths(prev => ({
+                    ...prev,
+                    [testIdKey]: {
+                        loading: false,
+                        found: data.found,
+                        egress_path: data.egress_path,
+                        path_type: data.path_type,
+                        site_name: data.site_name,
+                        message: data.message,
+                        timestamp: data.timestamp || new Date().toISOString()
+                    }
+                }));
+            } else {
+                setLivePaths(prev => ({
+                    ...prev,
+                    [testIdKey]: {
+                        loading: false,
+                        found: false,
+                        error: data.error || 'Failed to query Prisma SD-WAN path',
+                        timestamp: new Date().toISOString()
+                    }
+                }));
+            }
+        } catch (e: any) {
+            setLivePaths(prev => ({
+                ...prev,
+                [testIdKey]: {
+                    loading: false,
+                    found: false,
+                    error: e.message || 'Network error querying path',
+                    timestamp: new Date().toISOString()
+                }
+            }));
+        }
+    };
+
     return (
         <div className="space-y-6 animate-in fade-in duration-500 pb-12">
             {/* Header Controls */}
@@ -534,41 +603,114 @@ export default function Failover(props: FailoverProps) {
                         </div>
 
                         {/* Timeline & Details */}
-                        <div className="flex-1 p-6 relative flex flex-col justify-between">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex flex-col">
-                                    <div className="flex items-center gap-3">
-                                        <span title={`Source Port: ${getSourcePort(test.test_id || '')}`} className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white uppercase tracking-tighter shadow-lg shadow-blue-500/20 cursor-help">
-                                            {test.test_id?.match(/\((CONV-\d+)\)/)?.[1] || test.testId}
-                                        </span>
-                                        <span className="text-sm font-bold text-text-primary tracking-tight">
-                                            {test.label || test.test_id?.split(' (')[0] || 'Unknown Target'}
-                                        </span>
-                                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-card-secondary border border-border">
-                                            <Clock size={10} className="text-blue-500 dark:text-blue-400" />
-                                            <span className="text-[10px] font-mono text-blue-500 dark:text-blue-400 font-bold">
-                                                {formatChrono(test.start_time)}
+                        {(() => {
+                            const testKey = test.test_id || test.testId || '';
+                            const livePath = livePaths[testKey] || livePaths[test.testId] || livePaths[test.test_id];
+                            const sourcePort = getSourcePort(test.test_id || test.testId);
+
+                            return (
+                                <div className="flex-1 p-6 relative flex flex-col justify-between">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                                        <div className="flex flex-col">
+                                            <div className="flex items-center gap-3">
+                                                <span title={`Source Port: ${sourcePort}`} className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white uppercase tracking-tighter shadow-lg shadow-blue-500/20 cursor-help">
+                                                    {test.test_id?.match(/\((CONV-\d+)\)/)?.[1] || test.testId}
+                                                </span>
+                                                <span className="text-sm font-bold text-text-primary tracking-tight">
+                                                    {test.label || test.test_id?.split(' (')[0] || 'Unknown Target'}
+                                                </span>
+                                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-card-secondary border border-border">
+                                                    <Clock size={10} className="text-blue-500 dark:text-blue-400" />
+                                                    <span className="text-[10px] font-mono text-blue-500 dark:text-blue-400 font-bold">
+                                                        {formatChrono(test.start_time)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <span className="text-[10px] text-text-muted font-mono mt-1.5 flex items-center gap-1">
+                                                <Server size={10} /> {new Date().toLocaleDateString('en-CA')} {new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} | Duration: {formatChrono(test.start_time)} | {test.target || '--'} | Source Port: {sourcePort} | {test.rate_pps || test.rate} pps
                                             </span>
+
+                                            {/* Live SD-WAN Path Status & Inspector Bar */}
+                                            <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                                                {!livePath?.egress_path && !livePath?.loading && !livePath?.error && !livePath?.message && (
+                                                    <button
+                                                        onClick={() => handleCheckLivePath(testKey, test.target, sourcePort)}
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 transition-all shadow-sm hover:shadow active:scale-95 group cursor-pointer"
+                                                        title="Query Prisma SD-WAN Flow Browser via API to inspect the active WAN egress path for this UDP flow"
+                                                    >
+                                                        <Search size={11} className="group-hover:scale-110 transition-transform" />
+                                                        <span>Inspect Live Path (Prisma SD-WAN)</span>
+                                                    </button>
+                                                )}
+
+                                                {livePath?.loading && (
+                                                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[11px] font-mono animate-pulse">
+                                                        <RotateCw size={11} className="animate-spin text-blue-400" />
+                                                        <span>Querying Prisma SASE Flow API (UDP port {sourcePort})...</span>
+                                                    </div>
+                                                )}
+
+                                                {livePath?.egress_path && (
+                                                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-xs shadow-[0_0_15px_rgba(16,185,129,0.15)] animate-in fade-in duration-300">
+                                                        <div className="flex items-center gap-1.5 font-bold text-emerald-400 text-[11px]">
+                                                            <ArrowRightLeft size={12} className="text-emerald-400" />
+                                                            <span className="uppercase text-[9px] text-text-muted tracking-wider">Active Egress Path:</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1 font-mono font-bold text-emerald-300 text-[11px]">
+                                                            {livePath.egress_path.split(' → ').map((seg: string, idx: number, arr: string[]) => (
+                                                                <React.Fragment key={idx}>
+                                                                    <span className="bg-emerald-900/60 px-1.5 py-0.5 rounded border border-emerald-500/30 text-emerald-200">
+                                                                        {seg}
+                                                                    </span>
+                                                                    {idx < arr.length - 1 && <span className="text-emerald-500/60 text-[10px]">→</span>}
+                                                                </React.Fragment>
+                                                            ))}
+                                                        </div>
+                                                        {livePath.path_type && (
+                                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-card-secondary text-text-muted font-mono uppercase border border-border">
+                                                                {livePath.path_type}
+                                                            </span>
+                                                        )}
+                                                        <button
+                                                            onClick={() => handleCheckLivePath(testKey, test.target, sourcePort)}
+                                                            disabled={livePath.loading}
+                                                            className="p-1 hover:bg-emerald-500/20 rounded text-emerald-400/80 hover:text-emerald-300 transition-colors ml-1 cursor-pointer"
+                                                            title={`Re-check path (last verified at ${new Date(livePath.timestamp || Date.now()).toLocaleTimeString()})`}
+                                                        >
+                                                            <RotateCw size={11} className={livePath.loading ? 'animate-spin' : ''} />
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {(livePath?.error || (livePath?.message && !livePath?.egress_path)) && !livePath?.loading && (
+                                                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px] animate-in fade-in">
+                                                        <Info size={12} className="shrink-0" />
+                                                        <span>{livePath.message || livePath.error}</span>
+                                                        <button
+                                                            onClick={() => handleCheckLivePath(testKey, test.target, sourcePort)}
+                                                            className="underline font-bold text-amber-300 hover:text-amber-100 ml-1 flex items-center gap-1 cursor-pointer"
+                                                        >
+                                                            <RotateCw size={10} /> Retry
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                            <div className="flex gap-2">
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Packets Sent</span>
+                                                    <span className="text-sm font-bold text-green-600 dark:text-green-400 font-mono">{test.sent}</span>
+                                                </div>
+                                                <div className="w-[1px] h-6 bg-border self-center mx-1" />
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Received</span>
+                                                    <span className="text-sm font-bold text-blue-600 dark:text-blue-400 font-mono">{test.received}</span>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-                                    <span className="text-[10px] text-text-muted font-mono mt-1.5 flex items-center gap-1">
-                                        <Server size={10} /> {new Date().toLocaleDateString('en-CA')} {new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })} | Duration: {formatChrono(test.start_time)} | {test.target || '--'} | Source Port: {getSourcePort(test.test_id)} | {test.rate_pps || test.rate} pps
-                                    </span>
-                                </div>
-                                <div className="flex flex-col items-end gap-1.5">
-                                    <div className="flex gap-2">
-                                        <div className="flex flex-col items-end">
-                                            <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Packets Sent</span>
-                                            <span className="text-sm font-bold text-green-600 dark:text-green-400 font-mono">{test.sent}</span>
-                                        </div>
-                                        <div className="w-[1px] h-6 bg-border self-center mx-1" />
-                                        <div className="flex flex-col items-end">
-                                            <span className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">Received</span>
-                                            <span className="text-sm font-bold text-blue-600 dark:text-blue-400 font-mono">{test.received}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
                                 {/* Latency Chart */}
@@ -690,9 +832,11 @@ export default function Failover(props: FailoverProps) {
                                 </button>
                             </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })()}
             </div>
+        ))}
+    </div>
 
             {/* Verdict Legend & Historical View */}
             <div className={`grid grid-cols-1 md:grid-cols-4 gap-6 ${activeTests.length > 0 ? 'opacity-50 grayscale transition-all' : ''}`}>

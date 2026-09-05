@@ -5048,6 +5048,83 @@ app.get('/api/convergence/status', authenticateToken, (req, res) => {
     res.json(results);
 });
 
+/**
+ * POST /api/convergence/live-path
+ * On-demand live flow path lookup via getflow.py (Prisma SD-WAN API)
+ */
+app.post('/api/convergence/live-path', authenticateToken, async (req, res) => {
+    try {
+        const { testId, sourcePort: reqSourcePort, dstIp, siteName: reqSiteName } = req.body;
+
+        let sourcePort = reqSourcePort;
+        if (!sourcePort && testId) {
+            const match = String(testId).match(/CONV-(\d+)/);
+            if (match && match[1]) {
+                const testNum = parseInt(match[1], 10);
+                sourcePort = 30000 + (testNum % 10000);
+            }
+        }
+
+        if (!sourcePort || !dstIp) {
+            return res.status(400).json({ success: false, error: 'Missing sourcePort or dstIp' });
+        }
+
+        const siteInfo = siteManager.getSiteInfo();
+        const siteName = reqSiteName || siteInfo?.detected_site_name || process.env.STIGIX_SITE_NAME;
+
+        if (!siteName) {
+            return res.status(400).json({
+                success: false,
+                error: 'No local site name detected. Ensure Prisma SD-WAN credentials and site mapping are configured.'
+            });
+        }
+
+        log('CONV', `Querying live path for ${siteName} -> dst ${dstIp} (UDP port ${sourcePort})`);
+        const result = await runGetflow(siteName, Number(sourcePort), String(dstIp));
+
+        if (result?.flows && result.flows.length > 0) {
+            const primaryFlow = result.flows[0];
+            const rawPath = primaryFlow.egress_path || primaryFlow.path_type || '';
+            const egressPath = rawPath.replace(/ to /g, ' → ');
+            return res.json({
+                success: true,
+                found: true,
+                site_name: siteName,
+                source_port: sourcePort,
+                destination_ip: dstIp,
+                egress_path: egressPath,
+                path_type: primaryFlow.path_type || null,
+                flow: primaryFlow,
+                flows_count: result.flows.length,
+                timestamp: new Date().toISOString()
+            });
+        } else if (result?.error) {
+            return res.json({
+                success: false,
+                error: result.error,
+                site_name: siteName,
+                source_port: sourcePort,
+                destination_ip: dstIp,
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            return res.json({
+                success: true,
+                found: false,
+                site_name: siteName,
+                source_port: sourcePort,
+                destination_ip: dstIp,
+                egress_path: null,
+                message: 'Flow not indexed yet in Prisma SD-WAN (usually available within 10-15s of traffic initiation)',
+                timestamp: new Date().toISOString()
+            });
+        }
+    } catch (e: any) {
+        log('CONV', `Error querying live path: ${e.message}`, 'error');
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 app.get('/api/convergence/history', authenticateToken, (req, res) => {
     try {
         if (!fs.existsSync(CONVERGENCE_HISTORY_FILE)) return res.json([]);
