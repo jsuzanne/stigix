@@ -1261,16 +1261,26 @@ exit</pre>
       <div class="faq-panel" id="panel-settings" role="tabpanel">
 
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I configure Prisma SD-WAN API credentials?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I configure Prisma SASE / SD-WAN API credentials?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p><strong>Step 1 — Create a Service Account in Strata Cloud Manager:</strong></p>
             <ol>
-              <li>Log in to Prisma Access / Strata Cloud Manager</li>
-              <li>Navigate to <strong>Settings → Service Accounts</strong></li>
-              <li>Create a Service Account and note the <strong>Client ID</strong>, <strong>Client Secret</strong>, and <strong>TSG ID</strong></li>
-              <li>Assign minimum permissions: <code>prisma-sdwan-config.read</code> and <code>prisma-sdwan-monitor.read</code></li>
+              <li>Log in to Prisma Access / Strata Cloud Manager (or Prisma SASE portal).</li>
+              <li>Navigate to <strong>Settings → Service Accounts</strong>.</li>
+              <li>Create a Service Account and note the <strong>TSG ID (Tenant Service Group ID)</strong>, <strong>Client ID</strong>, and <strong>Client Secret</strong>.</li>
+              <li>Assign minimum required permissions: <code>prisma-sdwan-config.read</code> and <code>prisma-sdwan-monitor.read</code>.</li>
             </ol>
-            <p><strong>Step 2 — Add to your .env or docker-compose.yml:</strong></p>
+            <p><strong>Step 2 — Configure directly in the Web UI (Recommended):</strong></p>
+            <p>The fastest and easiest way to configure credentials is directly through the Stigix Dashboard without editing any files:</p>
+            <ol>
+              <li>Open the Stigix dashboard and navigate to <strong>Settings → Prisma SASE API Integration</strong>.</li>
+              <li>Enter your <strong>Tenant Service Group ID (TSG ID)</strong>, <strong>Client ID</strong>, and <strong>Client Secret</strong>.</li>
+              <li>Ensure the <strong>Enabled</strong> toggle is turned on.</li>
+              <li>Click <strong>Test Auth</strong> — Stigix immediately performs an OAuth2 token exchange with Palo Alto Networks Strata Cloud Manager and validates API reachability.</li>
+              <li>Click <strong>Save Configuration</strong>. The credentials are encrypted and stored in the persistent volume (<code>./config/</code>) and take effect immediately with <strong>no container restart required</strong>.</li>
+            </ol>
+            <p><strong>Alternative — Environment Variables (Headless / CI/CD):</strong></p>
+            <p>For automated or headless deployments, you can also inject them via <code>.env</code> or <code>docker-compose.yml</code>:</p>
             <pre>PRISMA_SDWAN_CLIENT_ID="abc@123.iam.panserviceaccount.com"
 PRISMA_SDWAN_CLIENT_SECRET="your-client-secret"
 PRISMA_SDWAN_TSG_ID="1234567890"
@@ -1281,10 +1291,11 @@ PRISMA_SDWAN_CACHE_TTL=600   # Cache in seconds (default 10 min)
 DEBUG=true                   # Verbose API logs in docker compose logs</pre>
             <p><strong>Features unlocked once configured:</strong></p>
             <ul>
-              <li>Site auto-detection badge in the dashboard header</li>
-              <li>Smart Target Selector — convergence targets auto-populated from DC LAN interfaces</li>
-              <li>Egress Path Enrichment — active SD-WAN path shown in convergence history (e.g. <code>BR8-INET2 → DC2-INET</code>)</li>
-              <li>VPN Topology Overlay — real-time tunnel health visualization</li>
+              <li><strong>Site Auto-Detection:</strong> Automatic site badge and tenant identification in the dashboard header.</li>
+              <li><strong>Smart Target Selector:</strong> Convergence targets auto-populated from DC LAN interfaces.</li>
+              <li><strong>Egress Path Enrichment:</strong> Active SD-WAN path displayed in convergence history (e.g. <code>BR8-INET2 → DC2-INET</code>).</li>
+              <li><strong>Interactive VPN Topology:</strong> Real-time tunnel health and SD-WAN underlay chassis visualization.</li>
+              <li><strong>Flow Search &amp; Diagnostics:</strong> Real-time <code>getflow</code> path analysis and SLA verification.</li>
             </ul>
           </div></div></div>
         </div>
