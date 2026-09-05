@@ -377,11 +377,11 @@ export default function Failover(props: FailoverProps) {
         const g = thresholds?.good || 1000;
         const d = thresholds?.degraded || 5000;
         const c = thresholds?.critical || 10000;
-        if (blackout === 0) return { label: 'PERFECT', color: 'text-green-400', bg: 'bg-green-400/10', desc: 'No packet loss detected.' };
-        if (blackout < g) return { label: 'GOOD', color: 'text-green-400', bg: 'bg-green-400/10', desc: 'Typical SD-WAN failover range. Sessions usually stay up.' };
-        if (blackout < d) return { label: 'DEGRADED', color: 'text-yellow-400', bg: 'bg-yellow-400/10', desc: 'Noticeable outage. Video freeze and voice drops expected.' };
-        if (blackout < c) return { label: 'BAD', color: 'text-orange-400', bg: 'bg-orange-400/10', desc: 'High failover time. Application health impacted.' };
-        return { label: 'CRITICAL', color: 'text-red-400', bg: 'bg-red-400/10', desc: 'Major blackout. Application sessions will disconnect.' };
+        if (blackout === 0) return { label: 'PERFECT', color: 'text-green-400', bg: 'bg-green-400/10', range: '0ms', desc: 'No packet loss detected. Seamless SD-WAN transport.' };
+        if (blackout < g) return { label: 'GOOD', color: 'text-green-400', bg: 'bg-green-400/10', range: `< ${g / 1000}s`, desc: 'Typical SD-WAN sub-second or near-second failover.' };
+        if (blackout < d) return { label: 'DEGRADED', color: 'text-yellow-400', bg: 'bg-yellow-400/10', range: `${g / 1000}s - ${d / 1000}s`, desc: 'Noticeable outage. Video freeze and voice drops expected.' };
+        if (blackout < c) return { label: 'BAD', color: 'text-orange-400', bg: 'bg-orange-400/10', range: `${d / 1000}s - ${c / 1000}s`, desc: 'High failover time. Application health impacted.' };
+        return { label: 'CRITICAL', color: 'text-red-400', bg: 'bg-red-400/10', range: `> ${c / 1000}s`, desc: 'Major network blackout. Application session risk.' };
     };
 
     const formatMs = (ms: number) => {
@@ -617,11 +617,16 @@ export default function Failover(props: FailoverProps) {
             </div>
 
             <div className="flex flex-col gap-3 animate-in slide-in-from-bottom-4 mt-6">
-                <div className="flex items-center justify-between px-1 mb-2">
-                    <div className="flex items-center gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1 mb-1">
+                    <div className="flex items-center gap-3 flex-wrap">
                         <div className="flex items-center gap-2">
-                            <Server size={14} className="text-text-muted" />
-                            <h3 className="text-sm font-bold text-text-primary tracking-tight">Stigix Targets</h3>
+                            <Server size={14} className="text-blue-500" />
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">Stigix Targets</h3>
+                            {allTargets.length > 0 && (
+                                <span className="text-[10px] font-bold text-text-muted bg-card px-1.5 py-0.5 rounded border border-border">
+                                    {allTargets.length}
+                                </span>
+                            )}
                         </div>
                         <div className="relative">
                             <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -630,18 +635,27 @@ export default function Failover(props: FailoverProps) {
                                 placeholder="Search targets..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-7 pr-3 py-1 bg-card border border-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 w-48 text-text-primary placeholder:text-text-muted"
+                                className="pl-7 pr-7 py-1 bg-card border border-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 w-44 text-text-primary placeholder:text-text-muted transition-all"
                             />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-0.5 cursor-pointer"
+                                    title="Clear search"
+                                >
+                                    <X size={10} />
+                                </button>
+                            )}
                         </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                            <label className="text-[10px] text-text-muted font-bold uppercase tracking-widest hidden sm:block">Precision Rate</label>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                        <div className="flex items-center gap-1.5 bg-card border border-border rounded-lg px-2.5 py-1 shadow-sm">
+                            <label className="text-[10px] text-text-muted font-bold uppercase tracking-widest hidden sm:inline">Precision Rate</label>
                             <select
                                 value={rate}
                                 onChange={(e) => setRate(parseInt(e.target.value))}
                                 disabled={activeTests.length > 0}
-                                className="bg-card border border-border rounded-lg px-2 py-1 text-xs font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 appearance-none shadow-sm cursor-pointer"
+                                className="bg-transparent text-xs font-bold text-text-primary focus:outline-none disabled:opacity-50 appearance-none cursor-pointer"
                             >
                                 <option value="1">1 pps (1s)</option>
                                 <option value="5">5 pps (200ms)</option>
@@ -657,9 +671,9 @@ export default function Failover(props: FailoverProps) {
                         <button
                             onClick={() => setShowAddModal(true)}
                             disabled={activeTests.length > 0}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest bg-card hover:bg-card-hover text-text-muted hover:text-text-primary rounded-lg transition-all border border-border disabled:opacity-50 shadow-sm"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest bg-card hover:bg-card-hover text-text-muted hover:text-text-primary rounded-lg transition-all border border-border disabled:opacity-50 shadow-sm cursor-pointer"
                         >
-                            <Plus size={12} /> <span className="hidden sm:inline">Add Target</span>
+                            <Plus size={12} /> <span>Add Target</span>
                         </button>
                     </div>
                 </div>
@@ -1275,20 +1289,60 @@ export default function Failover(props: FailoverProps) {
         ))}
     </div>
 
-            {/* Verdict Legend & Historical View */}
-            <div className={`grid grid-cols-1 md:grid-cols-4 gap-6 ${activeTests.length > 0 ? 'opacity-50 grayscale transition-all' : ''}`}>
-                <div className="md:col-span-3 bg-card border border-border rounded-2xl overflow-hidden shadow-sm order-2 md:order-1">
-                    <div className="p-4 border-b border-border bg-card-secondary/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-2.5">
-                            <h3 className="text-sm font-bold text-text-secondary uppercase tracking-widest flex items-center gap-2">
-                                <Clock size={16} /> Test History
-                            </h3>
-                            {history.length > 0 && (
-                                <span className="text-[10px] font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-border uppercase tracking-wider">
-                                    {historySearch.trim() ? `${sortedHistory.length} / ${history.length}` : history.length} Tests
-                                </span>
-                            )}
+            {/* Historical View — Full Width */}
+            <div className={`w-full bg-card border border-border rounded-2xl overflow-hidden shadow-sm ${activeTests.length > 0 ? 'opacity-50 grayscale transition-all' : ''}`}>
+                <div className="p-4 border-b border-border bg-card-secondary/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                        <h3 className="text-sm font-bold text-text-secondary uppercase tracking-widest flex items-center gap-2">
+                            <Clock size={16} /> Test History
+                        </h3>
+                        {history.length > 0 && (
+                            <span className="text-[10px] font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-border uppercase tracking-wider">
+                                {historySearch.trim() ? `${sortedHistory.length} / ${history.length}` : history.length} Tests
+                            </span>
+                        )}
+
+                        {/* Hover Info Popover for Thresholds */}
+                        <div className="relative group/thresh inline-block">
+                            <button
+                                type="button"
+                                className="text-text-muted hover:text-blue-400 transition-colors p-1 rounded-md hover:bg-card cursor-help flex items-center gap-1"
+                                title="View failover threshold criteria"
+                            >
+                                <Info size={13} />
+                                <span className="text-[9px] font-bold uppercase tracking-wider hidden md:inline opacity-70">Thresholds</span>
+                            </button>
+                            <div className="absolute left-0 top-full mt-1.5 hidden group-hover/thresh:block z-50 w-80 p-3 bg-slate-950/95 border border-slate-700/80 rounded-xl shadow-2xl backdrop-blur-md text-left animate-in fade-in zoom-in-95 duration-150">
+                                <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-800">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-200">Failover Thresholds</span>
+                                    <span className="text-[8px] text-blue-400 font-mono">Settings ➔ Convergence</span>
+                                </div>
+                                <div className="space-y-1.5">
+                                    {[
+                                        { label: 'PERFECT', range: '0ms', color: 'text-green-400', desc: 'No packet loss detected. Seamless transport.' },
+                                        { label: 'GOOD', range: `< ${thresholds.good / 1000}s`, color: 'text-green-400', desc: 'Typical SD-WAN sub-second or near-second failover.' },
+                                        { label: 'DEGRADED', range: `${thresholds.good / 1000}s - ${thresholds.degraded / 1000}s`, color: 'text-yellow-400', desc: 'Noticeable outage. Video freeze and voice drops expected.' },
+                                        { label: 'BAD', range: `${thresholds.degraded / 1000}s - ${thresholds.critical / 1000}s`, color: 'text-orange-400', desc: 'High failover time. Application health impacted.' },
+                                        { label: 'CRITICAL', range: `> ${thresholds.critical / 1000}s`, color: 'text-red-400', desc: 'Major network blackout. Application session risk.' }
+                                    ].map(t => (
+                                        <div key={t.label} className="text-[9px] flex items-start gap-1.5">
+                                            <span className={`font-bold font-mono min-w-[62px] ${t.color}`}>{t.label}</span>
+                                            <span className="text-slate-300 font-mono shrink-0 w-16">{t.range}</span>
+                                            <span className="text-slate-400 leading-tight" title={t.desc}>{t.desc}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-2.5 pt-1.5 border-t border-slate-800/80 text-[8px] text-slate-500 italic">
+                                    💡 Thresholds can be customized in Settings ➔ Failover Thresholds.
+                                </div>
+                            </div>
                         </div>
+
+                        {/* Pro Tip Subtle Pill */}
+                        <span className="hidden xl:inline-flex items-center gap-1 text-[9px] text-text-muted/70 bg-card-secondary/60 px-2 py-0.5 rounded-full border border-border/40 font-mono">
+                            💡 Click any row to view Timeline curves &amp; SCM sequence
+                        </span>
+                    </div>
                         <div className="flex items-center gap-2.5 w-full sm:w-auto">
                             {/* Full Text Search Input */}
                             <div className="relative flex-1 sm:w-64">
@@ -1391,9 +1445,25 @@ export default function Failover(props: FailoverProps) {
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
-                                                        <span className={`inline-flex items-center px-3 py-1 rounded font-bold text-[9px] border ${verdict.bg.replace('400/10', '600/20')} ${verdict.color.replace('text-green-400', 'text-green-600 dark:text-green-400')} tracking-widest`}>
-                                                            {verdict.label}
-                                                        </span>
+                                                        <div className="relative group/verdict inline-block">
+                                                            <span className={`inline-flex items-center px-3 py-1 rounded font-bold text-[9px] border ${verdict.bg.replace('400/10', '600/20')} ${verdict.color.replace('text-green-400', 'text-green-600 dark:text-green-400')} tracking-widest cursor-help shadow-sm`}>
+                                                                {verdict.label}
+                                                            </span>
+                                                            {/* Hover popover for verdict */}
+                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/verdict:flex flex-col items-center z-50 pointer-events-none w-56 animate-in fade-in zoom-in-95 duration-150">
+                                                                <div className="bg-slate-950/95 border border-slate-700/80 p-2.5 rounded-xl shadow-2xl text-left backdrop-blur-md w-full">
+                                                                    <div className="flex items-center justify-between gap-2 pb-1 mb-1 border-b border-slate-800">
+                                                                        <span className={`font-bold text-[10px] tracking-wider ${verdict.color}`}>{verdict.label}</span>
+                                                                        <span className="text-[10px] font-mono font-bold text-slate-300">{verdict.range}</span>
+                                                                    </div>
+                                                                    <p className="text-[9px] text-slate-400 leading-snug">{verdict.desc}</p>
+                                                                    <div className="text-[8px] font-mono text-slate-500 mt-1 pt-1 border-t border-slate-900">
+                                                                        Blackout: {formatMs(test.max_blackout_ms || 0)}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="w-2 h-2 bg-slate-950 border-r border-b border-slate-700/80 transform rotate-45 -mt-1"></div>
+                                                            </div>
+                                                        </div>
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
                                                         <div className="flex flex-col">
@@ -1777,38 +1847,6 @@ export default function Failover(props: FailoverProps) {
                         </table>
                     </div>
                 </div>
-
-                <div className="md:col-span-1 space-y-4 order-1 md:order-2">
-                    <h3 className="text-sm font-bold text-text-muted uppercase tracking-widest flex items-center gap-2">
-                        Failover Thresholds
-                    </h3>
-                    <div className="grid grid-cols-1 gap-3">
-                        {[
-                            { color: 'text-green-600 dark:text-green-400', label: 'GOOD', range: `< ${thresholds.good / 1000}s`, desc: 'Typical SD-WAN sub-second or near-second failover.' },
-                            { color: 'text-yellow-500', label: 'DEGRADED', range: `${thresholds.good / 1000}s - ${thresholds.degraded / 1000}s`, desc: 'Noticeable outage. Video freeze and voice drops expected.' },
-                            { color: 'text-orange-500', label: 'BAD', range: `${thresholds.degraded / 1000}s - ${thresholds.critical / 1000}s`, desc: 'High failover time. Application health impacted.' },
-                            { color: 'text-red-500', label: 'CRITICAL', range: `> ${thresholds.critical / 1000}s`, desc: 'Major network blackout. Application session risk.' }
-                        ].map(v => (
-                            <div key={v.label} className="bg-card-secondary border border-border p-3 rounded-xl flex gap-3 shadow-sm">
-                                <div className={`font-bold text-[10px] min-w-[60px] ${v.color}`}>{v.label}</div>
-                                <div>
-                                    <div className="text-[10px] font-bold text-text-primary">{v.range}</div>
-                                    <div className="text-[9px] text-text-muted leading-tight mt-1">{v.desc}</div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="p-4 bg-blue-600/5 border border-blue-500/20 rounded-xl space-y-2">
-                        <div className="flex items-center gap-2 text-blue-500 dark:text-blue-400">
-                            <Info size={14} />
-                            <span className="text-[10px] font-bold uppercase tracking-tight">Pro Tip</span>
-                        </div>
-                        <p className="text-[10px] text-text-muted leading-relaxed">
-                            Click on any historical test row to view the detailed **Failover Timeline** chart and directional loss metrics.
-                        </p>
-                    </div>
-                </div>
-            </div>
 
             {/* Info Footer */}
             <div className="bg-blue-600/5 border border-blue-500/20 p-4 rounded-xl flex items-start gap-3">
