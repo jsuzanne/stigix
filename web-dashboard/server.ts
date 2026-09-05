@@ -4980,10 +4980,23 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
                             }
                             const result = await runGetflow(siteName, sourcePort, enrichTarget);
                             if (result?.flows && result.flows.length > 0) {
-                                const rawPath = result.flows[0]?.egress_path || '';
+                                const primaryFlow = result.flows[0];
+                                const rawPath = primaryFlow?.egress_path || '';
                                 const egressPath = rawPath.replace(/ to /g, ' → ');
-                                await enrichConvergenceHistory(testId, { egress_path: egressPath });
-                                console.log(`[${testId}] [CONV] Egress path enriched: ${egressPath}`);
+                                const pathHistory = (primaryFlow?.path_history || []).map((p: any) => ({
+                                    ...p,
+                                    path: p.path ? p.path.replace(/ to /g, ' → ') : p.path
+                                }));
+                                const pathEvolution = pathHistory.length > 1
+                                    ? pathHistory.map((p: any) => p.path).join(' ➔ ')
+                                    : egressPath;
+
+                                await enrichConvergenceHistory(testId, {
+                                    egress_path: egressPath,
+                                    path_history: pathHistory,
+                                    path_evolution: pathEvolution
+                                });
+                                console.log(`[${testId}] [CONV] Egress path enriched: ${pathEvolution}`);
                             } else {
                                 console.log(`[${testId}] [CONV] Egress path: no flow found, skipping enrichment`);
                             }
@@ -5086,6 +5099,14 @@ app.post('/api/convergence/live-path', authenticateToken, async (req, res) => {
             const primaryFlow = result.flows[0];
             const rawPath = primaryFlow.egress_path || primaryFlow.path_type || '';
             const egressPath = rawPath.replace(/ to /g, ' → ');
+            const pathHistory = (primaryFlow.path_history || []).map((p: any) => ({
+                ...p,
+                path: p.path ? p.path.replace(/ to /g, ' → ') : p.path
+            }));
+            const pathEvolution = pathHistory.length > 1
+                ? pathHistory.map((p: any) => p.path).join(' ➔ ')
+                : egressPath;
+
             return res.json({
                 success: true,
                 found: true,
@@ -5093,6 +5114,8 @@ app.post('/api/convergence/live-path', authenticateToken, async (req, res) => {
                 source_port: sourcePort,
                 destination_ip: dstIp,
                 egress_path: egressPath,
+                path_history: pathHistory,
+                path_evolution: pathEvolution,
                 path_type: primaryFlow.path_type || null,
                 flow: primaryFlow,
                 flows_count: result.flows.length,

@@ -1876,6 +1876,39 @@ def main():
                             path_type = flow.get('path_type')
                             egress_path = f"{path_type} (Path ID: {path_id})"
 
+                        # Extract chronological path changes from flow_decision_metadata_list
+                        path_history = []
+                        decisions = flow.get('flow_decision_metadata_list', [])
+                        if isinstance(decisions, list) and len(decisions) > 0:
+                            sorted_decisions = sorted(
+                                [d for d in decisions if isinstance(d, dict) and d.get('flow_decision_time')],
+                                key=lambda d: d.get('flow_decision_time', 0)
+                            )
+                            prev_path = None
+                            for d in sorted_decisions:
+                                chosen_path_id = d.get('chosen_wan_path')
+                                dec_time_ms = d.get('flow_decision_time')
+
+                                p_name = None
+                                if chosen_path_id and topology and chosen_path_id in topology:
+                                    p_info = topology.get(chosen_path_id, {})
+                                    src_i = wan_if_lookup.get(p_info.get('source_wan_if_id'), {})
+                                    tgt_i = wan_if_lookup.get(p_info.get('target_wan_if_id'), {})
+                                    src_name = src_i.get('full_name', 'Unknown')
+                                    tgt_name = tgt_i.get('full_name', 'Unknown')
+                                    p_name = f"{src_name} to {tgt_name}"
+                                elif chosen_path_id:
+                                    p_name = f"Path ID: {chosen_path_id}"
+
+                                if p_name and p_name != prev_path:
+                                    path_history.append({
+                                        "time_ms": dec_time_ms,
+                                        "time_iso": datetime.fromtimestamp(dec_time_ms / 1000.0, timezone.utc).isoformat() if dec_time_ms else None,
+                                        "path": p_name,
+                                        "path_id": chosen_path_id
+                                    })
+                                    prev_path = p_name
+
                         flow_info = {
                             "source_ip": flow.get('source_ip'),
                             "source_port": flow.get('source_port'),
@@ -1888,6 +1921,7 @@ def main():
                             "packets_s2c": flow.get('packets_s2c'),
                             "path_type": flow.get('path_type'),
                             "egress_path": egress_path,
+                            "path_history": path_history,
                             "app_id": flow.get('app_id'),
                             "flow_id": flow.get('flow_id'),
                             "flow_start_time_ms": flow.get('flow_start_time_ms'),

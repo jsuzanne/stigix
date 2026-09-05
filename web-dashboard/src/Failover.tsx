@@ -49,6 +49,8 @@ export default function Failover(props: FailoverProps) {
         loading?: boolean;
         found?: boolean;
         egress_path?: string | null;
+        path_history?: Array<{ path: string; time?: string; timestamp?: string }>;
+        path_evolution?: string | null;
         path_type?: string | null;
         site_name?: string | null;
         message?: string | null;
@@ -101,7 +103,7 @@ export default function Failover(props: FailoverProps) {
                 const arr = next[t.testId] || [];
                 const rtt = typeof t.current_rtt_ms === 'number' ? t.current_rtt_ms : (t.avg_rtt_ms || 0);
                 const jitter = typeof t.jitter_ms === 'number' ? t.jitter_ms : 0;
-                const loss = typeof t.loss_pct === 'number' ? t.loss_pct : 0;
+                const loss = typeof t.live_loss_pct === 'number' ? t.live_loss_pct : (typeof t.loss_pct === 'number' ? t.loss_pct : 0);
                 const newArr = [...arr, { time: new Date().toLocaleTimeString(), rtt, jitter, loss }];
                 if (newArr.length > 50) newArr.shift(); // Keep last 50 data points
                 next[t.testId] = newArr;
@@ -338,6 +340,8 @@ export default function Failover(props: FailoverProps) {
                         loading: false,
                         found: data.found,
                         egress_path: data.egress_path,
+                        path_history: data.path_history,
+                        path_evolution: data.path_evolution,
                         path_type: data.path_type,
                         site_name: data.site_name,
                         message: data.message,
@@ -591,8 +595,9 @@ export default function Failover(props: FailoverProps) {
                                 <div className="space-y-1 flex flex-col items-center flex-1">
                                     <div className="text-[9px] font-bold text-text-muted uppercase tracking-widest">QoE Score</div>
                                     {(() => {
-                                        // Simple synthetic QoE Score: Starts at 100, drops for loss, jitter, and high RTT.
-                                        let qoe = 100 - (test.loss_pct * 2) - ((test.jitter_ms || 0) * 0.5) - ((test.avg_rtt_ms > 50 ? test.avg_rtt_ms - 50 : 0) * 0.1);
+                                        // Synthetic QoE Score: Starts at 100, drops for live loss, jitter, and high RTT.
+                                        const currentLoss = typeof test.live_loss_pct === 'number' ? test.live_loss_pct : (test.loss_pct || 0);
+                                        let qoe = 100 - (currentLoss * 2) - ((test.jitter_ms || 0) * 0.5) - ((test.avg_rtt_ms > 50 ? test.avg_rtt_ms - 50 : 0) * 0.1);
                                         qoe = Math.max(0, Math.min(100, Math.round(qoe)));
                                         let color = qoe >= 90 ? 'text-green-400 font-bold' : qoe >= 70 ? 'text-amber-500 font-bold' : 'text-red-500 font-bold animate-pulse';
                                         let glow = qoe >= 90 ? '0 0 10px rgba(74, 222, 128, 0.3)' : qoe >= 70 ? '0 0 10px rgba(245, 158, 11, 0.3)' : '0 0 15px rgba(239, 68, 68, 0.4)';
@@ -636,7 +641,7 @@ export default function Failover(props: FailoverProps) {
                                                     <button
                                                         onClick={() => handleCheckLivePath(testKey, test.target, sourcePort)}
                                                         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 transition-all shadow-sm hover:shadow active:scale-95 group cursor-pointer"
-                                                        title="Query Prisma SD-WAN Flow Browser via API to inspect the active WAN egress path for this UDP flow"
+                                                        title="Query Prisma SD-WAN Flow Browser via API to inspect active WAN paths and failover history for this UDP flow"
                                                     >
                                                         <Search size={11} className="group-hover:scale-110 transition-transform" />
                                                         <span>Inspect Live Path (Prisma SD-WAN)</span>
@@ -651,21 +656,49 @@ export default function Failover(props: FailoverProps) {
                                                 )}
 
                                                 {livePath?.egress_path && (
-                                                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-xs shadow-[0_0_15px_rgba(16,185,129,0.15)] animate-in fade-in duration-300">
+                                                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-xs shadow-[0_0_15px_rgba(16,185,129,0.15)] flex-wrap animate-in fade-in duration-300">
                                                         <div className="flex items-center gap-1.5 font-bold text-emerald-400 text-[11px]">
                                                             <ArrowRightLeft size={12} className="text-emerald-400" />
-                                                            <span className="uppercase text-[9px] text-text-muted tracking-wider">Active Egress Path:</span>
+                                                            <span className="uppercase text-[9px] text-text-muted tracking-wider">
+                                                                {livePath.path_history && livePath.path_history.length > 1 ? 'Failover Path Sequence:' : 'Active Egress Path:'}
+                                                            </span>
                                                         </div>
-                                                        <div className="flex items-center gap-1 font-mono font-bold text-emerald-300 text-[11px]">
-                                                            {livePath.egress_path.split(' → ').map((seg: string, idx: number, arr: string[]) => (
-                                                                <React.Fragment key={idx}>
-                                                                    <span className="bg-emerald-900/60 px-1.5 py-0.5 rounded border border-emerald-500/30 text-emerald-200">
-                                                                        {seg}
-                                                                    </span>
-                                                                    {idx < arr.length - 1 && <span className="text-emerald-500/60 text-[10px]">→</span>}
-                                                                </React.Fragment>
-                                                            ))}
-                                                        </div>
+
+                                                        {/* If multiple path decisions exist, show the chronological sequence with transitions */}
+                                                        {livePath.path_history && livePath.path_history.length > 1 ? (
+                                                            <div className="flex items-center gap-1.5 flex-wrap font-mono text-[11px]">
+                                                                {livePath.path_history.map((histItem: any, hIdx: number, hArr: any[]) => {
+                                                                    const isCurrent = hIdx === hArr.length - 1;
+                                                                    return (
+                                                                        <React.Fragment key={hIdx}>
+                                                                            <div
+                                                                                className={`flex items-center gap-1 px-2 py-0.5 rounded border ${isCurrent ? 'bg-emerald-900/70 border-emerald-400/60 text-emerald-200 font-bold shadow-[0_0_8px_rgba(16,185,129,0.3)]' : 'bg-card-secondary/80 border-border text-text-muted line-through opacity-75'}`}
+                                                                                title={`Path #${hIdx + 1}${histItem.time ? ` @ ${new Date(histItem.time).toLocaleTimeString()}` : ''}`}
+                                                                            >
+                                                                                <span className="text-[9px] text-text-muted mr-0.5">#{hIdx + 1}</span>
+                                                                                <span>{histItem.path}</span>
+                                                                                {isCurrent && <span className="text-[8px] bg-emerald-500/20 text-emerald-300 px-1 rounded uppercase font-sans font-black ml-1">ACTIVE</span>}
+                                                                            </div>
+                                                                            {hIdx < hArr.length - 1 && (
+                                                                                <span className="text-orange-400 font-bold text-xs animate-pulse" title="Failover Transition">➔</span>
+                                                                            )}
+                                                                        </React.Fragment>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-1 font-mono font-bold text-emerald-300 text-[11px]">
+                                                                {livePath.egress_path.split(' → ').map((seg: string, idx: number, arr: string[]) => (
+                                                                    <React.Fragment key={idx}>
+                                                                        <span className="bg-emerald-900/60 px-1.5 py-0.5 rounded border border-emerald-500/30 text-emerald-200">
+                                                                            {seg}
+                                                                        </span>
+                                                                        {idx < arr.length - 1 && <span className="text-emerald-500/60 text-[10px]">→</span>}
+                                                                    </React.Fragment>
+                                                                ))}
+                                                            </div>
+                                                        )}
+
                                                         {livePath.path_type && (
                                                             <span className="text-[9px] px-1.5 py-0.5 rounded bg-card-secondary text-text-muted font-mono uppercase border border-border">
                                                                 {livePath.path_type}
@@ -771,8 +804,16 @@ export default function Failover(props: FailoverProps) {
                                         <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
                                             <Activity size={12} className="text-red-500 animate-pulse" /> Live Loss
                                         </div>
-                                        <div className="text-lg font-bold text-red-500 font-mono tracking-tight shadow-sm">
-                                            {test.loss_pct || 0} <span className="text-[10px] text-text-muted ml-0.5">%</span>
+                                        <div className="flex flex-col items-end">
+                                            <div className={`text-lg font-bold font-mono tracking-tight shadow-sm ${(test.live_loss_pct ?? test.loss_pct ?? 0) > 0 ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
+                                                {test.live_loss_pct !== undefined ? test.live_loss_pct : (test.loss_pct || 0)} <span className="text-[10px] text-text-muted ml-0.5">%</span>
+                                            </div>
+                                            <div className="text-[9px] text-text-muted font-mono tracking-tighter">
+                                                Total: <span className={(test.total_loss_pct ?? test.loss_pct ?? 0) > 0 ? 'text-red-400 font-semibold' : 'text-text-secondary'}>{test.total_loss_pct !== undefined ? test.total_loss_pct : (test.loss_pct || 0)}%</span>
+                                                {test.sent && test.received !== undefined && (
+                                                    <span className="ml-1 opacity-80">({Math.max(0, test.sent - test.received)} drops)</span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="h-[60px] w-full bg-card-secondary/10 rounded overflow-hidden">
@@ -780,11 +821,11 @@ export default function Failover(props: FailoverProps) {
                                             <AreaChart data={liveMetricsSeries[test.testId] || []} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
                                                 <defs>
                                                     <linearGradient id="colorLoss" x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
+                                                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4}/>
                                                         <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
                                                     </linearGradient>
                                                 </defs>
-                                                <YAxis domain={['auto', 'auto']} hide />
+                                                <YAxis domain={[0, 100]} hide />
                                                 <Area type="monotone" dataKey="loss" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorLoss)" isAnimationActive={false} />
                                             </AreaChart>
                                         </ResponsiveContainer>
@@ -792,28 +833,30 @@ export default function Failover(props: FailoverProps) {
                                 </div>
                             </div>
 
-                            <div className="h-[40px] w-full flex flex-col justify-end relative rounded overflow-hidden bg-card-secondary/20 mb-6">
+                            <div className="h-[44px] w-full flex flex-col justify-end relative rounded-lg overflow-hidden bg-card-secondary/30 border border-border/40 mb-6 p-1">
                                 {/* Blackout Overlay */}
                                 {test.current_blackout_ms > 0 && (
-                                    <div className="absolute inset-0 z-10 bg-red-900/40 backdrop-blur-[1px] flex items-center justify-center animate-in fade-in">
-                                        <div className="bg-red-950/80 text-red-500 border border-red-500/50 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 shadow-[0_0_20px_rgba(239,68,68,0.4)]">
-                                            <AlertCircle size={12} className="animate-pulse" />
-                                            NETWORK OUTAGE: {(test.current_blackout_ms / 1000).toFixed(1)}s - FAILOVER IN PROGRESS...
+                                    <div className="absolute inset-0 z-20 bg-red-950/70 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in">
+                                        <div className="bg-red-950/90 text-red-400 border border-red-500/60 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 shadow-[0_0_25px_rgba(239,68,68,0.5)]">
+                                            <AlertCircle size={12} className="animate-pulse text-red-400" />
+                                            <span>NETWORK OUTAGE: {(test.current_blackout_ms / 1000).toFixed(1)}s — FAILOVER IN PROGRESS...</span>
                                         </div>
                                     </div>
                                 )}
-                                <div className="w-full flex items-end gap-[1px] h-full px-1">
+                                <div className="w-full flex items-end gap-[1.5px] h-full">
                                     {(test.history || Array(100).fill(1)).map((val: number, i: number) => {
                                         const isLast = i === (test.history || []).length - 1;
+                                        const isDrop = val === 0;
                                         return (
                                             <div
                                                 key={i}
-                                                className={`flex-1 min-w-[2px] rounded-t-[1px] transition-all duration-300 ${val === 1
-                                                    ? 'bg-gradient-to-t from-blue-700 to-blue-400 h-[80%]'
-                                                    : 'bg-red-500 h-[20%] opacity-80'}`}
-                                                style={isLast && val === 1 ? { background: '#60a5fa', boxShadow: '0 0 10px #60a5fa', height: '100%' } : {}}
+                                                className={`flex-1 min-w-[2px] rounded-t-[1px] transition-all duration-150 ${isDrop
+                                                    ? 'bg-gradient-to-t from-red-600 via-rose-500 to-red-400 h-full shadow-[0_0_8px_rgba(239,68,68,0.85)] z-10 animate-pulse'
+                                                    : 'bg-gradient-to-t from-blue-700 via-blue-500 to-cyan-400 h-[75%] opacity-90 hover:h-[90%]'}`}
+                                                style={isLast ? (isDrop ? { background: '#ef4444', boxShadow: '0 0 12px #ef4444', height: '100%' } : { background: '#38bdf8', boxShadow: '0 0 10px #38bdf8', height: '100%' }) : {}}
+                                                title={isDrop ? `Packet #${i + 1}: DROPPED (Outage)` : `Packet #${i + 1}: Received OK`}
                                             />
-                                        )
+                                        );
                                     })}
                                 </div>
                             </div>
@@ -965,11 +1008,25 @@ export default function Failover(props: FailoverProps) {
                                                                 <div className="bg-card-secondary p-2 rounded border border-border">
                                                                     <div className="text-[8px] text-text-muted font-bold uppercase flex items-center gap-1">
                                                                         <ArrowRightLeft size={7} className="shrink-0 animate-pulse text-blue-400" />
-                                                                        Egress Path
+                                                                        {test.path_history && test.path_history.length > 1 ? 'Failover Path Sequence' : 'Egress Path'}
                                                                     </div>
-                                                                    {test.egress_path ? (
-                                                                        <div className="text-xs font-mono font-bold text-blue-400 truncate flex items-center gap-1.5" title={test.egress_path}>
-                                                                            {test.egress_path.split(' -> ').map((node: string, idx: number, arr: string[]) => (
+                                                                    {test.path_history && test.path_history.length > 1 ? (
+                                                                        <div className="text-xs font-mono font-bold text-blue-400 flex items-center gap-1 flex-wrap mt-0.5" title={test.path_evolution || test.egress_path}>
+                                                                            {test.path_history.map((pItem: any, pIdx: number, pArr: any[]) => {
+                                                                                const isFinal = pIdx === pArr.length - 1;
+                                                                                return (
+                                                                                    <React.Fragment key={pIdx}>
+                                                                                        <span className={`px-1 py-0.5 rounded text-[10px] border ${isFinal ? 'bg-blue-600/20 border-blue-500/40 text-blue-300 font-bold' : 'bg-card-secondary/80 border-border text-text-muted line-through opacity-70'}`} title={pItem.time ? `Path recorded at ${new Date(pItem.time).toLocaleTimeString()}` : undefined}>
+                                                                                            {pItem.path}
+                                                                                        </span>
+                                                                                        {pIdx < pArr.length - 1 && <span className="text-orange-400 text-[10px]">➔</span>}
+                                                                                    </React.Fragment>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    ) : (test.path_evolution || test.egress_path) ? (
+                                                                        <div className="text-xs font-mono font-bold text-blue-400 truncate flex items-center gap-1.5" title={test.path_evolution || test.egress_path}>
+                                                                            {(test.path_evolution || test.egress_path).split(/ → | -> /).map((node: string, idx: number, arr: string[]) => (
                                                                                 <React.Fragment key={idx}>
                                                                                     {node}
                                                                                     {idx < arr.length - 1 && <span className="text-text-muted">⇢</span>}
