@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { AreaChart, Area, ResponsiveContainer, YAxis } from 'recharts';
-import { Activity, Clock, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw } from 'lucide-react';
+import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'recharts';
+import { Activity, Clock, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind } from 'lucide-react';
 import { isValidIpOrFqdn } from './utils/validation';
 
 interface FailoverProps {
@@ -46,6 +46,8 @@ export default function Failover(props: FailoverProps) {
     const [isStopping, setIsStopping] = useState(false);
     const [refreshingPathId, setRefreshingPathId] = useState<string | null>(null);
     const [liveMetricsSeries, setLiveMetricsSeries] = useState<Record<string, any[]>>({});
+    const [liveZoomWindows, setLiveZoomWindows] = useState<Record<string, '1m' | '5m' | '15m' | 'all'>>({});
+    const [liveScrubPositions, setLiveScrubPositions] = useState<Record<string, number>>({});
     const [livePaths, setLivePaths] = useState<Record<string, {
         loading?: boolean;
         found?: boolean;
@@ -105,8 +107,39 @@ export default function Failover(props: FailoverProps) {
                 const rtt = typeof t.current_rtt_ms === 'number' ? t.current_rtt_ms : (t.avg_rtt_ms || 0);
                 const jitter = typeof t.jitter_ms === 'number' ? t.jitter_ms : 0;
                 const loss = typeof t.live_loss_pct === 'number' ? t.live_loss_pct : (typeof t.loss_pct === 'number' ? t.loss_pct : 0);
-                const newArr = [...arr, { time: new Date().toLocaleTimeString(), rtt, jitter, loss }];
-                if (newArr.length > 50) newArr.shift(); // Keep last 50 data points
+                
+                const now = new Date();
+                const timeLabel = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                
+                let elapsedSec = 0;
+                if (typeof t.duration_s === 'number') {
+                    elapsedSec = Math.round(t.duration_s);
+                } else if (t.start_time) {
+                    const startTs = typeof t.start_time === 'number'
+                        ? (t.start_time > 1e11 ? t.start_time : t.start_time * 1000)
+                        : new Date(t.start_time).getTime();
+                    elapsedSec = Math.max(0, Math.round((Date.now() - startTs) / 1000));
+                } else {
+                    elapsedSec = arr.length;
+                }
+                
+                const em = Math.floor(elapsedSec / 60);
+                const es = elapsedSec % 60;
+                const elapsedLabel = `${String(em).padStart(2, '0')}:${String(es).padStart(2, '0')}`;
+
+                const newPoint = {
+                    time: timeLabel,
+                    timeLabel,
+                    elapsedLabel,
+                    elapsedSec,
+                    ts: Date.now(),
+                    rtt,
+                    jitter,
+                    loss
+                };
+
+                const newArr = [...arr, newPoint];
+                if (newArr.length > 3600) newArr.shift(); // Keep up to 1 hour of live history
                 next[t.testId] = newArr;
             });
             return next;
@@ -807,93 +840,226 @@ export default function Failover(props: FailoverProps) {
                                         </div>
                                     </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
-                                {/* Latency Chart */}
-                                <div>
-                                    <div className="flex justify-between items-end mb-2">
-                                        <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
-                                            <Activity size={12} className="text-emerald-500 animate-pulse" /> Live Latency (RTT)
-                                        </div>
-                                        <div className="text-lg font-bold text-emerald-400 font-mono tracking-tight shadow-sm">
-                                            {typeof test.current_rtt_ms === 'number' ? test.current_rtt_ms : test.avg_rtt_ms} <span className="text-[10px] text-text-muted ml-0.5">ms</span>
-                                        </div>
-                                    </div>
-                                    <div className="h-[60px] w-full bg-card-secondary/10 rounded overflow-hidden">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <AreaChart data={liveMetricsSeries[test.testId] || []} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
-                                                <defs>
-                                                    <linearGradient id="colorRtt" x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                                                    </linearGradient>
-                                                </defs>
-                                                <YAxis domain={['auto', 'auto']} hide />
-                                                <Area type="monotone" dataKey="rtt" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorRtt)" isAnimationActive={false} />
-                                            </AreaChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
+                            {(() => {
+                                const fullSeries = liveMetricsSeries[test.testId] || [];
+                                const zoom = liveZoomWindows[test.testId] || '1m';
+                                const scrubPos = liveScrubPositions[test.testId] ?? 100; // 100 = LIVE
+                                const isLive = scrubPos >= 100;
 
-                                {/* Jitter Chart */}
-                                <div>
-                                    <div className="flex justify-between items-end mb-2">
-                                        <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
-                                            <Activity size={12} className="text-amber-500 animate-pulse" /> Live Jitter
-                                        </div>
-                                        <div className="text-lg font-bold text-amber-400 font-mono tracking-tight shadow-sm">
-                                            {test.jitter_ms || 0} <span className="text-[10px] text-text-muted ml-0.5">ms</span>
-                                        </div>
-                                    </div>
-                                    <div className="h-[60px] w-full bg-card-secondary/10 rounded overflow-hidden">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <AreaChart data={liveMetricsSeries[test.testId] || []} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
-                                                <defs>
-                                                    <linearGradient id="colorJitter" x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
-                                                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
-                                                    </linearGradient>
-                                                </defs>
-                                                <YAxis domain={['auto', 'auto']} hide />
-                                                <Area type="monotone" dataKey="jitter" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#colorJitter)" isAnimationActive={false} />
-                                            </AreaChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
-                                
-                                {/* Loss Chart */}
-                                <div>
-                                    <div className="flex justify-between items-end mb-2">
-                                        <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
-                                            <Activity size={12} className="text-red-500 animate-pulse" /> Live Loss
-                                        </div>
-                                        <div className="flex flex-col items-end">
-                                            <div className={`text-lg font-bold font-mono tracking-tight shadow-sm ${(test.live_loss_pct ?? test.loss_pct ?? 0) > 0 ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
-                                                {test.live_loss_pct !== undefined ? test.live_loss_pct : (test.loss_pct || 0)} <span className="text-[10px] text-text-muted ml-0.5">%</span>
+                                let windowPoints = 60; // default 1m
+                                if (zoom === '5m') windowPoints = 300;
+                                else if (zoom === '15m') windowPoints = 900;
+                                else if (zoom === 'all') windowPoints = Math.max(60, fullSeries.length);
+
+                                let displaySeries = fullSeries;
+                                if (fullSeries.length > windowPoints) {
+                                    if (isLive) {
+                                        displaySeries = fullSeries.slice(-windowPoints);
+                                    } else {
+                                        const maxStartIndex = Math.max(0, fullSeries.length - windowPoints);
+                                        const startIndex = Math.round((scrubPos / 100) * maxStartIndex);
+                                        displaySeries = fullSeries.slice(startIndex, startIndex + windowPoints);
+                                    }
+                                }
+
+                                return (
+                                    <>
+                                        {/* Interactive Timeline Scrubber & Window Controls */}
+                                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 mb-3 bg-card-secondary/40 p-2 rounded-xl border border-border/50 text-[11px]">
+                                            {/* Window Presets */}
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-[9px] text-text-muted font-bold uppercase tracking-wider flex items-center gap-1">
+                                                    <ZoomIn size={11} className="text-blue-400" /> Window:
+                                                </span>
+                                                {(['1m', '5m', '15m', 'all'] as const).map(w => (
+                                                    <button
+                                                        key={w}
+                                                        onClick={() => setLiveZoomWindows(prev => ({ ...prev, [test.testId]: w }))}
+                                                        className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase transition-all cursor-pointer ${
+                                                            zoom === w
+                                                                ? 'bg-blue-600 text-white shadow-sm'
+                                                                : 'bg-card text-text-muted hover:text-text-primary border border-border hover:bg-card-secondary'
+                                                        }`}
+                                                    >
+                                                        {w === 'all' ? 'ALL' : w}
+                                                    </button>
+                                                ))}
                                             </div>
-                                            <div className="text-[9px] text-text-muted font-mono tracking-tighter">
-                                                Total: <span className={(test.total_loss_pct ?? test.loss_pct ?? 0) > 0 ? 'text-red-400 font-semibold' : 'text-text-secondary'}>{test.total_loss_pct !== undefined ? test.total_loss_pct : (test.loss_pct || 0)}%</span>
-                                                {test.sent && test.received !== undefined && (
-                                                    <span className="ml-1 opacity-80">({Math.max(0, test.sent - test.received)} drops)</span>
+
+                                            {/* Scrubber slider + Rewind info */}
+                                            <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-1 max-w-lg">
+                                                <span className="text-[9px] font-mono text-text-muted shrink-0" title="Start of test">
+                                                    {fullSeries[0]?.elapsedLabel || '00:00'}
+                                                </span>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="100"
+                                                    value={scrubPos}
+                                                    onChange={(e) => {
+                                                        const val = Number(e.target.value);
+                                                        setLiveScrubPositions(prev => ({ ...prev, [test.testId]: val }));
+                                                    }}
+                                                    className="w-full h-1.5 bg-slate-700/60 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400 transition-all"
+                                                    title={isLive ? 'Currently viewing LIVE real-time feed' : `Rewound to ${displaySeries[displaySeries.length - 1]?.timeLabel || ''}`}
+                                                />
+                                                <span className="text-[9px] font-mono text-text-muted shrink-0" title="Latest live metric">
+                                                    {fullSeries[fullSeries.length - 1]?.elapsedLabel || '00:00'}
+                                                </span>
+
+                                                {isLive ? (
+                                                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-bold text-[9px] uppercase tracking-wider shrink-0 shadow-sm">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                        <span>LIVE</span>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => setLiveScrubPositions(prev => ({ ...prev, [test.testId]: 100 }))}
+                                                        className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/40 font-bold text-[9px] uppercase tracking-wider transition-all shrink-0 cursor-pointer shadow-[0_0_10px_rgba(245,158,11,0.2)] animate-pulse"
+                                                        title="Click to snap back to real-time live feed"
+                                                    >
+                                                        <Rewind size={10} className="rotate-180" />
+                                                        <span>Jump to Live</span>
+                                                    </button>
                                                 )}
                                             </div>
                                         </div>
-                                    </div>
-                                    <div className="h-[60px] w-full bg-card-secondary/10 rounded overflow-hidden">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <AreaChart data={liveMetricsSeries[test.testId] || []} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
-                                                <defs>
-                                                    <linearGradient id="colorLoss" x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4}/>
-                                                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                                                    </linearGradient>
-                                                </defs>
-                                                <YAxis domain={[0, 100]} hide />
-                                                <Area type="monotone" dataKey="loss" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorLoss)" isAnimationActive={false} />
-                                            </AreaChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
-                            </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
+                                            {/* Latency Chart */}
+                                            <div>
+                                                <div className="flex justify-between items-end mb-2">
+                                                    <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
+                                                        <Activity size={12} className="text-emerald-500 animate-pulse" /> Live Latency (RTT)
+                                                    </div>
+                                                    <div className="text-lg font-bold text-emerald-400 font-mono tracking-tight shadow-sm">
+                                                        {typeof test.current_rtt_ms === 'number' ? test.current_rtt_ms : test.avg_rtt_ms} <span className="text-[10px] text-text-muted ml-0.5">ms</span>
+                                                    </div>
+                                                </div>
+                                                <div className="h-[75px] w-full bg-card-secondary/10 rounded overflow-hidden">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <AreaChart data={displaySeries} margin={{ top: 5, right: 5, left: 5, bottom: 0 }}>
+                                                            <defs>
+                                                                <linearGradient id="colorRtt" x1="0" y1="0" x2="0" y2="1">
+                                                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.35}/>
+                                                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                                                </linearGradient>
+                                                            </defs>
+                                                            <YAxis domain={['auto', 'auto']} hide />
+                                                            <XAxis dataKey="time" stroke="#475569" tick={{ fontSize: 8, fill: '#64748b' }} minTickGap={30} tickLine={false} axisLine={{ stroke: '#334155' }} height={14} />
+                                                            <Tooltip
+                                                                content={({ active, payload }) => {
+                                                                    if (active && payload && payload.length) {
+                                                                        const d = payload[0].payload;
+                                                                        return (
+                                                                            <div className="bg-slate-950/95 border border-slate-700 p-1.5 rounded shadow-xl text-[10px] font-mono">
+                                                                                <div className="text-slate-400 text-[8px]">{d.timeLabel} ({d.elapsedLabel})</div>
+                                                                                <div className="text-emerald-400 font-bold">RTT: {d.rtt} ms</div>
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                }}
+                                                            />
+                                                            <Area type="monotone" dataKey="rtt" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorRtt)" isAnimationActive={false} />
+                                                        </AreaChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
+
+                                            {/* Jitter Chart */}
+                                            <div>
+                                                <div className="flex justify-between items-end mb-2">
+                                                    <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
+                                                        <Activity size={12} className="text-amber-500 animate-pulse" /> Live Jitter
+                                                    </div>
+                                                    <div className="text-lg font-bold text-amber-400 font-mono tracking-tight shadow-sm">
+                                                        {test.jitter_ms || 0} <span className="text-[10px] text-text-muted ml-0.5">ms</span>
+                                                    </div>
+                                                </div>
+                                                <div className="h-[75px] w-full bg-card-secondary/10 rounded overflow-hidden">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <AreaChart data={displaySeries} margin={{ top: 5, right: 5, left: 5, bottom: 0 }}>
+                                                            <defs>
+                                                                <linearGradient id="colorJitter" x1="0" y1="0" x2="0" y2="1">
+                                                                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.35}/>
+                                                                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                                                                </linearGradient>
+                                                            </defs>
+                                                            <YAxis domain={['auto', 'auto']} hide />
+                                                            <XAxis dataKey="time" stroke="#475569" tick={{ fontSize: 8, fill: '#64748b' }} minTickGap={30} tickLine={false} axisLine={{ stroke: '#334155' }} height={14} />
+                                                            <Tooltip
+                                                                content={({ active, payload }) => {
+                                                                    if (active && payload && payload.length) {
+                                                                        const d = payload[0].payload;
+                                                                        return (
+                                                                            <div className="bg-slate-950/95 border border-slate-700 p-1.5 rounded shadow-xl text-[10px] font-mono">
+                                                                                <div className="text-slate-400 text-[8px]">{d.timeLabel} ({d.elapsedLabel})</div>
+                                                                                <div className="text-amber-400 font-bold">Jitter: {d.jitter} ms</div>
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                }}
+                                                            />
+                                                            <Area type="monotone" dataKey="jitter" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#colorJitter)" isAnimationActive={false} />
+                                                        </AreaChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Loss Chart */}
+                                            <div>
+                                                <div className="flex justify-between items-end mb-2">
+                                                    <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
+                                                        <Activity size={12} className="text-red-500 animate-pulse" /> Live Loss
+                                                    </div>
+                                                    <div className="flex flex-col items-end">
+                                                        <div className={`text-lg font-bold font-mono tracking-tight shadow-sm ${(test.live_loss_pct ?? test.loss_pct ?? 0) > 0 ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
+                                                            {test.live_loss_pct !== undefined ? test.live_loss_pct : (test.loss_pct || 0)} <span className="text-[10px] text-text-muted ml-0.5">%</span>
+                                                        </div>
+                                                        <div className="text-[9px] text-text-muted font-mono tracking-tighter">
+                                                            Total: <span className={(test.total_loss_pct ?? test.loss_pct ?? 0) > 0 ? 'text-red-400 font-semibold' : 'text-text-secondary'}>{test.total_loss_pct !== undefined ? test.total_loss_pct : (test.loss_pct || 0)}%</span>
+                                                            {test.sent && test.received !== undefined && (
+                                                                <span className="ml-1 opacity-80">({Math.max(0, test.sent - test.received)} drops)</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="h-[75px] w-full bg-card-secondary/10 rounded overflow-hidden">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <AreaChart data={displaySeries} margin={{ top: 5, right: 5, left: 5, bottom: 0 }}>
+                                                            <defs>
+                                                                <linearGradient id="colorLoss" x1="0" y1="0" x2="0" y2="1">
+                                                                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4}/>
+                                                                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                                                                </linearGradient>
+                                                            </defs>
+                                                            <YAxis domain={[0, 100]} hide />
+                                                            <XAxis dataKey="time" stroke="#475569" tick={{ fontSize: 8, fill: '#64748b' }} minTickGap={30} tickLine={false} axisLine={{ stroke: '#334155' }} height={14} />
+                                                            <Tooltip
+                                                                content={({ active, payload }) => {
+                                                                    if (active && payload && payload.length) {
+                                                                        const d = payload[0].payload;
+                                                                        return (
+                                                                            <div className="bg-slate-950/95 border border-slate-700 p-1.5 rounded shadow-xl text-[10px] font-mono">
+                                                                                <div className="text-slate-400 text-[8px]">{d.timeLabel} ({d.elapsedLabel})</div>
+                                                                                <div className="text-red-400 font-bold">Loss: {d.loss}%</div>
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                }}
+                                                            />
+                                                            <Area type="monotone" dataKey="loss" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorLoss)" isAnimationActive={false} />
+                                                        </AreaChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                );
+                            })()}
 
                             <div className="h-[44px] w-full flex flex-col justify-end relative rounded-lg overflow-hidden bg-card-secondary/30 border border-border/40 mb-6 p-1">
                                 {/* Blackout Overlay */}
