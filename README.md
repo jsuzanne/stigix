@@ -189,12 +189,14 @@ Network interfaces, traffic distribution, synthetic probes, and application mana
 
 ---
 
-### 📊 Convergence Lab & Statistics
-Detailed analytics, historical data, and sub-second convergence measurement.
+### 📊 Convergence Lab & Failover Monitoring
+High-precision UDP failover probing (up to 1000 PPS), historical outage curves, interactive time scrubber, SCM multi-path sequence tracking, and 1-click PoC Card HD PNG export.
 
-<img src="docs/screenshots/07-Convergence/02-convergence-live-test-hero.png" alt="Convergence Lab" width="800">
+<img src="docs/screenshots/07-Convergence/06-failover-poc-curves-outage-analysis.png" alt="Failover PoC Curves & Outage Analysis" width="800">
 
-**[View all Statistics & Convergence screenshots →](docs/screenshots/02-Statistics)** (8 images)
+<img src="docs/screenshots/07-Convergence/01-convergence-lab-overview.png" alt="Convergence Lab Overview & Search" width="800">
+
+**[View Convergence Lab Guide & Theory →](docs/CONVERGENCE_LAB.md)**
 
 
 ---
