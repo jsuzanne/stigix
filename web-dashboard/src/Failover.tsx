@@ -1412,7 +1412,40 @@ export default function Failover(props: FailoverProps) {
                                                             {(() => {
                                                                 const testKey = test.test_id || test.testId || '';
                                                                 const convId = test.test_id?.match(/CONV-\d+/)?.[0] || testKey;
-                                                                const series = test.metrics_series || liveMetricsSeries[testKey] || liveMetricsSeries[convId] || [];
+                                                                let series = test.metrics_series || liveMetricsSeries[testKey] || liveMetricsSeries[convId] || [];
+
+                                                                // If series is empty but 100-packet history exists, synthesize a fallback curve
+                                                                if ((!series || series.length === 0) && Array.isArray(test.history) && test.history.length > 0) {
+                                                                    const totalPackets = test.history.length;
+                                                                    const durSec = test.duration_s || 10;
+                                                                    const avgRtt = test.avg_rtt_ms || 0;
+                                                                    const avgJitter = test.jitter_ms || 0;
+                                                                    const endTs = typeof test.timestamp === 'number' ? (test.timestamp > 1e11 ? test.timestamp : test.timestamp * 1000) : Date.now();
+                                                                    const startTs = endTs - (durSec * 1000);
+
+                                                                    series = test.history.map((val: number, idx: number) => {
+                                                                        const frac = idx / (totalPackets - 1 || 1);
+                                                                        const pTs = Math.round(startTs + frac * durSec * 1000);
+                                                                        const pDate = new Date(pTs);
+                                                                        const timeLabel = pDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                                                        const elSec = Math.round(frac * durSec);
+                                                                        const em = Math.floor(elSec / 60);
+                                                                        const es = elSec % 60;
+                                                                        const elapsedLabel = `${String(em).padStart(2, '0')}:${String(es).padStart(2, '0')}`;
+                                                                        const isDrop = val === 0;
+
+                                                                        return {
+                                                                            time: timeLabel,
+                                                                            timeLabel,
+                                                                            elapsedLabel,
+                                                                            elapsedSec: elSec,
+                                                                            ts: pTs,
+                                                                            rtt: isDrop ? 0 : avgRtt,
+                                                                            jitter: isDrop ? 0 : avgJitter,
+                                                                            loss: isDrop ? 100 : 0
+                                                                        };
+                                                                    });
+                                                                }
                                                                 const hasSeries = Array.isArray(series) && series.length > 0;
                                                                 const cardDomId = `history-test-card-${convId}-${test.timestamp}`;
 

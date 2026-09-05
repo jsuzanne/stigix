@@ -78,6 +78,9 @@ class ConvergenceMetrics:
         self.measurement_start_time = None
         self.measurement_end_time = None
 
+        self.time_series = []
+        self.last_sample_time = 0.0
+
         self.lock = threading.Lock()
 
     def record_send(self, seq: int, timestamp: float) -> None:
@@ -263,6 +266,26 @@ class ConvergenceMetrics:
         current_rtt_ms = round(rtts_copy[-1], 2) if rtts_copy else 0.0
         jitter_ms = round(jitter_copy * 1000.0, 2)
 
+        # Sample 1-second time series point for historical curves persistence
+        if is_running and (now - self.last_sample_time >= 0.95):
+            self.last_sample_time = now
+            elapsed = max(0.0, now - start_time_copy)
+            time_label = time.strftime("%H:%M:%S", time.localtime(now))
+            elapsed_label = f"{int(elapsed // 60):02d}:{int(elapsed % 60):02d}"
+            point = {
+                "time": time_label,
+                "timeLabel": time_label,
+                "elapsedLabel": elapsed_label,
+                "elapsedSec": round(elapsed),
+                "ts": round(now * 1000),
+                "rtt": current_rtt_ms if current_rtt_ms > 0 else avg_rtt,
+                "jitter": jitter_ms,
+                "loss": max(0.0, live_loss_pct)
+            }
+            self.time_series.append(point)
+            if len(self.time_series) > 3600:
+                self.time_series.pop(0)
+
         return {
             "test_id": self.test_id,
             "status": "running" if is_running else "stopped",
@@ -287,6 +310,7 @@ class ConvergenceMetrics:
             "rate_pps": rate_copy,
             "duration_s": duration,
             "history": history,
+            "metrics_series": list(self.time_series),
             "start_time": start_time_copy,
             "target": target_copy,
             "port": port_copy,

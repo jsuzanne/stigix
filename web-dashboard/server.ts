@@ -393,7 +393,9 @@ async function enrichConvergenceHistory(testId: string, extra: Record<string, an
                 // Orchestrator writes `test_id` (snake_case), may include label: "CONV-0075 (DC1)"
                 // JS handler writes `testId` (camelCase). Check both with startsWith for label tolerance.
                 const recordId: string = obj.test_id || obj.testId || '';
-                if (recordId === testId || recordId.startsWith(testId + ' ') || recordId.startsWith(testId + '(')) {
+                const cleanRecordId = String(recordId).split(' (')[0].trim().toUpperCase();
+                const cleanTestId = String(testId).split(' (')[0].trim().toUpperCase();
+                if (cleanRecordId === cleanTestId || recordId === testId || recordId.startsWith(testId + ' ') || recordId.startsWith(testId + '(')) {
                     found = true;
                     dbg(`[CONV] [DEBUG] enrichConvergenceHistory: matched record id="${recordId}" for testId="${testId}"`);
                     return JSON.stringify({ ...obj, ...extra });
