@@ -229,6 +229,14 @@ class ConvergenceMetrics:
         if seq > 0:
             total_loss_pct = round((1.0 - (rcvd / float(seq))) * 100.0, 1)
 
+        # Instantaneous rolling window loss percentage over last 100 packets
+        live_loss_pct = 0.0
+        if history and len(history) > 0:
+            drops_in_window = history.count(0)
+            live_loss_pct = round((drops_in_window / float(len(history))) * 100.0, 1)
+
+        display_loss_pct = live_loss_pct if is_running else total_loss_pct
+
         duration = round(now - start_time_copy, 1)
 
         if server_received_copy > 0 and seq > 0:
@@ -261,7 +269,9 @@ class ConvergenceMetrics:
             "sent": seq,
             "received": rcvd,
             "server_received": server_received_copy,
-            "loss_pct": max(0.0, total_loss_pct),
+            "loss_pct": max(0.0, display_loss_pct),
+            "live_loss_pct": max(0.0, live_loss_pct),
+            "total_loss_pct": max(0.0, total_loss_pct),
             "tx_loss_pct": max(0.0, tx_loss_pct),
             "rx_loss_pct": max(0.0, rx_loss_pct),
             "tx_lost_packets": tx_lost_packets,
