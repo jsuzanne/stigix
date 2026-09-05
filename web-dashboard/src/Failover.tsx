@@ -44,6 +44,7 @@ export default function Failover(props: FailoverProps) {
     const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
     const [isStarting, setIsStarting] = useState(false);
     const [isStopping, setIsStopping] = useState(false);
+    const [refreshingPathId, setRefreshingPathId] = useState<string | null>(null);
     const [liveMetricsSeries, setLiveMetricsSeries] = useState<Record<string, any[]>>({});
     const [livePaths, setLivePaths] = useState<Record<string, {
         loading?: boolean;
@@ -369,6 +370,51 @@ export default function Failover(props: FailoverProps) {
                     timestamp: new Date().toISOString()
                 }
             }));
+        }
+    };
+
+    const handleRefreshHistoryPath = async (testItem: any) => {
+        const rawId = testItem.test_id || testItem.testId || '';
+        const testId = rawId.match(/(CONV-\d+)/)?.[1] || rawId;
+        if (!testId) return;
+
+        setRefreshingPathId(testId);
+        try {
+            const rawPort = testItem.source_port || getSourcePort(rawId);
+            const sourcePort = rawPort && rawPort !== '????' ? parseInt(rawPort, 10) : undefined;
+            const res = await fetch('/api/convergence/history/refresh-path', {
+                method: 'POST',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    testId,
+                    sourcePort,
+                    dstIp: testItem.target
+                })
+            });
+
+            const data = await res.json();
+            if (res.ok && data.success && data.found) {
+                // Update local history state immediately
+                setHistory(prev => prev.map(item => {
+                    const itemId = item.test_id || item.testId || '';
+                    if (itemId === rawId || itemId.startsWith(testId)) {
+                        return {
+                            ...item,
+                            egress_path: data.egress_path,
+                            path_history: data.path_history,
+                            path_evolution: data.path_evolution,
+                            path_type: data.path_type || item.path_type
+                        };
+                    }
+                    return item;
+                }));
+            } else if (data.message || data.error) {
+                alert(data.message || data.error);
+            }
+        } catch (e: any) {
+            alert(`Error refreshing path: ${e.message}`);
+        } finally {
+            setRefreshingPathId(null);
         }
     };
 
@@ -1005,10 +1051,26 @@ export default function Failover(props: FailoverProps) {
                                                                     <div className="text-[8px] text-text-muted font-bold uppercase">Jitter (ms)</div>
                                                                     <div className="text-xs font-mono font-bold text-text-secondary">{test.jitter_ms || 0}ms</div>
                                                                 </div>
-                                                                <div className="bg-card-secondary p-2 rounded border border-border">
-                                                                    <div className="text-[8px] text-text-muted font-bold uppercase flex items-center gap-1">
-                                                                        <ArrowRightLeft size={7} className="shrink-0 animate-pulse text-blue-400" />
-                                                                        {test.path_history && test.path_history.length > 1 ? 'Failover Path Sequence' : 'Egress Path'}
+                                                                <div className="bg-card-secondary p-2 rounded border border-border relative group/path">
+                                                                    <div className="text-[8px] text-text-muted font-bold uppercase flex items-center justify-between">
+                                                                        <div className="flex items-center gap-1">
+                                                                            <ArrowRightLeft size={7} className="shrink-0 animate-pulse text-blue-400" />
+                                                                            <span>{test.path_history && test.path_history.length > 1 ? 'Failover Path Sequence' : 'Egress Path'}</span>
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleRefreshHistoryPath(test);
+                                                                            }}
+                                                                            disabled={refreshingPathId === (test.test_id?.match(/CONV-\d+/)?.[0] || test.test_id)}
+                                                                            className="p-1 hover:bg-blue-500/20 rounded text-text-muted hover:text-blue-400 transition-all cursor-pointer opacity-80 group-hover/path:opacity-100 disabled:opacity-50"
+                                                                            title="Re-query Prisma SD-WAN Flow Browser to refresh and detect multi-path failovers for this test"
+                                                                        >
+                                                                            <RotateCw
+                                                                                size={10}
+                                                                                className={refreshingPathId === (test.test_id?.match(/CONV-\d+/)?.[0] || test.test_id) ? 'animate-spin text-blue-400' : ''}
+                                                                            />
+                                                                        </button>
                                                                     </div>
                                                                     {test.path_history && test.path_history.length > 1 ? (
                                                                         <div className="text-xs font-mono font-bold text-blue-400 flex items-center gap-1 flex-wrap mt-0.5" title={test.path_evolution || test.egress_path}>
@@ -1025,7 +1087,7 @@ export default function Failover(props: FailoverProps) {
                                                                             })}
                                                                         </div>
                                                                     ) : (test.path_evolution || test.egress_path) ? (
-                                                                        <div className="text-xs font-mono font-bold text-blue-400 truncate flex items-center gap-1.5" title={test.path_evolution || test.egress_path}>
+                                                                        <div className="text-xs font-mono font-bold text-blue-400 truncate flex items-center gap-1.5 mt-0.5" title={test.path_evolution || test.egress_path}>
                                                                             {(test.path_evolution || test.egress_path).split(/ → | -> /).map((node: string, idx: number, arr: string[]) => (
                                                                                 <React.Fragment key={idx}>
                                                                                     {node}
@@ -1034,9 +1096,9 @@ export default function Failover(props: FailoverProps) {
                                                                             ))}
                                                                         </div>
                                                                     ) : (Date.now() - (test.timestamp || 0)) < 3 * 60 * 1000 ? (
-                                                                        <div className="text-[9px] text-text-muted italic">⏳ fetching...</div>
+                                                                        <div className="text-[9px] text-text-muted italic mt-0.5">⏳ fetching...</div>
                                                                     ) : (
-                                                                        <div className="text-xs text-text-muted">—</div>
+                                                                        <div className="text-xs text-text-muted mt-0.5">—</div>
                                                                     )}
                                                                 </div>
                                                             </div>
