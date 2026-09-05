@@ -53,6 +53,9 @@ All resolutions rely on **strict same-subnet IPv4/CIDR matching** via `ipaddr.js
  └────────────────────────────────────────────────────────────────────────┘
 ```
 
+*Live Underlay Topology showing physical cable termination between Prisma SD-WAN sites and the VyOS Core Router chassis:*
+![Underlay Topology Physical Wiring](screenshots/10-Topology/01-underlay-chassis-physical-wiring.png)
+
 ---
 
 ## ⚡ Key Features
@@ -63,6 +66,9 @@ All resolutions rely on **strict same-subnet IPv4/CIDR matching** via `ipaddr.js
 - **Center Chassis Banner**: Displays the router name, management IP address, online/offline status, and total active circuit counter.
 - **Bottom Row (Branch & Spoke Downlinks)**: Groups ports connected to bottom-tier Branch and Spoke sites.
 - **Full IP/CIDR Visibility**: Every port chip displays the port identifier (`ethX`), live status LED, connected site badge, full IP CIDR (e.g. `192.168.221.254/24`), and port description.
+
+*Detailed port chips with IP/CIDR matching, live link status LEDs, and connected site badges:*
+![Port Chips & Live Status](screenshots/10-Topology/03-underlay-port-chips-status.png)
 
 ### 2. Direct 1:1 Port-to-Port Cable Wiring
 - Each physical port chip on the VyOS chassis features a dedicated React Flow Handle (`vyos-port:ethX`).
@@ -80,6 +86,9 @@ All resolutions rely on **strict same-subnet IPv4/CIDR matching** via `ipaddr.js
   - **Transit Subnet**: Matched same-subnet CIDR network.
   - **VyOS Underlay Router**: Interface Name, Description, Next-Hop IP, Port Status.
 - Includes a **Full Inspect** button to open the comprehensive underlay diagnostics side panel.
+
+*Interactive Link Trace Inspector and Direct Actions drawer:*
+![Link Trace Inspector](screenshots/10-Topology/02-underlay-link-trace-inspector.png)
 
 ### 5. Interactive Direct Actions & Chaos Injection
 Directly from the floating Link Trace drawer or side panel, operators can control the physical underlay in real time:
