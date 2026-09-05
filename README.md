@@ -271,6 +271,17 @@ Real-time visualization of SD-WAN overlay paths with intelligent peer device map
 
 ---
 
+### 🔄 Custom TCP Applications
+Multi-application East-West workload simulation with dual host TCP listeners, outbound client workload generators, 8 server simulation modes (fixed delay, jitter, looping degradation, drop response, errors), 5 client workload modes, rolling RTT percentiles ($p50/p95/\text{avg}$), and interactive 4-step wizard.
+
+<img src="docs/screenshots/11-Custom-Apps/01-custom-apps-dashboard-overview.png" alt="Custom Apps Dashboard Overview" width="800">
+
+<img src="docs/screenshots/11-Custom-Apps/02-custom-app-server-client-sessions.png" alt="Custom App Server Client Sessions" width="800">
+
+**[View Custom TCP Apps Guide →](docs/CUSTOM_TCP_APPS.md)** | **[View User Guide & Recipes →](docs/CUSTOM_TCP_APPS_USER_GUIDE.md)** | **[View all Custom Apps screenshots →](docs/screenshots/11-Custom-Apps)** (4 images)
+
+---
+
 ## 🖥️ Platform Support
 
 This application runs on:
@@ -849,6 +860,9 @@ Comprehensive guides organized by your journey with the Stigix.
 - **[Digital Experience Testing](docs/DIGITAL_EXPERIENCE_TESTING.md)** - System health monitoring and synthetic probes
 
 ### 🔬 Advanced Features
+- **[Custom TCP Applications Guide](docs/CUSTOM_TCP_APPS.md)** - East-West TCP workload simulation, wire protocol, and p50/p95 latency
+- **[Custom TCP User Guide & Recipes](docs/CUSTOM_TCP_APPS_USER_GUIDE.md)** - Step-by-step creation wizard, chaos injection, 7 real-world recipes
+- **[Custom TCP Network Impairments](docs/CUSTOM_TCP_NETWORK_IMPAIRMENTS.md)** - SD-WAN VyOS netem impairments, packet loss, and L7 failover validation
 - **[Voice Simulation Guide](docs/VOICE_SIMULATION.md)** - RTP packet forging and MOS scoring theory
 - **[IoT Simulation Guide](docs/IOT_SIMULATION.md)** - Layer-2/3 device simulation and Scapy networking
 - **[Convergence Lab Guide](docs/CONVERGENCE_LAB.md)** - High-precision failover & RX/TX loss theory

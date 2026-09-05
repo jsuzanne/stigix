@@ -108,6 +108,9 @@ sudo tc qdisc add dev eth1 root netem loss 5%
 4. **Socket Tear-down on Severe Loss**:
    - If loss causes TCP keepalive failure or connection reset (`ETIMEDOUT` / `ECONNRESET`), the socket closes, and the client transitions to **`RECONNECTING`**.
 
+*Real-time Custom TCP Applications Dashboard with multi-app profiles, client/server status, and live latency percentiles:*
+![Custom Apps Dashboard Overview](screenshots/11-Custom-Apps/01-custom-apps-dashboard-overview.png)
+
 ---
 
 ### Scenario C: Link Cut, Cable Pull & SD-WAN Dynamic Failover
@@ -160,6 +163,12 @@ When executing failover or impairment tests, monitor these 4 primary metrics on 
 
 ### Health Score Formula Breakdown:
 $$\text{Health Score} = \text{Listener Active (25)} + \text{Sessions Connected (35)} + \text{Success Ratio (25)} + \text{Latency SLA (15)}$$
+
+*Detailed incoming/outgoing TCP sessions table with live RTT sparklines, p50/p95 percentiles, and site correlation:*
+![Custom App Server Client Sessions](screenshots/11-Custom-Apps/02-custom-app-server-client-sessions.png)
+
+*Interactive Server Behaviors and Chaos Configuration Wizard:*
+![Custom App Network Impairments & Behavior Wizard](screenshots/11-Custom-Apps/03-custom-app-network-impairments-modal.png)
 
 ---
 
