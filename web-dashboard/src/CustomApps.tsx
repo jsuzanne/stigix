@@ -859,9 +859,8 @@ const secs = seconds % 60;
                                 <thead>
                                     <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
                                         <th className="pb-3 px-3 whitespace-nowrap">Declared Origin</th>
-                                        <th className="pb-3 px-3 whitespace-nowrap">Source IP</th>
                                         <th className="pb-3 px-3 whitespace-nowrap">State & Uptime</th>
-                                        <th className="pb-3 px-4 text-right whitespace-nowrap">RX / TX</th>
+                                        <th className="pb-3 px-3 text-right whitespace-nowrap">Throughput (RX / TX)</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
@@ -878,41 +877,43 @@ const secs = seconds % 60;
                                                 className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
                                                 title="Click to open full Session Deep Dive"
                                             >
-                                                <td className="py-3 px-3 font-semibold text-text-primary whitespace-nowrap">
-                                                    {isStigixPeer ? (
-                                                        <span className="group-hover:text-indigo-500 transition-colors" title={`Hostname: ${s.declaredHostname || 'n/a'} | ID: ${s.sessionId}`}>
-                                                            {originLabel}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-text-muted italic font-normal" title={`External TCP client connection | ID: ${s.sessionId}`}>
-                                                            {originLabel}
-                                                        </span>
-                                                    )}
+                                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                                    <div className="font-semibold text-text-primary">
+                                                        {isStigixPeer ? (
+                                                            <span className="group-hover:text-indigo-500 transition-colors" title={`Hostname: ${s.declaredHostname || 'n/a'} | ID: ${s.sessionId}`}>
+                                                                {originLabel}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-text-muted italic font-normal" title={`External TCP client connection | ID: ${s.sessionId}`}>
+                                                                {originLabel}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="font-mono text-text-muted text-[10px] mt-0.5">
+                                                        {s.remoteIp}:{s.remotePort}
+                                                    </div>
                                                 </td>
-                                                <td className="py-3 px-3 font-mono text-text-secondary text-[11px] whitespace-nowrap">
-                                                    {s.remoteIp}:{s.remotePort}
-                                                </td>
-                                                <td className="py-3 px-3 whitespace-nowrap">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
                                                             s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
                                                             s.state === 'delayed' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30' : 'bg-card-secondary text-text-muted border border-border'
                                                         }`}>
                                                             {s.state}
                                                         </span>
-                                                        {(s.uptimeSec ?? 0) > 0 && (
-                                                            <span className="text-[10px] text-text-muted font-mono whitespace-nowrap">
-                                                                {formatUptime(s.uptimeSec)}
-                                                            </span>
-                                                        )}
                                                     </div>
+                                                    {(s.uptimeSec ?? 0) > 0 && (
+                                                        <div className="text-[10px] text-text-muted font-mono mt-0.5">
+                                                            {formatUptime(s.uptimeSec)}
+                                                        </div>
+                                                    )}
                                                 </td>
-                                                <td className="py-3 px-4 text-right font-mono text-[11px] whitespace-nowrap">
+                                                <td className="py-2.5 px-3 text-right font-mono text-[11px] whitespace-nowrap">
                                                     <div>
                                                         <span className="text-emerald-600 dark:text-emerald-400 font-bold">{formatBytes(s.bytesReceived)}</span> / <span className="text-indigo-600 dark:text-indigo-400 font-bold">{formatBytes(s.bytesSent)}</span>
                                                     </div>
                                                     {(s.rxBps ?? 0) > 0 && (
-                                                        <div className="text-[10px] text-emerald-500 font-bold tracking-tight">
+                                                        <div className="text-[10px] text-emerald-500 font-bold tracking-tight mt-0.5">
                                                             ⚡ {formatBitrate(s.rxBps)}
                                                         </div>
                                                     )}
@@ -974,9 +975,10 @@ const secs = seconds % 60;
                                 <thead>
                                     <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
                                         <th className="pb-3 px-3 whitespace-nowrap">Target Peer</th>
-                                        <th className="pb-3 px-3 whitespace-nowrap">Remote Endpoint</th>
                                         <th className="pb-3 px-3 whitespace-nowrap">State & Uptime</th>
-                                        <th className="pb-3 px-4 text-right whitespace-nowrap">RTT Wave & Latency</th>
+                                        <th className="pb-3 px-3 text-right whitespace-nowrap">
+                                            RTT Wave & Latency <span className="text-[9px] font-normal text-text-muted opacity-75 font-sans">(avg / p50 / p95)</span>
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
@@ -991,59 +993,57 @@ const secs = seconds % 60;
                                                 className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
                                                 title="Click to open full Session Deep Dive"
                                             >
-                                                <td className="py-3 px-3 font-semibold text-text-primary whitespace-nowrap">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="group-hover:text-emerald-500 transition-colors">{s.peerName}</span>
+                                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="font-semibold text-text-primary group-hover:text-emerald-500 transition-colors">{s.peerName}</span>
                                                         {streamBadge && (
-                                                            <span className="px-1.5 py-0.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded text-[9px] font-mono font-bold">
+                                                            <span className="px-1.5 py-0.2 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded text-[9px] font-mono font-bold">
                                                                 {streamBadge}
                                                             </span>
                                                         )}
                                                     </div>
+                                                    <div className="font-mono text-text-muted text-[10px] mt-0.5">
+                                                        {s.peerHost}:{s.peerPort}
+                                                    </div>
                                                 </td>
-                                                <td className="py-3 px-3 font-mono text-text-secondary text-[11px] whitespace-nowrap">
-                                                    {s.peerHost}:{s.peerPort}
-                                                </td>
-                                                <td className="py-3 px-3 whitespace-nowrap">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
                                                             s.state === 'connected' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' :
                                                             s.state === 'reconnecting' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse' :
                                                             'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
                                                         }`}>
                                                             {s.state}
                                                         </span>
-                                                        {(s.uptimeSec ?? 0) > 0 && (
-                                                            <span className="text-[10px] text-text-muted font-mono whitespace-nowrap">
-                                                                {formatUptime(s.uptimeSec)}
-                                                            </span>
-                                                        )}
                                                         {(s.reconnects ?? 0) > 0 && (
-                                                            <span className="text-[10px] text-amber-500 font-mono font-semibold whitespace-nowrap" title={`${s.reconnects} reconnect(s)`}>
+                                                            <span className="text-[9px] text-amber-500 font-mono font-semibold" title={`${s.reconnects} reconnect(s)`}>
                                                                 • {s.reconnects} rec
                                                             </span>
                                                         )}
                                                     </div>
+                                                    {(s.uptimeSec ?? 0) > 0 && (
+                                                        <div className="text-[10px] text-text-muted font-mono mt-0.5">
+                                                            {formatUptime(s.uptimeSec)}
+                                                        </div>
+                                                    )}
                                                 </td>
-                                                <td className="py-3 px-4 text-right font-mono text-[11px] whitespace-nowrap">
-                                                    <div className="flex items-center justify-end gap-3 min-w-[260px]">
+                                                <td className="py-2.5 px-3 text-right font-mono text-[11px] whitespace-nowrap">
+                                                    <div className="flex items-center justify-end gap-3">
                                                         {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 ? (
-                                                            <div className="w-[56px] shrink-0 flex items-center justify-center">
-                                                                <MicroSparkline samples={s.rttMs.recentSamples} width={56} height={18} />
+                                                            <div className="w-[48px] shrink-0 flex items-center justify-center">
+                                                                <MicroSparkline samples={s.rttMs.recentSamples} width={48} height={18} />
                                                             </div>
-                                                        ) : (
-                                                            <div className="w-[56px] shrink-0" />
-                                                        )}
-                                                        <div className="min-w-[175px] shrink-0 text-right">
-                                                            <div className="text-amber-600 dark:text-amber-400 font-semibold whitespace-nowrap tabular-nums">
+                                                        ) : null}
+                                                        <div className="text-right">
+                                                            <div className="text-amber-500 dark:text-amber-400 font-bold whitespace-nowrap tabular-nums text-xs">
                                                                 {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
                                                             </div>
                                                             {s.rttMs.avg > 0 && (
-                                                                <div className="text-[10px] text-cyan-500 flex items-center justify-end gap-1 font-sans mt-0.5 whitespace-nowrap tabular-nums">
-                                                                    <span>Jitter: ± {s.rttMs.jitterMs ?? 0} ms</span>
+                                                                <div className="text-[10px] text-cyan-400 flex items-center justify-end gap-1.5 font-sans mt-0.5 whitespace-nowrap tabular-nums">
+                                                                    <span>Jitter: ±{s.rttMs.jitterMs ?? 0}ms</span>
                                                                     {(s.txBps ?? 0) > 0 && (
                                                                         <>
-                                                                            <span className="text-text-muted">•</span>
+                                                                            <span className="text-text-muted/60">•</span>
                                                                             <span className="text-indigo-400 font-mono font-bold">{formatBitrate(s.txBps)}</span>
                                                                         </>
                                                                     )}
