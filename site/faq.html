@@ -2192,7 +2192,7 @@ docker compose restart</pre>
             <pre>curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/main/install.sh | sudo bash -s -- --controller http://&lt;LEADER_IP&gt;:8080</pre>
             <p>The script automatically:</p>
             <ul>
-              <li>Installs Docker if needed and pulls the Stigix container image.</li>
+              <li>Verifies Docker is installed and running on the host, then downloads the configuration and pulls the Stigix container image.</li>
               <li>Configures <code>STIGIX_CONTROLLER_URL</code> and activates Direct Controller Mode.</li>
               <li>Registers the peer with the Leader and immediately begins pulling published Global Provisioning bundles.</li>
               <li>The Leader automatically discovers the new peer and synthesizes active target definitions on its dashboard.</li>
