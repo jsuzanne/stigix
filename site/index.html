@@ -629,7 +629,8 @@
       <button class="gallery__tab" data-tab="voice" role="tab" aria-selected="false" id="tab-btn-voice">Voice</button>
       <button class="gallery__tab" data-tab="failover" role="tab" aria-selected="false" id="tab-btn-failover">Failover</button>
       <button class="gallery__tab" data-tab="vyos" role="tab" aria-selected="false" id="tab-btn-vyos">VyOS</button>
-      <button class="gallery__tab" data-tab="topology" role="tab" aria-selected="false" id="tab-btn-topology">Topology</button>
+      <button class="gallery__tab" data-tab="topology" role="tab" aria-selected="false" id="tab-btn-topology">Overlay Topology</button>
+      <button class="gallery__tab" data-tab="underlay" role="tab" aria-selected="false" id="tab-btn-underlay">Underlay Topology</button>
       <button class="gallery__tab" data-tab="customapps" role="tab" aria-selected="false" id="tab-btn-customapps">Custom Apps</button>
       <button class="gallery__tab" data-tab="statistics" role="tab" aria-selected="false" id="tab-btn-statistics">Statistics</button>
       <button class="gallery__tab" data-tab="config" role="tab" aria-selected="false" id="tab-btn-config">Config</button>
@@ -697,6 +698,14 @@
         <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">VPN Topology — live overlay visualization</span></div>
         <img src="assets/screenshots/topology.png" alt="Stigix VPN topology overlay" loading="lazy">
         <div class="gallery__caption">Live SD-WAN overlay from the Prisma SASE API — Active/Backup/Down tunnel status, hub mapping, peer device discovery.</div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-underlay">
+      <div class="gallery__frame">
+        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Physical Underlay Topology — VyOS backbone router chassis &amp; 1:1 direct port cabling</span></div>
+        <img src="assets/screenshots/underlay-topology.png" alt="Stigix Physical Underlay Topology with VyOS chassis and direct port cabling" loading="lazy">
+        <div class="gallery__caption">Interactive Underlay Topology canvas featuring VyOS backbone router chassis with DC/Hub uplinks and Branch downlinks, direct 1:1 port cable lines, live link status, one-click Shut/No-Shut, and direct Netem latency/loss impairment injection.</div>
       </div>
     </div>
 

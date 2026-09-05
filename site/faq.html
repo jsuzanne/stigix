@@ -1466,6 +1466,9 @@ curl -X POST http://&lt;HOST&gt;:8080/api/security/profile \
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does the Physical Underlay view represent VyOS backbone routers with direct 1:1 port cable wiring?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p>The <strong>Physical Underlay View</strong> renders active VyOS backbone routers as realistic physical network chassis nodes on an interactive canvas:</p>
+            <div style="margin: 14px 0; border: 1px solid var(--stroke-hi); border-radius: 8px; overflow: hidden; box-shadow: 0 8px 30px rgba(0,0,0,0.4);">
+              <img src="assets/screenshots/underlay-topology.png" alt="Stigix Physical Underlay Topology Canvas with VyOS Router Chassis" style="width: 100%; display: block;" loading="lazy">
+            </div>
             <ul>
               <li><strong>Chassis Architecture:</strong> Separates Datacenter / Hub uplinks (top row of port chips) and Branch / Spoke downlinks (bottom row) with a central management status banner.</li>
               <li><strong>Direct 1:1 Port Cable Wiring:</strong> Individual cables connect directly from each Prisma SD-WAN WAN circuit block to the exact physical <code>ethX</code> port handle on the VyOS router.</li>
@@ -1479,10 +1482,18 @@ curl -X POST http://&lt;HOST&gt;:8080/api/security/profile \
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I execute real-time actions (Shut/No-Shut, Netem latency/loss, Clear QoS) directly from the Topology canvas?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p>In the Underlay Topology view, clicking any VyOS port chip opens the <strong>Direct Action Controls</strong>:</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 14px 0;">
+              <div style="border: 1px solid var(--stroke-hi); border-radius: 8px; overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.35);">
+                <img src="assets/screenshots/underlay-link-modal.png" alt="WAN Link Details and VyOS Interactive Actions Modal" style="width: 100%; display: block;" loading="lazy">
+              </div>
+              <div style="border: 1px solid var(--stroke-hi); border-radius: 8px; overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.35);">
+                <img src="assets/screenshots/underlay-impairment-modal.png" alt="Inject WAN Impairment Netem Modal" style="width: 100%; display: block;" loading="lazy">
+              </div>
+            </div>
             <ul>
               <li><strong>Shut / No-Shut:</strong> Instantly toggles the interface administrative state on the router with live status write-through.</li>
               <li><strong>Inject WAN Impairment (Netem):</strong> Adjust latency (0–500 ms) and packet loss (0–50%) sliders to inject impairments on the fly without writing scripts.</li>
-              <li><strong>Persistent Canvas Micro-Badges:</strong> Active impairments display dynamic amber badges (e.g. <code>⏱️ +120ms / 2% loss</code>) directly on the router port chips on the canvas that persist across page reloads.</li>
+              <li><strong>Persistent Canvas Micro-Badges:</strong> Active impairments display dynamic amber badges (e.g. <code>⏱️ +100ms</code>) directly on the router port chips on the canvas that persist across page reloads.</li>
               <li><strong>Clear QoS:</strong> 1-click button to immediately remove all traffic control rules and restore line-rate baseline performance.</li>
             </ul>
           </div></div></div>
