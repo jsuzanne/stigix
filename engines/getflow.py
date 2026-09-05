@@ -204,69 +204,106 @@ def log_output(message, json_mode=False, is_error=False):
 
 
 def load_credentials(args, json_mode=False):
-    """Load Prisma SASE credentials from env vars first, then fall back to a JSON file.
+    """Load Prisma SASE credentials from env vars first, then fall back to JSON config files.
 
     Env vars (recommended for Docker Compose):
       - PRISMA_SDWAN_CLIENT_ID
       - PRISMA_SDWAN_CLIENT_SECRET
-      - PRISMA_SDWAN_TSG_ID
+      - PRISMA_SDWAN_TSG_ID / PRISMA_SDWAN_TSGID
+      - PRISMA_SDWAN_REGION
 
-    File fallback (legacy): --credentials (default: credentials.json)
-      {"client_id": "...", "client_secret": "...", "tsg_id": "..."}
+    File fallback:
+      - --credentials (default: credentials.json)
+      - config/prisma-config.json
+      - credentials.json
 
-    Returns a dict with keys client_id, client_secret, tsg_id, source.
+    Returns a dict with keys client_id, client_secret, tsg_id, region, source.
     """
 
     env_client_id = os.getenv("PRISMA_SDWAN_CLIENT_ID")
     env_client_secret = os.getenv("PRISMA_SDWAN_CLIENT_SECRET")
     env_tsg_id = os.getenv("PRISMA_SDWAN_TSG_ID") or os.getenv("PRISMA_SDWAN_TSGID")
+    env_region = os.getenv("PRISMA_SDWAN_REGION")
 
     if env_client_id and env_client_secret and env_tsg_id:
+        c_id = env_client_id.strip()
+        c_secret = env_client_secret.strip()
+        # Auto-normalize if user swapped client_id and client_secret
+        if "@" in c_secret and "@" not in c_id:
+            c_id, c_secret = c_secret, c_id
         return {
-            "client_id": env_client_id,
-            "client_secret": env_client_secret,
-            "tsg_id": env_tsg_id,
+            "client_id": c_id,
+            "client_secret": c_secret,
+            "tsg_id": env_tsg_id.strip(),
+            "region": env_region.strip() if env_region else None,
             "source": "env"
         }
 
-    # Fall back to credentials file
-    try:
-        with open(args.credentials, 'r') as f:
-            creds = json.load(f)
-    except FileNotFoundError:
-        error_msg = {
-            "error": f"Credentials file '{args.credentials}' not found and env vars not set",
-            "required_env": [
-                "PRISMA_SDWAN_CLIENT_ID",
-                "PRISMA_SDWAN_CLIENT_SECRET",
-                "PRISMA_SDWAN_TSG_ID"
-            ],
-            "expected_file_format": {
-                "client_id": "your-client-id@tsgid.iam.panserviceaccount.com",
-                "client_secret": "your-client-secret",
-                "tsg_id": "your-tsg-id"
-            }
-        }
-        if json_mode:
-            print(json.dumps(error_msg, indent=2))
-        else:
-            log_output(error_msg["error"], json_mode, is_error=True)
-        sys.exit(1)
+    # Search candidate credential file paths
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidate_paths = [
+        getattr(args, 'credentials', None),
+        os.path.join(os.getcwd(), 'config', 'prisma-config.json'),
+        os.path.join(os.getcwd(), 'prisma-config.json'),
+        os.path.join(os.getcwd(), 'config', 'credentials.json'),
+        os.path.join(os.getcwd(), 'credentials.json'),
+        os.path.join(script_dir, '..', 'config', 'prisma-config.json'),
+        os.path.join(script_dir, '..', 'config', 'credentials.json'),
+        '/data/stigix/config/prisma-config.json',
+        '/data/stigix/prisma-config.json',
+        '/data/stigix/config/credentials.json',
+        '/data/stigix/credentials.json',
+        '/app/config/prisma-config.json',
+        '/app/config/credentials.json',
+        '/app/prisma-config.json',
+        '/app/credentials.json',
+        '/opt/sdwan-traffic-gen/config/prisma-config.json',
+        '/opt/sdwan-traffic-gen/config/credentials.json'
+    ]
 
-    required = ("client_id", "client_secret", "tsg_id")
-    if not all(k in creds for k in required):
-        error_msg = {
-            "error": "Invalid credentials format",
-            "required_fields": ["client_id", "client_secret", "tsg_id"]
-        }
-        if json_mode:
-            print(json.dumps(error_msg, indent=2))
-        else:
-            log_output("Error: Invalid credentials format", json_mode, is_error=True)
-        sys.exit(1)
+    for path in candidate_paths:
+        if path and os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    creds = json.load(f)
+                client_id = (creds.get("client_id") or creds.get("clientId") or creds.get("CLIENT_ID") or "").strip()
+                client_secret = (creds.get("client_secret") or creds.get("clientSecret") or creds.get("CLIENT_SECRET") or "").strip()
+                tsg_id = (creds.get("tsg_id") or creds.get("tsgid") or creds.get("tsgId") or creds.get("TSG_ID") or creds.get("TSGID") or "").strip()
+                region = (creds.get("region") or creds.get("REGION") or env_region or "").strip()
 
-    creds["source"] = "file"
-    return creds
+                if client_id and client_secret and tsg_id:
+                    # Auto-normalize if swapped
+                    if "@" in client_secret and "@" not in client_id:
+                        client_id, client_secret = client_secret, client_id
+
+                    return {
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "tsg_id": tsg_id,
+                        "region": region if region else None,
+                        "source": f"file:{path}"
+                    }
+            except Exception:
+                pass
+
+    error_msg = {
+        "error": "Prisma SD-WAN credentials not found in environment variables or config files (prisma-config.json / credentials.json)",
+        "required_env": [
+            "PRISMA_SDWAN_CLIENT_ID",
+            "PRISMA_SDWAN_CLIENT_SECRET",
+            "PRISMA_SDWAN_TSG_ID"
+        ],
+        "expected_file_format": {
+            "client_id": "your-client-id@tsgid.iam.panserviceaccount.com",
+            "client_secret": "your-client-secret",
+            "tsg_id": "your-tsg-id"
+        }
+    }
+    if json_mode:
+        print(json.dumps(error_msg, indent=2))
+    else:
+        log_output(error_msg["error"], json_mode, is_error=True)
+    sys.exit(1)
 
 
 def get_local_ip():
