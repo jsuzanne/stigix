@@ -845,22 +845,34 @@ export default function Failover(props: FailoverProps) {
                                 const zoom = liveZoomWindows[test.testId] || '1m';
                                 const scrubPos = liveScrubPositions[test.testId] ?? 100; // 100 = LIVE
                                 const isLive = scrubPos >= 100;
+                                const N = fullSeries.length;
 
-                                let windowPoints = 60; // default 1m
-                                if (zoom === '5m') windowPoints = 300;
-                                else if (zoom === '15m') windowPoints = 900;
-                                else if (zoom === 'all') windowPoints = Math.max(60, fullSeries.length);
+                                const windowPoints = zoom === '1m' ? 60 : (zoom === '5m' ? 300 : (zoom === '15m' ? 900 : Math.max(60, N)));
 
-                                let displaySeries = fullSeries;
-                                if (fullSeries.length > windowPoints) {
-                                    if (isLive) {
-                                        displaySeries = fullSeries.slice(-windowPoints);
+                                let displaySeries: any[] = [];
+                                let curScrubPoint: any = null;
+
+                                if (N === 0) {
+                                    displaySeries = [];
+                                } else if (isLive) {
+                                    displaySeries = fullSeries.slice(-windowPoints);
+                                    curScrubPoint = fullSeries[N - 1];
+                                } else {
+                                    // Map scrubber 0..100% directly to index 0..N-1
+                                    const targetIdx = Math.max(0, Math.min(N - 1, Math.round((scrubPos / 100) * (N - 1))));
+                                    curScrubPoint = fullSeries[targetIdx];
+
+                                    if (zoom === 'all') {
+                                        displaySeries = fullSeries.slice(0, Math.max(5, targetIdx + 1));
                                     } else {
-                                        const maxStartIndex = Math.max(0, fullSeries.length - windowPoints);
-                                        const startIndex = Math.round((scrubPos / 100) * maxStartIndex);
-                                        displaySeries = fullSeries.slice(startIndex, startIndex + windowPoints);
+                                        const startIdx = Math.max(0, targetIdx - windowPoints + 1);
+                                        const endIdx = targetIdx + 1;
+                                        displaySeries = fullSeries.slice(startIdx, endIdx);
                                     }
                                 }
+
+                                const visibleStart = displaySeries[0]?.timeLabel || '00:00';
+                                const visibleEnd = displaySeries[displaySeries.length - 1]?.timeLabel || '00:00';
 
                                 return (
                                     <>
@@ -884,6 +896,11 @@ export default function Failover(props: FailoverProps) {
                                                         {w === 'all' ? 'ALL' : w}
                                                     </button>
                                                 ))}
+                                                {!isLive && (
+                                                    <span className="text-[9px] font-mono text-amber-400 ml-2 font-semibold">
+                                                        [{visibleStart} ➔ {visibleEnd}]
+                                                    </span>
+                                                )}
                                             </div>
 
                                             {/* Scrubber slider + Rewind info */}
@@ -900,8 +917,8 @@ export default function Failover(props: FailoverProps) {
                                                         const val = Number(e.target.value);
                                                         setLiveScrubPositions(prev => ({ ...prev, [test.testId]: val }));
                                                     }}
-                                                    className="w-full h-1.5 bg-slate-700/60 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400 transition-all"
-                                                    title={isLive ? 'Currently viewing LIVE real-time feed' : `Rewound to ${displaySeries[displaySeries.length - 1]?.timeLabel || ''}`}
+                                                    className="w-full h-2 bg-slate-700/60 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400 transition-all"
+                                                    title={isLive ? 'LIVE Mode' : `Rewound to ${curScrubPoint?.timeLabel || ''} (${curScrubPoint?.elapsedLabel || ''})`}
                                                 />
                                                 <span className="text-[9px] font-mono text-text-muted shrink-0" title="Latest live metric">
                                                     {fullSeries[fullSeries.length - 1]?.elapsedLabel || '00:00'}
@@ -932,8 +949,13 @@ export default function Failover(props: FailoverProps) {
                                                     <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
                                                         <Activity size={12} className="text-emerald-500 animate-pulse" /> Live Latency (RTT)
                                                     </div>
-                                                    <div className="text-lg font-bold text-emerald-400 font-mono tracking-tight shadow-sm">
-                                                        {typeof test.current_rtt_ms === 'number' ? test.current_rtt_ms : test.avg_rtt_ms} <span className="text-[10px] text-text-muted ml-0.5">ms</span>
+                                                    <div className="flex flex-col items-end">
+                                                        <div className="text-lg font-bold text-emerald-400 font-mono tracking-tight shadow-sm">
+                                                            {isLive ? (typeof test.current_rtt_ms === 'number' ? test.current_rtt_ms : test.avg_rtt_ms) : (curScrubPoint?.rtt ?? test.avg_rtt_ms)} <span className="text-[10px] text-text-muted ml-0.5">ms</span>
+                                                        </div>
+                                                        {!isLive && curScrubPoint && (
+                                                            <span className="text-[8px] font-mono text-amber-400">@ {curScrubPoint.elapsedLabel}</span>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <div className="h-[75px] w-full bg-card-secondary/10 rounded overflow-hidden">
@@ -945,7 +967,7 @@ export default function Failover(props: FailoverProps) {
                                                                     <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                                                                 </linearGradient>
                                                             </defs>
-                                                            <YAxis domain={['auto', 'auto']} hide />
+                                                            <YAxis domain={[0, (dataMax: number) => Math.max(5, Math.ceil(dataMax * 1.15))]} hide />
                                                             <XAxis dataKey="time" stroke="#475569" tick={{ fontSize: 8, fill: '#64748b' }} minTickGap={30} tickLine={false} axisLine={{ stroke: '#334155' }} height={14} />
                                                             <Tooltip
                                                                 content={({ active, payload }) => {
@@ -973,8 +995,13 @@ export default function Failover(props: FailoverProps) {
                                                     <div className="text-[10px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
                                                         <Activity size={12} className="text-amber-500 animate-pulse" /> Live Jitter
                                                     </div>
-                                                    <div className="text-lg font-bold text-amber-400 font-mono tracking-tight shadow-sm">
-                                                        {test.jitter_ms || 0} <span className="text-[10px] text-text-muted ml-0.5">ms</span>
+                                                    <div className="flex flex-col items-end">
+                                                        <div className="text-lg font-bold text-amber-400 font-mono tracking-tight shadow-sm">
+                                                            {isLive ? (test.jitter_ms || 0) : (curScrubPoint?.jitter ?? 0)} <span className="text-[10px] text-text-muted ml-0.5">ms</span>
+                                                        </div>
+                                                        {!isLive && curScrubPoint && (
+                                                            <span className="text-[8px] font-mono text-amber-400">@ {curScrubPoint.elapsedLabel}</span>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <div className="h-[75px] w-full bg-card-secondary/10 rounded overflow-hidden">
@@ -986,7 +1013,7 @@ export default function Failover(props: FailoverProps) {
                                                                     <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
                                                                 </linearGradient>
                                                             </defs>
-                                                            <YAxis domain={['auto', 'auto']} hide />
+                                                            <YAxis domain={[0, (dataMax: number) => Math.max(5, Math.ceil(dataMax * 1.15))]} hide />
                                                             <XAxis dataKey="time" stroke="#475569" tick={{ fontSize: 8, fill: '#64748b' }} minTickGap={30} tickLine={false} axisLine={{ stroke: '#334155' }} height={14} />
                                                             <Tooltip
                                                                 content={({ active, payload }) => {
@@ -1015,8 +1042,8 @@ export default function Failover(props: FailoverProps) {
                                                         <Activity size={12} className="text-red-500 animate-pulse" /> Live Loss
                                                     </div>
                                                     <div className="flex flex-col items-end">
-                                                        <div className={`text-lg font-bold font-mono tracking-tight shadow-sm ${(test.live_loss_pct ?? test.loss_pct ?? 0) > 0 ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
-                                                            {test.live_loss_pct !== undefined ? test.live_loss_pct : (test.loss_pct || 0)} <span className="text-[10px] text-text-muted ml-0.5">%</span>
+                                                        <div className={`text-lg font-bold font-mono tracking-tight shadow-sm ${(isLive ? (test.live_loss_pct ?? test.loss_pct ?? 0) : (curScrubPoint?.loss ?? 0)) > 0 ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
+                                                            {isLive ? (test.live_loss_pct !== undefined ? test.live_loss_pct : (test.loss_pct || 0)) : (curScrubPoint?.loss ?? 0)} <span className="text-[10px] text-text-muted ml-0.5">%</span>
                                                         </div>
                                                         <div className="text-[9px] text-text-muted font-mono tracking-tighter">
                                                             Total: <span className={(test.total_loss_pct ?? test.loss_pct ?? 0) > 0 ? 'text-red-400 font-semibold' : 'text-text-secondary'}>{test.total_loss_pct !== undefined ? test.total_loss_pct : (test.loss_pct || 0)}%</span>
@@ -1031,11 +1058,11 @@ export default function Failover(props: FailoverProps) {
                                                         <AreaChart data={displaySeries} margin={{ top: 5, right: 5, left: 5, bottom: 0 }}>
                                                             <defs>
                                                                 <linearGradient id="colorLoss" x1="0" y1="0" x2="0" y2="1">
-                                                                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4}/>
-                                                                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                                                                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.5}/>
+                                                                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0.05}/>
                                                                 </linearGradient>
                                                             </defs>
-                                                            <YAxis domain={[0, 100]} hide />
+                                                            <YAxis domain={[0, (dataMax: number) => Math.max(10, Math.min(100, Math.ceil(dataMax * 1.5)))]} hide />
                                                             <XAxis dataKey="time" stroke="#475569" tick={{ fontSize: 8, fill: '#64748b' }} minTickGap={30} tickLine={false} axisLine={{ stroke: '#334155' }} height={14} />
                                                             <Tooltip
                                                                 content={({ active, payload }) => {
@@ -1051,43 +1078,54 @@ export default function Failover(props: FailoverProps) {
                                                                     return null;
                                                                 }}
                                                             />
-                                                            <Area type="monotone" dataKey="loss" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorLoss)" isAnimationActive={false} />
+                                                            <Area type="monotone" dataKey="loss" stroke="#ef4444" strokeWidth={2.5} fillOpacity={1} fill="url(#colorLoss)" isAnimationActive={false} />
                                                         </AreaChart>
                                                     </ResponsiveContainer>
                                                 </div>
                                             </div>
                                         </div>
+
+                                        <div className="h-[44px] w-full flex flex-col justify-end relative rounded-lg overflow-hidden bg-card-secondary/30 border border-border/40 mb-6 p-1">
+                                            {/* Blackout Overlay */}
+                                            {isLive && test.current_blackout_ms > 0 && (
+                                                <div className="absolute inset-0 z-20 bg-red-950/70 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in">
+                                                    <div className="bg-red-950/90 text-red-400 border border-red-500/60 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 shadow-[0_0_25px_rgba(239,68,68,0.5)]">
+                                                        <AlertCircle size={12} className="animate-pulse text-red-400" />
+                                                        <span>NETWORK OUTAGE: {(test.current_blackout_ms / 1000).toFixed(1)}s — FAILOVER IN PROGRESS...</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div className="w-full flex items-end gap-[1.5px] h-full">
+                                                {(() => {
+                                                    const rawHist = test.history || Array(100).fill(1);
+                                                    let histToRender = rawHist;
+                                                    if (!isLive && curScrubPoint) {
+                                                        const dropCount = Math.round(((curScrubPoint.loss || 0) / 100) * 100);
+                                                        histToRender = Array(100).fill(1);
+                                                        for (let d = 0; d < dropCount; d++) {
+                                                            histToRender[99 - d] = 0;
+                                                        }
+                                                    }
+                                                    return histToRender.map((val: number, i: number) => {
+                                                        const isLast = i === histToRender.length - 1;
+                                                        const isDrop = val === 0;
+                                                        return (
+                                                            <div
+                                                                key={i}
+                                                                className={`flex-1 min-w-[2px] rounded-t-[1px] transition-all duration-150 ${isDrop
+                                                                    ? 'bg-gradient-to-t from-red-600 via-rose-500 to-red-400 h-full shadow-[0_0_8px_rgba(239,68,68,0.85)] z-10 animate-pulse'
+                                                                    : 'bg-gradient-to-t from-blue-700 via-blue-500 to-cyan-400 h-[75%] opacity-90 hover:h-[90%]'}`}
+                                                                style={isLast ? (isDrop ? { background: '#ef4444', boxShadow: '0 0 12px #ef4444', height: '100%' } : { background: '#38bdf8', boxShadow: '0 0 10px #38bdf8', height: '100%' }) : {}}
+                                                                title={isDrop ? `Packet #${i + 1}: DROPPED (Outage)` : `Packet #${i + 1}: Received OK`}
+                                                            />
+                                                        );
+                                                    });
+                                                })()}
+                                            </div>
+                                        </div>
                                     </>
                                 );
                             })()}
-
-                            <div className="h-[44px] w-full flex flex-col justify-end relative rounded-lg overflow-hidden bg-card-secondary/30 border border-border/40 mb-6 p-1">
-                                {/* Blackout Overlay */}
-                                {test.current_blackout_ms > 0 && (
-                                    <div className="absolute inset-0 z-20 bg-red-950/70 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in">
-                                        <div className="bg-red-950/90 text-red-400 border border-red-500/60 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 shadow-[0_0_25px_rgba(239,68,68,0.5)]">
-                                            <AlertCircle size={12} className="animate-pulse text-red-400" />
-                                            <span>NETWORK OUTAGE: {(test.current_blackout_ms / 1000).toFixed(1)}s — FAILOVER IN PROGRESS...</span>
-                                        </div>
-                                    </div>
-                                )}
-                                <div className="w-full flex items-end gap-[1.5px] h-full">
-                                    {(test.history || Array(100).fill(1)).map((val: number, i: number) => {
-                                        const isLast = i === (test.history || []).length - 1;
-                                        const isDrop = val === 0;
-                                        return (
-                                            <div
-                                                key={i}
-                                                className={`flex-1 min-w-[2px] rounded-t-[1px] transition-all duration-150 ${isDrop
-                                                    ? 'bg-gradient-to-t from-red-600 via-rose-500 to-red-400 h-full shadow-[0_0_8px_rgba(239,68,68,0.85)] z-10 animate-pulse'
-                                                    : 'bg-gradient-to-t from-blue-700 via-blue-500 to-cyan-400 h-[75%] opacity-90 hover:h-[90%]'}`}
-                                                style={isLast ? (isDrop ? { background: '#ef4444', boxShadow: '0 0 12px #ef4444', height: '100%' } : { background: '#38bdf8', boxShadow: '0 0 10px #38bdf8', height: '100%' }) : {}}
-                                                title={isDrop ? `Packet #${i + 1}: DROPPED (Outage)` : `Packet #${i + 1}: Received OK`}
-                                            />
-                                        );
-                                    })}
-                                </div>
-                            </div>
 
                             <div className="flex justify-between items-center">
                                 <span className="text-[9px] text-text-muted font-bold uppercase tracking-widest flex items-center gap-2">
