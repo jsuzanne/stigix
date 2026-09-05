@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'recharts';
-import { Activity, Clock, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera } from 'lucide-react';
+import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { isValidIpOrFqdn } from './utils/validation';
 
@@ -18,6 +18,7 @@ export default function Failover(props: FailoverProps) {
     const [convergenceTargets, setConvergenceTargets] = useState<any[]>([]);
     const [reachability, setReachability] = useState<Record<string, boolean | 'loading'>>({});
     const [searchQuery, setSearchQuery] = useState('');
+    const [historySearch, setHistorySearch] = useState('');
     const [nowTs, setNowTs] = useState(Date.now());
     const [exportingPocId, setExportingPocId] = useState<string | null>(null);
 
@@ -356,16 +357,51 @@ export default function Failover(props: FailoverProps) {
         setSortConfig({ key, direction });
     };
 
+    const formatTestDate = (ts?: number | string) => {
+        if (!ts) return null;
+        const d = typeof ts === 'number' ? new Date(ts > 1e11 ? ts : ts * 1000) : new Date(ts);
+        if (isNaN(d.getTime())) return null;
+        const dateStr = d.toLocaleDateString([], { month: '2-digit', day: '2-digit' });
+        const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const fullStr = d.toLocaleString();
+        return { dateStr, timeStr, fullStr, display: `${dateStr} ${timeStr}` };
+    };
+
+    const filteredHistory = React.useMemo(() => {
+        if (!historySearch.trim()) return history;
+        const q = historySearch.toLowerCase().trim();
+        return history.filter(t => {
+            const convId = t.test_id?.match(/CONV-\d+/)?.[0] || t.test_id || '';
+            const label = t.label || t.test_id?.split(' (')[0] || '';
+            const target = t.target || '';
+            const port = String(t.port || '');
+            const srcPort = String(t.source_port || getSourcePort(t.test_id || ''));
+            const verdict = getVerdict(t.max_blackout_ms || 0).label;
+            const egress = t.egress_path || t.path_evolution || '';
+            const dateInfo = formatTestDate(t.timestamp || t.start_time);
+            const dateStr = dateInfo ? `${dateInfo.display} ${dateInfo.fullStr}` : '';
+            
+            return convId.toLowerCase().includes(q) ||
+                   label.toLowerCase().includes(q) ||
+                   target.toLowerCase().includes(q) ||
+                   port.includes(q) ||
+                   srcPort.includes(q) ||
+                   verdict.toLowerCase().includes(q) ||
+                   egress.toLowerCase().includes(q) ||
+                   dateStr.toLowerCase().includes(q);
+        });
+    }, [history, historySearch]);
+
     const sortedHistory = React.useMemo(() => {
-        if (!sortConfig) return history;
-        return [...history].sort((a, b) => {
+        if (!sortConfig) return filteredHistory;
+        return [...filteredHistory].sort((a, b) => {
             const aVal = a[sortConfig.key];
             const bVal = b[sortConfig.key];
             if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [history, sortConfig]);
+    }, [filteredHistory, sortConfig]);
 
     const getVerdict = (maxBlackout: number) => {
         if (maxBlackout === 0) return { label: 'PERFECT', color: 'text-green-400', bg: 'bg-green-400/10', desc: 'No packet loss detected.' };
@@ -1226,22 +1262,47 @@ export default function Failover(props: FailoverProps) {
             {/* Verdict Legend & Historical View */}
             <div className={`grid grid-cols-1 md:grid-cols-4 gap-6 ${activeTests.length > 0 ? 'opacity-50 grayscale transition-all' : ''}`}>
                 <div className="md:col-span-3 bg-card border border-border rounded-2xl overflow-hidden shadow-sm order-2 md:order-1">
-                    <div className="p-4 border-b border-border bg-card-secondary/50 flex items-center justify-between">
-                        <h3 className="text-sm font-bold text-text-secondary uppercase tracking-widest flex items-center gap-2">
-                            <Clock size={16} /> Test History
-                        </h3>
-                        <div className="flex items-center gap-3">
+                    <div className="p-4 border-b border-border bg-card-secondary/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                            <h3 className="text-sm font-bold text-text-secondary uppercase tracking-widest flex items-center gap-2">
+                                <Clock size={16} /> Test History
+                            </h3>
+                            {history.length > 0 && (
+                                <span className="text-[10px] font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-border uppercase tracking-wider">
+                                    {historySearch.trim() ? `${sortedHistory.length} / ${history.length}` : history.length} Tests
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                            {/* Full Text Search Input */}
+                            <div className="relative flex-1 sm:w-64">
+                                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+                                <input
+                                    type="text"
+                                    placeholder="Search ID, label, IP, verdict, path, time..."
+                                    value={historySearch}
+                                    onChange={(e) => setHistorySearch(e.target.value)}
+                                    className="w-full pl-8 pr-7 py-1.5 bg-card text-xs text-text-primary rounded-lg border border-border focus:border-blue-500 focus:outline-none transition-colors placeholder:text-text-muted/60"
+                                />
+                                {historySearch && (
+                                    <button
+                                        onClick={() => setHistorySearch('')}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-0.5 cursor-pointer"
+                                        title="Clear search"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
                             {activeTests.length === 0 && (
                                 <button
                                     onClick={resetIds}
-                                    className="flex items-center gap-2 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-orange-600 dark:text-orange-400 bg-orange-600/5 hover:bg-orange-600/10 border border-orange-500/20 rounded-lg transition-all"
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-widest text-orange-600 dark:text-orange-400 bg-orange-600/5 hover:bg-orange-600/10 border border-orange-500/20 rounded-lg transition-all shrink-0 cursor-pointer"
+                                    title="Reset test counter"
                                 >
                                     <Hash size={12} />
                                     RESET ID
                                 </button>
-                            )}
-                            {history.length > 0 && (
-                                <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{history.length} TESTS RECORDED</span>
                             )}
                         </div>
                     </div>
@@ -1256,89 +1317,130 @@ export default function Failover(props: FailoverProps) {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                                {sortedHistory.map((test, idx) => {
-                                    const verdict = getVerdict(test.max_blackout_ms);
-                                    const isExpanded = expandedHistory === (test.test_id + test.timestamp);
-                                    return (
-                                        <React.Fragment key={idx}>
-                                            <tr
-                                                className={`hover:bg-card-secondary transition-colors cursor-pointer ${isExpanded ? 'bg-blue-600/5' : ''}`}
-                                                onClick={() => setExpandedHistory(isExpanded ? null : (test.test_id + test.timestamp))}
-                                            >
-                                                <td className="px-6 py-4">
-                                                    <div className="font-medium text-text-primary flex items-center gap-2">
-                                                        <span title={`Source Port: ${getSourcePort(test.test_id || '')}`} className="bg-blue-600/10 text-blue-500 text-[9px] px-1.5 py-0.5 rounded font-bold border border-blue-500/20 cursor-help">
-                                                            {test.test_id?.match(/CONV-\d+/)?.[0] || 'CONV-??'}
-                                                        </span>
-                                                        <span>{test.label || test.test_id?.split(' (')[0]}</span>
-                                                        <ChevronRight size={14} className={`text-text-muted/50 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                                                    </div>
-                                                    <div className="text-[10px] text-text-muted mt-1 font-mono">
-                                                        <span className="font-bold text-text-secondary">Duration: {test.duration_s || '--'}s</span> | {test.target}:{test.port || '--'} | <span className="text-text-secondary">Source Port: {test.source_port || getSourcePort(test.test_id)}</span> | {test.rate_pps || test.rate || '--'} pps
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <span className={`inline-flex items-center px-3 py-1 rounded font-bold text-[9px] border ${verdict.bg.replace('400/10', '600/20')} ${verdict.color.replace('text-green-400', 'text-green-600 dark:text-green-400')} tracking-widest`}>
-                                                        {verdict.label}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <div className="flex flex-col">
-                                                        <span className={`font-mono text-sm font-bold ${test.max_blackout_ms > 0 ? 'text-orange-500' : 'text-text-muted'}`}>
-                                                            {formatMs(test.max_blackout_ms || 0)}
-                                                        </span>
-                                                        <span className="text-[9px] font-bold text-text-muted uppercase">
-                                                            Max Blackout {test.duration_s ? `(${test.duration_s}s)` : ''}
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <div className="flex flex-col items-center">
-                                                        <div className="flex gap-2 text-[10px] font-mono font-bold tracking-tight mb-0.5 opacity-90">
-                                                            <span className={test.tx_loss_pct > 0 ? 'text-red-500' : 'text-text-muted/60'}>
-                                                                TX Loss: {test.tx_loss_pct ?? 0}% {test.tx_loss_ms > 0 && !test.sync_lost ? `(${test.tx_loss_ms} ms)` : ''}
+                                {sortedHistory.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={4} className="px-6 py-8 text-center text-text-muted">
+                                            {historySearch ? (
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <Search size={20} className="text-text-muted/40" />
+                                                    <p className="text-xs">No recorded tests matching <span className="text-text-secondary font-bold font-mono">"{historySearch}"</span></p>
+                                                    <button
+                                                        onClick={() => setHistorySearch('')}
+                                                        className="text-[10px] text-blue-400 hover:underline font-bold cursor-pointer"
+                                                    >
+                                                        Clear filter
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                'No convergence tests recorded yet.'
+                                            )}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    sortedHistory.map((test, idx) => {
+                                        const verdict = getVerdict(test.max_blackout_ms);
+                                        const isExpanded = expandedHistory === (test.test_id + test.timestamp);
+                                        const dateInfo = formatTestDate(test.timestamp || test.start_time);
+                                        return (
+                                            <React.Fragment key={idx}>
+                                                <tr
+                                                    className={`hover:bg-card-secondary transition-colors cursor-pointer ${isExpanded ? 'bg-blue-600/5' : ''}`}
+                                                    onClick={() => setExpandedHistory(isExpanded ? null : (test.test_id + test.timestamp))}
+                                                >
+                                                    <td className="px-6 py-4">
+                                                        <div className="font-medium text-text-primary flex items-center gap-2">
+                                                            <span title={`Source Port: ${getSourcePort(test.test_id || '')}`} className="bg-blue-600/10 text-blue-500 text-[9px] px-1.5 py-0.5 rounded font-bold border border-blue-500/20 cursor-help">
+                                                                {test.test_id?.match(/CONV-\d+/)?.[0] || 'CONV-??'}
                                                             </span>
+                                                            <span>{test.label || test.test_id?.split(' (')[0]}</span>
+                                                            <ChevronRight size={14} className={`text-text-muted/50 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                                        </div>
+                                                        <div className="text-[10px] text-text-muted mt-1 font-mono flex items-center gap-1.5 flex-wrap">
+                                                            {dateInfo && (
+                                                                <>
+                                                                    <span className="text-blue-400 font-bold bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20 flex items-center gap-1" title={`Full date: ${dateInfo.fullStr}`}>
+                                                                        <Calendar size={10} className="text-blue-400" />
+                                                                        {dateInfo.display}
+                                                                    </span>
+                                                                    <span className="text-border">|</span>
+                                                                </>
+                                                            )}
+                                                            <span className="font-bold text-text-secondary">Duration: {test.duration_s || '--'}s</span>
                                                             <span className="text-border">|</span>
-                                                            <span className={test.rx_loss_pct > 0 ? 'text-blue-500' : 'text-text-muted/60'}>
-                                                                RX Loss: {test.rx_loss_pct ?? 0}% {test.rx_loss_ms > 0 && !test.sync_lost ? `(${test.rx_loss_ms} ms)` : ''}
+                                                            <span>{test.target}:{test.port || '--'}</span>
+                                                            <span className="text-border">|</span>
+                                                            <span className="text-text-secondary">Source Port: {test.source_port || getSourcePort(test.test_id)}</span>
+                                                            <span className="text-border">|</span>
+                                                            <span>{test.rate_pps || test.rate || '--'} pps</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <span className={`inline-flex items-center px-3 py-1 rounded font-bold text-[9px] border ${verdict.bg.replace('400/10', '600/20')} ${verdict.color.replace('text-green-400', 'text-green-600 dark:text-green-400')} tracking-widest`}>
+                                                            {verdict.label}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <div className="flex flex-col">
+                                                            <span className={`font-mono text-sm font-bold ${test.max_blackout_ms > 0 ? 'text-orange-500' : 'text-text-muted'}`}>
+                                                                {formatMs(test.max_blackout_ms || 0)}
+                                                            </span>
+                                                            <span className="text-[9px] font-bold text-text-muted uppercase">
+                                                                Max Blackout {test.duration_s ? `(${test.duration_s}s)` : ''}
                                                             </span>
                                                         </div>
-                                                        <div className="text-[9px] text-text-muted font-mono tracking-tighter whitespace-nowrap bg-card-secondary/50 px-2 py-0.5 rounded border border-border/30">
-                                                            S: {test.sent} • Echo: {test.server_received ?? '-'} • R: {test.received}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <div className="flex flex-col items-center">
+                                                            <div className="flex gap-2 text-[10px] font-mono font-bold tracking-tight mb-0.5 opacity-90">
+                                                                <span className={test.tx_loss_pct > 0 ? 'text-red-500' : 'text-text-muted/60'}>
+                                                                    TX Loss: {test.tx_loss_pct ?? 0}% {test.tx_loss_ms > 0 && !test.sync_lost ? `(${test.tx_loss_ms} ms)` : ''}
+                                                                </span>
+                                                                <span className="text-border">|</span>
+                                                                <span className={test.rx_loss_pct > 0 ? 'text-blue-500' : 'text-text-muted/60'}>
+                                                                    RX Loss: {test.rx_loss_pct ?? 0}% {test.rx_loss_ms > 0 && !test.sync_lost ? `(${test.rx_loss_ms} ms)` : ''}
+                                                                </span>
+                                                            </div>
+                                                            <div className="text-[9px] text-text-muted font-mono tracking-tighter whitespace-nowrap bg-card-secondary/50 px-2 py-0.5 rounded border border-border/30">
+                                                                S: {test.sent} • Echo: {test.server_received ?? '-'} • R: {test.received}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                            {isExpanded && (
-                                                <tr className="bg-background/80">
-                                                    <td colSpan={5} className="px-6 py-4 border-l-2 border-blue-500">
-                                                        {(() => {
-                                                            const testKey = test.test_id || test.testId || '';
-                                                            const convId = test.test_id?.match(/CONV-\d+/)?.[0] || testKey;
-                                                            const series = test.metrics_series || liveMetricsSeries[testKey] || liveMetricsSeries[convId] || [];
-                                                            const hasSeries = Array.isArray(series) && series.length > 0;
-                                                            const cardDomId = `history-test-card-${convId}-${test.timestamp}`;
+                                                    </td>
+                                                </tr>
+                                                {isExpanded && (
+                                                    <tr className="bg-background/80">
+                                                        <td colSpan={5} className="px-6 py-4 border-l-2 border-blue-500">
+                                                            {(() => {
+                                                                const testKey = test.test_id || test.testId || '';
+                                                                const convId = test.test_id?.match(/CONV-\d+/)?.[0] || testKey;
+                                                                const series = test.metrics_series || liveMetricsSeries[testKey] || liveMetricsSeries[convId] || [];
+                                                                const hasSeries = Array.isArray(series) && series.length > 0;
+                                                                const cardDomId = `history-test-card-${convId}-${test.timestamp}`;
 
-                                                            return (
-                                                                <div id={cardDomId} className="p-4 rounded-xl bg-card border border-border/80 space-y-4 shadow-inner">
-                                                                    {/* Header with Title, Verdict, Legend and Export PoC Card Button */}
-                                                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-border/40 pb-3">
-                                                                        <div className="flex items-center gap-3 flex-wrap">
-                                                                            <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
-                                                                                <BarChart3 size={14} className="text-blue-400" /> PoC Test Analysis & Failover Curves
-                                                                            </h4>
-                                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded font-bold text-[9px] border ${verdict.bg.replace('400/10', '600/20')} ${verdict.color.replace('text-green-400', 'text-green-600 dark:text-green-400')} tracking-widest`}>
-                                                                                {verdict.label}
-                                                                            </span>
-                                                                            <span className="text-[10px] font-mono text-text-muted font-bold">
-                                                                                Max Outage: <span className={test.max_blackout_ms > 0 ? 'text-orange-400 font-bold' : 'text-text-secondary'}>{formatMs(test.max_blackout_ms || 0)}</span>
-                                                                            </span>
-                                                                            {test.duration_s && (
-                                                                                <span className="text-[10px] font-mono text-text-muted">
-                                                                                    • Duration: <span className="text-text-secondary font-bold">{test.duration_s}s</span>
+                                                                return (
+                                                                    <div id={cardDomId} className="p-4 rounded-xl bg-card border border-border/80 space-y-4 shadow-inner">
+                                                                        {/* Header with Title, Verdict, Legend and Export PoC Card Button */}
+                                                                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-border/40 pb-3">
+                                                                            <div className="flex items-center gap-3 flex-wrap">
+                                                                                <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
+                                                                                    <BarChart3 size={14} className="text-blue-400" /> PoC Test Analysis & Failover Curves
+                                                                                </h4>
+                                                                                <span className={`inline-flex items-center px-2 py-0.5 rounded font-bold text-[9px] border ${verdict.bg.replace('400/10', '600/20')} ${verdict.color.replace('text-green-400', 'text-green-600 dark:text-green-400')} tracking-widest`}>
+                                                                                    {verdict.label}
                                                                                 </span>
-                                                                            )}
-                                                                        </div>
+                                                                                {dateInfo && (
+                                                                                    <span className="text-[10px] font-mono text-blue-400 font-bold bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 flex items-center gap-1" title={dateInfo.fullStr}>
+                                                                                        <Calendar size={11} /> {dateInfo.fullStr}
+                                                                                    </span>
+                                                                                )}
+                                                                                <span className="text-[10px] font-mono text-text-muted font-bold">
+                                                                                    Max Outage: <span className={test.max_blackout_ms > 0 ? 'text-orange-400 font-bold' : 'text-text-secondary'}>{formatMs(test.max_blackout_ms || 0)}</span>
+                                                                                </span>
+                                                                                {test.duration_s && (
+                                                                                    <span className="text-[10px] font-mono text-text-muted">
+                                                                                        • Duration: <span className="text-text-secondary font-bold">{test.duration_s}s</span>
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
                                                                         <div className="flex items-center gap-3" data-no-export="true">
                                                                             <div className="flex gap-2.5 text-[9px] font-bold">
                                                                                 <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm bg-emerald-500" /> <span className="text-text-muted uppercase">RTT</span></div>
@@ -1620,15 +1722,9 @@ export default function Failover(props: FailoverProps) {
                                             )}
                                         </React.Fragment>
                                     );
-                                })}
-                                {history.length === 0 && !loadingHistory && (
-                                    <tr>
-                                        <td colSpan={5} className="px-6 py-12 text-center text-text-muted italic border-t border-border bg-card/50">
-                                            No failover tests recorded yet.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
+                                })
+                            )}
+                        </tbody>
                         </table>
                     </div>
                 </div>
