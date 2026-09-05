@@ -382,13 +382,15 @@ export default function Failover(props: FailoverProps) {
         try {
             const rawPort = testItem.source_port || getSourcePort(rawId);
             const sourcePort = rawPort && rawPort !== '????' ? parseInt(rawPort, 10) : undefined;
+            const dstIp = testItem.target || testItem.destination_ip || testItem.dest_ip;
             const res = await fetch('/api/convergence/history/refresh-path', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     testId,
                     sourcePort,
-                    dstIp: testItem.target
+                    dstIp,
+                    minutes: 240
                 })
             });
 

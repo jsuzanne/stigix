@@ -333,7 +333,7 @@ const dbg = (...args: any[]) => {
  * Spawn getflow.py and return parsed JSON, or null on any error.
  * Fire-and-forget safe: never throws, always resolves.
  */
-async function runGetflow(siteName: string, sourcePort: number, dstIp: string): Promise<any> {
+async function runGetflow(siteName: string, sourcePort: number, dstIp: string, minutes: number = 15): Promise<any> {
     return new Promise((resolve) => {
         try {
             // engines/ is mounted inside the Docker container (same as convergence_orchestrator.py)
@@ -349,11 +349,11 @@ async function runGetflow(siteName: string, sourcePort: number, dstIp: string): 
                 '--site-name', siteName,
                 '--udp-src-port', String(sourcePort),
                 '--dst-ip', dstIp,
-                '--minutes', '5',
+                '--minutes', String(minutes),
                 '--json'
             ];
             dbg('CONV', `Spawning: python3 ${args.join(' ')}`);
-            const proc = spawn(PYTHON_PATH, args, { timeout: 30_000 });
+            const proc = spawn(PYTHON_PATH, args, { timeout: 45_000 });
             let stdout = '';
             let stderr = '';
             proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
@@ -5215,8 +5215,13 @@ app.post('/api/convergence/history/refresh-path', authenticateToken, async (req,
             });
         }
 
-        log('CONV', `Refreshing historical path for test ${testId} (${siteName} -> dst ${dstIp}, UDP port ${sourcePort})`);
-        const result = await runGetflow(siteName, Number(sourcePort), String(dstIp));
+        let lookbackMinutes = 240;
+        if (req.body.minutes) {
+            lookbackMinutes = Number(req.body.minutes);
+        }
+
+        log('CONV', `Refreshing historical path for test ${testId} (${siteName} -> dst ${dstIp}, UDP port ${sourcePort}, lookback ${lookbackMinutes}m)`);
+        const result = await runGetflow(siteName, Number(sourcePort), String(dstIp), lookbackMinutes);
 
         if (result?.flows && result.flows.length > 0) {
             const primaryFlow = result.flows[0];
