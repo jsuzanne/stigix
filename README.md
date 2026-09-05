@@ -1,6 +1,6 @@
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-1.4.1--patch.41-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Version](https://img.shields.io/badge/Version-2.0.7-blue.svg)](https://github.com/jsuzanne/stigix/releases)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -120,47 +120,40 @@ This project is my way to turn all that lab and demo experience into an open-sou
 
 ## 🆕 What's New
 
-The project is evolving rapidly with new features and refinements added in every release.
+The project is evolving rapidly with major features, engines, and UX refinements in every release.
 
-### Underlay Topology & Physical Chassis *(v1.4.1)*
-- **Interactive Direct Actions & Chaos Control** ⚡ — Trigger real-time VyOS actions directly from the Topology view: instant **Shut / No-Shut** port toggle with live status write-through, **Inject WAN Impairment** (latency 0–500ms, packet loss 0–50% via Netem), and **Clear QoS**, all logged to VyOS History.
-- **Persistent QoS State & Canvas Badges** ⏱️ — Active latency and loss impairments persist across page/topology refreshes and display dynamic amber micro-badges (`⏱️ +120ms`) directly on the router port chips on the canvas.
-- **VyOS Physical Chassis Node** 🖧 — High-capacity interactive canvas representation of active VyOS routers with separate DC/Hub uplinks (top row) and Branch/Spoke downlinks (bottom row), management banner, live status, and full IP CIDR visibility on every physical port chip. [Read docs](docs/UNDERLAY_TOPOLOGY.md)
-- **Direct 1:1 Port Cable Wiring** 🔌 — Individual cables connect directly from each Prisma SD-WAN circuit block to the exact physical `ethX` port handle on the VyOS router.
-- **Anti-Cable-Crossing Spatial Routing** 📐 — Dynamic horizontal sorting of interfaces matching connected sites' X-coordinates (DC1, DC2, BR1, BR2, BR3) to ensure straight, untangled parallel cables.
-- **Interactive Link Trace Drawer** 🔍 — Click any port chip or underlay cable to open a floating trace drawer comparing Prisma ION circuit parameters, transit CIDR subnet, VyOS next-hop IP, and instant action controls.
-- **Dual Mode & Theme Support** 🌓 — Instant toggle between Logical Overlay (clouds) and Physical Underlay (chassis) with full Light and Dark mode styling.
+### ⚡ Failover Engine 2.0 & PoC Export Cards *(v2.0.7)*
+- **Multi-Path Stepper Timeline (T0 / T1 / T2)** ⏱️ — Real-time chronological progression with explicit path deltas, eliminating misleading static timestamps and clearly tracking tunnel failover handoffs.
+- **Historical Loss & Latency Metric Curves** 📈 — Native persistence of test metrics with adaptive Y-axis scaling, baseline latency markers, and rolling packet loss indicators.
+- **Interactive Time Scrubber & Zoom Presets** 🔍 — Scrub through live and historical convergence runs with instant presets (`1m`, `5m`, `15m`, `ALL`) and synchronized tooltip metrics.
+- **Dynamic SCM Egress Path Inspection** ☁️ — On-demand re-query button and lookback window for Strata Cloud Manager / Prisma SD-WAN flow sequence correlation.
+- **1-Click PoC Card HD PNG Export** 📋 — Export executive-ready, high-resolution test summary cards with convergence deltas, path progression, and outage analysis for customer presentations.
+- **Streamlined Test History & Hover Tooltips** 🎯 — Full-width searchable test history with hover threshold explanations replacing bloated sidebar widgets.
 
-### MCP Server highlights *(v1.4.0-patch.106–109)*
-- **VyOS Natural Language Control** 🤖 — `get_vyos_interfaces` + `vyos_execute_action`: propose+confirm flow, management interfaces silently excluded, multi-router disambiguation.
-- **MCP Live Interaction Feed** ✨ — Real-time color-coded feed in Settings → MCP (category icons, duration bar, node badge, LIVE pulse, 3s refresh).
-- **MCP Interaction Logging** 📊 — Tool calls logged to `mcp-history.jsonl` server-side; API at `/api/admin/mcp/history`.
-- **Security Score Fix** 🐛 — `get_security_results_stats` now returns real weighted posture scores (URL/DNS/Threat 0–100) + 24-run trend. Eliminates wrong raw-ratio reporting.
-- **MCP Docs** 📖 — `docs/MCP_SERVER.md` updated: upgrade/reconnect workflow, natural language translation explained.
+### 🔄 Custom TCP Inter-Site Applications & Prisma SD-WAN AppDefs *(v2.0.5)*
+- **Dual Server / Client Architecture** 🔌 — Multi-application engine with simultaneous host TCP listeners and outbound client workload generators.
+- **8 Server Simulation & Chaos Modes** 💥 — Fixed delay, jitter, looping degradation (SLA testing without cable pulls), drop response, connection reset, error codes, and `eicar_response` for inline Next-Gen Firewall / SASE malware inspection.
+- **HTTP/1.1 REST Wire Protocol & SD-WAN SRT** 🌐 — RFC-compliant HTTP framing with `X-Stigix-Request-Id` correlation, enabling Prisma SD-WAN App-ID classification and Server Response Time (SRT) metrics in Flow Browser.
+- **1-Click Prisma SD-WAN AppDef Sync** ☁️ — Automatic registration of `STX_<AppName>` definitions on Prisma SD-WAN tenants with delta sync and 1-click lab teardown.
+- **Central Global Provisioning 8th Bundle** 🌐 — Automated distribution of custom application profiles across all branch peers with zero-downtime hot reload.
+- **Responsive Compact Session Tables** 📊 — Real-time rolling RTT percentiles ($p50/p95/\text{avg}$), jitter, live Kbps bitrate, and zero-overflow layout. [Read docs](docs/CUSTOM_TCP_APPS.md)
 
-### Highlights in v1.4.0
-- **Vulnerability Report Import** 🧨 — New import option in the IoT toolbar for Palo Alto IoT Security **Vulnerability CSV** exports (one row per CVE per device). Aggregates by device, computes a **Danger Score** (Risk Score + Critical CVEs×15 + High CVEs×8 + APT groups×5 + ICS-CERT×10 + Max CVSS×2), and selects the top N most dangerous devices. APT groups → `beacon`, ICS-CERT → `port_scan`, Critical/High CVEs → `pan_test_domains`. [Read docs](docs/IOT_SIMULATION.md#4-vulnerability-report-import)
-- **CVE Threat Intel on Device Cards** 🔍 — Vuln-imported device cards now show an orange threat panel with Danger Score, CVE count/severity, Max CVSS, APT groups, ICS-CERT badge, and top CVE pills directly in the IoT grid.
-- **Smart Device Naming** 🏷️ — When a CSV export contains MAC addresses as device names (common in large Prisma exports), both importers automatically generate human-readable names from the `Profile` field (e.g. `Raspberry Pi Device #1`, `Raspberry Pi Device #2`).
-- **Throttled Attack Traffic** ⚡ — All bad behavior attack cycles reduced (beacon 10s→45s, dns_flood 15s→60s, port_scan 30s→120s) to prevent Scapy raw socket pressure and Python D-state accumulation under concurrent device load.
-- **Device Sequence Numbers** 🔢 — Persistent `#N` index on every device card, sorted consistently across all filter states (All / Active / Queued / Idle / Stopped).
-- **IoT Advanced Debug Monitor** 📊 — New collapsible diagnostics section in Settings → System with 4 time-series charts: Device States, System Health (CPU/D-state), Traffic Rate (pps/ppm), and Experience Score. 15m / 1h / 6h time window.
-- **FIFO Concurrency Scheduler** 🔄 — Replaced non-deterministic map iteration with a proper FIFO queue — devices at end of list no longer starve. Concurrency throttle prevents Scapy overload.
+### 🖧 Physical Underlay Topology & VyOS Chassis *(v2.0.0)*
+- **Interactive Physical VyOS Chassis** 🖧 — Visual canvas representation of active VyOS backbone routers with top-row DC/Hub uplinks and bottom-row Branch/Spoke downlinks.
+- **Direct 1:1 Port Cable Wiring** 🔌 — Animated amber cables connect directly between Prisma SD-WAN circuit handles and exact physical `ethX` router ports.
+- **Anti-Cable-Crossing Spatial Routing** 📐 — Dynamic horizontal sorting of interfaces matching connected sites' X-coordinates (DC1, DC2, BR1, BR2, BR3) to prevent tangled lines.
+- **Floating Link Trace Drawer** 🔍 — Real-time comparison drawer showing Prisma ION circuit parameters, transit CIDR subnet, and VyOS next-hop IP.
+- **Direct Topology Chaos Actions** ⚡ — Instant Shut / No-Shut port toggle, Netem latency/loss impairment injection, and persistent canvas badges (`⏱️ +120ms`). [Read docs](docs/UNDERLAY_TOPOLOGY.md)
 
-### Highlights in v1.3.0
-- **State Persistence** 💾 — New **Settings → System Info** panel with per-service toggles (Traffic, Probes, IoT, Voice). Each service restores its exact pre-reboot state: only services that were active before shutdown resume automatically. Defaults: Traffic ON, Probes ON, IoT OFF (requires config), Voice OFF (requires server config). [Read docs](docs/IOT_SIMULATION.md#-state-persistence) [Voice docs](docs/VOICE_SIMULATION.md#-state-persistence)
-- **IoT DHCP Lease Persistence** 📡 — Devices reclaim their previous IP via RFC 2131 INIT-REBOOT after a container restart, without a full DISCOVER cycle. [Read docs](docs/IOT_SIMULATION.md)
-- **C2 Attack Scenarios** 🎯 — 7 real-traffic attack simulation tests (SQL Injection, DNS C2 Infiltration, Greyware DNS, Compromised DNS, Sliver C2 Emulation, EICAR over HTTPS, DNS Tunneling Burst) with inverted verdict logic, inline badges, and a dedicated C2 scheduler. [Read docs](docs/SECURITY_TESTING.md)
-- **AI Security Tests (AISA)** 🤖 — 5 Palo Alto AI Security simulation scenarios based on a real-world PowerShell POC script. Targets ChatGPT, Grok, Gemini, Perplexity + 24 AI apps for volume telemetry. Includes a dedicated AI scheduler. [Read docs](docs/SECURITY_TESTING.md)
-- **Security Score Dashboard** 📊 — Per-module security posture scoring (URL, DNS, Threat Prevention) with 24h trend charts, baseline pinning, gap analysis, and Latest Changes diff between consecutive runs.
-- **IoT Daemon Architecture** ⚡ — Migrated from N-processes to a single threaded Python daemon. RAM drops from ~600MB to ~50MB for 30 devices. Supports 100+ devices. New Global Bad Behavior toggle, BPF kernel filter for DHCP, and gratuitous ARP for IoT classification.
-- **Prisma CSV Importer** 📥 — `import_prisma_devices.py` converts a real Palo Alto IoT Security CSV export into a Stigix emulator config with real MAC addresses, risk-based bad behavior (auto on Critical/High), and per-vendor DHCP fingerprints. [Read docs](docs/IOT_DEVICE_GENERATOR.md#-prisma--iot-security-csv-import)
-- **VyOS Orchestration** 🔌 — Full sequence management with Clone-to-Reverse, intelligent sorting, dynamic search/filter, and comprehensive history.
-- **Multi-Client Traffic Scaling** 📈 — Dynamically spawn 1–10 parallel traffic workers. Live density slider in the Traffic Control panel.
-- **Security Test Headers** 🏷️ — Renamed table columns for clarity: Test ID → Type, Disposition → Result for better readability at a glance.
-- **Beta Install Script** 🧪 — New `install-latest-beta.sh` script for testing pre-release deployments using the `latest` Docker image tag.
-- **UI Readability** 🎨 — Dark-mode contrast improvements (`--text-muted` token brightened), SF Pro/Segoe UI font stack, proportional font scale (base 16→17px) for better legibility across all widgets.
-- **Configurable Port** 🔧 — `PORT` environment variable now correctly overrides the default 8080 port across all internal services.
+### 🤖 MCP Server & Claude Desktop Integration *(v1.4.1)*
+- **Natural Language Network Control** 🤖 — Control the entire Stigix mesh from Claude Desktop: run tests, simulate failures, check posture across any node.
+- **VyOS Chaos Engineering via Claude** ⚡ — Plain-English impairment triggers with automatic router discovery and propose-and-confirm safety flow.
+- **MCP Live Interaction Feed & Logging** ✨ — Real-time color-coded tool feed in Settings → MCP Server with duration bars, LIVE pulse, and server-side logging to `mcp-history.jsonl`. [Read docs](docs/MCP_SERVER.md)
+
+### 🌐 Central Global Provisioning & Direct Controller Onboarding *(v1.4.0)*
+- **8 Configuration Bundles** 📦 — Centralized pull-mode distribution (`30s` cycle) of Applications, Probes, SLA, Security Policies, Voice, IoT, Prisma SASE, and Custom TCP Apps from the Leader.
+- **Single-Command Remote Onboarding** 🚀 — `curl -sSL ... | sudo bash -s -- --controller <URL>` to instantly join remote Linux nodes, branch servers, and Raspberry Pis.
+- **Dynamic Target Synthesis & Self-Filtering** 🎯 — Learned peers automatically populate as active targets on the Leader with instant ghost target cleanup on site rename.
 
 [View full changelog with all version details →](CHANGELOG.md)
 

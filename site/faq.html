@@ -1109,6 +1109,54 @@ CONV-0042 → UDP source port 30042  (range 30000–39999)</pre>
           </div></div></div>
         </div>
 
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does the Failover 2.0 Multi-Path Stepper Timeline (T0 / T1 / T2) track SD-WAN transition stages?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>During an SD-WAN tunnel switchover or circuit degradation, the Failover 2.0 engine breaks down the event into an explicit <strong>chronological stepper progression</strong>:</p>
+            <ul>
+              <li><strong>T0 (Initial / Pre-Failover Path):</strong> The baseline egress path (e.g. <code>BR8-MPLS &rarr; DC2-MPLS</code>) active before impairment injection.</li>
+              <li><strong>T1 (Failover Transition &amp; Outage):</strong> The transition phase where packet drops or latency spikes occur, displaying the exact blackout duration (in ms) and packet loss percentage.</li>
+              <li><strong>T2 (Stabilized Backup Path):</strong> The newly selected SD-WAN path (e.g. <code>BR8-INET2 &rarr; DC2-INET</code>) once convergence is complete.</li>
+            </ul>
+            <p>Each step displays explicit transition deltas and duration badges, eliminating ambiguous static timestamps and providing irrefutable proof of SD-WAN steering behavior.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do historical loss and latency metric curves work with adaptive Y-scaling and the time scrubber?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In Failover 2.0, convergence tests persist their full time-series metrics natively in <code>logs/convergence-history.jsonl</code>:</p>
+            <ul>
+              <li><strong>Dual-Metric Graphs:</strong> Plots latency (ms) and packet loss (%) concurrently on synchronized SVG curves.</li>
+              <li><strong>Adaptive Y-Axis Scaling:</strong> The loss graph dynamically scales its vertical axis (0–5%, 0–25%, 0–100%) so small micro-burst packet loss spikes (e.g. 0.8%) remain clearly visible rather than flattened at the bottom.</li>
+              <li><strong>Interactive Time Scrubber &amp; Zoom:</strong> Drag the time scrubber across the test timeline or click instant zoom presets (<code>1m</code>, <code>5m</code>, <code>15m</code>, <code>ALL</code>) to inspect microsecond-level failover characteristics.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I export an executive HD PNG PoC Card of a failover convergence test?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Clicking any past test in the Failover Test History opens the <strong>Test Details &amp; Analysis Drawer</strong>. Inside the drawer, click the <strong>Export PoC Card (PNG)</strong> button:</p>
+            <ul>
+              <li>Generates a pixel-perfect, high-resolution dark-mode summary card rendered directly from the DOM using HTML5 canvas.</li>
+              <li>Includes test ID, target name, timestamp, probe frequency (e.g. 1000 PPS), blackout outage duration, directional packet loss, and full multi-path sequence progression.</li>
+              <li>Instantly downloads as a standalone PNG image file ready to embed into executive PoC reports, customer deliverables, and architecture validation decks.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does dynamic SCM (Strata Cloud Manager / Prisma SD-WAN) egress path sequence inspection work?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Because Stigix embeds deterministic source ports (<code>30000 + TestID</code>) in every convergence probe, the backend can query the Prisma SD-WAN / Strata Cloud Manager Flow API to discover exactly which WAN circuit carried each packet:</p>
+            <ul>
+              <li><strong>Live SD-WAN Path Inspection:</strong> Clicking the live path button queries Prisma SD-WAN in real time to resolve the active ingress and egress interfaces.</li>
+              <li><strong>On-Demand Historical Path Refresh:</strong> If a test was run before SCM flows were indexed or if the lookback window expired, an on-demand <strong>Re-query SCM Path</strong> button re-executes the API search across a 240-minute window without rerunning the test.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
       </div><!-- /panel-voice -->
 
 
@@ -1321,6 +1369,44 @@ curl -X POST http://&lt;HOST&gt;:8080/api/security/profile \
           </div></div></div>
         </div>
 
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I control the entire Stigix mesh from Claude Desktop using natural language?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>With the <strong>Stigix MCP Server</strong> connected to Claude Desktop, you can interact with your lab mesh using conversational English:</p>
+            <ul>
+              <li><em>"Start generating 500 pps of traffic across all finance applications on BR1"</em></li>
+              <li><em>"Run a security posture validation test and summarize any bypassed URL or DNS categories"</em></li>
+              <li><em>"Inject 150ms latency on the MPLS link between BR2 and DC1"</em></li>
+              <li><em>"Check the health and p95 latency of our Custom TCP ERP application"</em></li>
+            </ul>
+            <p>Claude discovers available tools, maps intent to REST endpoints across any node in the mesh, and returns structured markdown tables and executive summaries.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does the propose-and-confirm safety flow work for VyOS chaos engineering in Claude Desktop?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>To prevent accidental network outages, the MCP server enforces a <strong>Propose &amp; Confirm safety flow</strong> for all VyOS actions:</p>
+            <ol>
+              <li>When asked to impair a link, Claude calls <code>get_vyos_interfaces</code> to inspect the router topology and filters out management interfaces.</li>
+              <li>Claude presents the resolved router name, interface (e.g. <code>eth1</code>), IP subnet, and proposed action to you in the chat.</li>
+              <li>Claude explicitly requests your confirmation (<em>"Please confirm if you want me to apply 150ms latency on VyOS-DC1 eth1"</em>).</li>
+              <li>Only after you reply "Yes" or "Confirm" does Claude execute <code>vyos_execute_action</code> to apply the change.</li>
+            </ol>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the real-time MCP Live Interaction Feed in Settings?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In <strong>Settings &rarr; MCP Server</strong>, a real-time interaction feed provides full transparency into Claude Desktop activities:</p>
+            <ul>
+              <li><strong>Live Pulse &amp; Tool History:</strong> Shows every tool call in real time with category icons, node badges, and execution duration mini-bars (green &lt; 500ms, amber &lt; 2s, red &gt; 2s).</li>
+              <li><strong>Server-Side Audit Logging:</strong> Every action is transparently logged server-side to <code>logs/mcp-history.jsonl</code> with timestamps, tool parameters, and response status codes.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
       </div><!-- /panel-settings -->
 
       <!-- ═══════════════════════════════════════════════════
@@ -1361,6 +1447,44 @@ curl -X POST http://&lt;HOST&gt;:8080/api/security/profile \
             </ol>
             <p>Once credentials are saved, the Topology tab becomes active and data is fetched automatically. The system also uses these credentials for Flow Search (getflow), Convergence path enrichment, and Cloud Autodiscovery.</p>
             <p><strong>Important:</strong> These are <em>Prisma SD-WAN</em> credentials (service account from the Prisma SD-WAN Orchestrator). A regular Prisma Access admin account will not work &mdash; the API uses OAuth2 client credentials with SD-WAN-specific scopes.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does the Physical Underlay view represent VyOS backbone routers with direct 1:1 port cable wiring?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>The <strong>Physical Underlay View</strong> renders active VyOS backbone routers as realistic physical network chassis nodes on an interactive canvas:</p>
+            <ul>
+              <li><strong>Chassis Architecture:</strong> Separates Datacenter / Hub uplinks (top row of port chips) and Branch / Spoke downlinks (bottom row) with a central management status banner.</li>
+              <li><strong>Direct 1:1 Port Cable Wiring:</strong> Individual cables connect directly from each Prisma SD-WAN WAN circuit block to the exact physical <code>ethX</code> port handle on the VyOS router.</li>
+              <li><strong>Anti-Cable-Crossing Spatial Routing:</strong> Interfaces are sorted horizontally based on the geographic X-coordinates of connected branch sites (DC1, DC2, BR1, BR2, BR3) to ensure straight, parallel underlay cables.</li>
+              <li><strong>Full CIDR Visibility:</strong> Every physical port chip displays its full IPv4 CIDR subnet, port status LED, and link description.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do I execute real-time actions (Shut/No-Shut, Netem latency/loss, Clear QoS) directly from the Topology canvas?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In the Underlay Topology view, clicking any VyOS port chip opens the <strong>Direct Action Controls</strong>:</p>
+            <ul>
+              <li><strong>Shut / No-Shut:</strong> Instantly toggles the interface administrative state on the router with live status write-through.</li>
+              <li><strong>Inject WAN Impairment (Netem):</strong> Adjust latency (0–500 ms) and packet loss (0–50%) sliders to inject impairments on the fly without writing scripts.</li>
+              <li><strong>Persistent Canvas Micro-Badges:</strong> Active impairments display dynamic amber badges (e.g. <code>⏱️ +120ms / 2% loss</code>) directly on the router port chips on the canvas that persist across page reloads.</li>
+              <li><strong>Clear QoS:</strong> 1-click button to immediately remove all traffic control rules and restore line-rate baseline performance.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is the floating Link Trace drawer and what does it inspect?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Clicking any port chip or underlay cable triggers a floating <strong>Link Trace Drawer</strong>:</p>
+            <ul>
+              <li>Compares the Prisma ION WAN circuit parameters against the physical VyOS transit subnet and next-hop gateway IP.</li>
+              <li>Displays link speed, circuit category (Public Internet, Private MPLS, LTE), and live BGP/routing health.</li>
+              <li>Provides quick-action buttons to open the full diagnostics drawer or jump directly to the VyOS Control panel.</li>
+            </ul>
           </div></div></div>
         </div>
 
@@ -2176,7 +2300,7 @@ stigix-cli provision peers</pre>
       </ul>
     </div>
     <p class="footer__note" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke);font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
-      Site last updated: <strong id="faq-footer-date" style="color:var(--mid)">2026-07-29</strong>
+      Site last updated: <strong id="faq-footer-date" style="color:var(--mid)">2026-09-05</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v2.0.7</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View V2 changelog &rarr;</a>
     </p>
     <script>var fd=new Date(document.lastModified);if(fd.getFullYear()>2000){document.getElementById('faq-footer-date').textContent=fd.toISOString().slice(0,10);}</script>
     <p class="footer__note" style="margin-top:8px;font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
