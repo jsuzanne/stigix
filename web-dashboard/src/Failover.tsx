@@ -357,40 +357,92 @@ export default function Failover(props: FailoverProps) {
         setSortConfig({ key, direction });
     };
 
+    const getSourcePort = (testId: string): string => {
+        try {
+            if (!testId) return '????';
+            const match = String(testId).match(/CONV-(\d+)/);
+            if (match && match[1]) {
+                const num = parseInt(match[1], 10);
+                // Cyclic mapping 0..9999 -> 30000..39999
+                return (30000 + (num % 10000)).toString();
+            }
+        } catch (e) {
+            return '????';
+        }
+        return '????';
+    };
+
+    const getVerdict = (maxBlackout: number) => {
+        const blackout = Number(maxBlackout) || 0;
+        const g = thresholds?.good || 1000;
+        const d = thresholds?.degraded || 5000;
+        const c = thresholds?.critical || 10000;
+        if (blackout === 0) return { label: 'PERFECT', color: 'text-green-400', bg: 'bg-green-400/10', desc: 'No packet loss detected.' };
+        if (blackout < g) return { label: 'GOOD', color: 'text-green-400', bg: 'bg-green-400/10', desc: 'Typical SD-WAN failover range. Sessions usually stay up.' };
+        if (blackout < d) return { label: 'DEGRADED', color: 'text-yellow-400', bg: 'bg-yellow-400/10', desc: 'Noticeable outage. Video freeze and voice drops expected.' };
+        if (blackout < c) return { label: 'BAD', color: 'text-orange-400', bg: 'bg-orange-400/10', desc: 'High failover time. Application health impacted.' };
+        return { label: 'CRITICAL', color: 'text-red-400', bg: 'bg-red-400/10', desc: 'Major blackout. Application sessions will disconnect.' };
+    };
+
+    const formatMs = (ms: number) => {
+        const val = Number(ms) || 0;
+        if (val === 0) return '0ms';
+        if (val < 1000) return `${val}ms`;
+        return `${(val / 1000).toFixed(2)}s`;
+    };
+
+    const formatChrono = (startTime: number) => {
+        if (!startTime) return '00:00';
+        const seconds = Math.floor(Date.now() / 1000 - startTime);
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
     const formatTestDate = (ts?: number | string) => {
         if (!ts) return null;
-        const d = typeof ts === 'number' ? new Date(ts > 1e11 ? ts : ts * 1000) : new Date(ts);
-        if (isNaN(d.getTime())) return null;
-        const dateStr = d.toLocaleDateString([], { month: '2-digit', day: '2-digit' });
-        const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const fullStr = d.toLocaleString();
-        return { dateStr, timeStr, fullStr, display: `${dateStr} ${timeStr}` };
+        try {
+            const d = typeof ts === 'number' ? new Date(ts > 1e11 ? ts : ts * 1000) : new Date(ts);
+            if (isNaN(d.getTime())) return null;
+            const dateStr = d.toLocaleDateString([], { month: '2-digit', day: '2-digit' });
+            const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const fullStr = d.toLocaleString();
+            return { dateStr, timeStr, fullStr, display: `${dateStr} ${timeStr}` };
+        } catch {
+            return null;
+        }
     };
 
     const filteredHistory = React.useMemo(() => {
-        if (!historySearch.trim()) return history;
+        if (!Array.isArray(history)) return [];
+        if (!historySearch || !historySearch.trim()) return history;
         const q = historySearch.toLowerCase().trim();
         return history.filter(t => {
-            const convId = t.test_id?.match(/CONV-\d+/)?.[0] || t.test_id || '';
-            const label = t.label || t.test_id?.split(' (')[0] || '';
-            const target = t.target || '';
-            const port = String(t.port || '');
-            const srcPort = String(t.source_port || getSourcePort(t.test_id || ''));
-            const verdict = getVerdict(t.max_blackout_ms || 0).label;
-            const egress = t.egress_path || t.path_evolution || '';
-            const dateInfo = formatTestDate(t.timestamp || t.start_time);
-            const dateStr = dateInfo ? `${dateInfo.display} ${dateInfo.fullStr}` : '';
-            
-            return convId.toLowerCase().includes(q) ||
-                   label.toLowerCase().includes(q) ||
-                   target.toLowerCase().includes(q) ||
-                   port.includes(q) ||
-                   srcPort.includes(q) ||
-                   verdict.toLowerCase().includes(q) ||
-                   egress.toLowerCase().includes(q) ||
-                   dateStr.toLowerCase().includes(q);
+            try {
+                if (!t) return false;
+                const convId = String(t.test_id || t.testId || '');
+                const label = String(t.label || t.test_id || t.testId || '');
+                const target = String(t.target || '');
+                const port = String(t.port || '');
+                const srcPort = String(t.source_port || getSourcePort(t.test_id || t.testId || ''));
+                const verdict = getVerdict(Number(t.max_blackout_ms) || 0).label;
+                const egress = String(t.egress_path || t.path_evolution || '');
+                const dateInfo = formatTestDate(t.timestamp || t.start_time);
+                const dateStr = dateInfo ? `${dateInfo.display} ${dateInfo.fullStr}` : '';
+                
+                return convId.toLowerCase().includes(q) ||
+                       label.toLowerCase().includes(q) ||
+                       target.toLowerCase().includes(q) ||
+                       port.includes(q) ||
+                       srcPort.includes(q) ||
+                       verdict.toLowerCase().includes(q) ||
+                       egress.toLowerCase().includes(q) ||
+                       dateStr.toLowerCase().includes(q);
+            } catch {
+                return false;
+            }
         });
-    }, [history, historySearch]);
+    }, [history, historySearch, thresholds]);
 
     const sortedHistory = React.useMemo(() => {
         if (!sortConfig) return filteredHistory;
@@ -403,43 +455,7 @@ export default function Failover(props: FailoverProps) {
         });
     }, [filteredHistory, sortConfig]);
 
-    const getVerdict = (maxBlackout: number) => {
-        if (maxBlackout === 0) return { label: 'PERFECT', color: 'text-green-400', bg: 'bg-green-400/10', desc: 'No packet loss detected.' };
-        if (maxBlackout < thresholds.good) return { label: 'GOOD', color: 'text-green-400', bg: 'bg-green-400/10', desc: 'Typical SD-WAN failover range. Sessions usually stay up.' };
-        if (maxBlackout < thresholds.degraded) return { label: 'DEGRADED', color: 'text-yellow-400', bg: 'bg-yellow-400/10', desc: 'Noticeable outage. Video freeze and voice drops expected.' };
-        if (maxBlackout < thresholds.critical) return { label: 'BAD', color: 'text-orange-400', bg: 'bg-orange-400/10', desc: 'High failover time. Application health impacted.' };
-        return { label: 'CRITICAL', color: 'text-red-400', bg: 'bg-red-400/10', desc: 'Major blackout. Application sessions will disconnect.' };
-    };
-
-    const formatMs = (ms: number) => {
-        if (ms === 0) return '0ms';
-        if (ms < 1000) return `${ms}ms`;
-        return `${(ms / 1000).toFixed(2)}s`;
-    };
-
-    const formatChrono = (startTime: number) => {
-        if (!startTime) return '00:00';
-        const seconds = Math.floor(Date.now() / 1000 - startTime);
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    };
-
     const selectedCount = allTargets.filter(e => selectedEndpoints.includes(e.id)).length;
-
-    const getSourcePort = (testId: string): string => {
-        try {
-            const match = testId?.match(/CONV-(\d+)/);
-            if (match && match[1]) {
-                const num = parseInt(match[1], 10);
-                // Cyclic mapping 0..9999 -> 30000..39999
-                return (30000 + (num % 10000)).toString();
-            }
-        } catch (e) {
-            return '????';
-        }
-        return '????';
-    };
 
 
     const handleCheckLivePath = async (testIdKey: string, dstIp: string, sourcePortStr?: string) => {
