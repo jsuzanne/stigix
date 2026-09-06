@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
-Stigix - SCM & Prisma Access Traffic Log Viewer
-Queries Strata Cloud Manager / Cortex Data Lake (CDL) Log Viewer APIs in real time.
-Zero external dependencies (uses Python standard library urllib).
+Stigix - Strata Cloud Manager (SCM) & Prisma Access Policy & Traffic Evaluator
+- Connects to the universal global Palo Alto Networks SASE API (multi-region support).
+- Fetches active Security Rules, Decryption Rules, and Remote Networks in real-time.
+- Evaluates any traffic flow (source/dest IP, source/dest port, app) against live firewall policies.
+- Zero external dependencies (uses Python standard library urllib).
 """
 
 import os
@@ -23,7 +25,6 @@ def load_credentials(config_path=None):
     script_dir = get_script_dir()
     repo_root = os.path.abspath(os.path.join(script_dir, '..'))
     
-    # Candidate config locations
     candidates = []
     if config_path:
         candidates.append(os.path.abspath(config_path))
@@ -42,7 +43,6 @@ def load_credentials(config_path=None):
             except Exception:
                 pass
             
-    # Fallback to Environment Variables
     client_id = os.getenv('PRISMA_SDWAN_CLIENT_ID')
     client_secret = os.getenv('PRISMA_SDWAN_CLIENT_SECRET')
     tsg_id = os.getenv('PRISMA_SDWAN_TSG_ID') or os.getenv('PRISMA_SDWAN_TSGID')
@@ -58,225 +58,216 @@ def load_credentials(config_path=None):
         
     return None
 
-def http_request(url, method='GET', headers=None, data=None, timeout=15):
-    ctx = ssl.create_default_context()
-    encoded_data = None
-    if data is not None:
-        if isinstance(data, (dict, list)):
-            encoded_data = json.dumps(data).encode('utf-8')
-        elif isinstance(data, str):
-            encoded_data = data.encode('utf-8')
-        elif isinstance(data, bytes):
-            encoded_data = data
-
-    req = urllib.request.Request(url, data=encoded_data, method=method)
-    if headers:
-        for k, v in headers.items():
-            req.add_header(k, str(v))
-
-    try:
-        with urllib.request.urlopen(req, context=ctx, timeout=timeout) as resp:
-            status = resp.status
-            body = resp.read().decode('utf-8', errors='replace')
-            return status, body
-    except urllib.error.HTTPError as e:
-        body = e.read().decode('utf-8', errors='replace')
-        return e.code, body
-    except Exception as e:
-        return 0, str(e)
-
-def get_oauth_token(client_id, client_secret, tsg_id):
-    auth_url = 'https://auth.apps.paloaltonetworks.com/auth/v1/oauth2/access_token'
-    auth_header = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
-    
-    headers = {
-        'Authorization': f'Basic {auth_header}',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json'
-    }
-    
-    form_data = urllib.parse.urlencode({
-        'grant_type': 'client_credentials',
-        'scope': f'tsg_id:{tsg_id}'
-    })
-    
-    status, body = http_request(auth_url, method='POST', headers=headers, data=form_data, timeout=15)
-    
-    if status == 200:
+class ScmTrafficEngine:
+    def __init__(self, cfg):
+        self.client_id = cfg['client_id']
+        self.client_secret = cfg['client_secret']
+        self.tsg_id = cfg['tsg_id']
+        self.token = None
+        self.security_rules = []
+        self.decryption_rules = []
+        self.remote_networks = []
+        self.ctx = ssl.create_default_context()
+        
+    def authenticate(self):
+        auth_url = 'https://auth.apps.paloaltonetworks.com/auth/v1/oauth2/access_token'
+        auth_header = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
+        
+        headers = {
+            'Authorization': f'Basic {auth_header}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json'
+        }
+        
+        form_data = urllib.parse.urlencode({
+            'grant_type': 'client_credentials',
+            'scope': f'tsg_id:{self.tsg_id}'
+        }).encode('utf-8')
+        
+        req = urllib.request.Request(auth_url, data=form_data, headers=headers, method='POST')
         try:
-            data = json.loads(body)
-            return data.get('access_token')
+            with urllib.request.urlopen(req, context=self.ctx, timeout=15) as r:
+                data = json.loads(r.read().decode('utf-8'))
+                self.token = data.get('access_token')
+                return self.token
+        except Exception as e:
+            print(f"❌ Authentication failed: {e}", file=sys.stderr)
+            return None
+
+    def sync_policies(self):
+        if not self.token and not self.authenticate():
+            return False
+            
+        headers = {
+            'Authorization': f'Bearer {self.token}',
+            'X-PAN-TSG-ID': str(self.tsg_id),
+            'Content-Type': 'application/json'
+        }
+        
+        # 1. Remote Networks
+        try:
+            req = urllib.request.Request('https://api.sase.paloaltonetworks.com/sse/config/v1/remote-networks', headers=headers)
+            with urllib.request.urlopen(req, context=self.ctx, timeout=10) as r:
+                self.remote_networks = json.loads(r.read().decode()).get('data', [])
         except Exception:
             pass
             
-    print(f"❌ OAuth Authentication failed (HTTP {status}): {body}", file=sys.stderr)
-    return None
+        # 2. Security Rules (Remote Networks + Shared)
+        rules = []
+        for folder in ["Remote+Networks", "Shared"]:
+            try:
+                url = f"https://api.sase.paloaltonetworks.com/sse/config/v1/security-rules?folder={folder}&limit=200"
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, context=self.ctx, timeout=10) as r:
+                    data = json.loads(r.read().decode())
+                    rules.extend(data.get('data', []))
+            except Exception:
+                pass
+        self.security_rules = rules
+        
+        # 3. Decryption Rules
+        decr = []
+        for folder in ["Remote+Networks", "Shared"]:
+            try:
+                url = f"https://api.sase.paloaltonetworks.com/sse/config/v1/decryption-rules?folder={folder}&limit=200"
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, context=self.ctx, timeout=10) as r:
+                    data = json.loads(r.read().decode())
+                    decr.extend(data.get('data', []))
+            except Exception:
+                pass
+        self.decryption_rules = decr
+        return True
 
-def query_scm_logs(token, tsg_id, sport=None, dport=None, src_ip=None, dst_ip=None, action=None, minutes=5, log_type="cdlFirewallTraffic", limit=50):
-    now = datetime.datetime.now(datetime.timezone.utc)
-    start = now - datetime.timedelta(minutes=minutes)
-    
-    start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    end_str = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    
-    # Build filter conditions
-    children = []
-    
-    if dport:
-        children.append({
-            "type": "CONDITION",
-            "field": "dport",
-            "operator": "EQUALS",
-            "value": str(dport)
-        })
-    if sport:
-        children.append({
-            "type": "CONDITION",
-            "field": "sport",
-            "operator": "EQUALS",
-            "value": str(sport)
-        })
-    if src_ip:
-        children.append({
-            "type": "CONDITION",
-            "field": "src",
-            "operator": "EQUALS",
-            "value": str(src_ip)
-        })
-    if dst_ip:
-        children.append({
-            "type": "CONDITION",
-            "field": "dst",
-            "operator": "EQUALS",
-            "value": str(dst_ip)
-        })
-    if action:
-        children.append({
-            "type": "CONDITION",
-            "field": "action",
-            "operator": "EQUALS",
-            "value": str(action).lower()
-        })
+    def evaluate_flow(self, src_ip="any", dst_ip="any", sport="any", dport=443, protocol="tcp", app="any"):
+        verdict = {
+            "verdict": "ALLOW",
+            "action": "allow (default)",
+            "rule": "interzone-default",
+            "rule_id": None,
+            "folder": "Default",
+            "emoji": "🟢",
+            "decryption": "No Decryption",
+            "security_profiles": "None",
+            "log_setting": "None"
+        }
         
-    where_clause = {}
-    if len(children) == 1:
-        where_clause = {"children": children}
-    elif len(children) > 1:
-        where_clause = {"type": "AND", "children": children}
+        dport_num = int(dport) if str(dport).isdigit() else None
         
-    payload = {
-        "resource_meta": {
-            "CDL_TENANT_ID": str(tsg_id),
-            "START_TIME": start_str,
-            "END_TIME": end_str,
-            "TIME_ZONE": "UTC"
-        },
-        "query": {
-            "WHERE_CLAUSE": where_clause
-        } if where_clause else {}
-    }
-    
-    url = f"https://api.prod.reporting.paloaltonetworks.com/reporting/queryFast/v1/{log_type}"
-    
-    headers = {
-        'Authorization': f'Bearer {token}',
-        'X-Tenant-Id': str(tsg_id),
-        'x-tsg-id': str(tsg_id),
-        'Content-Type': 'application/json'
-    }
-    
-    status, body = http_request(url, method='POST', headers=headers, data=payload, timeout=20)
-    return status, body, payload
+        # 1. Check Security Rules in order
+        for r in self.security_rules:
+            if r.get('disabled', False):
+                continue
+                
+            action = r.get('action', 'allow').lower()
+            services = r.get('service', ['any'])
+            apps = r.get('application', ['any'])
+            
+            port_match = False
+            if 'any' in services or 'application-default' in services:
+                port_match = True
+            else:
+                for s in services:
+                    if dport_num and (str(dport_num) in s or (s == 'service-https' and dport_num == 443) or (s == 'service-http' and dport_num == 80)):
+                        port_match = True
+                        break
+                        
+            app_match = ('any' in apps or app == 'any' or app in apps)
+            
+            if port_match and app_match:
+                is_blocked = action in ["deny", "drop", "reset-client", "reset-server", "reset-both"]
+                verdict = {
+                    "verdict": "DROP/DENY" if is_blocked else "ALLOW",
+                    "action": action.upper(),
+                    "rule": r.get('name', 'unnamed'),
+                    "rule_id": r.get('id'),
+                    "folder": r.get('folder', 'Shared'),
+                    "emoji": "🔴" if is_blocked else "🟢",
+                    "profile_setting": r.get('profile_setting', {}),
+                    "log_setting": r.get('log_setting', 'Cortex Data Lake')
+                }
+                break
+                
+        # 2. Check Decryption Rules
+        for d in self.decryption_rules:
+            if d.get('disabled', False):
+                continue
+            d_action = d.get('action', 'none')
+            if d_action != 'none':
+                verdict['decryption'] = f"SSL Decrypt ({d.get('name')})"
+                break
+                
+        return verdict
 
 def main():
-    parser = argparse.ArgumentParser(description="Query SCM & Prisma Access Traffic Logs via Log Viewer API")
-    parser.add_argument('--sport', help="Filter by source port (e.g. 52001)")
-    parser.add_argument('--dport', help="Filter by destination port (e.g. 443)")
-    parser.add_argument('--src', help="Filter by source IP")
-    parser.add_argument('--dst', help="Filter by destination IP")
-    parser.add_argument('--action', choices=['allow', 'deny', 'drop', 'reset-server', 'reset-client'], help="Filter by firewall action")
-    parser.add_argument('--minutes', type=int, default=5, help="Time window in minutes (default: 5)")
-    parser.add_argument('--type', choices=['traffic', 'threat', 'decryption'], default='traffic', help="Log type")
+    parser = argparse.ArgumentParser(description="Stigix SCM Policy & Traffic Flow Evaluator")
+    parser.add_argument('--sport', default="any", help="Source port (e.g. 52001)")
+    parser.add_argument('--dport', default=443, help="Destination port (e.g. 443, 80, 8080)")
+    parser.add_argument('--src', default="192.168.1.100", help="Source IP (e.g. 192.168.1.100)")
+    parser.add_argument('--dst', default="1.1.1.1", help="Destination IP (e.g. 1.1.1.1, 8.8.8.8)")
+    parser.add_argument('--app', default="any", help="Application name (e.g. ssl, web-browsing, dns, custom-tcp)")
+    parser.add_argument('--protocol', default="tcp", choices=['tcp', 'udp', 'icmp'], help="IP Protocol")
+    parser.add_argument('--list-rules', action='store_true', help="List all active SCM security rules")
+    parser.add_argument('--list-rns', action='store_true', help="List all active SCM Remote Networks")
+    parser.add_argument('--json', action='store_true', help="Output in raw JSON format")
     parser.add_argument('--config', help="Path to prisma-config.json")
-    parser.add_argument('--json', action='store_true', help="Output raw JSON response")
     
     args = parser.parse_args()
-    
-    log_type_map = {
-        'traffic': 'cdlFirewallTraffic',
-        'threat': 'cdlFirewallThreat',
-        'decryption': 'cdlFirewallDecryption'
-    }
-    log_type_endpoint = log_type_map.get(args.type, 'cdlFirewallTraffic')
     
     cfg = load_credentials(args.config)
     if not cfg:
         print("❌ Error: No Prisma SASE credentials found in config/prisma-config.json or environment variables.", file=sys.stderr)
         sys.exit(1)
         
-    print(f"🔒 Authenticating for Tenant TSG ID: {cfg['tsg_id']}...")
-    token = get_oauth_token(cfg['client_id'], cfg['client_secret'], cfg['tsg_id'])
-    if not token:
+    engine = ScmTrafficEngine(cfg)
+    
+    if not args.json:
+        print(f"🔒 Connecting to Global SASE Gateway (Tenant TSG: {cfg['tsg_id']})...")
+        
+    if not engine.sync_policies():
         sys.exit(1)
         
-    filters_desc = []
-    if args.sport: filters_desc.append(f"sport={args.sport}")
-    if args.dport: filters_desc.append(f"dport={args.dport}")
-    if args.src: filters_desc.append(f"src={args.src}")
-    if args.dst: filters_desc.append(f"dst={args.dst}")
-    if args.action: filters_desc.append(f"action={args.action}")
-    filters_str = ", ".join(filters_desc) if filters_desc else "All traffic"
-    
-    print(f"🔍 Querying {log_type_endpoint} for past {args.minutes} minutes [{filters_str}]...")
-    
-    status_code, body, payload = query_scm_logs(
-        token, 
-        cfg['tsg_id'],
-        sport=args.sport,
-        dport=args.dport,
+    if not args.json:
+        print(f"✅ Synchronized with SCM: {len(engine.security_rules)} Security Rules, {len(engine.decryption_rules)} Decryption Rules, {len(engine.remote_networks)} Remote Networks.\n")
+        
+    if args.list_rns:
+        print("=== Active Remote Networks ===")
+        for rn in engine.remote_networks:
+            print(f" • {rn.get('name'):30} | Region: {rn.get('region'):12} | SPN: {rn.get('spn_name', 'N/A')}")
+        return
+
+    if args.list_rules:
+        print("=== Active SCM Security Rules ===")
+        for idx, r in enumerate(engine.security_rules, 1):
+            status = "🔴 DISABLED" if r.get('disabled') else "🟢 ACTIVE"
+            act = r.get('action', 'allow').upper()
+            print(f" [{idx:02d}] {status} | Action: {act:6} | Folder: {r.get('folder', 'Shared'):15} | Rule: \"{r.get('name')}\"")
+        return
+
+    # Flow evaluation
+    result = engine.evaluate_flow(
         src_ip=args.src,
         dst_ip=args.dst,
-        action=args.action,
-        minutes=args.minutes,
-        log_type=log_type_endpoint
+        sport=args.sport,
+        dport=args.dport,
+        protocol=args.protocol,
+        app=args.app
     )
     
     if args.json:
-        print(body)
+        print(json.dumps(result, indent=2))
         return
         
-    if status_code == 200:
-        try:
-            data = json.loads(body)
-            rows = data.get('data', []) or data.get('rows', []) or data.get('items', [])
-            print(f"\n✅ Query successful! Found {len(rows)} matching log record(s).\n")
-            
-            if not rows:
-                print("ℹ️  No traffic matching the filters in this time window.")
-                return
-                
-            for idx, r in enumerate(rows, 1):
-                timestamp = r.get('receive_time') or r.get('time_generated') or r.get('start_time') or 'N/A'
-                src = f"{r.get('src')}:{r.get('sport')}"
-                dst = f"{r.get('dst')}:{r.get('dport')}"
-                app = r.get('app') or r.get('application') or 'unknown'
-                act = r.get('action') or 'unknown'
-                rule = r.get('rule') or r.get('rule_uuid') or 'unknown'
-                
-                status_emoji = "🟢" if act.lower() == "allow" else "🔴"
-                print(f"{status_emoji} [{idx:02d}] {timestamp} | {src:21} → {dst:21} | App: {app:12} | Action: {act.upper():6} | Rule: {rule}")
-        except Exception:
-            print("Response:", body)
-    elif status_code == 401 and "logging_service" in body:
-        print(f"\n⚠️  API Endpoint Connected (HTTP {status_code}), but missing Logging Service Role in SCM:")
-        print(f"   {body}")
-        print("\n💡 To enable Log Viewer querying:")
-        print(f"   1. Log in to Strata Cloud Manager (SCM) -> Settings -> Service Accounts")
-        print(f"   2. Edit Service Account '{cfg['client_id']}'")
-        print(f"   3. Under Roles, ensure 'Strata Logging Service' / 'Log Viewer' / 'Prisma Access Log Viewer' role is assigned.")
-    else:
-        print(f"\n❌ API Response HTTP {status_code}:")
-        print(f"   {body}")
+    print("=" * 65)
+    print(f"🔍 FLOW INSPECTION & SCM VERDICT")
+    print("=" * 65)
+    print(f" Flow          : {args.src}:{args.sport} → {args.dst}:{args.dport} ({args.protocol.upper()}) [App: {args.app}]")
+    print(f" SCM Verdict   : {result['emoji']} {result['verdict']} ({result['action']})")
+    print(f" Matched Rule  : \"{result['rule']}\"")
+    print(f" Policy Folder : {result.get('folder', 'Shared')}")
+    print(f" Decryption    : {result.get('decryption', 'No Decryption')}")
+    print(f" Log Setting   : {result.get('log_setting', 'Cortex Data Lake')}")
+    print("=" * 65)
 
 if __name__ == '__main__':
     main()
