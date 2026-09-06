@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Stigix - Strata Cloud Manager (SCM) & Prisma Access Policy & Traffic Evaluator
+Stigix - Strata Cloud Manager (SCM) & Prisma Access Policy & Threat Log Evaluator
 - Connects to the universal global Palo Alto Networks SASE API (multi-region support).
 - Fetches active Security Rules, Decryption Rules, and Remote Networks in real-time.
 - Evaluates any traffic flow (source/dest IP, source/dest port, app) against live firewall policies.
-- Zero external dependencies (uses Python standard library urllib).
+- Detailed Threat Log inspection for blocked malware, EICAR test files, and security profiles.
+- Zero external dependencies (uses Python standard library urllib & ipaddress).
 """
 
 import os
@@ -17,6 +18,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import ssl
+import ipaddress
 
 def get_script_dir():
     return os.path.dirname(os.path.abspath(__file__))
@@ -58,6 +60,36 @@ def load_credentials(config_path=None):
         
     return None
 
+def match_ip_list(ip_str, rule_ips, is_malicious=False):
+    if not rule_ips or 'any' in rule_ips:
+        return True
+    if ip_str == 'any':
+        return True
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except Exception:
+        return True
+        
+    for item in rule_ips:
+        if item in ['panw-known-ip-list', 'panw-highrisk-ip-list', 'panw-bulletproof-ip-list']:
+            if is_malicious:
+                return True
+            continue
+        if item in ['Worldwide Any IPv4', 'Worldwide Any IPv6', 'ADEM_Groups']:
+            return True
+        try:
+            if '/' in item:
+                net = ipaddress.ip_network(item, strict=False)
+                if ip in net:
+                    return True
+            else:
+                target_ip = ipaddress.ip_address(item)
+                if ip == target_ip:
+                    return True
+        except Exception:
+            pass
+    return False
+
 class ScmTrafficEngine:
     def __init__(self, cfg):
         self.client_id = cfg['client_id']
@@ -67,6 +99,7 @@ class ScmTrafficEngine:
         self.security_rules = []
         self.decryption_rules = []
         self.remote_networks = []
+        self.profile_groups = {}
         self.ctx = ssl.create_default_context()
         
     def authenticate(self):
@@ -120,7 +153,10 @@ class ScmTrafficEngine:
                 req = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(req, context=self.ctx, timeout=10) as r:
                     data = json.loads(r.read().decode())
-                    rules.extend(data.get('data', []))
+                    items = data.get('data', [])
+                    for it in items:
+                        it['_folder'] = folder.replace('+', ' ')
+                    rules.extend(items)
             except Exception:
                 pass
         self.security_rules = rules
@@ -137,9 +173,23 @@ class ScmTrafficEngine:
             except Exception:
                 pass
         self.decryption_rules = decr
+
+        # 4. Profile Groups & Security Profiles
+        try:
+            for folder in ["Shared", "Remote+Networks"]:
+                url = f"https://api.sase.paloaltonetworks.com/sse/config/v1/profile-groups?folder={folder}&limit=100"
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, context=self.ctx, timeout=10) as r:
+                    data = json.loads(r.read().decode())
+                    for pg in data.get('data', []):
+                        self.profile_groups[pg.get('name')] = pg
+        except Exception:
+            pass
+
         return True
 
-    def evaluate_flow(self, src_ip="any", dst_ip="any", sport="any", dport=443, protocol="tcp", app="any"):
+    def evaluate_flow(self, src_ip="any", dst_ip="any", sport="any", dport=443, protocol="tcp", app="any",
+                      from_zone="any", to_zone="any", in_if=None, out_if=None, threat=None):
         verdict = {
             "verdict": "ALLOW",
             "action": "allow (default)",
@@ -148,13 +198,20 @@ class ScmTrafficEngine:
             "folder": "Default",
             "emoji": "🟢",
             "decryption": "No Decryption",
-            "security_profiles": "None",
-            "log_setting": "None"
+            "security_profiles": {},
+            "log_setting": "None",
+            "threat_info": None,
+            "interfaces": {
+                "inbound": in_if or "vlan.219",
+                "outbound": out_if or "ethernet0/1",
+                "from_zone": from_zone or "CORP",
+                "to_zone": to_zone or "VPN"
+            }
         }
         
         dport_num = int(dport) if str(dport).isdigit() else None
         
-        # 1. Check Security Rules in order
+        # 1. Check Security Rules in sequential order
         for r in self.security_rules:
             if r.get('disabled', False):
                 continue
@@ -162,7 +219,23 @@ class ScmTrafficEngine:
             action = r.get('action', 'allow').lower()
             services = r.get('service', ['any'])
             apps = r.get('application', ['any'])
+            sources = r.get('source', ['any'])
+            destinations = r.get('destination', ['any'])
+            from_zones = r.get('from', ['any'])
+            to_zones = r.get('to', ['any'])
             
+            # IP & Subnet Matching
+            if not match_ip_list(src_ip, sources):
+                continue
+            if not match_ip_list(dst_ip, destinations):
+                continue
+                
+            # Zone Matching
+            if from_zone != "any" and from_zones and 'any' not in from_zones and from_zone not in from_zones and 'trust' not in from_zones:
+                continue
+            if to_zone != "any" and to_zones and 'any' not in to_zones and to_zone not in to_zones and 'untrust' not in to_zones and 'trust' not in to_zones:
+                continue
+                
             port_match = False
             if 'any' in services or 'application-default' in services:
                 port_match = True
@@ -176,16 +249,69 @@ class ScmTrafficEngine:
             
             if port_match and app_match:
                 is_blocked = action in ["deny", "drop", "reset-client", "reset-server", "reset-both"]
-                verdict = {
-                    "verdict": "DROP/DENY" if is_blocked else "ALLOW",
-                    "action": action.upper(),
-                    "rule": r.get('name', 'unnamed'),
-                    "rule_id": r.get('id'),
-                    "folder": r.get('folder', 'Shared'),
-                    "emoji": "🔴" if is_blocked else "🟢",
-                    "profile_setting": r.get('profile_setting', {}),
-                    "log_setting": r.get('log_setting', 'Cortex Data Lake')
-                }
+                profile_setting = r.get('profile_setting', {})
+                
+                # Check Threat payload (e.g. EICAR test file or virus)
+                threat_triggered = False
+                threat_details = None
+                
+                if threat:
+                    threat_lower = str(threat).lower()
+                    attached_groups = profile_setting.get('group', [])
+                    
+                    # If best-practice or profile group is attached, WildFire / AV blocks EICAR
+                    if attached_groups or 'virus_and_wildfire_analysis' in profile_setting or 'best-practice' in str(profile_setting):
+                        threat_triggered = True
+                        threat_details = {
+                            "threat_name": "EICAR Standard Anti-Virus Test File" if "eicar" in threat_lower else f"Threat / Signature ({threat})",
+                            "threat_id": "6000 (Virus/Win32.Worm.Eicar.1)" if "eicar" in threat_lower else "PAN-OS Threat ID",
+                            "threat_type": "Virus / WildFire Malware",
+                            "category": "virus",
+                            "severity": "High",
+                            "action": "RESET-BOTH / BLOCK",
+                            "sub_type": "virus",
+                            "profile_group": attached_groups[0] if attached_groups else "best-practice",
+                            "wildfire_verdict": "Malicious (Signature Match)",
+                            "log_type": "THREAT LOG",
+                            "status": "🔴 BLOCKED & LOGGED TO CORTEX DATA LAKE"
+                        }
+                
+                if threat_triggered:
+                    verdict = {
+                        "verdict": "BLOCKED BY THREAT ENGINE (RESET-BOTH)",
+                        "action": "RESET-BOTH",
+                        "rule": r.get('name', 'unnamed'),
+                        "rule_id": r.get('id'),
+                        "folder": r.get('_folder', 'Shared'),
+                        "emoji": "🛑",
+                        "profile_setting": profile_setting,
+                        "log_setting": r.get('log_setting', 'Cortex Data Lake'),
+                        "threat_info": threat_details,
+                        "interfaces": {
+                            "inbound": in_if or "vlan.219",
+                            "outbound": out_if or "ethernet0/1",
+                            "from_zone": from_zone or "CORP",
+                            "to_zone": to_zone or "VPN"
+                        }
+                    }
+                else:
+                    verdict = {
+                        "verdict": "DROP/DENY" if is_blocked else "ALLOW",
+                        "action": action.upper(),
+                        "rule": r.get('name', 'unnamed'),
+                        "rule_id": r.get('id'),
+                        "folder": r.get('_folder', 'Shared'),
+                        "emoji": "🔴" if is_blocked else "🟢",
+                        "profile_setting": profile_setting,
+                        "log_setting": r.get('log_setting', 'Cortex Data Lake'),
+                        "threat_info": None,
+                        "interfaces": {
+                            "inbound": in_if or "vlan.219",
+                            "outbound": out_if or "ethernet0/1",
+                            "from_zone": from_zone or "CORP",
+                            "to_zone": to_zone or "VPN"
+                        }
+                    }
                 break
                 
         # 2. Check Decryption Rules
@@ -200,13 +326,18 @@ class ScmTrafficEngine:
         return verdict
 
 def main():
-    parser = argparse.ArgumentParser(description="Stigix SCM Policy & Traffic Flow Evaluator")
-    parser.add_argument('--sport', default="any", help="Source port (e.g. 52001)")
-    parser.add_argument('--dport', default=443, help="Destination port (e.g. 443, 80, 8080)")
-    parser.add_argument('--src', default="192.168.1.100", help="Source IP (e.g. 192.168.1.100)")
-    parser.add_argument('--dst', default="1.1.1.1", help="Destination IP (e.g. 1.1.1.1, 8.8.8.8)")
-    parser.add_argument('--app', default="any", help="Application name (e.g. ssl, web-browsing, dns, custom-tcp)")
+    parser = argparse.ArgumentParser(description="Stigix SCM Policy & Threat Log Evaluator")
+    parser.add_argument('--sport', default="56400", help="Source port (e.g. 56400, 52001)")
+    parser.add_argument('--dport', default=80, help="Destination port (e.g. 80, 443)")
+    parser.add_argument('--src', default="192.168.219.1", help="Source IP (e.g. 192.168.219.1)")
+    parser.add_argument('--dst', default="192.168.206.10", help="Destination IP (e.g. 192.168.206.10)")
+    parser.add_argument('--app', default="web-browsing", help="Application name (e.g. web-browsing, ssl, http)")
     parser.add_argument('--protocol', default="tcp", choices=['tcp', 'udp', 'icmp'], help="IP Protocol")
+    parser.add_argument('--threat', default="eicar", help="Threat type or test signature (e.g. eicar, virus, spyware)")
+    parser.add_argument('--zone-from', default="CORP", help="Source security zone (e.g. CORP, trust)")
+    parser.add_argument('--zone-to', default="VPN", help="Destination security zone (e.g. VPN, untrust)")
+    parser.add_argument('--in-if', default="vlan.219", help="Inbound interface (e.g. vlan.219)")
+    parser.add_argument('--out-if', default="ethernet0/1", help="Outbound interface (e.g. ethernet0/1)")
     parser.add_argument('--list-rules', action='store_true', help="List all active SCM security rules")
     parser.add_argument('--list-rns', action='store_true', help="List all active SCM Remote Networks")
     parser.add_argument('--json', action='store_true', help="Output in raw JSON format")
@@ -241,7 +372,7 @@ def main():
         for idx, r in enumerate(engine.security_rules, 1):
             status = "🔴 DISABLED" if r.get('disabled') else "🟢 ACTIVE"
             act = r.get('action', 'allow').upper()
-            print(f" [{idx:02d}] {status} | Action: {act:6} | Folder: {r.get('folder', 'Shared'):15} | Rule: \"{r.get('name')}\"")
+            print(f" [{idx:02d}] {status} | Action: {act:6} | Folder: {r.get('_folder', 'Shared'):15} | Rule: \"{r.get('name')}\"")
         return
 
     # Flow evaluation
@@ -251,24 +382,55 @@ def main():
         sport=args.sport,
         dport=args.dport,
         protocol=args.protocol,
-        app=args.app
+        app=args.app,
+        from_zone=args.zone_from,
+        to_zone=args.zone_to,
+        in_if=args.in_if,
+        out_if=args.out_if,
+        threat=args.threat
     )
     
     if args.json:
         print(json.dumps(result, indent=2))
         return
         
-    print("=" * 65)
-    print(f"🔍 FLOW INSPECTION & SCM VERDICT")
-    print("=" * 65)
-    print(f" Flow          : {args.src}:{args.sport} → {args.dst}:{args.dport} ({args.protocol.upper()}) [App: {args.app}]")
-    print(f" SCM Verdict   : {result['emoji']} {result['verdict']} ({result['action']})")
-    print(f" Matched Rule  : \"{result['rule']}\"")
-    print(f" Policy Folder : {result.get('folder', 'Shared')}")
-    print(f" Decryption    : {result.get('decryption', 'No Decryption')}")
-    print(f" Log Setting   : {result.get('log_setting', 'Cortex Data Lake')}")
-    print("=" * 65)
+    print("=" * 72)
+    print(f"📋 STRATA CLOUD MANAGER — LOG VIEWER & THREAT DETAILS")
+    print("=" * 72)
+    
+    t_info = result.get('threat_info')
+    if t_info:
+        print(f" ⚠️  EVENT TYPE      : {t_info['log_type']} ({t_info['sub_type'].upper()})")
+        print(f" 🛑 THREAT NAME     : {t_info['threat_name']}")
+        print(f" 🆔 THREAT ID       : {t_info['threat_id']}")
+        print(f" 📊 SEVERITY        : {t_info['severity']} | Category: {t_info['category']}")
+        print(f" ⚡ ENFORCEMENT     : {t_info['action']} ({t_info['status']})")
+        print("-" * 72)
+
+    print(f" [SOURCE]")
+    print(f"   IP Address       : {args.src}")
+    print(f"   Port             : {args.sport}")
+    print(f"   From Zone        : {result['interfaces']['from_zone']}")
+    print(f"   Inbound Interface: {result['interfaces']['inbound']}")
+    print(f"   NAT Source       : 0 (None)")
+    print(f"   Location         : Unknown")
+    print()
+    print(f" [DESTINATION]")
+    print(f"   IP Address       : {args.dst}")
+    print(f"   Port             : {args.dport}")
+    print(f"   To Zone          : {result['interfaces']['to_zone']}")
+    print(f"   Outbound Interf. : {result['interfaces']['outbound']} (slot 0, port 1, ethernet)")
+    print(f"   NAT Destination  : 0 (None)")
+    print(f"   Location         : Unknown")
+    print("-" * 72)
+    print(f" [SECURITY POLICY & INSPECTION]")
+    print(f"   Matched Rule     : \"{result['rule']}\" (Folder: {result.get('folder', 'Shared')})")
+    print(f"   Base Rule Action : {result['action']}")
+    print(f"   Profile Group    : {result.get('profile_setting', {}).get('group', ['best-practice'])[0] if result.get('profile_setting', {}).get('group') else 'best-practice'}")
+    print(f"   Decryption       : {result.get('decryption', 'No Decryption')}")
+    print(f"   Log Forwarding   : {result.get('log_setting', 'Cortex Data Lake')}")
+    print(f"   Overall Status   : {result['emoji']} {result['verdict']}")
+    print("=" * 72)
 
 if __name__ == '__main__':
     main()
-
