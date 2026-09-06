@@ -2,7 +2,7 @@
 """
 Stigix - SCM & Prisma Access Traffic Log Viewer
 Queries Strata Cloud Manager / Cortex Data Lake (CDL) Log Viewer APIs in real time.
-Allows filtering by time window, source port, destination port, IPs, and verdict (Allow/Deny/Drop).
+Zero external dependencies (uses Python standard library urllib).
 """
 
 import os
@@ -11,21 +11,38 @@ import json
 import base64
 import datetime
 import argparse
-import requests
+import urllib.request
+import urllib.parse
+import urllib.error
+import ssl
+
+def get_script_dir():
+    return os.path.dirname(os.path.abspath(__file__))
 
 def load_credentials(config_path=None):
-    # 1. Try specified config file
-    if config_path and os.path.exists(config_path):
-        with open(config_path, 'r') as f:
-            return json.load(f)
+    script_dir = get_script_dir()
+    repo_root = os.path.abspath(os.path.join(script_dir, '..'))
+    
+    # Candidate config locations
+    candidates = []
+    if config_path:
+        candidates.append(os.path.abspath(config_path))
+    candidates.append(os.path.join(os.getcwd(), 'config', 'prisma-config.json'))
+    candidates.append(os.path.join(repo_root, 'config', 'prisma-config.json'))
+    candidates.append(os.path.join(script_dir, 'config', 'prisma-config.json'))
+    candidates.append(os.path.join(os.getcwd(), 'prisma-config.json'))
+
+    for c in candidates:
+        if os.path.exists(c):
+            try:
+                with open(c, 'r') as f:
+                    data = json.load(f)
+                    if data.get('client_id') and data.get('client_secret'):
+                        return data
+            except Exception:
+                pass
             
-    # 2. Try default Stigix config
-    default_cfg = 'config/prisma-config.json'
-    if os.path.exists(default_cfg):
-        with open(default_cfg, 'r') as f:
-            return json.load(f)
-            
-    # 3. Try Environment Variables
+    # Fallback to Environment Variables
     client_id = os.getenv('PRISMA_SDWAN_CLIENT_ID')
     client_secret = os.getenv('PRISMA_SDWAN_CLIENT_SECRET')
     tsg_id = os.getenv('PRISMA_SDWAN_TSG_ID') or os.getenv('PRISMA_SDWAN_TSGID')
@@ -41,33 +58,59 @@ def load_credentials(config_path=None):
         
     return None
 
+def http_request(url, method='GET', headers=None, data=None, timeout=15):
+    ctx = ssl.create_default_context()
+    encoded_data = None
+    if data is not None:
+        if isinstance(data, (dict, list)):
+            encoded_data = json.dumps(data).encode('utf-8')
+        elif isinstance(data, str):
+            encoded_data = data.encode('utf-8')
+        elif isinstance(data, bytes):
+            encoded_data = data
+
+    req = urllib.request.Request(url, data=encoded_data, method=method)
+    if headers:
+        for k, v in headers.items():
+            req.add_header(k, str(v))
+
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=timeout) as resp:
+            status = resp.status
+            body = resp.read().decode('utf-8', errors='replace')
+            return status, body
+    except urllib.error.HTTPError as e:
+        body = e.read().decode('utf-8', errors='replace')
+        return e.code, body
+    except Exception as e:
+        return 0, str(e)
+
 def get_oauth_token(client_id, client_secret, tsg_id):
     auth_url = 'https://auth.apps.paloaltonetworks.com/auth/v1/oauth2/access_token'
     auth_header = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
     
-    try:
-        resp = requests.post(
-            auth_url,
-            headers={
-                'Authorization': f'Basic {auth_header}',
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Accept': 'application/json'
-            },
-            data={
-                'grant_type': 'client_credentials',
-                'scope': f'tsg_id:{tsg_id}'
-            },
-            timeout=15
-        )
-        if resp.status_code == 200:
-            data = resp.json()
+    headers = {
+        'Authorization': f'Basic {auth_header}',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+    }
+    
+    form_data = urllib.parse.urlencode({
+        'grant_type': 'client_credentials',
+        'scope': f'tsg_id:{tsg_id}'
+    })
+    
+    status, body = http_request(auth_url, method='POST', headers=headers, data=form_data, timeout=15)
+    
+    if status == 200:
+        try:
+            data = json.loads(body)
             return data.get('access_token')
-        else:
-            print(f"❌ OAuth Authentication failed (HTTP {resp.status_code}): {resp.text}", file=sys.stderr)
-            return None
-    except Exception as e:
-        print(f"❌ Authentication exception: {e}", file=sys.stderr)
-        return None
+        except Exception:
+            pass
+            
+    print(f"❌ OAuth Authentication failed (HTTP {status}): {body}", file=sys.stderr)
+    return None
 
 def query_scm_logs(token, tsg_id, sport=None, dport=None, src_ip=None, dst_ip=None, action=None, minutes=5, log_type="cdlFirewallTraffic", limit=50):
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -108,7 +151,6 @@ def query_scm_logs(token, tsg_id, sport=None, dport=None, src_ip=None, dst_ip=No
             "value": str(dst_ip)
         })
     if action:
-        # e.g., 'deny', 'drop', 'allow'
         children.append({
             "type": "CONDITION",
             "field": "action",
@@ -143,11 +185,8 @@ def query_scm_logs(token, tsg_id, sport=None, dport=None, src_ip=None, dst_ip=No
         'Content-Type': 'application/json'
     }
     
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=20)
-        return resp.status_code, resp.text, payload
-    except Exception as e:
-        return 0, str(e), payload
+    status, body = http_request(url, method='POST', headers=headers, data=payload, timeout=20)
+    return status, body, payload
 
 def main():
     parser = argparse.ArgumentParser(description="Query SCM & Prisma Access Traffic Logs via Log Viewer API")
@@ -241,3 +280,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
