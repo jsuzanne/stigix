@@ -4,6 +4,7 @@ Stigix - Strata Cloud Manager (SCM) & Prisma Access Policy & Threat Log Evaluato
 - Connects to the universal global Palo Alto Networks SASE API (multi-region support).
 - Fetches active Security Rules, Decryption Rules, and Remote Networks in real-time.
 - Evaluates any traffic flow (source/dest IP, source/dest port, app) against live firewall policies.
+- First-Match Principle (active rule) + Shadowed Rules Discovery (all matching rules).
 - Detailed Threat Log inspection for blocked malware, EICAR test files, and security profiles.
 - Zero external dependencies (uses Python standard library urllib & ipaddress).
 """
@@ -206,13 +207,17 @@ class ScmTrafficEngine:
                 "outbound": out_if or "ethernet0/1",
                 "from_zone": from_zone or "CORP",
                 "to_zone": to_zone or "VPN"
-            }
+            },
+            "matched_rules_count": 0,
+            "all_matching_rules": [],
+            "shadowed_rules": []
         }
         
         dport_num = int(dport) if str(dport).isdigit() else None
+        matching_rules = []
         
-        # 1. Check Security Rules in sequential order
-        for r in self.security_rules:
+        # 1. Check Security Rules in sequential order (collect all matches)
+        for idx, r in enumerate(self.security_rules, 1):
             if r.get('disabled', False):
                 continue
                 
@@ -248,71 +253,68 @@ class ScmTrafficEngine:
             app_match = ('any' in apps or app == 'any' or app in apps)
             
             if port_match and app_match:
-                is_blocked = action in ["deny", "drop", "reset-client", "reset-server", "reset-both"]
-                profile_setting = r.get('profile_setting', {})
+                matching_rules.append({
+                    "order": idx,
+                    "name": r.get('name', 'unnamed'),
+                    "id": r.get('id'),
+                    "folder": r.get('_folder', 'Shared'),
+                    "action": action.upper(),
+                    "profile_setting": r.get('profile_setting', {}),
+                    "log_setting": r.get('log_setting', 'Cortex Data Lake')
+                })
+
+        verdict["matched_rules_count"] = len(matching_rules)
+        verdict["all_matching_rules"] = matching_rules
+        
+        if matching_rules:
+            # The FIRST matching rule wins (PAN-OS First-Match Principle)
+            first_match = matching_rules[0]
+            action = first_match["action"].lower()
+            is_blocked = action in ["deny", "drop", "reset-client", "reset-server", "reset-both"]
+            profile_setting = first_match["profile_setting"]
+            
+            verdict["rule"] = first_match["name"]
+            verdict["rule_id"] = first_match["id"]
+            verdict["folder"] = first_match["folder"]
+            verdict["action"] = first_match["action"]
+            verdict["profile_setting"] = profile_setting
+            verdict["log_setting"] = first_match["log_setting"]
+            verdict["shadowed_rules"] = matching_rules[1:]
+            
+            # Check Threat payload (e.g. EICAR test file or virus)
+            threat_triggered = False
+            threat_details = None
+            
+            if threat:
+                threat_lower = str(threat).lower()
+                attached_groups = profile_setting.get('group', [])
                 
-                # Check Threat payload (e.g. EICAR test file or virus)
-                threat_triggered = False
-                threat_details = None
-                
-                if threat:
-                    threat_lower = str(threat).lower()
-                    attached_groups = profile_setting.get('group', [])
-                    
-                    # If best-practice or profile group is attached, WildFire / AV blocks EICAR
-                    if attached_groups or 'virus_and_wildfire_analysis' in profile_setting or 'best-practice' in str(profile_setting):
-                        threat_triggered = True
-                        threat_details = {
-                            "threat_name": "EICAR Standard Anti-Virus Test File" if "eicar" in threat_lower else f"Threat / Signature ({threat})",
-                            "threat_id": "6000 (Virus/Win32.Worm.Eicar.1)" if "eicar" in threat_lower else "PAN-OS Threat ID",
-                            "threat_type": "Virus / WildFire Malware",
-                            "category": "virus",
-                            "severity": "High",
-                            "action": "RESET-BOTH / BLOCK",
-                            "sub_type": "virus",
-                            "profile_group": attached_groups[0] if attached_groups else "best-practice",
-                            "wildfire_verdict": "Malicious (Signature Match)",
-                            "log_type": "THREAT LOG",
-                            "status": "🔴 BLOCKED & LOGGED TO CORTEX DATA LAKE"
-                        }
-                
-                if threat_triggered:
-                    verdict = {
-                        "verdict": "BLOCKED BY THREAT ENGINE (RESET-BOTH)",
-                        "action": "RESET-BOTH",
-                        "rule": r.get('name', 'unnamed'),
-                        "rule_id": r.get('id'),
-                        "folder": r.get('_folder', 'Shared'),
-                        "emoji": "🛑",
-                        "profile_setting": profile_setting,
-                        "log_setting": r.get('log_setting', 'Cortex Data Lake'),
-                        "threat_info": threat_details,
-                        "interfaces": {
-                            "inbound": in_if or "vlan.219",
-                            "outbound": out_if or "ethernet0/1",
-                            "from_zone": from_zone or "CORP",
-                            "to_zone": to_zone or "VPN"
-                        }
+                # If best-practice or profile group is attached, WildFire / AV blocks EICAR
+                if attached_groups or 'virus_and_wildfire_analysis' in profile_setting or 'best-practice' in str(profile_setting):
+                    threat_triggered = True
+                    threat_details = {
+                        "threat_name": "EICAR Standard Anti-Virus Test File" if "eicar" in threat_lower else f"Threat / Signature ({threat})",
+                        "threat_id": "6000 (Virus/Win32.Worm.Eicar.1)" if "eicar" in threat_lower else "PAN-OS Threat ID",
+                        "threat_type": "Virus / WildFire Malware",
+                        "category": "virus",
+                        "severity": "High",
+                        "action": "RESET-BOTH / BLOCK",
+                        "sub_type": "virus",
+                        "profile_group": attached_groups[0] if attached_groups else "best-practice",
+                        "wildfire_verdict": "Malicious (Signature Match)",
+                        "log_type": "THREAT LOG",
+                        "status": "🔴 BLOCKED & LOGGED TO CORTEX DATA LAKE"
                     }
-                else:
-                    verdict = {
-                        "verdict": "DROP/DENY" if is_blocked else "ALLOW",
-                        "action": action.upper(),
-                        "rule": r.get('name', 'unnamed'),
-                        "rule_id": r.get('id'),
-                        "folder": r.get('_folder', 'Shared'),
-                        "emoji": "🔴" if is_blocked else "🟢",
-                        "profile_setting": profile_setting,
-                        "log_setting": r.get('log_setting', 'Cortex Data Lake'),
-                        "threat_info": None,
-                        "interfaces": {
-                            "inbound": in_if or "vlan.219",
-                            "outbound": out_if or "ethernet0/1",
-                            "from_zone": from_zone or "CORP",
-                            "to_zone": to_zone or "VPN"
-                        }
-                    }
-                break
+            
+            if threat_triggered:
+                verdict["verdict"] = "BLOCKED BY THREAT ENGINE (RESET-BOTH)"
+                verdict["action"] = "RESET-BOTH"
+                verdict["emoji"] = "🛑"
+                verdict["threat_info"] = threat_details
+            else:
+                verdict["verdict"] = "DROP/DENY" if is_blocked else "ALLOW"
+                verdict["emoji"] = "🔴" if is_blocked else "🟢"
+                verdict["threat_info"] = None
                 
         # 2. Check Decryption Rules
         for d in self.decryption_rules:
@@ -338,6 +340,7 @@ def main():
     parser.add_argument('--zone-to', default="VPN", help="Destination security zone (e.g. VPN, untrust)")
     parser.add_argument('--in-if', default="vlan.219", help="Inbound interface (e.g. vlan.219)")
     parser.add_argument('--out-if', default="ethernet0/1", help="Outbound interface (e.g. ethernet0/1)")
+    parser.add_argument('--all-matches', action='store_true', help="Show all matching security rules (active & shadowed)")
     parser.add_argument('--list-rules', action='store_true', help="List all active SCM security rules")
     parser.add_argument('--list-rns', action='store_true', help="List all active SCM Remote Networks")
     parser.add_argument('--json', action='store_true', help="Output in raw JSON format")
@@ -423,13 +426,22 @@ def main():
     print(f"   NAT Destination  : 0 (None)")
     print(f"   Location         : Unknown")
     print("-" * 72)
-    print(f" [SECURITY POLICY & INSPECTION]")
-    print(f"   Matched Rule     : \"{result['rule']}\" (Folder: {result.get('folder', 'Shared')})")
+    print(f" [ACTIVE SECURITY POLICY (FIRST MATCH)]")
+    print(f"   Winning Rule     : \"{result['rule']}\" (Folder: {result.get('folder', 'Shared')})")
     print(f"   Base Rule Action : {result['action']}")
     print(f"   Profile Group    : {result.get('profile_setting', {}).get('group', ['best-practice'])[0] if result.get('profile_setting', {}).get('group') else 'best-practice'}")
     print(f"   Decryption       : {result.get('decryption', 'No Decryption')}")
     print(f"   Log Forwarding   : {result.get('log_setting', 'Cortex Data Lake')}")
     print(f"   Overall Status   : {result['emoji']} {result['verdict']}")
+    print(f"   Total Matching   : {result['matched_rules_count']} rule(s) matched criteria")
+    
+    shadowed = result.get('shadowed_rules', [])
+    if shadowed:
+        print("-" * 72)
+        print(f" 📑 SECONDARY / SHADOWED RULES ({len(shadowed)} other match{'es' if len(shadowed) > 1 else ''}):")
+        for s in shadowed:
+            print(f"   • [Rule #{s['order']:02d}] \"{s['name']}\" ({s['folder']}) → Action: {s['action']}")
+            
     print("=" * 72)
 
 if __name__ == '__main__':
