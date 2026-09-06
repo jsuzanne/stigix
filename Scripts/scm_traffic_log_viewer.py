@@ -4,6 +4,7 @@ Stigix - Strata Cloud Manager (SCM) & Prisma Access Policy & Threat Log Evaluato
 - Connects to the universal global Palo Alto Networks SASE API (multi-region support).
 - Fetches active Security Rules, Decryption Rules, and Remote Networks in real-time.
 - Evaluates any traffic flow (source/dest IP, source/dest port, app) against live firewall policies.
+- Platform Type Identification (PRISMA_SDWAN vs PRISMA_ACCESS inspection source).
 - Multi-event Log Stream Table support (displays multiple log occurrences / sessions matching criteria).
 - First-Match Principle (active rule) + Shadowed Rules Discovery (all matching rules).
 - Detailed Threat Log inspection for blocked malware, EICAR test files, and security profiles.
@@ -91,6 +92,28 @@ def match_ip_list(ip_str, rule_ips, is_malicious=False):
         except Exception:
             pass
     return False
+
+def detect_platform_type(in_if=None, out_if=None, from_zone="any", to_zone="any", src_ip="any", dst_ip="any"):
+    """
+    Detects whether security inspection occurred on PRISMA_SDWAN (ION Element)
+    or PRISMA_ACCESS (Cloud SPN / Service Connection / Cloud SWG).
+    """
+    in_if_str = (in_if or "").lower()
+    out_if_str = (out_if or "").lower()
+    from_z = (from_zone or "").lower()
+    to_z = (to_zone or "").lower()
+    
+    # Inbound / Outbound on ION interfaces (vlan, ethernet, controller, bypass) or CORP/VPN zones -> PRISMA_SDWAN
+    if any(k in in_if_str for k in ['vlan', 'ethernet', 'eth', 'ion', 'lan']) or \
+       any(k in out_if_str for k in ['vlan', 'ethernet', 'eth', 'ion']) or \
+       any(z in ['corp', 'vpn', 'branch', 'lan', 'site-to-site'] for z in [from_z, to_z]):
+        return "PRISMA_SDWAN"
+        
+    # Remote Network SPN tunnels / GlobalProtect / Mobile Users -> PRISMA_ACCESS
+    if any(z in ['untrust', 'internet', 'clientless-vpn', 'mobile-users', 'gp'] for z in [from_z, to_z]):
+        return "PRISMA_ACCESS"
+        
+    return "PRISMA_SDWAN"
 
 class ScmTrafficEngine:
     def __init__(self, cfg):
@@ -191,7 +214,10 @@ class ScmTrafficEngine:
         return True
 
     def evaluate_flow(self, src_ip="any", dst_ip="any", sport="any", dport=443, protocol="tcp", app="any",
-                      from_zone="any", to_zone="any", in_if=None, out_if=None, threat=None, limit=1):
+                      from_zone="any", to_zone="any", in_if=None, out_if=None, threat=None, platform=None, limit=1):
+        
+        resolved_platform = platform or detect_platform_type(in_if, out_if, from_zone, to_zone, src_ip, dst_ip)
+        
         verdict = {
             "verdict": "ALLOW",
             "action": "allow (default)",
@@ -199,6 +225,7 @@ class ScmTrafficEngine:
             "rule_id": None,
             "folder": "Default",
             "emoji": "🟢",
+            "platform_type": resolved_platform,
             "decryption": "No Decryption",
             "security_profiles": {},
             "log_setting": "None",
@@ -301,6 +328,8 @@ class ScmTrafficEngine:
                         "severity": "High",
                         "action": "RESET-BOTH / BLOCK",
                         "sub_type": "virus",
+                        "platform_type": resolved_platform,
+                        "pcap_available": True,
                         "profile_group": attached_groups[0] if attached_groups else "best-practice",
                         "wildfire_verdict": "Malicious (Signature Match)",
                         "log_type": "THREAT LOG",
@@ -339,6 +368,8 @@ class ScmTrafficEngine:
             ev = {
                 "id": i + 1,
                 "timestamp_utc": event_time,
+                "platform_type": resolved_platform,
+                "pcap_download": "⬇️ Available",
                 "log_type": "THREAT" if verdict.get("threat_info") else "TRAFFIC",
                 "severity": verdict["threat_info"]["severity"] if verdict.get("threat_info") else "INFORMATIONAL",
                 "src_ip": src_ip if src_ip != "any" else "192.168.219.1",
@@ -369,6 +400,7 @@ def main():
     parser.add_argument('--app', default="web-browsing", help="Application name (e.g. web-browsing, ssl, http)")
     parser.add_argument('--protocol', default="tcp", choices=['tcp', 'udp', 'icmp'], help="IP Protocol")
     parser.add_argument('--threat', default="eicar", help="Threat type or test signature (e.g. eicar, virus, spyware)")
+    parser.add_argument('--platform', choices=['PRISMA_SDWAN', 'PRISMA_ACCESS', 'AUTO'], default="AUTO", help="Platform type (PRISMA_SDWAN vs PRISMA_ACCESS)")
     parser.add_argument('--zone-from', default="CORP", help="Source security zone (e.g. CORP, trust)")
     parser.add_argument('--zone-to', default="VPN", help="Destination security zone (e.g. VPN, untrust)")
     parser.add_argument('--in-if', default="vlan.219", help="Inbound interface (e.g. vlan.219)")
@@ -413,6 +445,8 @@ def main():
             print(f" [{idx:02d}] {status} | Action: {act:6} | Folder: {r.get('_folder', 'Shared'):15} | Rule: \"{r.get('name')}\"")
         return
 
+    platform_choice = None if args.platform == "AUTO" else args.platform
+
     # Flow evaluation
     result = engine.evaluate_flow(
         src_ip=args.src,
@@ -426,6 +460,7 @@ def main():
         in_if=args.in_if,
         out_if=args.out_if,
         threat=args.threat,
+        platform=platform_choice,
         limit=args.limit
     )
     
@@ -435,23 +470,26 @@ def main():
 
     # 1. Multi-event Table View (if limit > 1 or --table)
     if args.limit > 1 or args.table:
-        print("=" * 110)
+        print("=" * 125)
         print(f"📅 SCM LOG VIEWER — EVENT STREAM TABLE ({result['events_count']} matched log record{'s' if result['events_count'] > 1 else ''})")
-        print("=" * 110)
-        print(f" {'#':<2} {'TIME (UTC)':<19} {'LOG TYPE':<8} {'SEVERITY':<8} {'SRC IP:PORT':<23} {'DST IP:PORT':<21} {'ACTION':<12} {'THREAT / DETAILS'}")
-        print("-" * 110)
+        print("=" * 125)
+        print(f" {'#':<2} {'TIME (UTC)':<19} {'PLATFORM TYPE':<15} {'PCAP':<6} {'SRC IP:PORT':<21} {'DST IP:PORT':<19} {'ACTION':<12} {'THREAT / DETAILS'}")
+        print("-" * 125)
         for ev in result['events']:
             src_str = f"{ev['src_ip']}:{ev['src_port']}"
             dst_str = f"{ev['dst_ip']}:{ev['dst_port']}"
             threat_str = ev['threat_name'] if ev['log_type'] == 'THREAT' else f"Rule: {ev['rule']}"
-            print(f" {ev['id']:<2} {ev['timestamp_utc']:<19} {ev['log_type']:<8} {ev['severity']:<8} {src_str:<23} {dst_str:<21} {ev['action']:<12} {threat_str}")
-        print("=" * 110)
+            print(f" {ev['id']:<2} {ev['timestamp_utc']:<19} {ev['platform_type']:<15} {'⬇️ Yes':<6} {src_str:<21} {dst_str:<19} {ev['action']:<12} {threat_str}")
+        print("=" * 125)
         print()
 
     # 2. Detailed Single Flow Card
     print("=" * 72)
     print(f"📋 STRATA CLOUD MANAGER — LOG VIEWER & THREAT DETAILS")
     print("=" * 72)
+    print(f" 🏢 PLATFORM TYPE   : 🏷️  {result['platform_type']} (Inspection Engine)")
+    print(f" 📦 PCAP CAPTURE    : ⬇️  Available (Downloadable from SCM)")
+    print("-" * 72)
     
     t_info = result.get('threat_info')
     if t_info:
