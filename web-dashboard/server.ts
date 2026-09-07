@@ -6623,10 +6623,13 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
         let app = 'web-browsing';
         const category = testResult.name || 'any';
 
+        const rawUrl = (testResult.details?.url || testResult.details?.endpoint || testResult.name || '').toLowerCase();
+        const isHttps = rawUrl.startsWith('https://') || rawUrl.includes('https://') || testResult.name?.toLowerCase().includes('https');
+
         if (testResult.type === 'threat' || testResult.name?.toLowerCase().includes('eicar')) {
             threat = 'eicar';
-            dstPort = 80;
-            app = 'web-browsing';
+            dstPort = isHttps ? 443 : 80;
+            app = isHttps ? 'ssl' : 'web-browsing';
         } else if (testResult.type === 'dns') {
             protocol = 'udp';
             dstPort = 53;
@@ -6634,7 +6637,7 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
             threat = ''; // Explicitly no threat payload for DNS
             dstIp = testResult.details?.domain || testResult.details?.endpoint || '8.8.8.8';
         } else if (testResult.type === 'url') {
-            dstPort = testResult.name.toLowerCase().includes('https') || (testResult.details?.url && testResult.details.url.startsWith('https')) ? 443 : 80;
+            dstPort = isHttps ? 443 : 80;
             app = dstPort === 443 ? 'ssl' : 'web-browsing';
             threat = ''; // Explicitly no threat payload for URL
         }

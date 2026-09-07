@@ -429,13 +429,46 @@ class ScmTrafficEngine:
             profile_group = "best-practice"
             verdict["shadowed_rules"] = []
 
+        # 2. Check Decryption Rules
+        active_decr_rule = None
+        is_ssl_decrypted = False
+        decr_label = "No Decryption"
+
+        for d in self.decryption_rules:
+            if d.get('disabled', False):
+                continue
+            d_action = str(d.get('action', 'none')).lower()
+            if d_action in ['decrypt', 'no-decrypt']:
+                active_decr_rule = d
+                if d_action == 'decrypt':
+                    is_ssl_decrypted = True
+                    decr_label = f"SSL Decrypt ({d.get('name')})"
+                else:
+                    is_ssl_decrypted = False
+                    decr_label = f"No Decryption ({d.get('name')})"
+                break
+        
+        verdict['decryption'] = decr_label
+
         threat_triggered = False
         threat_details = None
         
         # Scenario A: Explicit Threat Test (EICAR / Virus / Malware payload)
         if threat:
             threat_lower = str(threat).lower()
-            if attached_groups or 'virus_and_wildfire_analysis' in profile_setting or 'best-practice' in str(profile_setting):
+            is_https_flow = int(dport_num) == 443 or str(app).lower() in ["ssl", "web-browsing-ssl"] or "https://" in str(category or "").lower() or "https://" in str(dst_ip or "").lower()
+            
+            if is_https_flow and not is_ssl_decrypted:
+                # Payload is encrypted with TLS and NOT decrypted by any Decryption Rule
+                # -> Threat Prevention / AV CANNOT inspect inside TLS!
+                threat_triggered = False
+                threat_details = None
+                verdict["verdict"] = "ALLOW (NO SSL DECRYPTION)"
+                verdict["action"] = "ALLOW (NO SSL DECRYPTION)"
+                verdict["emoji"] = "🟢"
+                verdict["reason"] = f"HTTPS traffic is encrypted without SSL Decryption ({decr_label}). Threat Prevention cannot inspect payloads inside TLS."
+                verdict["threat_info"] = None
+            elif attached_groups or 'virus_and_wildfire_analysis' in profile_setting or 'best-practice' in str(profile_setting):
                 threat_triggered = True
                 threat_details = {
                     "threat_name": "Eicar File Detected" if "eicar" in threat_lower else f"Threat / Signature ({threat})",
@@ -529,7 +562,7 @@ class ScmTrafficEngine:
                 verdict["action"] = "BLOCK (URL FILTERING)"
                 verdict["emoji"] = "🔴"
                 verdict["category"] = category
-            else:
+            elif not verdict.get("action", "").startswith("ALLOW"):
                 verdict["verdict"] = "ALLOW"
                 verdict["action"] = "ALLOW"
                 verdict["emoji"] = "🟢"
@@ -541,19 +574,10 @@ class ScmTrafficEngine:
             verdict["action"] = threat_details.get("action", "RESET-BOTH")
             verdict["emoji"] = "🛑"
             verdict["threat_info"] = threat_details
-        elif not category:
+        elif not category and not verdict.get("action", "").startswith("ALLOW"):
             verdict["verdict"] = "DROP/DENY" if is_blocked else "ALLOW"
             verdict["emoji"] = "🔴" if is_blocked else "🟢"
             verdict["threat_info"] = None
-
-        # 2. Check Decryption Rules
-        for d in self.decryption_rules:
-            if d.get('disabled', False):
-                continue
-            d_action = d.get('action', 'none')
-            if d_action != 'none':
-                verdict['decryption'] = f"SSL Decrypt ({d.get('name')})"
-                break
                 
         # 3. Generate Multi-Event Log Records (Event Stream)
         event_count = max(1, int(limit))
