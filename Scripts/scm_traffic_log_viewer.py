@@ -387,17 +387,23 @@ class ScmTrafficEngine:
         event_count = max(1, int(limit))
         base_time = datetime.datetime.utcnow()
         base_port = int(sport) if str(sport).isdigit() else 56400
+        safe_src = src_ip if src_ip != "any" else "192.168.219.1"
         
-        # Calculate consistent session ID based on flow tuple
-        flow_seed = abs(hash(f"{src_ip}:{dst_ip}:{dport}:{app}:{category}"))
+        # Calculate consistent session ID based on flow tuple (including source port)
+        flow_seed = abs(hash(f"{safe_src}:{base_port}:{dst_ip}:{dport}:{app}:{category}"))
         primary_session_id = (flow_seed % 89900) + 10100
         device_sn = "028201-002954-9217" if resolved_platform == "PRISMA_SDWAN" else "019801-001844-3310"
 
+        verdict["src_ip"] = safe_src
+        verdict["src_port"] = base_port
         verdict["session_id"] = primary_session_id
         verdict["device_sn"] = device_sn
         verdict["cloud_report_id"] = f"CR-{hex(flow_seed)[2:10].upper()}"
         verdict["time_generated"] = base_time.strftime("%Y-%m-%d %H:%M:%S")
-        verdict["scm_search_filter"] = f"Source Address = '{src_ip if src_ip != 'any' else '192.168.219.1'}/32' AND Session ID = {primary_session_id}"
+        verdict["scm_search_filter"] = f"Source Address = '{safe_src}/32' AND Source Port = {base_port}"
+        verdict["scm_search_filter_port"] = f"Source Address = '{safe_src}/32' AND Source Port = {base_port}"
+        verdict["scm_search_filter_session"] = f"Source Address = '{safe_src}/32' AND Session ID = {primary_session_id}"
+        verdict["scm_search_filter_exact"] = f"Source Address = '{safe_src}/32' AND Source Port = {base_port} AND Session ID = {primary_session_id}"
 
         events = []
         for i in range(event_count):
@@ -415,7 +421,7 @@ class ScmTrafficEngine:
                 "pcap_download": "⬇️ Available",
                 "log_type": "THREAT" if verdict.get("threat_info") else "TRAFFIC",
                 "severity": verdict["threat_info"]["severity"] if verdict.get("threat_info") else "INFORMATIONAL",
-                "src_ip": src_ip if src_ip != "any" else "192.168.219.1",
+                "src_ip": safe_src,
                 "src_port": cur_sport,
                 "dst_ip": dst_ip if dst_ip != "any" else "192.168.206.10",
                 "dst_port": dport,
@@ -426,7 +432,8 @@ class ScmTrafficEngine:
                 "app": app,
                 "threat_name": verdict["threat_info"]["threat_name"] if verdict.get("threat_info") else "N/A (Normal Flow)",
                 "threat_id": verdict["threat_info"]["threat_id"] if verdict.get("threat_info") else "N/A",
-                "scm_filter": f"Source Address = '{src_ip if src_ip != 'any' else '192.168.219.1'}/32' AND Session ID = {cur_session_id}",
+                "scm_filter": f"Source Address = '{safe_src}/32' AND Source Port = {cur_sport}",
+                "scm_filter_session": f"Source Address = '{safe_src}/32' AND Session ID = {cur_session_id}",
                 "status": verdict["emoji"] + " " + verdict["action"]
             }
             events.append(ev)

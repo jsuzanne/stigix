@@ -1804,31 +1804,30 @@ const startIperfServer = () => {
 
 // Get the best DNS command for the current platform
 // For security tests, we prefer tools that bypass OS caching and provide more detail (nslookup/dig)
-const getDnsCommand = (domain: string): { command: string; type: string } => {
-    // Priority 1: nslookup (Universal and provides CNAME info which is vital for sinkhole detection)
-    // Adding timeout for robustness
-    if (availableCommands.nslookup) {
-        // Use 5s timeout and trailing dot to prevent search domain lookups
-        const cmd = PLATFORM === 'win32' ? `nslookup -timeout=5 ${domain}.` : `nslookup -timeout=5 ${domain}.`;
-        return { command: cmd, type: 'nslookup' };
+const getDnsCommand = (domain: string, srcPort?: number): { command: string; type: string; port?: number } => {
+    // Priority 1: dig if available (supports deterministic pre-NAT source port binding via -b 0.0.0.0#<port>)
+    if (availableCommands.dig) {
+        const bindFlag = srcPort ? `-b 0.0.0.0#${srcPort} ` : '';
+        return { command: `dig ${bindFlag}${domain} +short +time=2 +tries=1`, type: 'dig', port: srcPort };
     }
 
-    // Priority 2: dig (Linux/Mac standard for deep inspection)
-    if (availableCommands.dig) {
-        return { command: `dig ${domain} +short +time=2 +tries=1`, type: 'dig' };
+    // Priority 2: nslookup (Universal and provides CNAME info which is vital for sinkhole detection)
+    if (availableCommands.nslookup) {
+        const cmd = `nslookup -timeout=5 ${domain}.`;
+        return { command: cmd, type: 'nslookup', port: srcPort };
     }
 
     // Fallbacks for specific platforms if technical tools missing
     if (PLATFORM === 'linux' && availableCommands.getent) {
-        return { command: `timeout 2 getent ahosts ${domain}`, type: 'getent' };
+        return { command: `timeout 2 getent ahosts ${domain}`, type: 'getent', port: srcPort };
     }
 
     if (PLATFORM === 'darwin' && availableCommands.dscacheutil) {
-        return { command: `dscacheutil -q host -a name ${domain}`, type: 'dscacheutil' };
+        return { command: `dscacheutil -q host -a name ${domain}`, type: 'dscacheutil', port: srcPort };
     }
 
     // Ultimate fallback
-    return { command: `nslookup -timeout=5 ${domain}.`, type: 'nslookup' };
+    return { command: `nslookup -timeout=5 ${domain}.`, type: 'nslookup', port: srcPort };
 };
 
 // Parse DNS command output based on command type
@@ -6569,10 +6568,15 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
 
         const safeSrcIp = srcIp && srcIp !== 'auto' ? srcIp : '192.168.219.1';
         const safeDstIp = dstIp && dstIp !== 'auto' ? dstIp : '192.168.206.10';
+        let srcPort = testResult.details?.srcPort || testResult.details?.source_port || testResult.srcPort;
+        if (!srcPort || srcPort === 0) {
+            srcPort = 53000 + ((testResult.id || 1) % 10000);
+        }
+        const sportArg = srcPort ? `--sport ${srcPort}` : '';
         const configArg = resolvedPrismaCfg ? `--config "${resolvedPrismaCfg}"` : '';
         const categoryArg = category ? `--category "${category}"` : '';
 
-        const cmd = `${PYTHON_PATH} "${scriptPath}" --json --src "${safeSrcIp}" --dst "${safeDstIp}" --dport ${dstPort} --protocol ${protocol} --app "${app}" ${threat ? `--threat "${threat}"` : ''} ${categoryArg} ${configArg}`;
+        const cmd = `${PYTHON_PATH} "${scriptPath}" --json --src "${safeSrcIp}" --dst "${safeDstIp}" --dport ${dstPort} ${sportArg} --protocol ${protocol} --app "${app}" ${threat ? `--threat "${threat}"` : ''} ${categoryArg} ${configArg}`;
 
         const { stdout } = await execPromise(cmd, { timeout: 12000 });
         const scmJson = JSON.parse(stdout);
@@ -6587,7 +6591,12 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
             session_id: scmJson.session_id || 39059,
             cloud_report_id: scmJson.cloud_report_id || 'CR-002954-SLS',
             time_generated: scmJson.time_generated || new Date(testResult.timestamp).toISOString().replace('T', ' ').slice(0, 19),
-            scm_search_filter: scmJson.scm_search_filter || `Source Address = '${safeSrcIp}/32' AND Session ID = ${scmJson.session_id || 39059}`,
+            src_ip: safeSrcIp,
+            src_port: scmJson.src_port || srcPort,
+            scm_search_filter: scmJson.scm_search_filter || `Source Address = '${safeSrcIp}/32' AND Source Port = ${scmJson.src_port || srcPort}`,
+            scm_search_filter_port: scmJson.scm_search_filter_port || `Source Address = '${safeSrcIp}/32' AND Source Port = ${scmJson.src_port || srcPort}`,
+            scm_search_filter_session: scmJson.scm_search_filter_session || `Source Address = '${safeSrcIp}/32' AND Session ID = ${scmJson.session_id || 39059}`,
+            scm_search_filter_exact: scmJson.scm_search_filter_exact || `Source Address = '${safeSrcIp}/32' AND Source Port = ${scmJson.src_port || srcPort} AND Session ID = ${scmJson.session_id || 39059}`,
             vsys_name: 'vsys1',
             parent_device_group: scmJson.platform_type === 'PRISMA_SDWAN' ? 'PRISMA SD-WAN' : 'PRISMA ACCESS',
             source_zone: scmJson.interfaces?.from_zone || 'CORP',
@@ -7766,18 +7775,19 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             return res.json({ ...result, previousStatus });
         }
 
-        const curlCommand = `curl -sSL --max-time 10 -w '%{http_code}' '${url}'`;
+        const curlCommand = `curl -sSL --max-time 10 -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
         logTest(`[URL-TEST-${testId}] Executing URL test for ${url} (${category || 'Uncategorized'}): ${curlCommand}`);
 
         try {
             const { stdout, stderr } = await execPromise(curlCommand);
 
-            // The last 3 chars of stdout are the HTTP code
-            const httpCodeString = stdout.trim().slice(-3);
-            const httpCode = parseInt(httpCodeString);
-            const content = stdout.slice(0, -httpCodeString.length).toLowerCase();
+            const httpMatch = stdout.match(/__HTTP__:(\d+)/);
+            const portMatch = stdout.match(/__PORT__:(\d+)/);
+            const httpCode = httpMatch ? parseInt(httpMatch[1]) : (parseInt(stdout.trim().slice(-3)) || 0);
+            const srcPort = portMatch ? parseInt(portMatch[1]) : (54000 + (testId % 10000));
+            const content = stdout.replace(/__HTTP__:\d+/g, '').replace(/__PORT__:\d+/g, '').toLowerCase();
 
-            logTest(`[URL-TEST-${testId}] HTTP response code: ${httpCode}`);
+            logTest(`[URL-TEST-${testId}] HTTP response code: ${httpCode} (Port: ${srcPort})`);
 
             const isTestPage = content.includes('pandb test page') ||
                 content.includes('categorized as') ||
@@ -7799,6 +7809,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             const result = {
                 success: status === 'allowed',
                 httpCode,
+                srcPort,
                 status,
                 url,
                 category,
@@ -7811,18 +7822,22 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
                 ...(mcp_source && { mcp_source })
             };
 
-            logTest(`[URL-TEST-${testId}] Final status: ${result.status} (HTTP ${httpCode})`);
-            const { previousStatus } = await addTestResult('url_filtering', category || url, result, testId);
+            logTest(`[URL-TEST-${testId}] Final status: ${result.status} (HTTP ${httpCode}, Port ${srcPort})`);
+            const { previousStatus } = await addTestResult('url_filtering', category || url, result, testId, {
+                url, httpCode, srcPort, command: curlCommand, blockPageDetected: isBlockPage, testPageDetected: isTestPage
+            });
             res.json({ ...result, previousStatus });
         } catch (curlError: any) {
             // Parse curl exit code for precise error classification
             const exitCode = parseCurlExitCode(curlError.message);
             const errInfo = getCurlErrorInfo(exitCode, curlError.message);
-            const curlCmd = `curl -sSL --max-time 10 -w '%{http_code}' '${url}'`;
+            const curlCmd = `curl -sSL --max-time 10 -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
+            const fallbackPort = 54000 + (testId % 10000);
 
             const result = {
                 success: false,
                 httpCode: 0,
+                srcPort: fallbackPort,
                 status: errInfo.status,
                 category,
                 url,
@@ -7837,7 +7852,10 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             };
 
             logTest(`[URL-TEST-${testId}] Final status: ${errInfo.status} (curl exit ${exitCode} — ${errInfo.errorType})`);
-            const { previousStatus } = await addTestResult('url_filtering', category || url, result, testId);
+            const { previousStatus } = await addTestResult('url_filtering', category || url, result, testId, {
+                url, error: errInfo.technicalDetail, errorType: errInfo.errorType, curlExitCode: exitCode,
+                likelyFirewallBlock: errInfo.likelyFirewallBlock, command: curlCmd, srcPort: fallbackPort
+            });
             res.json({ ...result, previousStatus });
         }
     } catch (e: any) {
@@ -7873,6 +7891,7 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
                 logTest(`[URL-TEST-${testId}] Pre-DNS check failed for ${test.url}: ${dnsIssue.errorType}`);
                 const dnsResult = {
                     success: false, httpCode: 0,
+                    srcPort: 54000 + (testId % 10000),
                     url: test.url, category: test.category,
                     status: dnsIssue.status,
                     errorType: dnsIssue.errorType,
@@ -7886,22 +7905,24 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
                 await addTestResult('url_filtering', test.category, dnsResult, testId, {
                     url: test.url, error: dnsIssue.technicalDetail,
                     errorType: dnsIssue.errorType, likelyFirewallBlock: dnsIssue.likelyFirewallBlock,
-                    command: dnsResult.command
+                    command: dnsResult.command, srcPort: dnsResult.srcPort
                 }, runId);
                 continue;
             }
 
-            const curlCommand = `curl -sSL --max-time 10 -w '%{http_code}' '${test.url}'`;
+            const curlCommand = `curl -sSL --max-time 10 -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
             logTest(`[URL-TEST-${testId}] Executing URL test for ${test.url} (${test.category}): ${curlCommand}`);
 
             try {
                 const { stdout, stderr } = await execPromise(curlCommand);
 
-                const httpCodeString = stdout.trim().slice(-3);
-                const httpCode = parseInt(httpCodeString);
-                const content = stdout.slice(0, -httpCodeString.length).toLowerCase();
+                const httpMatch = stdout.match(/__HTTP__:(\d+)/);
+                const portMatch = stdout.match(/__PORT__:(\d+)/);
+                const httpCode = httpMatch ? parseInt(httpMatch[1]) : (parseInt(stdout.trim().slice(-3)) || 0);
+                const srcPort = portMatch ? parseInt(portMatch[1]) : (54000 + (testId % 10000));
+                const content = stdout.replace(/__HTTP__:\d+/g, '').replace(/__PORT__:\d+/g, '').toLowerCase();
 
-                logTest(`[URL-TEST-${testId}] HTTP response code: ${httpCode}`);
+                logTest(`[URL-TEST-${testId}] HTTP response code: ${httpCode} (Port: ${srcPort})`);
 
                 const isTestPage = content.includes('pandb test page') ||
                     content.includes('categorized as');
@@ -7916,6 +7937,7 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
                 const result = {
                     success: status === 'allowed',
                     httpCode,
+                    srcPort,
                     status,
                     url: test.url,
                     category: test.category,
@@ -7929,19 +7951,20 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
                     timestamp: Date.now(),
                     max_blackout_ms: 0, // Not applicable for URL tests
                     loss_pct: 0, // Not applicable for URL tests
-                    source_port: 0, // Not applicable for URL tests
+                    source_port: srcPort,
                     rate_pps: 0, // Not applicable for URL tests
                     reason: isTestPage ? 'Legitimate Palo Alto Test Page detected' :
                         isBlockPage ? 'Security Block Page detected in response content' :
                             (status === 'allowed') ? `Allowed (HTTP ${httpCode})` : `Blocked (HTTP ${httpCode})`
                 };
 
-                logTest(`[URL-TEST-${testId}] Final status: ${status} (HTTP ${httpCode})`);
+                logTest(`[URL-TEST-${testId}] Final status: ${status} (HTTP ${httpCode}, Port ${srcPort})`);
 
                 results.push(result);
                 await addTestResult('url_filtering', test.category, result, testId, {
                     url: test.url,
                     httpCode,
+                    srcPort,
                     command: curlCommand,
                     blockPageDetected: isBlockPage,
                     testPageDetected: isTestPage
@@ -7949,13 +7972,15 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
             } catch (curlError: any) {
                 const exitCode = parseCurlExitCode(curlError.message);
                 const errInfo = getCurlErrorInfo(exitCode, curlError.message);
-                const curlCmd = `curl -sSL --max-time 10 -w '%{http_code}' '${test.url}'`;
+                const curlCmd = `curl -sSL --max-time 10 -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
+                const fallbackPort = 54000 + (testId % 10000);
 
                 logTest(`[URL-TEST-${testId}] Final status: ${errInfo.status} (curl exit ${exitCode} — ${errInfo.errorType})`);
 
                 const result = {
                     success: false,
                     httpCode: 0,
+                    srcPort: fallbackPort,
                     status: errInfo.status,
                     url: test.url,
                     curlExitCode: exitCode,
@@ -7974,7 +7999,8 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
                     errorType: errInfo.errorType,
                     curlExitCode: exitCode,
                     likelyFirewallBlock: errInfo.likelyFirewallBlock,
-                    command: curlCmd
+                    command: curlCmd,
+                    srcPort: fallbackPort
                 }, runId);
             }
         } catch (e: any) {
@@ -8019,9 +8045,10 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
         // util.promisify already imported as promisify
         const execPromise = promisify(exec);
 
-        // Get platform-specific DNS command
-        const { command: dnsCommand, type: commandType } = getDnsCommand(domain);
-        logTest(`[DNS-TEST-${testId}] Executing DNS test for ${domain} (${testName || 'Custom Test'}): ${dnsCommand}`);
+        const dnsSrcPort = 53000 + (testId % 10000);
+        // Get platform-specific DNS command with source port binding
+        const { command: dnsCommand, type: commandType } = getDnsCommand(domain, dnsSrcPort);
+        logTest(`[DNS-TEST-${testId}] Executing DNS test for ${domain} (${testName || 'Custom Test'}, Port ${dnsSrcPort}): ${dnsCommand}`);
 
         // Helper function to wait
         const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -8089,14 +8116,17 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
                 status,
                 domain,
                 testName,
+                srcPort: dnsSrcPort,
                 output: stdout,
                 reason: status === 'sinkholed' ? `Resolved to Palo Alto Sinkhole IP: ${resolvedIp || 'Keyword detected'}` :
                     status === 'blocked' ? 'DNS Resolution failed or returned empty' : `Resolved to IP: ${resolvedIp}`,
                 ...(mcp_source && { mcp_source })
             };
 
-            logTest(`[DNS-TEST-${testId}] Test result:`, { domain, status, resolved });
-            const { previousStatus } = await addTestResult('dns_security', testName || domain, result, testId);
+            logTest(`[DNS-TEST-${testId}] Test result:`, { domain, status, resolved, srcPort: dnsSrcPort });
+            const { previousStatus } = await addTestResult('dns_security', testName || domain, result, testId, {
+                domain, resolvedIp, srcPort: dnsSrcPort, output: stdout, status, command: dnsCommand
+            });
             res.json({ ...result, previousStatus });
         } catch (dnsError: any) {
             // Even if the command failed (like nslookup returning SERVFAIL), it might contain sinkhole info
@@ -8110,11 +8140,14 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
                     resolved: false,
                     domain,
                     testName,
+                    srcPort: dnsSrcPort,
                     output: combinedErrorOutput,
                     reason: 'DNS error occurred, but Palo Alto Sinkhole keyword detected in response',
                     ...(mcp_source && { mcp_source })
                 };
-                const { previousStatus } = await addTestResult('dns_security', testName || domain, result, testId);
+                const { previousStatus } = await addTestResult('dns_security', testName || domain, result, testId, {
+                    domain, srcPort: dnsSrcPort, output: combinedErrorOutput, status: 'sinkholed', command: dnsCommand
+                });
                 return res.json({ ...result, previousStatus });
             }
 
@@ -8127,6 +8160,7 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
                 status: isCommandError ? 'error' : 'blocked',
                 domain,
                 testName,
+                srcPort: dnsSrcPort,
                 error: dnsError.message,
                 reason: isCommandError ? 'DNS tool (dig/nslookup) not available' : `DNS Error: ${dnsError.message}`,
                 ...(mcp_source && { mcp_source })
@@ -8134,7 +8168,9 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
 
             logTest(`[DNS-TEST-${testId}] Error: ${isCommandError ? 'Command not available' : 'DNS blocked'} - ${dnsError.message}`);
 
-            const { previousStatus } = await addTestResult('dns_security', testName || domain, result, testId);
+            const { previousStatus } = await addTestResult('dns_security', testName || domain, result, testId, {
+                domain, srcPort: dnsSrcPort, error: dnsError.message, command: dnsCommand
+            });
             res.json({ ...result, previousStatus });
         }
     } catch (e: any) {
@@ -8161,8 +8197,9 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
     for (let i = 0; i < tests.length; i++) {
         const test = tests[i];
         const testId = getNextTestId(); // Generate unique ID for each test
+        const dnsSrcPort = 53000 + (testId % 10000);
 
-        logTest(`[DNS-BATCH-${runId}][DNS-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.domain} (${test.testName})`);
+        logTest(`[DNS-BATCH-${runId}][DNS-TEST-${testId}] [${i + 1}/${tests.length}] Testing: ${test.domain} (${test.testName}, Port ${dnsSrcPort})`);
 
         try {
             // exec already imported at top
@@ -8170,7 +8207,7 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
             const execPromise = promisify(exec);
 
             // Get platform-specific DNS command
-            const { command: dnsCommand, type: commandType } = getDnsCommand(test.domain);
+            const { command: dnsCommand, type: commandType } = getDnsCommand(test.domain, dnsSrcPort);
 
             try {
                 // First attempt
@@ -8209,12 +8246,15 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
                     status,
                     domain: test.domain,
                     testName: test.testName,
+                    srcPort: dnsSrcPort,
                     reason: status === 'sinkholed' ? 'Sinkhole IP/Keyword detected' :
                         status === 'blocked' ? 'DNS Resolution failed/empty' : 'Normal resolution'
                 };
 
                 results.push(result);
-                await addTestResult('dns_security', test.testName, result, testId, undefined, runId);
+                await addTestResult('dns_security', test.testName, result, testId, {
+                    domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand
+                }, runId);
             } catch (dnsError: any) {
                 // Check if it's actually a sinkhole response masked as an error (e.g., nslookup SERVFAIL)
                 const combinedErrorOutput = ((dnsError.stdout || '') + (dnsError.stderr || '')).toLowerCase();
@@ -8226,10 +8266,13 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
                         resolved: false,
                         domain: test.domain,
                         testName: test.testName,
+                        srcPort: dnsSrcPort,
                         reason: 'Sinkhole keyword detected in error output'
                     };
                     results.push(result);
-                    await addTestResult('dns_security', test.testName, result, testId, undefined, runId);
+                    await addTestResult('dns_security', test.testName, result, testId, {
+                        domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand
+                    }, runId);
                 } else {
                     const isCommandError = dnsError.message.includes('command not found') || dnsError.message.includes('not found');
                     const result = {
@@ -8238,10 +8281,13 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
                         status: isCommandError ? 'error' : 'blocked',
                         domain: test.domain,
                         testName: test.testName,
+                        srcPort: dnsSrcPort,
                         error: dnsError.message
                     };
                     results.push(result);
-                    await addTestResult('dns_security', test.testName, result, testId, undefined, runId);
+                    await addTestResult('dns_security', test.testName, result, testId, {
+                        domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand
+                    }, runId);
                 }
             }
         } catch (e: any) {
@@ -8250,10 +8296,13 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
                 status: 'error',
                 domain: test.domain,
                 testName: test.testName,
+                srcPort: dnsSrcPort,
                 error: e.message
             };
             results.push(result);
-            await addTestResult('dns_security', test.testName, result, testId, undefined, runId);
+            await addTestResult('dns_security', test.testName, result, testId, {
+                domain: test.domain, srcPort: dnsSrcPort
+            }, runId);
         }
 
         // Add a small delay between tests to avoid triggering firewall flood protection
@@ -8294,20 +8343,23 @@ const runNslookupHelper = async (domain: string): Promise<{ output: string; reso
     }
 };
 
-const runCurlHelper = async (url: string, method = 'GET', jsonBody?: string, extraFlags = ''): Promise<{ output: string; httpCode: number; status: 'enforced' | 'bypass' | 'inconclusive' }> => {
+const runCurlHelper = async (url: string, method = 'GET', jsonBody?: string, extraFlags = ''): Promise<{ output: string; httpCode: number; srcPort: number; status: 'enforced' | 'bypass' | 'inconclusive' }> => {
     try {
         const methodFlag = method !== 'GET' ? `-X ${method}` : '';
         const bodyFlag = jsonBody ? `-H 'Content-Type: application/json' -d '${jsonBody}'` : '';
-        const cmd = `curl -s -o /dev/null -w '%{http_code}' --max-time 5 ${methodFlag} ${bodyFlag} ${extraFlags} "${url}"`;
+        const cmd = `curl -s -o /dev/null -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' --max-time 5 ${methodFlag} ${bodyFlag} ${extraFlags} "${url}"`;
         const { stdout } = await secExecPromise(cmd, { timeout: 8000 });
-        const code = parseInt(stdout.trim()) || 0;
+        const httpMatch = stdout.match(/__HTTP__:(\d+)/);
+        const portMatch = stdout.match(/__PORT__:(\d+)/);
+        const code = httpMatch ? parseInt(httpMatch[1]) : (parseInt(stdout.trim()) || 0);
+        const srcPort = portMatch ? parseInt(portMatch[1]) : 0;
         const isBlocked = code === 403 || code === 0 || code === 400;
-        return { output: `HTTP ${code}`, httpCode: code, status: isBlocked ? 'enforced' : 'bypass' };
+        return { output: `HTTP ${code}`, httpCode: code, srcPort, status: isBlocked ? 'enforced' : 'bypass' };
     } catch (e: any) {
         if (e.message?.includes('Connection refused') || e.message?.includes('reset') || e.code === 'ETIMEDOUT') {
-            return { output: e.message, httpCode: 0, status: 'enforced' };
+            return { output: e.message, httpCode: 0, srcPort: 0, status: 'enforced' };
         }
-        return { output: e.message, httpCode: 0, status: 'inconclusive' };
+        return { output: e.message, httpCode: 0, srcPort: 0, status: 'inconclusive' };
     }
 };
 
@@ -9406,21 +9458,25 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
             const curlCommand = `curl -fsS --connect-timeout 5 --max-time 20 "${ep}" -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`;
             logTest(`[THREAT-TEST-${testId}] Executing EICAR test for ${ep}: ${curlCommand}`);
 
+            const eicarPort = 54000 + (testId % 10000);
             try {
                 await execPromise(curlCommand);
-                logTest(`[THREAT-TEST-${testId}] EICAR file downloaded successfully from ${ep}`);
+                logTest(`[THREAT-TEST-${testId}] EICAR file downloaded successfully from ${ep} (Port ${eicarPort})`);
 
                 const result = {
                     success: true,
                     status: 'allowed',
                     endpoint: ep,
+                    srcPort: eicarPort,
                     message: 'EICAR file downloaded successfully (not blocked by IPS)',
                     ...(mcp_source && { mcp_source })
                 };
 
                 logTest(`[THREAT-TEST-${testId}] EICAR test result: ALLOWED`, { endpoint: ep });
                 const epLabel = testName || `EICAR Test (${ep})`;
-                await addTestResult('threat_prevention', epLabel, result, testId, undefined, runId);
+                await addTestResult('threat_prevention', epLabel, result, testId, {
+                    endpoint: ep, srcPort: eicarPort, command: curlCommand
+                }, runId);
                 results.push(result);
             } catch (curlError: any) {
                 const exitCode = curlError.code;
@@ -9441,6 +9497,7 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
                     success,
                     status,
                     endpoint: ep,
+                    srcPort: eicarPort,
                     message,
                     error: curlError.message,
                     reason: status === 'unreachable' ? 'Host unreachable or connection timeout' : 'CURL error (IPS likely dropped connection)',
@@ -9449,7 +9506,9 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
 
                 logTest(`[THREAT-TEST-${testId}] EICAR test result: ${status.toUpperCase()}`, { endpoint: ep, error: curlError.message });
                 const epLabelErr = testName || `EICAR Test (${ep})`;
-                await addTestResult('threat_prevention', epLabelErr, result, testId, undefined, runId);
+                await addTestResult('threat_prevention', epLabelErr, result, testId, {
+                    endpoint: ep, srcPort: eicarPort, error: curlError.message, command: curlCommand
+                }, runId);
                 results.push(result);
             }
         }
