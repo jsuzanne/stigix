@@ -3575,84 +3575,88 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                             </div>
                                         )}
 
-                                        {selectedTest.details.slsDiagnostic && (
-                                            <div className="mt-8 p-6 bg-slate-900/50 border border-slate-700/50 rounded-2xl relative overflow-hidden shadow-2xl">
-                                                <div className="absolute top-0 right-0 p-4 opacity-20">
-                                                    <Shield size={60} className="text-slate-400" />
-                                                </div>
-                                                <div className="flex items-center gap-3 mb-6">
-                                                    <div className="p-2 bg-blue-600/20 rounded-lg border border-blue-500/30">
-                                                        <Zap size={18} className="text-blue-500" />
+                                        {(() => {
+                                            const sls = selectedTest.details?.slsDiagnostic || selectedTest.slsDiagnostic;
+                                            if (!sls) return null;
+                                            return (
+                                                <div className="mt-8 p-6 bg-slate-900/50 border border-slate-700/50 rounded-2xl relative overflow-hidden shadow-2xl">
+                                                    <div className="absolute top-0 right-0 p-4 opacity-20">
+                                                        <Shield size={60} className="text-slate-400" />
                                                     </div>
-                                                    <div>
-                                                        <span className="text-blue-500 font-black uppercase text-[10px] tracking-widest block">Cloud Execution Context</span>
-                                                        <h4 className="text-sm font-black text-text-primary uppercase tracking-tight">Strata Logging Service (SLS)</h4>
+                                                    <div className="flex items-center gap-3 mb-6">
+                                                        <div className="p-2 bg-blue-600/20 rounded-lg border border-blue-500/30">
+                                                            <Zap size={18} className="text-blue-500" />
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-blue-500 font-black uppercase text-[10px] tracking-widest block">Cloud Execution Context</span>
+                                                            <h4 className="text-sm font-black text-text-primary uppercase tracking-tight">Strata Logging Service (SLS)</h4>
+                                                        </div>
                                                     </div>
-                                                </div>
 
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Matched Rule</span>
-                                                        <span className="text-xs font-bold text-text-primary">{selectedTest.details.slsDiagnostic.rule || 'Unknown Rule'}</span>
-                                                    </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Security Profile</span>
-                                                        <span className="text-xs font-bold text-text-primary">{selectedTest.details.slsDiagnostic.security_profile || 'None'}</span>
-                                                    </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Application ID</span>
-                                                        <span className="text-xs font-mono font-bold text-blue-500 uppercase">{selectedTest.details.slsDiagnostic.app || 'Any'}</span>
-                                                    </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">URL Category</span>
-                                                        <span className="text-xs font-bold text-text-primary uppercase">{selectedTest.details.slsDiagnostic.category || 'N/A'}</span>
-                                                    </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Device / Site</span>
-                                                        <span className="text-xs font-bold text-text-primary truncate">{selectedTest.details.slsDiagnostic.device_name || 'Unknown Device'}</span>
-                                                    </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">System (VSYS)</span>
-                                                        <span className="text-xs font-bold text-text-primary uppercase">{selectedTest.details.slsDiagnostic.vsys_name || 'N/A'}</span>
-                                                    </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50 col-span-2">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Service Provider / Origin</span>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className={twMerge(
-                                                                "text-[10px] font-black px-2 py-0.5 rounded border",
-                                                                selectedTest.details.slsDiagnostic.parent_device_group?.toLowerCase().includes('access') 
-                                                                    ? "bg-purple-600/10 text-purple-600 border-purple-500/20" 
-                                                                    : "bg-blue-600/10 text-blue-600 border-blue-500/20"
-                                                            )}>
-                                                                {selectedTest.details.slsDiagnostic.parent_device_group?.toLowerCase().includes('access') ? 'PRISMA ACCESS' : 'PRISMA SD-WAN'}
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Matched Rule</span>
+                                                            <span className="text-xs font-bold text-text-primary">{sls.rule || 'Unknown Rule'}</span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Security Profile</span>
+                                                            <span className="text-xs font-bold text-text-primary">{sls.security_profile || 'None'}</span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Application ID</span>
+                                                            <span className="text-xs font-mono font-bold text-blue-500 uppercase">{sls.app || 'Any'}</span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">URL Category / Threat</span>
+                                                            <span className="text-xs font-bold text-text-primary uppercase">{sls.threat_name || sls.category || 'N/A'}</span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Device / Site</span>
+                                                            <span className="text-xs font-bold text-text-primary truncate">{sls.device_name || 'Unknown Device'}</span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">System (VSYS)</span>
+                                                            <span className="text-xs font-bold text-text-primary uppercase">{sls.vsys_name || 'N/A'}</span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50 col-span-2">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Service Provider / Origin</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={twMerge(
+                                                                    "text-[10px] font-black px-2 py-0.5 rounded border",
+                                                                    (sls.platform_type === 'PRISMA_ACCESS' || sls.parent_device_group?.toLowerCase().includes('access')) 
+                                                                        ? "bg-purple-600/10 text-purple-600 border-purple-500/20" 
+                                                                        : "bg-blue-600/10 text-blue-600 border-blue-500/20"
+                                                                )}>
+                                                                    {sls.platform_type === 'PRISMA_ACCESS' || sls.parent_device_group?.toLowerCase().includes('access') ? 'PRISMA ACCESS' : 'PRISMA SD-WAN'}
+                                                                </span>
+                                                                <span className="text-xs font-bold text-text-primary opacity-70">
+                                                                    ({sls.parent_device_group || 'Default DG'})
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Zone Insight</span>
+                                                            <span className="text-[10px] font-bold text-text-primary uppercase flex items-center gap-2">
+                                                                {sls.source_zone || '?'}
+                                                                <ChevronRight size={12} className="text-text-muted" />
+                                                                {sls.dest_zone || '?'}
                                                             </span>
-                                                            <span className="text-xs font-bold text-text-primary opacity-70">
-                                                                ({selectedTest.details.slsDiagnostic.parent_device_group || 'Default DG'})
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Cloud Action</span>
+                                                            <span className={twMerge(
+                                                                "px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border",
+                                                                sls.action === 'allow' 
+                                                                    ? "bg-green-600/10 text-green-600 border-green-500/20" 
+                                                                    : "bg-red-600/10 text-red-600 border-red-500/20"
+                                                            )}>
+                                                                {sls.action || 'Unknown'}
                                                             </span>
                                                         </div>
                                                     </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Zone Insight</span>
-                                                        <span className="text-[10px] font-bold text-text-primary uppercase flex items-center gap-2">
-                                                            {selectedTest.details.slsDiagnostic.source_zone || '?'}
-                                                            <ChevronRight size={12} className="text-text-muted" />
-                                                            {selectedTest.details.slsDiagnostic.dest_zone || '?'}
-                                                        </span>
-                                                    </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Cloud Action</span>
-                                                        <span className={twMerge(
-                                                            "px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border",
-                                                            selectedTest.details.slsDiagnostic.action === 'allow' 
-                                                                ? "bg-green-600/10 text-green-600 border-green-500/20" 
-                                                                : "bg-red-600/10 text-red-600 border-red-500/20"
-                                                        )}>
-                                                            {selectedTest.details.slsDiagnostic.action || 'Unknown'}
-                                                        </span>
-                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             )}
