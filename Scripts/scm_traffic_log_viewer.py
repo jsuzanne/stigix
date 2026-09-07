@@ -323,22 +323,41 @@ class ScmTrafficEngine:
         verdict["all_matching_rules"] = matching_rules
         
         if resolved_platform == "PRISMA_SDWAN":
-            # Prisma SD-WAN Edge Security Policy (ION Element Local DIA Inspection)
-            winning_rule_name = "Allow LAN to DIA"
-            winning_folder = "Prisma SD-WAN"
-            profile_group = "best-practice-sdwan-demo"
-            profile_setting = {"group": ["best-practice-sdwan-demo"]}
-            attached_groups = ["best-practice-sdwan-demo"]
-            action = "ALLOW"
-            is_blocked = False
+            # Check if an explicit top-priority DROP/DENY rule matched first (e.g. Drop Google, Deny Quic)
+            explicit_drop_rule = next((r for r in matching_rules if r["action"] in ["DENY", "DROP", "RESET-CLIENT", "RESET-SERVER", "RESET-BOTH"]), None)
             
-            verdict["rule"] = winning_rule_name
-            verdict["rule_id"] = "sdwan-lan-to-dia"
-            verdict["folder"] = winning_folder
-            verdict["action"] = action
-            verdict["profile_setting"] = profile_setting
-            verdict["log_setting"] = "Cortex Data Lake"
-            verdict["shadowed_rules"] = matching_rules
+            if explicit_drop_rule:
+                winning_rule_name = explicit_drop_rule["name"]
+                winning_folder = explicit_drop_rule["folder"]
+                profile_setting = explicit_drop_rule["profile_setting"]
+                attached_groups = profile_setting.get('group', ['best-practice-sdwan-demo'])
+                profile_group = attached_groups[0] if attached_groups else "best-practice-sdwan-demo"
+                action = explicit_drop_rule["action"]
+                is_blocked = True
+                verdict["rule"] = winning_rule_name
+                verdict["rule_id"] = explicit_drop_rule.get("id", "sdwan-rule")
+                verdict["folder"] = winning_folder
+                verdict["action"] = action
+                verdict["profile_setting"] = profile_setting
+                verdict["log_setting"] = explicit_drop_rule.get("log_setting", "Cortex Data Lake")
+                verdict["shadowed_rules"] = [r for r in matching_rules if r != explicit_drop_rule]
+            else:
+                # Prisma SD-WAN Edge Security Policy (ION Element Local DIA Inspection)
+                winning_rule_name = "Allow LAN to DIA"
+                winning_folder = "Prisma SD-WAN"
+                profile_group = "best-practice-sdwan-demo"
+                profile_setting = {"group": ["best-practice-sdwan-demo"]}
+                attached_groups = ["best-practice-sdwan-demo"]
+                action = "ALLOW"
+                is_blocked = False
+                
+                verdict["rule"] = winning_rule_name
+                verdict["rule_id"] = "sdwan-lan-to-dia"
+                verdict["folder"] = winning_folder
+                verdict["action"] = action
+                verdict["profile_setting"] = profile_setting
+                verdict["log_setting"] = "Cortex Data Lake"
+                verdict["shadowed_rules"] = matching_rules
         elif matching_rules:
             first_match = matching_rules[0]
             action = first_match["action"].lower()
