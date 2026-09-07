@@ -6482,15 +6482,44 @@ async function getLatestEgressIp(): Promise<string | null> {
  * Enriches a test result with SLS diagnostics.
  */
 async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<void> {
-    const prismaCfgPath = path.join(PROJECT_ROOT, 'config', 'prisma-config.json');
-    if (!fs.existsSync(prismaCfgPath) && !process.env.PRISMA_SDWAN_CLIENT_ID) {
+    const prismaPaths = [
+        PRISMA_CONFIG_FILE,
+        path.join(APP_CONFIG.configDir, 'prisma-config.json'),
+        path.join(PROJECT_ROOT, 'config', 'prisma-config.json'),
+        '/data/stigix/config/prisma-config.json',
+        '/data/stigix/prisma-config.json',
+        '/app/config/prisma-config.json'
+    ];
+    let resolvedPrismaCfg: string | null = null;
+    for (const p of prismaPaths) {
+        if (fs.existsSync(p)) {
+            try {
+                const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+                if (raw && (raw.client_id || raw.tsg_id)) {
+                    resolvedPrismaCfg = p;
+                    break;
+                }
+            } catch {}
+        }
+    }
+
+    if (!resolvedPrismaCfg && !process.env.PRISMA_SDWAN_CLIENT_ID) {
         return;
     }
 
     try {
         const execPromise = promisify(exec);
-        const scriptPath = path.join(PROJECT_ROOT, 'Scripts', 'scm_traffic_log_viewer.py');
-        if (!fs.existsSync(scriptPath)) return;
+        const scriptCandidates = [
+            path.join(PROJECT_ROOT, 'Scripts', 'scm_traffic_log_viewer.py'),
+            path.join(__dirname, 'Scripts', 'scm_traffic_log_viewer.py'),
+            '/app/Scripts/scm_traffic_log_viewer.py',
+            path.join(PROJECT_ROOT, '..', 'Scripts', 'scm_traffic_log_viewer.py')
+        ];
+        const scriptPath = scriptCandidates.find(p => fs.existsSync(p));
+        if (!scriptPath) {
+            log('SLS', `scm_traffic_log_viewer.py not found in candidate paths, skipping SLS enrichment`, 'warn');
+            return;
+        }
 
         let dstIp = testResult.details?.resolvedIp || testResult.details?.domain || testResult.details?.url || testResult.details?.endpoint;
         let dstPort = 80;
@@ -6519,8 +6548,9 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
 
         const safeSrcIp = srcIp && srcIp !== 'auto' ? srcIp : '192.168.219.1';
         const safeDstIp = dstIp && dstIp !== 'auto' ? dstIp : '192.168.206.10';
+        const configArg = resolvedPrismaCfg ? `--config "${resolvedPrismaCfg}"` : '';
 
-        const cmd = `python3 "${scriptPath}" --json --src "${safeSrcIp}" --dst "${safeDstIp}" --dport ${dstPort} --protocol ${protocol} --app "${app}" ${threat ? `--threat "${threat}"` : ''}`;
+        const cmd = `${PYTHON_PATH} "${scriptPath}" --json --src "${safeSrcIp}" --dst "${safeDstIp}" --dport ${dstPort} --protocol ${protocol} --app "${app}" ${threat ? `--threat "${threat}"` : ''} ${configArg}`;
 
         const { stdout } = await execPromise(cmd, { timeout: 12000 });
         const scmJson = JSON.parse(stdout);
