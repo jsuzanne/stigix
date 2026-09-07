@@ -7019,6 +7019,7 @@ const runScheduledUrlTests = async () => {
 
             // Treat 404 as 'allowed' if no block page is detected (Service might be down, but network allows it)
             const status = ((httpCode >= 200 && httpCode < 400) || (httpCode === 404 && !isBlockPage)) ? 'allowed' : 'blocked';
+            const executedCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${srcPort} -w '\\n__HTTP__:%{http_code}\\n__PORT__:%{local_port}' '${category.url}'`;
 
             updateStatistics('url_filtering', status);
             await addTestResult('url_filtering', category.name, {
@@ -7030,7 +7031,7 @@ const runScheduledUrlTests = async () => {
                 category: category.name,
                 blockPageDetected: isBlockPage,
                 testPageDetected: isTestPage
-            }, testId, { url: category.url, httpCode, srcPort, command: curlCmd }, runId);
+            }, testId, { url: category.url, httpCode, srcPort, command: executedCommand }, runId);
 
             console.log(`[SECURITY-URL] [${testId}] ${status.toUpperCase()} - Category: ${category.name} | Code: ${httpCode} | Port: ${srcPort}${isBlockPage ? ' (Block Page Detected)' : ''}`);
         } catch (e: any) {
@@ -7917,6 +7918,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             }
 
             const status = (httpCode >= 200 && httpCode < 400 && !isBlockPage) || (httpCode === 404 && !isBlockPage) ? 'allowed' : 'blocked';
+            const executedCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${srcPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
 
             const result = {
                 success: status === 'allowed',
@@ -7927,7 +7929,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
                 category,
                 blockPageDetected: isBlockPage,
                 testPageDetected: isTestPage,
-                command: curlCommand,
+                command: executedCommand,
                 reason: isTestPage ? 'Legitimate Palo Alto Test Page detected' :
                     isBlockPage ? 'Security Block Page detected in response content' :
                         (status === 'allowed') ? `Allowed (HTTP ${httpCode})` : `Blocked (HTTP ${httpCode})`,
@@ -7936,7 +7938,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
 
             logTest(`[URL-TEST-${testId}] Final status: ${result.status} (HTTP ${httpCode}, Port ${srcPort})`);
             const { previousStatus, slsDiagnostic } = await addTestResult('url_filtering', category || url, result, testId, {
-                url, httpCode, srcPort, command: curlCommand, blockPageDetected: isBlockPage, testPageDetected: isTestPage
+                url, httpCode, srcPort, command: executedCommand, blockPageDetected: isBlockPage, testPageDetected: isTestPage
             });
             res.json({ ...result, previousStatus, slsDiagnostic });
         } catch (curlError: any) {
@@ -8034,6 +8036,7 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
                 const portMatch = stdout.match(/__PORT__:(\d+)/);
                 const httpCode = httpMatch ? parseInt(httpMatch[1]) : (parseInt(stdout.trim().slice(-3)) || 0);
                 const srcPort = portMatch ? parseInt(portMatch[1]) : targetPort;
+                const executedCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${srcPort} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
                 const content = stdout.replace(/__HTTP__:\d+/g, '').replace(/__PORT__:\d+/g, '').toLowerCase();
 
                 logTest(`[URL-TEST-${testId}] HTTP response code: ${httpCode} (Port: ${srcPort})`);
@@ -8079,7 +8082,7 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
                     url: test.url,
                     httpCode,
                     srcPort,
-                    command: curlCommand,
+                    command: executedCommand,
                     blockPageDetected: isBlockPage,
                     testPageDetected: isTestPage
                 }, runId);

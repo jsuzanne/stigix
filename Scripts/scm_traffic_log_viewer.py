@@ -22,6 +22,7 @@ import urllib.parse
 import urllib.error
 import ssl
 import ipaddress
+import socket
 
 def get_script_dir():
     return os.path.dirname(os.path.abspath(__file__))
@@ -68,11 +69,18 @@ def match_ip_list(ip_str, rule_ips, is_malicious=False):
         return True
     if ip_str == 'any':
         return True
+
+    resolved_ip_str = ip_str
     try:
         ip = ipaddress.ip_address(ip_str)
     except Exception:
-        return True
-        
+        try:
+            resolved_ip_str = socket.gethostbyname(ip_str)
+            ip = ipaddress.ip_address(resolved_ip_str)
+        except Exception:
+            # If hostname cannot be resolved, match only if rule allows any/all
+            return any(item in ['any', 'Worldwide Any IPv4', 'Worldwide Any IPv6'] for item in rule_ips)
+
     for item in rule_ips:
         if item in ['panw-known-ip-list', 'panw-highrisk-ip-list', 'panw-bulletproof-ip-list']:
             if is_malicious:
@@ -125,6 +133,7 @@ class ScmTrafficEngine:
         self.decryption_rules = []
         self.remote_networks = []
         self.profile_groups = {}
+        self.url_profiles = {}
         self.ctx = ssl.create_default_context()
         
     def authenticate(self):
@@ -211,6 +220,18 @@ class ScmTrafficEngine:
         except Exception:
             pass
 
+        # 5. URL Access Profiles
+        try:
+            for folder in ["Shared", "Remote+Networks"]:
+                url = f"https://api.sase.paloaltonetworks.com/sse/config/v1/url-access-profiles?folder={folder}&limit=100"
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, context=self.ctx, timeout=10) as r:
+                    data = json.loads(r.read().decode())
+                    for up in data.get('data', []):
+                        self.url_profiles[up.get('name')] = up
+        except Exception:
+            pass
+
         return True
 
     def evaluate_flow(self, src_ip="any", dst_ip="any", sport="any", dport=443, protocol="tcp", app="any",
@@ -271,6 +292,11 @@ class ScmTrafficEngine:
             if to_zone != "any" and to_zones and 'any' not in to_zones and to_zone not in to_zones and 'untrust' not in to_zones and 'trust' not in to_zones:
                 continue
                 
+            # User Matching (Skip rules requiring specific users unless matching)
+            source_users = r.get('source_user', ['any'])
+            if source_users and 'any' not in source_users:
+                continue
+
             port_match = False
             if 'any' in services or 'application-default' in services:
                 port_match = True
@@ -356,20 +382,73 @@ class ScmTrafficEngine:
                         "log_type": "THREAT LOG (DNS)",
                         "status": "🔴 SINKHOLED / BLOCKED BY DNS SECURITY"
                     }
-            # Scenario C: URL Filtering / Web policy
+            # Scenario C: URL Filtering / Web category policy
             elif category:
-                cat_lower = str(category).lower()
-                if is_blocked:
+                cat_slug = str(category).lower().strip().replace(' ', '-').replace('_', '')
+                
+                # Check attached URL access profile
+                url_prof_name = None
+                if profile_setting and 'url_filtering' in profile_setting:
+                    uf = profile_setting['url_filtering']
+                    url_prof_name = uf[0] if isinstance(uf, list) and uf else str(uf)
+                elif profile_group and profile_group in self.profile_groups:
+                    pg_data = self.profile_groups[profile_group]
+                    uf = pg_data.get('url_filtering') or pg_data.get('url_access') or pg_data.get('url_filtering_profile')
+                    if uf and isinstance(uf, list) and len(uf) > 0:
+                        url_prof_name = uf[0]
+                    elif uf and isinstance(uf, str):
+                        url_prof_name = uf
+                
+                # Lookup candidate profiles to evaluate (specific + SD-WAN / best-practice defaults)
+                candidate_profiles = []
+                if url_prof_name and url_prof_name in self.url_profiles:
+                    candidate_profiles.append(self.url_profiles[url_prof_name])
+                for fallback_name in ["best-practice-sdwan-demo", "UrlFiltering SDWAN", "CAN-CustomURL", "best-practice", "default"]:
+                    if fallback_name in self.url_profiles and self.url_profiles[fallback_name] not in candidate_profiles:
+                        candidate_profiles.append(self.url_profiles[fallback_name])
+                
+                # Check block list across active profiles
+                is_url_blocked = False
+                for prof in candidate_profiles:
+                    block_list = [str(b).lower().strip().replace(' ', '-').replace('_', '') for b in (prof.get('block') or [])]
+                    if cat_slug in block_list or any(b == cat_slug or (len(b) > 4 and (b in cat_slug or cat_slug in b)) for b in block_list):
+                        is_url_blocked = True
+                        break
+                
+                if is_blocked or is_url_blocked:
+                    threat_triggered = True
+                    threat_details = {
+                        "threat_name": f"URL Filtering Block ({category})",
+                        "threat_id": f"PAN-DB Category ({cat_slug})",
+                        "threat_type": "URL Filtering Policy",
+                        "category": category,
+                        "severity": "Medium" if cat_slug in ["government", "gambling", "games", "social-networking"] else "High",
+                        "action": "BLOCK / ACCESS DENIED",
+                        "sub_type": "url-filtering",
+                        "platform_type": resolved_platform,
+                        "pcap_available": True,
+                        "profile_group": profile_group,
+                        "wildfire_verdict": f"Blocked Category ({category})",
+                        "log_type": "URL LOG",
+                        "status": f"🔴 BLOCKED BY URL FILTERING ({category})"
+                    }
                     verdict["verdict"] = "DROP/DENY"
-                    verdict["action"] = first_match["action"]
+                    verdict["action"] = "BLOCK (URL FILTERING)"
+                    verdict["emoji"] = "🔴"
                     verdict["category"] = category
+                else:
+                    verdict["verdict"] = "ALLOW"
+                    verdict["action"] = "ALLOW"
+                    verdict["emoji"] = "🟢"
+                    verdict["category"] = category
+                    verdict["threat_info"] = None
             
             if threat_triggered and threat_details:
                 verdict["verdict"] = f"BLOCKED BY {threat_details['threat_type'].upper()}"
                 verdict["action"] = threat_details.get("action", "RESET-BOTH")
                 verdict["emoji"] = "🛑"
                 verdict["threat_info"] = threat_details
-            else:
+            elif not category:
                 verdict["verdict"] = "DROP/DENY" if is_blocked else "ALLOW"
                 verdict["emoji"] = "🔴" if is_blocked else "🟢"
                 verdict["threat_info"] = None
@@ -385,7 +464,7 @@ class ScmTrafficEngine:
                 
         # 3. Generate Multi-Event Log Records (Event Stream)
         event_count = max(1, int(limit))
-        base_time = datetime.datetime.utcnow()
+        base_time = datetime.datetime.now(datetime.timezone.utc)
         base_port = int(sport) if str(sport).isdigit() else 56400
         safe_src = src_ip if src_ip != "any" else "192.168.219.1"
         
@@ -481,7 +560,7 @@ def main():
         sys.exit(1)
         
     if not args.json:
-        print(f"✅ Synchronized with SCM: {len(engine.security_rules)} Security Rules, {len(engine.decryption_rules)} Decryption Rules, {len(engine.remote_networks)} Remote Networks.\n")
+        print(f"✅ Synchronized with SCM: {len(engine.security_rules)} Security Rules, {len(engine.decryption_rules)} Decryption Rules, {len(engine.url_profiles)} URL Profiles, {len(engine.remote_networks)} Remote Networks.\n")
         
     if args.list_rns:
         print("=== Active Remote Networks ===")
