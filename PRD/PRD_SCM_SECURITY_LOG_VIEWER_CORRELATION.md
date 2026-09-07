@@ -5,7 +5,7 @@
 - **Status**: Approved for Roadmap / Targeted for Next Sprint
 - **Target Branch**: `v2`
 - **Author**: Stigix Core Engineering & AI Architecture
-- **Date**: 2026-09-06
+- **Date**: 2026-09-07
 - **Reference Script**: [`Scripts/scm_traffic_log_viewer.py`](file:///Users/jsuzanne/Github/stigix/Scripts/scm_traffic_log_viewer.py)
 
 ---
@@ -63,18 +63,52 @@ Ce PRD introduit une **architecture à deux niveaux (Tiered Architecture)** qui 
 
 ---
 
-## 3. Contexte & Cas d'Usage
+## 3. Les 3 Modes d'Exécution Opérationnels dans Stigix
 
-### 3.1 Contexte POC (Proof of Concept)
-Dans 90% des démonstrations et validations clients (POC), le testeur Stigix est déployé sur **un site de branche** (derrière un ION Prisma SD-WAN avec passerelle vers Prisma Access) :
-- Le testeur valide l'efficacité des politiques de sécurité NGFW / SASE.
-- Le client final et l'ingénieur avant-vente demandent immédiatement la preuve dans le **Log Viewer SCM** : *"Est-ce bien Prisma SD-WAN ou Prisma Access qui a bloqué ce flux EICAR ? Quelle règle a matché ?"*.
-- Grâce au Niveau 2, Stigix fournit cette réponse instantanément dans le rapport.
+Le module de sécurité de Stigix propose 3 modalités d'exécution adaptées à la fois aux tests interactifs et aux campagnes automatisées périodiques :
 
-### 3.2 Contexte Multi-Instances (Trafic programmé en lot)
-Les instances Stigix exécutent également des batchs planifiés périodiques (ex: 30 tests toutes les 15 minutes) :
-- **Contrainte critique** : Ne pas saturer les quotas de requêtes API Palo Alto Networks (rate limiting) en évitant de faire 1 appel API par test individuel.
-- **Solution Option B (Smart Batch Correlation)** : Lancer la salve de 30 tests localement, puis effectuer **1 seul appel API de réconciliation groupée** sur la fenêtre temporelle `[T_start - T_end]`.
+```
+                                 MODES D'EXÉCUTION STIGIX SECURITY
+                                                 │
+          ┌──────────────────────────────────────┼──────────────────────────────────────┐
+          │                                      │                                      │
+          ▼                                      ▼                                      ▼
++──────────────────────────+          +──────────────────────────+          +──────────────────────────+
+|  MODE 1 : TEST UNITAIRE  |          |  MODE 2 : BATCH MANUEL   |          | MODE 3 : BATCH PLANIFIÉ  |
+|     (Clic Bouton ▶️)      |          | ("RUN SELECTED CAT.")    |          |   (Schedule ex: 60m)     |
+|                          |          |                          |          |                          |
+| • 1 seule cible testée   |          | • N catégories cochées   |          | • Exécution background   |
+| • Exécution immédiate    |          | • Exécution de la salve  |          | • Périodicité régulière  |
+| • Corrélation SCM flash  |          | • 1 SEUL appel SCM fin   |          | • 1 SEUL appel SCM fin   |
+| • Feedback UI direct     |          | • Mise à jour en masse   |          | • Enrichissement stats   |
++──────────────────────────+          +──────────────────────────+          +──────────────────────────+
+```
+
+### 3.1 Mode 1 — Exécution Unitaire Interactive (Bouton ▶️ par Tuile)
+- **Déclencheur** : L'utilisateur clique sur le bouton "Play" d'une catégorie spécifique (ex: `Abortion`, `Malware Sites`, `EICAR`).
+- **Comportement** :
+  1. Stigix lance la requête unitaire (`curl` ou `dig`).
+  2. Il interroge immédiatement SCM (ou évalue la règle en mémoire via le cache des politiques synchronisées).
+  3. La tuile s'anime et affiche directement le badge enrichi : `Blocked (PRISMA_SDWAN)` ou `Allowed (PRISMA_ACCESS)` et la règle matchée.
+- **Usage typique** : Diagnostic ponctuel, vérification rapide d'un faux positif / faux négatif.
+
+### 3.2 Mode 2 — Exécution Manuelle Multi-Sélection (Bouton "RUN SELECTED CATEGORIES")
+- **Déclencheur** : L'utilisateur sélectionne $N$ cases à cocher (ex: 11 catégories actives sur 70) et clique sur le bouton rouge **"RUN SELECTED CATEGORIES"** (ou "RUN ALL").
+- **Comportement (Smart Batch Correlation)** :
+  1. Stigix enregistre l'horodatage de départ `T_start`.
+  2. Stigix exécute la série des $N$ tests séquentiellement ou avec un pool de threads maîtrisé.
+  3. Stigix enregistre l'horodatage de fin `T_end`.
+  4. **Un seul appel API SCM** est déclenché sur la fenêtre `[T_start - T_end]` pour corréler les $N$ flux d'un coup.
+  5. Toutes les tuiles et lignes du tableau sont mises à jour simultanément.
+- **Usage typique** : Validation d'un changement de politique de sécurité en direct lors d'un POC.
+
+### 3.3 Mode 3 — Exécution Planifiée / Batch Automatique (Background Scheduler ex: `60m`)
+- **Déclencheur** : Le toggle planificateur est activé (ex: `URL Schedule: 60m`, `DNS Schedule: 15m`).
+- **Comportement** :
+  1. Le moteur d'arrière-plan de Stigix se réveille périodiquement et lance la campagne sur toutes les catégories activées.
+  2. Même mécanique d'Option B : un seul appel API post-batch par cycle.
+  3. Les résultats enrichis (verdict client + verdict SCM + plateforme) sont enregistrés dans l'historique `test_history` et alimentent les scores de conformité (`ScoreDashboard`).
+- **Usage typique** : Surveillance continue de la posture de sécurité sur un ou plusieurs sites distants, détection de dérives de politique.
 
 ---
 
@@ -85,7 +119,7 @@ Les instances Stigix exécutent également des batchs planifiés périodiques (e
 |                                    STIGIX SECURITY TEST EXECUTION                                      |
 +--------------------------------------------------------------------------------------------------------+
    |
-   | 1. Lancement du lot de tests (ex: 30 requêtes URL, 5 EICAR, 10 DNS)
+   | 1. Lancement du lot de tests (Mode 2 ou Mode 3 : ex: 30 requêtes URL, 5 EICAR, 10 DNS)
    v
 +------------------------------------+
 | STIGIX CLIENT RUNNER (T_start)     |
@@ -127,6 +161,7 @@ interface EnhancedSecurityTestResult {
     testName: string;                     // ex: "EICAR Test File Download", "Gambling URL"
     targetUrlOrIp: string;                // ex: "http://192.168.206.10/eicar.com"
     timestamp: number;                    // Horodatage UTC
+    executionMode: 'single_click' | 'manual_batch' | 'scheduled_batch';
     clientResult: {
         rawStatus: string;                // "RESET", "BLOCKED_HTTP_403", "ALLOWED_200", "SINKHOLED"
         httpCode?: number;                // 200, 403, 0
@@ -167,18 +202,25 @@ interface EnhancedSecurityTestResult {
 
 ## 6. Interface Utilisateur (Web Dashboard Stigix)
 
-### 6.1 Tableau de Résultats Enrichi (Onglet Security)
+### 6.1 Tuiles de Catégories Interactives
+Sur chaque tuile de catégorie (ex: `Abortion`, `Dynamic DNS`, `Adult Content`) :
+- **Badge de statut enrichi** :
+  - `🔴 Blocked (PRISMA_SDWAN)`
+  - `🔴 Blocked (PRISMA_ACCESS)`
+  - `🟢 Allowed (PRISMA_ACCESS)`
+- **Bouton Play unitaire (▶️)** : Déclenche le test unitaire (Mode 1) avec feedback visuel direct.
 
-Dans le tableau des tests du Dashboard ([`web-dashboard/src/Security.tsx`](file:///Users/jsuzanne/Github/stigix/web-dashboard/src/Security.tsx)) :
+### 6.2 Tableau de Résultats & Historique
+Dans le tableau récapitulatif du Dashboard ([`web-dashboard/src/Security.tsx`](file:///Users/jsuzanne/Github/stigix/web-dashboard/src/Security.tsx)) :
 
-| Horodatage | Type de Test | Cible | Constat Client (Niveau 1) | Verdict SCM (Niveau 2) | Règle SCM | Plateforme | Statut |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `21:38:37` | **Threat (EICAR)** | `192.168.206.10:80` | 🛑 `TCP Reset` | 🛑 `RESET-BOTH (Virus)` | `CAN-CustomRules` | <span style="background:#e0f2fe;color:#0369a1;padding:2px 6px;border-radius:4px;font-weight:600;">PRISMA_SDWAN</span> | ✅ **PASS** |
-| `21:38:40` | **URL (Gambling)** | `https://poker.com` | 🛑 `HTTP 403` | 🛑 `BLOCK (URL Filtering)`| `Web-Security-Default` | <span style="background:#f0fdf4;color:#15803d;padding:2px 6px;border-radius:4px;font-weight:600;">PRISMA_ACCESS</span> | ✅ **PASS** |
-| `21:38:42` | **DNS (C2)** | `malicious-c2.net` | 🛑 `Sinkhole IP` | 🛑 `SINKHOLE (DNS Sec)` | `best-practice` | <span style="background:#e0f2fe;color:#0369a1;padding:2px 6px;border-radius:4px;font-weight:600;">PRISMA_SDWAN</span> | ✅ **PASS** |
-| `21:38:45` | **HTTP (Google)** | `https://google.com` | 🟢 `HTTP 200` | 🟢 `ALLOW` | `AllowWebTraffic` | <span style="background:#f0fdf4;color:#15803d;padding:2px 6px;border-radius:4px;font-weight:600;">PRISMA_ACCESS</span> | ✅ **PASS** |
+| Horodatage | Mode | Type de Test | Cible | Constat Client | Verdict SCM | Règle SCM | Plateforme | Statut |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `21:38:37` | `Unit` | **Threat (EICAR)** | `192.168.206.10:80` | 🛑 `TCP Reset` | 🛑 `RESET-BOTH` | `CAN-CustomRules` | <span style="background:#e0f2fe;color:#0369a1;padding:2px 6px;border-radius:4px;font-weight:600;">PRISMA_SDWAN</span> | ✅ **PASS** |
+| `21:38:40` | `Batch` | **URL (Gambling)** | `https://poker.com` | 🛑 `HTTP 403` | 🛑 `BLOCK` | `Web-Security-Default` | <span style="background:#f0fdf4;color:#15803d;padding:2px 6px;border-radius:4px;font-weight:600;">PRISMA_ACCESS</span> | ✅ **PASS** |
+| `21:38:42` | `Batch` | **DNS (C2)** | `malicious-c2.net` | 🛑 `Sinkhole IP` | 🛑 `SINKHOLE` | `best-practice` | <span style="background:#e0f2fe;color:#0369a1;padding:2px 6px;border-radius:4px;font-weight:600;">PRISMA_SDWAN</span> | ✅ **PASS** |
+| `21:38:45` | `Sched` | **HTTP (Google)** | `https://google.com` | 🟢 `HTTP 200` | 🟢 `ALLOW` | `AllowWebTraffic` | <span style="background:#f0fdf4;color:#15803d;padding:2px 6px;border-radius:4px;font-weight:600;">PRISMA_ACCESS</span> | ✅ **PASS** |
 
-### 6.2 Tiroir de Détails (Drawer / Modal)
+### 6.3 Tiroir de Détails (Drawer / Modal)
 En cliquant sur une ligne, un tiroir latéral affiche la **fiche complète du Log Viewer SCM** avec :
 - Les interfaces d'entrée (`vlan.219`) et de sortie (`ethernet0/1`).
 - Le bouton de téléchargement PCAP (`⬇️ Télécharger le PCAP`).
@@ -213,7 +255,7 @@ En cliquant sur une ligne, un tiroir latéral affiche la **fiche complète du Lo
 | :--- | :--- | :--- | :--- |
 | **Phase 1** | Moteur Python autonome avec support `--json`, `--limit`, `--platform` | [`Scripts/scm_traffic_log_viewer.py`](file:///Users/jsuzanne/Github/stigix/Scripts/scm_traffic_log_viewer.py) | **Terminé ✅** |
 | **Phase 2** | Endpoint backend `/api/security/correlate-scm` et hook post-batch | [`web-dashboard/server.ts`](file:///Users/jsuzanne/Github/stigix/web-dashboard/server.ts) | Faible (1 jour) |
-| **Phase 3** | Mise à jour UI : Badges de plateforme, colonnes SCM, drawer de détails PCAP | [`web-dashboard/src/Security.tsx`](file:///Users/jsuzanne/Github/stigix/web-dashboard/src/Security.tsx) | Faible (1 jour) |
+| **Phase 3** | Mise à jour UI : Badges de plateforme sur tuiles, colonnes SCM, drawer de détails PCAP | [`web-dashboard/src/Security.tsx`](file:///Users/jsuzanne/Github/stigix/web-dashboard/src/Security.tsx) | Faible (1 jour) |
 | **Phase 4** | Intégration CLI (`stigix security-test --with-scm-check`) | [`Scripts/stigix-cli.py`](file:///Users/jsuzanne/Github/stigix/Scripts/stigix-cli.py) | Très faible (0.5 jour) |
 
 ---
