@@ -322,7 +322,24 @@ class ScmTrafficEngine:
         verdict["matched_rules_count"] = len(matching_rules)
         verdict["all_matching_rules"] = matching_rules
         
-        if matching_rules:
+        if resolved_platform == "PRISMA_SDWAN":
+            # Prisma SD-WAN Edge Security Policy (ION Element Local DIA Inspection)
+            winning_rule_name = "Allow LAN to DIA"
+            winning_folder = "Prisma SD-WAN"
+            profile_group = "best-practice-sdwan-demo"
+            profile_setting = {"group": ["best-practice-sdwan-demo"]}
+            attached_groups = ["best-practice-sdwan-demo"]
+            action = "ALLOW"
+            is_blocked = False
+            
+            verdict["rule"] = winning_rule_name
+            verdict["rule_id"] = "sdwan-lan-to-dia"
+            verdict["folder"] = winning_folder
+            verdict["action"] = action
+            verdict["profile_setting"] = profile_setting
+            verdict["log_setting"] = "Cortex Data Lake"
+            verdict["shadowed_rules"] = matching_rules
+        elif matching_rules:
             first_match = matching_rules[0]
             action = first_match["action"].lower()
             is_blocked = action in ["deny", "drop", "reset-client", "reset-server", "reset-both"]
@@ -337,121 +354,128 @@ class ScmTrafficEngine:
             verdict["profile_setting"] = profile_setting
             verdict["log_setting"] = first_match["log_setting"]
             verdict["shadowed_rules"] = matching_rules[1:]
+        else:
+            action = "ALLOW"
+            is_blocked = False
+            profile_setting = {"group": ["best-practice"]}
+            attached_groups = ["best-practice"]
+            profile_group = "best-practice"
+            verdict["shadowed_rules"] = []
+
+        threat_triggered = False
+        threat_details = None
+        
+        # Scenario A: Explicit Threat Test (EICAR / Virus / Malware payload)
+        if threat:
+            threat_lower = str(threat).lower()
+            if attached_groups or 'virus_and_wildfire_analysis' in profile_setting or 'best-practice' in str(profile_setting):
+                threat_triggered = True
+                threat_details = {
+                    "threat_name": "EICAR Standard Anti-Virus Test File" if "eicar" in threat_lower else f"Threat / Signature ({threat})",
+                    "threat_id": "6000 (Virus/Win32.Worm.Eicar.1)" if "eicar" in threat_lower else "PAN-OS Threat ID",
+                    "threat_type": "Virus / WildFire Malware",
+                    "category": category or "virus",
+                    "severity": "High",
+                    "action": "RESET-BOTH / BLOCK",
+                    "sub_type": "virus",
+                    "platform_type": resolved_platform,
+                    "pcap_available": True,
+                    "profile_group": profile_group,
+                    "wildfire_verdict": "Malicious (Signature Match)",
+                    "log_type": "THREAT LOG",
+                    "status": "🔴 BLOCKED & LOGGED TO CORTEX DATA LAKE"
+                }
+        # Scenario B: DNS Security query (DNS query on port 53)
+        elif app == "dns" or dport_num == 53 or protocol == "udp":
+            cat_lower = str(category or "").lower()
+            is_dns_threat = any(k in cat_lower for k in ["phishing", "malware", "c2", "ransomware", "spyware", "ddns", "tunneling"]) or "testpanw.com" in str(dst_ip).lower() or "panw.com" in str(dst_ip).lower()
+            if is_dns_threat or is_blocked:
+                threat_triggered = True
+                threat_details = {
+                    "threat_name": f"Palo Alto DNS Security ({category or 'Malicious Domain'})",
+                    "threat_id": "DNS Security (Unit 42 Threat Intelligence)",
+                    "threat_type": "DNS Security / Anti-Spyware",
+                    "category": category or "dns-security",
+                    "severity": "High",
+                    "action": "BLOCK / SINKHOLE",
+                    "sub_type": "dns",
+                    "platform_type": resolved_platform,
+                    "pcap_available": False,
+                    "profile_group": profile_group,
+                    "wildfire_verdict": "Malicious FQDN (Palo Alto Cloud Intelligence)",
+                    "log_type": "THREAT LOG (DNS)",
+                    "status": "🔴 SINKHOLED / BLOCKED BY DNS SECURITY"
+                }
+        # Scenario C: URL Filtering / Web category policy
+        elif category:
+            cat_slug = str(category).lower().strip().replace(' ', '-').replace('_', '')
             
-            threat_triggered = False
-            threat_details = None
+            # Check attached URL access profile
+            url_prof_name = None
+            if profile_setting and 'url_filtering' in profile_setting:
+                uf = profile_setting['url_filtering']
+                url_prof_name = uf[0] if isinstance(uf, list) and uf else str(uf)
+            elif profile_group and profile_group in self.profile_groups:
+                pg_data = self.profile_groups[profile_group]
+                uf = pg_data.get('url_filtering') or pg_data.get('url_access') or pg_data.get('url_filtering_profile')
+                if uf and isinstance(uf, list) and len(uf) > 0:
+                    url_prof_name = uf[0]
+                elif uf and isinstance(uf, str):
+                    url_prof_name = uf
             
-            # Scenario A: Explicit Threat Test (EICAR / Virus / Malware payload)
-            if threat:
-                threat_lower = str(threat).lower()
-                if attached_groups or 'virus_and_wildfire_analysis' in profile_setting or 'best-practice' in str(profile_setting):
-                    threat_triggered = True
-                    threat_details = {
-                        "threat_name": "EICAR Standard Anti-Virus Test File" if "eicar" in threat_lower else f"Threat / Signature ({threat})",
-                        "threat_id": "6000 (Virus/Win32.Worm.Eicar.1)" if "eicar" in threat_lower else "PAN-OS Threat ID",
-                        "threat_type": "Virus / WildFire Malware",
-                        "category": category or "virus",
-                        "severity": "High",
-                        "action": "RESET-BOTH / BLOCK",
-                        "sub_type": "virus",
-                        "platform_type": resolved_platform,
-                        "pcap_available": True,
-                        "profile_group": profile_group,
-                        "wildfire_verdict": "Malicious (Signature Match)",
-                        "log_type": "THREAT LOG",
-                        "status": "🔴 BLOCKED & LOGGED TO CORTEX DATA LAKE"
-                    }
-            # Scenario B: DNS Security query (DNS query on port 53)
-            elif app == "dns" or dport_num == 53 or protocol == "udp":
-                cat_lower = str(category or "").lower()
-                is_dns_threat = any(k in cat_lower for k in ["phishing", "malware", "c2", "ransomware", "spyware", "ddns", "tunneling"]) or "testpanw.com" in str(dst_ip).lower() or "panw.com" in str(dst_ip).lower()
-                if is_dns_threat or is_blocked:
-                    threat_triggered = True
-                    threat_details = {
-                        "threat_name": f"Palo Alto DNS Security ({category or 'Malicious Domain'})",
-                        "threat_id": "DNS Security (Unit 42 Threat Intelligence)",
-                        "threat_type": "DNS Security / Anti-Spyware",
-                        "category": category or "dns-security",
-                        "severity": "High",
-                        "action": "BLOCK / SINKHOLE",
-                        "sub_type": "dns",
-                        "platform_type": resolved_platform,
-                        "pcap_available": False,
-                        "profile_group": profile_group,
-                        "wildfire_verdict": "Malicious FQDN (Palo Alto Cloud Intelligence)",
-                        "log_type": "THREAT LOG (DNS)",
-                        "status": "🔴 SINKHOLED / BLOCKED BY DNS SECURITY"
-                    }
-            # Scenario C: URL Filtering / Web category policy
-            elif category:
-                cat_slug = str(category).lower().strip().replace(' ', '-').replace('_', '')
-                
-                # Check attached URL access profile
-                url_prof_name = None
-                if profile_setting and 'url_filtering' in profile_setting:
-                    uf = profile_setting['url_filtering']
-                    url_prof_name = uf[0] if isinstance(uf, list) and uf else str(uf)
-                elif profile_group and profile_group in self.profile_groups:
-                    pg_data = self.profile_groups[profile_group]
-                    uf = pg_data.get('url_filtering') or pg_data.get('url_access') or pg_data.get('url_filtering_profile')
-                    if uf and isinstance(uf, list) and len(uf) > 0:
-                        url_prof_name = uf[0]
-                    elif uf and isinstance(uf, str):
-                        url_prof_name = uf
-                
-                # Lookup candidate profiles to evaluate (specific + SD-WAN / best-practice defaults)
-                candidate_profiles = []
-                if url_prof_name and url_prof_name in self.url_profiles:
-                    candidate_profiles.append(self.url_profiles[url_prof_name])
-                for fallback_name in ["best-practice-sdwan-demo", "UrlFiltering SDWAN", "CAN-CustomURL", "best-practice", "default"]:
-                    if fallback_name in self.url_profiles and self.url_profiles[fallback_name] not in candidate_profiles:
-                        candidate_profiles.append(self.url_profiles[fallback_name])
-                
-                # Check block list across active profiles
-                is_url_blocked = False
-                for prof in candidate_profiles:
-                    block_list = [str(b).lower().strip().replace(' ', '-').replace('_', '') for b in (prof.get('block') or [])]
-                    if cat_slug in block_list or any(b == cat_slug or (len(b) > 4 and (b in cat_slug or cat_slug in b)) for b in block_list):
-                        is_url_blocked = True
-                        break
-                
-                if is_blocked or is_url_blocked:
-                    threat_triggered = True
-                    threat_details = {
-                        "threat_name": f"URL Filtering Block ({category})",
-                        "threat_id": f"PAN-DB Category ({cat_slug})",
-                        "threat_type": "URL Filtering Policy",
-                        "category": category,
-                        "severity": "Medium" if cat_slug in ["government", "gambling", "games", "social-networking"] else "High",
-                        "action": "BLOCK / ACCESS DENIED",
-                        "sub_type": "url-filtering",
-                        "platform_type": resolved_platform,
-                        "pcap_available": True,
-                        "profile_group": profile_group,
-                        "wildfire_verdict": f"Blocked Category ({category})",
-                        "log_type": "URL LOG",
-                        "status": f"🔴 BLOCKED BY URL FILTERING ({category})"
-                    }
-                    verdict["verdict"] = "DROP/DENY"
-                    verdict["action"] = "BLOCK (URL FILTERING)"
-                    verdict["emoji"] = "🔴"
-                    verdict["category"] = category
-                else:
-                    verdict["verdict"] = "ALLOW"
-                    verdict["action"] = "ALLOW"
-                    verdict["emoji"] = "🟢"
-                    verdict["category"] = category
-                    verdict["threat_info"] = None
+            # Lookup candidate profiles to evaluate (specific + SD-WAN / best-practice defaults)
+            candidate_profiles = []
+            if url_prof_name and url_prof_name in self.url_profiles:
+                candidate_profiles.append(self.url_profiles[url_prof_name])
+            for fallback_name in ["best-practice-sdwan-demo", "UrlFiltering SDWAN", "CAN-CustomURL", "best-practice", "default"]:
+                if fallback_name in self.url_profiles and self.url_profiles[fallback_name] not in candidate_profiles:
+                    candidate_profiles.append(self.url_profiles[fallback_name])
             
-            if threat_triggered and threat_details:
-                verdict["verdict"] = f"BLOCKED BY {threat_details['threat_type'].upper()}"
-                verdict["action"] = threat_details.get("action", "RESET-BOTH")
-                verdict["emoji"] = "🛑"
-                verdict["threat_info"] = threat_details
-            elif not category:
-                verdict["verdict"] = "DROP/DENY" if is_blocked else "ALLOW"
-                verdict["emoji"] = "🔴" if is_blocked else "🟢"
+            # Check block list across active profiles
+            is_url_blocked = False
+            for prof in candidate_profiles:
+                block_list = [str(b).lower().strip().replace(' ', '-').replace('_', '') for b in (prof.get('block') or [])]
+                if cat_slug in block_list or any(b == cat_slug or (len(b) > 4 and (b in cat_slug or cat_slug in b)) for b in block_list):
+                    is_url_blocked = True
+                    break
+            
+            if is_blocked or is_url_blocked:
+                threat_triggered = True
+                threat_details = {
+                    "threat_name": f"URL Filtering Block ({category})",
+                    "threat_id": f"PAN-DB Category ({cat_slug})",
+                    "threat_type": "URL Filtering Policy",
+                    "category": category,
+                    "severity": "Medium" if cat_slug in ["government", "gambling", "games", "social-networking"] else "High",
+                    "action": "BLOCK / ACCESS DENIED",
+                    "sub_type": "url-filtering",
+                    "platform_type": resolved_platform,
+                    "pcap_available": True,
+                    "profile_group": profile_group,
+                    "wildfire_verdict": f"Blocked Category ({category})",
+                    "log_type": "URL LOG",
+                    "status": f"🔴 BLOCKED BY URL FILTERING ({category})"
+                }
+                verdict["verdict"] = "DROP/DENY"
+                verdict["action"] = "BLOCK (URL FILTERING)"
+                verdict["emoji"] = "🔴"
+                verdict["category"] = category
+            else:
+                verdict["verdict"] = "ALLOW"
+                verdict["action"] = "ALLOW"
+                verdict["emoji"] = "🟢"
+                verdict["category"] = category
                 verdict["threat_info"] = None
+        
+        if threat_triggered and threat_details:
+            verdict["verdict"] = f"BLOCKED BY {threat_details['threat_type'].upper()}"
+            verdict["action"] = threat_details.get("action", "RESET-BOTH")
+            verdict["emoji"] = "🛑"
+            verdict["threat_info"] = threat_details
+        elif not category:
+            verdict["verdict"] = "DROP/DENY" if is_blocked else "ALLOW"
+            verdict["emoji"] = "🔴" if is_blocked else "🟢"
+            verdict["threat_info"] = None
 
         # 2. Check Decryption Rules
         for d in self.decryption_rules:
