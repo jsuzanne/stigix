@@ -330,8 +330,8 @@ class ScmTrafficEngine:
                 winning_rule_name = explicit_drop_rule["name"]
                 winning_folder = explicit_drop_rule["folder"]
                 profile_setting = explicit_drop_rule["profile_setting"]
-                attached_groups = profile_setting.get('group', ['best-practice-sdwan-demo'])
-                profile_group = attached_groups[0] if attached_groups else "best-practice-sdwan-demo"
+                attached_groups = profile_setting.get('group', ['best-practice'])
+                profile_group = attached_groups[0] if attached_groups else "best-practice"
                 action = explicit_drop_rule["action"]
                 is_blocked = True
                 verdict["rule"] = winning_rule_name
@@ -345,9 +345,9 @@ class ScmTrafficEngine:
                 # Prisma SD-WAN Edge Security Policy (ION Element Local DIA Inspection)
                 winning_rule_name = "Allow LAN to DIA"
                 winning_folder = "Prisma SD-WAN"
-                profile_group = "best-practice-sdwan-demo"
-                profile_setting = {"group": ["best-practice-sdwan-demo"]}
-                attached_groups = ["best-practice-sdwan-demo"]
+                profile_group = "best-practice"
+                profile_setting = {"group": ["best-practice"]}
+                attached_groups = ["best-practice"]
                 action = "ALLOW"
                 is_blocked = False
                 
@@ -429,7 +429,7 @@ class ScmTrafficEngine:
         elif category:
             cat_slug = str(category).lower().strip().replace(' ', '-').replace('_', '')
             
-            # Check attached URL access profile
+            # Check attached URL access profile from rule's profile group
             url_prof_name = None
             if profile_setting and 'url_filtering' in profile_setting:
                 uf = profile_setting['url_filtering']
@@ -442,21 +442,23 @@ class ScmTrafficEngine:
                 elif uf and isinstance(uf, str):
                     url_prof_name = uf
             
-            # Lookup candidate profiles to evaluate (specific + SD-WAN / best-practice defaults)
-            candidate_profiles = []
+            # Resolve the single exact active URL profile
+            active_url_profile = None
             if url_prof_name and url_prof_name in self.url_profiles:
-                candidate_profiles.append(self.url_profiles[url_prof_name])
-            for fallback_name in ["best-practice-sdwan-demo", "UrlFiltering SDWAN", "CAN-CustomURL", "best-practice", "default"]:
-                if fallback_name in self.url_profiles and self.url_profiles[fallback_name] not in candidate_profiles:
-                    candidate_profiles.append(self.url_profiles[fallback_name])
+                active_url_profile = self.url_profiles[url_prof_name]
+            elif "best-practice" in self.url_profiles:
+                active_url_profile = self.url_profiles["best-practice"]
+            elif "CAN-CustomURL" in self.url_profiles:
+                active_url_profile = self.url_profiles["CAN-CustomURL"]
+            elif "default" in self.url_profiles:
+                active_url_profile = self.url_profiles["default"]
             
-            # Check block list across active profiles
+            # Check block list of the single active profile
             is_url_blocked = False
-            for prof in candidate_profiles:
-                block_list = [str(b).lower().strip().replace(' ', '-').replace('_', '') for b in (prof.get('block') or [])]
+            if active_url_profile:
+                block_list = [str(b).lower().strip().replace(' ', '-').replace('_', '') for b in (active_url_profile.get('block') or [])]
                 if cat_slug in block_list or any(b == cat_slug or (len(b) > 4 and (b in cat_slug or cat_slug in b)) for b in block_list):
                     is_url_blocked = True
-                    break
             
             if is_blocked or is_url_blocked:
                 threat_triggered = True
