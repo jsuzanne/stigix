@@ -1142,6 +1142,49 @@ const getInterface = (): string => {
 };
 
 /**
+ * Resolves the primary traffic generator egress interface, IPv4 address, and binding flags.
+ */
+const getEgressConfig = (): { iface: string; ip: string; ifaceFlag: string } => {
+    let iface = getInterface();
+    let ip = '192.168.219.1';
+
+    try {
+        const nets = os.networkInterfaces();
+        let foundInConfigured = false;
+        if (iface && nets[iface]) {
+            for (const net of nets[iface] || []) {
+                if (net.family === 'IPv4' && !net.internal) {
+                    ip = net.address;
+                    foundInConfigured = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!foundInConfigured || !ip.startsWith('192.168.219.')) {
+            for (const name of Object.keys(nets)) {
+                for (const net of nets[name] || []) {
+                    if (net.family === 'IPv4' && !net.internal && net.address.startsWith('192.168.219.')) {
+                        iface = name;
+                        ip = net.address;
+                        break;
+                    }
+                }
+                if (ip.startsWith('192.168.219.')) break;
+            }
+        }
+    } catch (e) {}
+
+    if (process.env.STIGIX_IP && process.env.STIGIX_IP !== 'auto') {
+        ip = process.env.STIGIX_IP;
+    }
+
+    const ifaceFlag = (iface && !iface.startsWith('lo')) ? `--interface ${iface}` : (ip && ip !== '127.0.0.1' ? `--interface ${ip}` : '');
+
+    return { iface, ip, ifaceFlag };
+};
+
+/**
  * MIGRATION: Consolidate Voice legacy files into voice-config.json
  */
 const migrateVoiceConfig = () => {
@@ -1804,10 +1847,11 @@ const startIperfServer = () => {
 
 // Get the best DNS command for the current platform
 // For security tests, we prefer tools that bypass OS caching and provide more detail (nslookup/dig)
-const getDnsCommand = (domain: string, srcPort?: number): { command: string; type: string; port?: number } => {
-    // Priority 1: dig if available (supports deterministic pre-NAT source port binding via -b 0.0.0.0#<port>)
+const getDnsCommand = (domain: string, srcPort?: number, bindIp?: string): { command: string; type: string; port?: number } => {
+    const bindAddr = bindIp && bindIp !== 'auto' ? bindIp : '0.0.0.0';
+    // Priority 1: dig if available (supports deterministic pre-NAT source port and source IP binding via -b <ip>#<port>)
     if (availableCommands.dig) {
-        const bindFlag = srcPort ? `-b 0.0.0.0#${srcPort} ` : '';
+        const bindFlag = srcPort ? `-b ${bindAddr}#${srcPort} ` : (bindIp && bindIp !== '0.0.0.0' ? `-b ${bindAddr} ` : '');
         return { command: `dig ${bindFlag}${domain} +short +time=2 +tries=1`, type: 'dig', port: srcPort };
     }
 
@@ -6463,7 +6507,13 @@ async function getLatestEgressIp(): Promise<string | null> {
         return process.env.STIGIX_IP;
     }
 
-    // 2. Check if we already have it from a recent cloud probe
+    // 2. Check primary traffic generator egress interface / IP from getEgressConfig()
+    const egressCfg = getEgressConfig();
+    if (egressCfg.ip && egressCfg.ip !== '127.0.0.1' && !egressCfg.ip.startsWith('127.')) {
+        return egressCfg.ip;
+    }
+
+    // 3. Check if we already have it from a recent cloud probe
     try {
         const connectivityFile = path.join(APP_CONFIG.configDir, 'connectivity.json');
         if (fs.existsSync(connectivityFile)) {
@@ -6473,7 +6523,7 @@ async function getLatestEgressIp(): Promise<string | null> {
         }
     } catch (e) { }
 
-    // 3. Fallback: Local IPv4 from network interfaces
+    // 4. Fallback: Local IPv4 from network interfaces
     try {
         const nets = os.networkInterfaces();
         for (const name of Object.keys(nets)) {
@@ -6485,13 +6535,13 @@ async function getLatestEgressIp(): Promise<string | null> {
         }
     } catch (e) {}
 
-    // 4. Fallback: Quick external check
+    // 5. Fallback: Quick external check
     try {
         const res = await fetch('https://ifconfig.me/ip', { signal: AbortSignal.timeout(2000) });
         if (res.ok) return (await res.text()).trim();
     } catch (e) { }
 
-    return null;
+    return '192.168.219.1';
 }
 
 /**
@@ -6566,7 +6616,8 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
             } catch (e) {}
         }
 
-        const safeSrcIp = srcIp && srcIp !== 'auto' ? srcIp : '192.168.219.1';
+        const egress = getEgressConfig();
+        const safeSrcIp = (srcIp && srcIp !== 'auto') ? srcIp : (egress.ip || '192.168.219.1');
         const safeDstIp = dstIp && dstIp !== 'auto' ? dstIp : '192.168.206.10';
         let srcPort = testResult.details?.srcPort || testResult.details?.source_port || testResult.srcPort;
         if (!srcPort || srcPort === 0) {
@@ -6898,6 +6949,7 @@ const runScheduledUrlTests = async () => {
 
     const execPromise = promisify(exec);
     const runId = `sched-url-${Date.now()}`;
+    const { ifaceFlag } = getEgressConfig();
 
     for (const categoryId of config.url_filtering.enabled_categories) {
         const category = URL_CATEGORIES.find((c: any) => c.id === categoryId);
@@ -6905,7 +6957,7 @@ const runScheduledUrlTests = async () => {
 
         try {
             // Capture HTTP code and content for keyword detection (Removed -f to allow 404 handling)
-            const { stdout, stderr } = await execPromise(`curl -sSL --max-time 10 -w '%{http_code}' '${category.url}'`);
+            const { stdout, stderr } = await execPromise(`curl -sSL --max-time 10 ${ifaceFlag} -w '%{http_code}' '${category.url}'`);
 
             const httpCode = parseInt(stdout.slice(-3));
             const content = stdout.slice(0, -3).toLowerCase();
@@ -6958,13 +7010,14 @@ const runScheduledDnsTests = async () => {
 
     const execPromise = promisify(exec);
     const runId = `sched-dns-${Date.now()}`;
+    const egress = getEgressConfig();
 
     for (const testId of config.dns_security.enabled_tests) {
         const test = DNS_TEST_DOMAINS.find((t: any) => t.id === testId);
         if (!test) continue;
 
         try {
-            const { command: dnsCommand, type: commandType } = getDnsCommand(test.domain);
+            const { command: dnsCommand, type: commandType } = getDnsCommand(test.domain, undefined, egress.ip);
             const { stdout, stderr } = await execPromise(dnsCommand);
 
             const combinedOutput = (stdout + stderr).toLowerCase();
@@ -7040,10 +7093,11 @@ const runScheduledThreatTests = async () => {
     const execPromise = promisify(exec);
     const endpoints = config.threat_prevention.eicar_endpoints || [config.threat_prevention.eicar_endpoint];
     const runId = `scheduled-threat-${Date.now()}`;
+    const { ifaceFlag } = getEgressConfig();
 
     for (const endpoint of endpoints) {
         if (!endpoint) continue;
-        const curlCmd = `curl -fsS --connect-timeout 5 --max-time 20 -w "\\nHTTP_CODE:%{http_code} SIZE:%{size_download}" "${endpoint}" -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`;
+        const curlCmd = `curl -fsS --connect-timeout 5 --max-time 20 ${ifaceFlag} -w "\\nHTTP_CODE:%{http_code} SIZE:%{size_download}" "${endpoint}" -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`;
         try {
             const { stdout: curlOut } = await execPromise(curlCmd);
             // Parse -w output: last line is "HTTP_CODE:200 SIZE:68"
@@ -7056,7 +7110,7 @@ const runScheduledThreatTests = async () => {
                 status: 'allowed',
                 endpoint,
                 url: endpoint,
-                command: `curl -fsS --connect-timeout 5 --max-time 20 "${endpoint}" -o /tmp/eicar.com.txt`,
+                command: `curl -fsS --connect-timeout 5 --max-time 20 ${ifaceFlag} "${endpoint}" -o /tmp/eicar.com.txt`,
                 http_code: httpCode,
                 output: `HTTP ${httpCode} — ${sizeBytes} bytes downloaded (EICAR file reached the host — IPS/AV did NOT block it)`,
                 reason: `EICAR test file was downloaded successfully (HTTP ${httpCode}, ${sizeBytes} bytes). The IPS/AV profile did not intercept this request. Verify your Threat Prevention profile is applied to the correct security policy.`,
@@ -7069,8 +7123,8 @@ const runScheduledThreatTests = async () => {
                 status: 'blocked',
                 endpoint,
                 url: endpoint,
-                command: `curl -fsS --connect-timeout 5 --max-time 20 "${endpoint}" -o /tmp/eicar.com.txt`,
-                error: `Command failed: curl -fsS --connect-timeout 5 --max-time 20 "${endpoint}" -o /tmp/eicar.com.txt\n${errMsg}`,
+                command: `curl -fsS --connect-timeout 5 --max-time 20 ${ifaceFlag} "${endpoint}" -o /tmp/eicar.com.txt`,
+                error: `Command failed: curl -fsS --connect-timeout 5 --max-time 20 ${ifaceFlag} "${endpoint}" -o /tmp/eicar.com.txt\n${errMsg}`,
                 reason: 'CURL error (IPS likely dropped connection)',
             }, getNextTestId(), undefined, runId);
         }
@@ -7775,7 +7829,8 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             return res.json({ ...result, previousStatus });
         }
 
-        const curlCommand = `curl -sSL --max-time 10 -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
+        const { ifaceFlag } = getEgressConfig();
+        const curlCommand = `curl -sSL --max-time 10 ${ifaceFlag} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
         logTest(`[URL-TEST-${testId}] Executing URL test for ${url} (${category || 'Uncategorized'}): ${curlCommand}`);
 
         try {
@@ -7831,7 +7886,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             // Parse curl exit code for precise error classification
             const exitCode = parseCurlExitCode(curlError.message);
             const errInfo = getCurlErrorInfo(exitCode, curlError.message);
-            const curlCmd = `curl -sSL --max-time 10 -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
+            const curlCmd = `curl -sSL --max-time 10 ${ifaceFlag} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${url}'`;
             const fallbackPort = 54000 + (testId % 10000);
 
             const result = {
@@ -7873,6 +7928,7 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
 
     const runId = `manual-url-${Date.now()}`;
     const results = [];
+    const { ifaceFlag } = getEgressConfig();
 
     logTest(`[URL-BATCH-${runId}] Starting batch URL filtering test with ${tests.length} tests`);
 
@@ -7910,7 +7966,7 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
                 continue;
             }
 
-            const curlCommand = `curl -sSL --max-time 10 -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
+            const curlCommand = `curl -sSL --max-time 10 ${ifaceFlag} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
             logTest(`[URL-TEST-${testId}] Executing URL test for ${test.url} (${test.category}): ${curlCommand}`);
 
             try {
@@ -7972,7 +8028,7 @@ app.post('/api/security/url-test-batch', authenticateToken, async (req, res) => 
             } catch (curlError: any) {
                 const exitCode = parseCurlExitCode(curlError.message);
                 const errInfo = getCurlErrorInfo(exitCode, curlError.message);
-                const curlCmd = `curl -sSL --max-time 10 -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
+                const curlCmd = `curl -sSL --max-time 10 ${ifaceFlag} -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${test.url}'`;
                 const fallbackPort = 54000 + (testId % 10000);
 
                 logTest(`[URL-TEST-${testId}] Final status: ${errInfo.status} (curl exit ${exitCode} — ${errInfo.errorType})`);
@@ -8045,9 +8101,10 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
         // util.promisify already imported as promisify
         const execPromise = promisify(exec);
 
+        const egress = getEgressConfig();
         const dnsSrcPort = 53000 + (testId % 10000);
-        // Get platform-specific DNS command with source port binding
-        const { command: dnsCommand, type: commandType } = getDnsCommand(domain, dnsSrcPort);
+        // Get platform-specific DNS command with source port and source IP binding
+        const { command: dnsCommand, type: commandType } = getDnsCommand(domain, dnsSrcPort, egress.ip);
         logTest(`[DNS-TEST-${testId}] Executing DNS test for ${domain} (${testName || 'Custom Test'}, Port ${dnsSrcPort}): ${dnsCommand}`);
 
         // Helper function to wait
@@ -8188,6 +8245,7 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
 
     const results = [];
     const runId = `manual-dns-${Date.now()}`;
+    const egress = getEgressConfig();
 
     // Helper function to wait
     const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -8207,7 +8265,7 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
             const execPromise = promisify(exec);
 
             // Get platform-specific DNS command
-            const { command: dnsCommand, type: commandType } = getDnsCommand(test.domain, dnsSrcPort);
+            const { command: dnsCommand, type: commandType } = getDnsCommand(test.domain, dnsSrcPort, egress.ip);
 
             try {
                 // First attempt
@@ -8345,9 +8403,10 @@ const runNslookupHelper = async (domain: string): Promise<{ output: string; reso
 
 const runCurlHelper = async (url: string, method = 'GET', jsonBody?: string, extraFlags = ''): Promise<{ output: string; httpCode: number; srcPort: number; status: 'enforced' | 'bypass' | 'inconclusive' }> => {
     try {
+        const { ifaceFlag } = getEgressConfig();
         const methodFlag = method !== 'GET' ? `-X ${method}` : '';
         const bodyFlag = jsonBody ? `-H 'Content-Type: application/json' -d '${jsonBody}'` : '';
-        const cmd = `curl -s -o /dev/null -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' --max-time 5 ${methodFlag} ${bodyFlag} ${extraFlags} "${url}"`;
+        const cmd = `curl -s -o /dev/null -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' --max-time 5 ${ifaceFlag} ${methodFlag} ${bodyFlag} ${extraFlags} "${url}"`;
         const { stdout } = await secExecPromise(cmd, { timeout: 8000 });
         const httpMatch = stdout.match(/__HTTP__:(\d+)/);
         const portMatch = stdout.match(/__PORT__:(\d+)/);
@@ -9455,7 +9514,8 @@ app.post('/api/security/threat-test', authenticateToken, async (req, res) => {
                 logTest(`[THREAT-TEST-${testId}] ${hostname} is unreachable via ping`);
             }
 
-            const curlCommand = `curl -fsS --connect-timeout 5 --max-time 20 "${ep}" -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`;
+            const { ifaceFlag } = getEgressConfig();
+            const curlCommand = `curl -fsS --connect-timeout 5 --max-time 20 ${ifaceFlag} "${ep}" -o /tmp/eicar.com.txt && rm -f /tmp/eicar.com.txt`;
             logTest(`[THREAT-TEST-${testId}] Executing EICAR test for ${ep}: ${curlCommand}`);
 
             const eicarPort = 54000 + (testId % 10000);

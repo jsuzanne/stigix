@@ -3578,10 +3578,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         {(() => {
                                             const sls = selectedTest.details?.slsDiagnostic || selectedTest.slsDiagnostic;
                                             if (!sls) return null;
-                                            const scmPortFilter = sls.scm_search_filter_port || (sls.src_port ? `Source Address = '${sls.src_ip || '192.168.219.1'}/32' AND Source Port = ${sls.src_port}` : null);
-                                            const scmSessionFilter = sls.scm_search_filter_session || (sls.session_id ? `Source Address = '${sls.src_ip || '192.168.219.1'}/32' AND Session ID = ${sls.session_id}` : null);
-                                            const scmExactFilter = sls.scm_search_filter_exact || (sls.src_port && sls.session_id ? `Source Address = '${sls.src_ip || '192.168.219.1'}/32' AND Source Port = ${sls.src_port} AND Session ID = ${sls.session_id}` : null);
-                                            const activeFilterStr = sls.scm_search_filter || scmPortFilter || scmSessionFilter;
+                                            const scmQuery = sls.scm_search_filter_port || (sls.src_port ? `Source Address = '${sls.src_ip || '192.168.219.1'}/32' AND Source Port = ${sls.src_port}` : `Source Address = '${sls.src_ip || '192.168.219.1'}/32'`);
 
                                             return (
                                                 <div className="mt-8 p-6 bg-slate-900/50 border border-slate-700/50 rounded-2xl relative overflow-hidden shadow-2xl">
@@ -3594,83 +3591,44 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                                 <Zap size={18} className="text-blue-500" />
                                                             </div>
                                                             <div>
-                                                                <span className="text-blue-500 font-black uppercase text-[10px] tracking-widest block">Cloud Execution Context</span>
-                                                                <h4 className="text-sm font-black text-text-primary uppercase tracking-tight">Strata Logging Service (SLS)</h4>
+                                                                <span className="text-blue-500 font-black uppercase text-[10px] tracking-widest block">Cloud Policy Evaluation</span>
+                                                                <h4 className="text-sm font-black text-text-primary uppercase tracking-tight">Strata Cloud Manager (SCM) Policy Evaluation</h4>
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-2">
                                                             {sls.src_port && (
-                                                                <span className="text-[10px] font-mono font-black bg-purple-950/80 text-purple-300 border border-purple-500/40 px-2 py-1 rounded-lg shadow-sm">
+                                                                <span className="text-[10px] font-mono font-black bg-purple-950/80 text-purple-300 border border-purple-500/40 px-2.5 py-1 rounded-lg shadow-sm">
                                                                     PORT #{sls.src_port}
-                                                                </span>
-                                                            )}
-                                                            {sls.session_id && (
-                                                                <span className="text-[10px] font-mono font-black bg-blue-950/80 text-blue-400 border border-blue-500/40 px-2.5 py-1 rounded-lg shadow-sm">
-                                                                    SESSION #{sls.session_id}
                                                                 </span>
                                                             )}
                                                         </div>
                                                     </div>
 
                                                     {/* SCM Log Viewer 1-Click Verification Query Bar */}
-                                                    {activeFilterStr && (
-                                                        <div className="mb-5 p-3.5 bg-blue-950/40 border border-blue-500/30 rounded-xl space-y-2.5">
-                                                            <div className="flex items-center justify-between gap-2">
-                                                                <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1.5">
-                                                                    <span>Log Viewer Exact Query:</span>
-                                                                </span>
-                                                                <div className="flex items-center gap-1.5 flex-wrap">
-                                                                    {scmPortFilter && (
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                navigator.clipboard.writeText(scmPortFilter);
-                                                                                showToast('Port filter copied to clipboard!', 'success');
-                                                                            }}
-                                                                            className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 transition-all shadow active:scale-95"
-                                                                            title="Copy filter: Source Address + Source Port"
-                                                                        >
-                                                                            <Copy size={11} />
-                                                                            <span>By Port</span>
-                                                                        </button>
-                                                                    )}
-                                                                    {scmSessionFilter && (
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                navigator.clipboard.writeText(scmSessionFilter);
-                                                                                showToast('Session filter copied to clipboard!', 'success');
-                                                                            }}
-                                                                            className="px-2 py-0.5 bg-blue-700 hover:bg-blue-600 text-white rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 transition-all shadow active:scale-95"
-                                                                            title="Copy filter: Source Address + Session ID"
-                                                                        >
-                                                                            <Copy size={11} />
-                                                                            <span>By Session</span>
-                                                                        </button>
-                                                                    )}
-                                                                    {scmExactFilter && (
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                navigator.clipboard.writeText(scmExactFilter);
-                                                                                showToast('Exact multi-criteria filter copied!', 'success');
-                                                                            }}
-                                                                            className="px-2 py-0.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 transition-all shadow active:scale-95"
-                                                                            title="Copy filter: Source Address + Port + Session ID"
-                                                                        >
-                                                                            <Copy size={11} />
-                                                                            <span>Exact</span>
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <code className="text-[11px] font-mono font-bold text-slate-200 bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-700/60 select-all w-full overflow-x-auto whitespace-nowrap block">
-                                                                    {activeFilterStr}
-                                                                </code>
-                                                            </div>
+                                                    <div className="mb-5 p-3.5 bg-blue-950/40 border border-blue-500/30 rounded-xl space-y-2.5">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                                <span>SCM Log Viewer Exact Query:</span>
+                                                            </span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    navigator.clipboard.writeText(scmQuery);
+                                                                    showToast('SCM Log Viewer query copied to clipboard!', 'success');
+                                                                }}
+                                                                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5 transition-all shadow active:scale-95"
+                                                                title="Copy SCM Log Viewer Filter"
+                                                            >
+                                                                <Copy size={12} />
+                                                                <span>Copy SCM Query</span>
+                                                            </button>
                                                         </div>
-                                                    )}
+                                                        <div className="flex items-center gap-2">
+                                                            <code className="text-[11px] font-mono font-bold text-slate-200 bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-700/60 select-all w-full overflow-x-auto whitespace-nowrap block">
+                                                                {scmQuery}
+                                                            </code>
+                                                        </div>
+                                                    </div>
 
                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                         <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
