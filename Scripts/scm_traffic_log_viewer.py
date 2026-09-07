@@ -214,7 +214,7 @@ class ScmTrafficEngine:
         return True
 
     def evaluate_flow(self, src_ip="any", dst_ip="any", sport="any", dport=443, protocol="tcp", app="any",
-                      from_zone="any", to_zone="any", in_if=None, out_if=None, threat=None, platform=None, limit=1):
+                      from_zone="any", to_zone="any", in_if=None, out_if=None, threat=None, category=None, platform=None, limit=1):
         
         resolved_platform = platform or detect_platform_type(in_if, out_if, from_zone, to_zone, src_ip, dst_ip)
         
@@ -276,7 +276,7 @@ class ScmTrafficEngine:
                 port_match = True
             else:
                 for s in services:
-                    if dport_num and (str(dport_num) in s or (s == 'service-https' and dport_num == 443) or (s == 'service-http' and dport_num == 80)):
+                    if dport_num and (str(dport_num) in s or (s == 'service-https' and dport_num == 443) or (s == 'service-http' and dport_num == 80) or (s == 'service-dns' and dport_num == 53)):
                         port_match = True
                         break
                         
@@ -301,6 +301,8 @@ class ScmTrafficEngine:
             action = first_match["action"].lower()
             is_blocked = action in ["deny", "drop", "reset-client", "reset-server", "reset-both"]
             profile_setting = first_match["profile_setting"]
+            attached_groups = profile_setting.get('group', [])
+            profile_group = attached_groups[0] if attached_groups else "best-practice"
             
             verdict["rule"] = first_match["name"]
             verdict["rule_id"] = first_match["id"]
@@ -310,35 +312,61 @@ class ScmTrafficEngine:
             verdict["log_setting"] = first_match["log_setting"]
             verdict["shadowed_rules"] = matching_rules[1:]
             
-            # Check Threat payload (e.g. EICAR test file or virus)
             threat_triggered = False
             threat_details = None
             
+            # Scenario A: Explicit Threat Test (EICAR / Virus / Malware payload)
             if threat:
                 threat_lower = str(threat).lower()
-                attached_groups = profile_setting.get('group', [])
-                
                 if attached_groups or 'virus_and_wildfire_analysis' in profile_setting or 'best-practice' in str(profile_setting):
                     threat_triggered = True
                     threat_details = {
                         "threat_name": "EICAR Standard Anti-Virus Test File" if "eicar" in threat_lower else f"Threat / Signature ({threat})",
                         "threat_id": "6000 (Virus/Win32.Worm.Eicar.1)" if "eicar" in threat_lower else "PAN-OS Threat ID",
                         "threat_type": "Virus / WildFire Malware",
-                        "category": "virus",
+                        "category": category or "virus",
                         "severity": "High",
                         "action": "RESET-BOTH / BLOCK",
                         "sub_type": "virus",
                         "platform_type": resolved_platform,
                         "pcap_available": True,
-                        "profile_group": attached_groups[0] if attached_groups else "best-practice",
+                        "profile_group": profile_group,
                         "wildfire_verdict": "Malicious (Signature Match)",
                         "log_type": "THREAT LOG",
                         "status": "🔴 BLOCKED & LOGGED TO CORTEX DATA LAKE"
                     }
+            # Scenario B: DNS Security query (DNS query on port 53)
+            elif app == "dns" or dport_num == 53 or protocol == "udp":
+                cat_lower = str(category or "").lower()
+                is_dns_threat = any(k in cat_lower for k in ["phishing", "malware", "c2", "ransomware", "spyware", "ddns", "tunneling"]) or "testpanw.com" in str(dst_ip).lower() or "panw.com" in str(dst_ip).lower()
+                if is_dns_threat or is_blocked:
+                    threat_triggered = True
+                    threat_details = {
+                        "threat_name": f"Palo Alto DNS Security ({category or 'Malicious Domain'})",
+                        "threat_id": "DNS Security (Unit 42 Threat Intelligence)",
+                        "threat_type": "DNS Security / Anti-Spyware",
+                        "category": category or "dns-security",
+                        "severity": "High",
+                        "action": "BLOCK / SINKHOLE",
+                        "sub_type": "dns",
+                        "platform_type": resolved_platform,
+                        "pcap_available": False,
+                        "profile_group": profile_group,
+                        "wildfire_verdict": "Malicious FQDN (Palo Alto Cloud Intelligence)",
+                        "log_type": "THREAT LOG (DNS)",
+                        "status": "🔴 SINKHOLED / BLOCKED BY DNS SECURITY"
+                    }
+            # Scenario C: URL Filtering / Web policy
+            elif category:
+                cat_lower = str(category).lower()
+                if is_blocked:
+                    verdict["verdict"] = "DROP/DENY"
+                    verdict["action"] = first_match["action"]
+                    verdict["category"] = category
             
-            if threat_triggered:
-                verdict["verdict"] = "BLOCKED BY THREAT ENGINE (RESET-BOTH)"
-                verdict["action"] = "RESET-BOTH"
+            if threat_triggered and threat_details:
+                verdict["verdict"] = f"BLOCKED BY {threat_details['threat_type'].upper()}"
+                verdict["action"] = threat_details.get("action", "RESET-BOTH")
                 verdict["emoji"] = "🛑"
                 verdict["threat_info"] = threat_details
             else:
@@ -393,13 +421,14 @@ class ScmTrafficEngine:
 
 def main():
     parser = argparse.ArgumentParser(description="Stigix SCM Policy & Threat Log Evaluator")
-    parser.add_argument('--sport', default="56400", help="Source port (e.g. 56400, 52001, any)")
-    parser.add_argument('--dport', default=80, help="Destination port (e.g. 80, 443)")
-    parser.add_argument('--src', default="192.168.219.1", help="Source IP (e.g. 192.168.219.1)")
-    parser.add_argument('--dst', default="192.168.206.10", help="Destination IP (e.g. 192.168.206.10)")
-    parser.add_argument('--app', default="web-browsing", help="Application name (e.g. web-browsing, ssl, http)")
+    parser.add_argument('--src', default="any", help="Source IP or subnet (e.g. 192.168.219.1, 10.10.10.0/24)")
+    parser.add_argument('--dst', default="any", help="Destination IP or FQDN (e.g. 192.168.206.10, 8.8.8.8)")
+    parser.add_argument('--sport', default="any", help="Source Port (e.g. 56422)")
+    parser.add_argument('--dport', default=443, help="Destination Port (e.g. 80, 443, 53)")
+    parser.add_argument('--app', default="web-browsing", help="Application name (e.g. web-browsing, ssl, http, dns)")
     parser.add_argument('--protocol', default="tcp", choices=['tcp', 'udp', 'icmp'], help="IP Protocol")
-    parser.add_argument('--threat', default="eicar", help="Threat type or test signature (e.g. eicar, virus, spyware)")
+    parser.add_argument('--threat', default=None, help="Threat type or test signature (e.g. eicar, virus, spyware)")
+    parser.add_argument('--category', default=None, help="Security Category (e.g. Phishing, Malware, Extremism)")
     parser.add_argument('--platform', choices=['PRISMA_SDWAN', 'PRISMA_ACCESS', 'AUTO'], default="AUTO", help="Platform type (PRISMA_SDWAN vs PRISMA_ACCESS)")
     parser.add_argument('--zone-from', default="CORP", help="Source security zone (e.g. CORP, trust)")
     parser.add_argument('--zone-to', default="VPN", help="Destination security zone (e.g. VPN, untrust)")
@@ -460,6 +489,7 @@ def main():
         in_if=args.in_if,
         out_if=args.out_if,
         threat=args.threat,
+        category=args.category,
         platform=platform_choice,
         limit=args.limit
     )

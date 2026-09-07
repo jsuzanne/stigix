@@ -6459,7 +6459,12 @@ class SLSClient {
 }
 
 async function getLatestEgressIp(): Promise<string | null> {
-    // 1. Check if we already have it from a recent cloud probe
+    // 1. Check if we have an explicit node IP set in environment
+    if (process.env.STIGIX_IP && process.env.STIGIX_IP !== 'auto') {
+        return process.env.STIGIX_IP;
+    }
+
+    // 2. Check if we already have it from a recent cloud probe
     try {
         const connectivityFile = path.join(APP_CONFIG.configDir, 'connectivity.json');
         if (fs.existsSync(connectivityFile)) {
@@ -6469,7 +6474,19 @@ async function getLatestEgressIp(): Promise<string | null> {
         }
     } catch (e) { }
 
-    // 2. Fallback: Quick external check
+    // 3. Fallback: Local IPv4 from network interfaces
+    try {
+        const nets = os.networkInterfaces();
+        for (const name of Object.keys(nets)) {
+            for (const net of nets[name] || []) {
+                if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('127.') && !net.address.startsWith('172.17.') && !net.address.startsWith('169.254.')) {
+                    return net.address;
+                }
+            }
+        }
+    } catch (e) {}
+
+    // 4. Fallback: Quick external check
     try {
         const res = await fetch('https://ifconfig.me/ip', { signal: AbortSignal.timeout(2000) });
         if (res.ok) return (await res.text()).trim();
@@ -6526,18 +6543,22 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
         let protocol = 'tcp';
         let threat = '';
         let app = 'web-browsing';
+        const category = testResult.name || 'any';
 
         if (testResult.type === 'threat' || testResult.name?.toLowerCase().includes('eicar')) {
             threat = 'eicar';
             dstPort = 80;
+            app = 'web-browsing';
         } else if (testResult.type === 'dns') {
             protocol = 'udp';
             dstPort = 53;
             app = 'dns';
-            dstIp = testResult.details?.endpoint || '8.8.8.8';
+            threat = ''; // Explicitly no threat payload for DNS
+            dstIp = testResult.details?.domain || testResult.details?.endpoint || '8.8.8.8';
         } else if (testResult.type === 'url') {
             dstPort = testResult.name.toLowerCase().includes('https') || (testResult.details?.url && testResult.details.url.startsWith('https')) ? 443 : 80;
             app = dstPort === 443 ? 'ssl' : 'web-browsing';
+            threat = ''; // Explicitly no threat payload for URL
         }
 
         if (dstIp && (dstIp.startsWith('http://') || dstIp.startsWith('https://'))) {
@@ -6549,8 +6570,9 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
         const safeSrcIp = srcIp && srcIp !== 'auto' ? srcIp : '192.168.219.1';
         const safeDstIp = dstIp && dstIp !== 'auto' ? dstIp : '192.168.206.10';
         const configArg = resolvedPrismaCfg ? `--config "${resolvedPrismaCfg}"` : '';
+        const categoryArg = category ? `--category "${category}"` : '';
 
-        const cmd = `${PYTHON_PATH} "${scriptPath}" --json --src "${safeSrcIp}" --dst "${safeDstIp}" --dport ${dstPort} --protocol ${protocol} --app "${app}" ${threat ? `--threat "${threat}"` : ''} ${configArg}`;
+        const cmd = `${PYTHON_PATH} "${scriptPath}" --json --src "${safeSrcIp}" --dst "${safeDstIp}" --dport ${dstPort} --protocol ${protocol} --app "${app}" ${threat ? `--threat "${threat}"` : ''} ${categoryArg} ${configArg}`;
 
         const { stdout } = await execPromise(cmd, { timeout: 12000 });
         const scmJson = JSON.parse(stdout);
@@ -6558,14 +6580,14 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
         const diagnostic: any = {
             rule: scmJson.rule || 'interzone-default',
             security_profile: scmJson.threat_info?.profile_group || scmJson.profile_setting?.group?.[0] || 'best-practice',
-            app: scmJson.threat_info ? 'web-browsing (Threat)' : (testResult.type === 'dns' ? 'dns' : app),
-            category: scmJson.threat_info?.category || (testResult.type === 'url' ? testResult.name : 'N/A'),
+            app: testResult.type === 'dns' ? 'dns' : (scmJson.threat_info ? `${app} (Threat)` : app),
+            category: scmJson.threat_info?.category || testResult.name || 'N/A',
             device_name: scmJson.platform_type === 'PRISMA_SDWAN' ? 'ION Element (Branch)' : 'Prisma Access SPN',
             vsys_name: 'vsys1',
             parent_device_group: scmJson.platform_type === 'PRISMA_SDWAN' ? 'PRISMA SD-WAN' : 'PRISMA ACCESS',
             source_zone: scmJson.interfaces?.from_zone || 'CORP',
             dest_zone: scmJson.interfaces?.to_zone || 'VPN',
-            action: (scmJson.action || 'allow').toLowerCase(),
+            action: (scmJson.threat_info?.action || scmJson.action || 'allow').toLowerCase(),
             platform_type: scmJson.platform_type,
             threat_name: scmJson.threat_info?.threat_name,
             threat_id: scmJson.threat_info?.threat_id,
