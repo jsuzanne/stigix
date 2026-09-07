@@ -3697,6 +3697,34 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                             </span>
                                                         </div>
                                                     </div>
+
+                                                    {/* SCM Policy Evaluation CLI Script Command */}
+                                                    {sls.scm_cli_command && (
+                                                        <div className="mt-4 p-3.5 bg-slate-950/80 border border-slate-700/60 rounded-xl space-y-2">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                                    <span>SCM Policy Evaluation CLI Script:</span>
+                                                                </span>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        navigator.clipboard.writeText(sls.scm_cli_command);
+                                                                        showToast('SCM CLI script command copied!', 'success');
+                                                                    }}
+                                                                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5 transition-all shadow active:scale-95 border border-slate-600/50"
+                                                                    title="Copy full CLI python command"
+                                                                >
+                                                                    <Copy size={12} />
+                                                                    <span>Copy Script Command</span>
+                                                                </button>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <code className="text-[10px] font-mono text-slate-300 bg-black/70 px-2.5 py-2 rounded-lg border border-slate-800 select-all w-full overflow-x-auto whitespace-nowrap block">
+                                                                    {sls.scm_cli_command}
+                                                                </code>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             );
                                         })()}
