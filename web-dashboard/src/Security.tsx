@@ -3682,7 +3682,9 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         </div>
                                                         <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
                                                             <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">URL Category / Threat</span>
-                                                            <span className="text-xs font-bold text-text-primary uppercase">{sls.threat_name || sls.category || 'N/A'}</span>
+                                                            <span className="text-xs font-bold text-text-primary uppercase">
+                                                                {sls.threat_name || (sls.action?.toLowerCase().includes('allow') ? 'None (Encrypted / Decryption Bypass)' : sls.category || 'N/A')}
+                                                            </span>
                                                         </div>
                                                         <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
                                                             <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Device / Site</span>
@@ -3720,7 +3722,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                             <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Cloud Action</span>
                                                             <span className={twMerge(
                                                                 "px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border",
-                                                                sls.action === 'allow' 
+                                                                (sls.action?.toLowerCase().includes('allow') || sls.action === 'allowed')
                                                                     ? "bg-green-600/10 text-green-600 border-green-500/20" 
                                                                     : "bg-red-600/10 text-red-600 border-red-500/20"
                                                             )}>
