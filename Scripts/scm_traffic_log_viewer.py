@@ -23,6 +23,8 @@ import urllib.error
 import ssl
 import ipaddress
 import socket
+import tempfile
+import time
 
 def get_script_dir():
     return os.path.dirname(os.path.abspath(__file__))
@@ -135,6 +137,48 @@ class ScmTrafficEngine:
         self.profile_groups = {}
         self.url_profiles = {}
         self.ctx = ssl.create_default_context()
+
+    def get_cache_path(self):
+        cache_dir = os.path.join(tempfile.gettempdir(), 'stigix_scm_cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        return os.path.join(cache_dir, f"scm_policy_cache_{self.tsg_id}.json")
+
+    def load_cached_policies(self, max_age_seconds=600):
+        try:
+            cache_file = self.get_cache_path()
+            if not os.path.exists(cache_file):
+                return False
+            mtime = os.path.getmtime(cache_file)
+            if time.time() - mtime > max_age_seconds:
+                return False
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                cached = json.load(f)
+            self.security_rules = cached.get('security_rules', [])
+            self.decryption_rules = cached.get('decryption_rules', [])
+            self.remote_networks = cached.get('remote_networks', [])
+            self.profile_groups = cached.get('profile_groups', {})
+            self.url_profiles = cached.get('url_profiles', {})
+            self.token = cached.get('token')
+            return bool(self.security_rules or self.url_profiles)
+        except Exception:
+            return False
+
+    def save_cached_policies(self):
+        try:
+            cache_file = self.get_cache_path()
+            data = {
+                'timestamp': time.time(),
+                'token': self.token,
+                'security_rules': self.security_rules,
+                'decryption_rules': self.decryption_rules,
+                'remote_networks': self.remote_networks,
+                'profile_groups': self.profile_groups,
+                'url_profiles': self.url_profiles
+            }
+            with open(cache_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f)
+        except Exception:
+            pass
         
     def authenticate(self):
         auth_url = 'https://auth.apps.paloaltonetworks.com/auth/v1/oauth2/access_token'
@@ -161,7 +205,10 @@ class ScmTrafficEngine:
             print(f"❌ Authentication failed: {e}", file=sys.stderr)
             return None
 
-    def sync_policies(self):
+    def sync_policies(self, force_refresh=False):
+        if not force_refresh and self.load_cached_policies(max_age_seconds=600):
+            return True
+
         if not self.token and not self.authenticate():
             return False
             
@@ -232,6 +279,7 @@ class ScmTrafficEngine:
         except Exception:
             pass
 
+        self.save_cached_policies()
         return True
 
     def evaluate_flow(self, src_ip="any", dst_ip="any", sport="any", dport=443, protocol="tcp", app="any",
@@ -588,6 +636,7 @@ def main():
     parser.add_argument('--list-rns', action='store_true', help="List all active SCM Remote Networks")
     parser.add_argument('--json', action='store_true', help="Output in raw JSON format")
     parser.add_argument('--config', help="Path to prisma-config.json")
+    parser.add_argument('--refresh-cache', action='store_true', help="Force refresh of cached SCM policies")
     
     args = parser.parse_args()
     
@@ -598,10 +647,10 @@ def main():
         
     engine = ScmTrafficEngine(cfg)
     
-    if not args.json:
+    if not args.json and (args.refresh_cache or not engine.load_cached_policies()):
         print(f"🔒 Connecting to Global SASE Gateway (Tenant TSG: {cfg['tsg_id']})...")
         
-    if not engine.sync_policies():
+    if not engine.sync_policies(force_refresh=args.refresh_cache):
         sys.exit(1)
         
     if not args.json:

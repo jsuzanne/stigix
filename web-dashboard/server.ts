@@ -6658,7 +6658,7 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
 
         const cmd = `${PYTHON_PATH} "${scriptPath}" --json --src "${safeSrcIp}" --dst "${safeDstIp}" --dport ${dstPort} ${sportArg} --protocol ${protocol} --app "${app}" ${threat ? `--threat "${threat}"` : ''} ${categoryArg} ${configArg}`;
 
-        const { stdout } = await execPromise(cmd, { timeout: 12000 });
+        const { stdout } = await execPromise(cmd, { timeout: 30000 });
         const scmJson = JSON.parse(stdout);
 
         const pythonScriptCmd = `python3 Scripts/scm_traffic_log_viewer.py --src "${safeSrcIp}" --dst "${safeDstIp}" --dport ${dstPort} ${sportArg} --protocol ${protocol} --app "${app}" ${threat ? `--threat "${threat}"` : ''} ${categoryArg}`;
@@ -6695,9 +6695,6 @@ async function enrichWithSLS(testResult: TestResult, srcIp: string): Promise<voi
         testResult.slsDiagnostic = diagnostic;
         if (testResult.details) {
             testResult.details.slsDiagnostic = diagnostic;
-        }
-        if (testResult.details && details) {
-            details.slsDiagnostic = diagnostic;
         }
         log('SLS', `Enrichment successful for test ${testResult.id} (${testResult.name}): ${diagnostic.action} on ${diagnostic.parent_device_group} (Rule: ${diagnostic.rule})`);
     } catch (e: any) {
@@ -7097,11 +7094,13 @@ const runScheduledDnsTests = async () => {
                 domain: test.domain,
                 testName: test.name,
                 srcPort: dnsSrcPort,
+                command: dnsCommand,
                 output: stdout.substring(0, 500) // Store sample for UI
-            }, currentTestId, { domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand }, runId);
+            }, currentTestId, { domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand, status }, runId);
         } catch (e: any) {
             // Even if the command exit code is non-zero, it might contain sinkhole info (like nslookup)
             const errorOutput = e.stdout + e.stderr;
+            const { command: dnsCmd } = getDnsCommand(test.domain, dnsSrcPort, egress.ip);
             if (errorOutput && errorOutput.toLowerCase().includes('sinkhole')) {
                 updateStatistics('dns_security', 'sinkholed');
                 await addTestResult('dns_security', test.name, {
@@ -7109,8 +7108,9 @@ const runScheduledDnsTests = async () => {
                     status: 'sinkholed',
                     domain: test.domain,
                     testName: test.name,
-                    srcPort: dnsSrcPort
-                }, currentTestId, { domain: test.domain, srcPort: dnsSrcPort }, runId);
+                    srcPort: dnsSrcPort,
+                    command: dnsCmd
+                }, currentTestId, { domain: test.domain, srcPort: dnsSrcPort, command: dnsCmd, status: 'sinkholed' }, runId);
             } else {
                 updateStatistics('dns_security', 'blocked');
                 await addTestResult('dns_security', test.name, {
@@ -7119,8 +7119,9 @@ const runScheduledDnsTests = async () => {
                     domain: test.domain,
                     testName: test.name,
                     srcPort: dnsSrcPort,
+                    command: dnsCmd,
                     error: e.message
-                }, currentTestId, { domain: test.domain, srcPort: dnsSrcPort }, runId);
+                }, currentTestId, { domain: test.domain, srcPort: dnsSrcPort, command: dnsCmd, error: e.message, status: 'blocked' }, runId);
             }
         }
         // Add a small delay between tests to avoid triggering firewall flood protection
@@ -7737,6 +7738,18 @@ app.get('/api/security/results/:id', authenticateToken, async (req, res) => {
         const result = await testLogger.getResultById(id);
 
         if (result) {
+            // If result is missing slsDiagnostic, enrich on the fly so UI always shows SCM Policy Evaluation
+            if (!result.slsDiagnostic && !result.details?.slsDiagnostic && (result.type === 'dns' || result.type === 'url' || result.type === 'threat')) {
+                try {
+                    let srcIp = process.env.STIGIX_IP || 'auto';
+                    if (srcIp === 'auto') {
+                        srcIp = await getLatestEgressIp() || 'auto';
+                    }
+                    await enrichWithSLS(result, srcIp);
+                } catch (e: any) {
+                    log('SLS', `On-demand enrichment failed for test #${id}: ${e.message}`, 'warn');
+                }
+            }
             res.json(result);
         } else {
             res.status(404).json({ error: 'Test result not found' });
@@ -8229,13 +8242,16 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
             }
 
             const result = {
+                id: testId,
                 success: true,
                 resolved,
                 status,
                 domain,
                 testName,
                 srcPort: dnsSrcPort,
+                command: dnsCommand,
                 output: stdout,
+                resolvedIp,
                 reason: status === 'sinkholed' ? `Resolved to Palo Alto Sinkhole IP: ${resolvedIp || 'Keyword detected'}` :
                     status === 'blocked' ? 'DNS Resolution failed or returned empty' : `Resolved to IP: ${resolvedIp}`,
                 ...(mcp_source && { mcp_source })
@@ -8253,12 +8269,14 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
             if (combinedErrorOutput.includes('sinkhole')) {
                 logTest(`[DNS-TEST-${testId}] Command execution error, but SINKHOLE keyword found in output`);
                 const result = {
+                    id: testId,
                     success: true,
                     status: 'sinkholed',
                     resolved: false,
                     domain,
                     testName,
                     srcPort: dnsSrcPort,
+                    command: dnsCommand,
                     output: combinedErrorOutput,
                     reason: 'DNS error occurred, but Palo Alto Sinkhole keyword detected in response',
                     ...(mcp_source && { mcp_source })
@@ -8273,12 +8291,14 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
                 dnsError.message.includes('not found');
 
             const result = {
+                id: testId,
                 success: false,
                 resolved: false,
                 status: isCommandError ? 'error' : 'blocked',
                 domain,
                 testName,
                 srcPort: dnsSrcPort,
+                command: dnsCommand,
                 error: dnsError.message,
                 reason: isCommandError ? 'DNS tool (dig/nslookup) not available' : `DNS Error: ${dnsError.message}`,
                 ...(mcp_source && { mcp_source })
@@ -8287,7 +8307,7 @@ app.post('/api/security/dns-test', authenticateToken, async (req, res) => {
             logTest(`[DNS-TEST-${testId}] Error: ${isCommandError ? 'Command not available' : 'DNS blocked'} - ${dnsError.message}`);
 
             const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', testName || domain, result, testId, {
-                domain, srcPort: dnsSrcPort, error: dnsError.message, command: dnsCommand
+                domain, srcPort: dnsSrcPort, error: dnsError.message, command: dnsCommand, status: result.status
             });
             res.json({ ...result, previousStatus, slsDiagnostic });
         }
@@ -8356,72 +8376,86 @@ app.post('/api/security/dns-test-batch', authenticateToken, async (req, res) => 
                     combinedOutput.includes('non-existent domain');
 
                 const status = isSinkholed ? 'sinkholed' : (isBlocked ? 'blocked' : 'resolved');
+                const resolvedIp = parseDnsOutput(stdout, commandType);
 
                 logTest(`[DNS-TEST-${testId}] Final status: ${status} (isSinkholed=${isSinkholed}, isBlocked=${isBlocked})`);
 
                 const result = {
+                    id: testId,
                     success: true,
                     resolved: status === 'resolved',
                     status,
                     domain: test.domain,
                     testName: test.testName,
                     srcPort: dnsSrcPort,
+                    command: dnsCommand,
+                    output: stdout,
+                    resolvedIp,
                     reason: status === 'sinkholed' ? 'Sinkhole IP/Keyword detected' :
                         status === 'blocked' ? 'DNS Resolution failed/empty' : 'Normal resolution'
                 };
 
-                results.push(result);
-                await addTestResult('dns_security', test.testName, result, testId, {
-                    domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand
+                const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
+                    domain: test.domain, resolvedIp, srcPort: dnsSrcPort, command: dnsCommand, output: stdout, status
                 }, runId);
+
+                results.push({ ...result, previousStatus, slsDiagnostic });
             } catch (dnsError: any) {
                 // Check if it's actually a sinkhole response masked as an error (e.g., nslookup SERVFAIL)
                 const combinedErrorOutput = ((dnsError.stdout || '') + (dnsError.stderr || '')).toLowerCase();
 
                 if (combinedErrorOutput.includes('sinkhole')) {
                     const result = {
+                        id: testId,
                         success: true,
                         status: 'sinkholed',
                         resolved: false,
                         domain: test.domain,
                         testName: test.testName,
                         srcPort: dnsSrcPort,
+                        command: dnsCommand,
+                        output: combinedErrorOutput,
                         reason: 'Sinkhole keyword detected in error output'
                     };
-                    results.push(result);
-                    await addTestResult('dns_security', test.testName, result, testId, {
-                        domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand
+                    const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
+                        domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand, output: combinedErrorOutput, status: 'sinkholed'
                     }, runId);
+                    results.push({ ...result, previousStatus, slsDiagnostic });
                 } else {
                     const isCommandError = dnsError.message.includes('command not found') || dnsError.message.includes('not found');
                     const result = {
+                        id: testId,
                         success: false,
                         resolved: false,
                         status: isCommandError ? 'error' : 'blocked',
                         domain: test.domain,
                         testName: test.testName,
                         srcPort: dnsSrcPort,
-                        error: dnsError.message
+                        command: dnsCommand,
+                        error: dnsError.message,
+                        reason: isCommandError ? 'DNS tool (dig/nslookup) not available' : `DNS Error: ${dnsError.message}`
                     };
-                    results.push(result);
-                    await addTestResult('dns_security', test.testName, result, testId, {
-                        domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand
+                    const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
+                        domain: test.domain, srcPort: dnsSrcPort, command: dnsCommand, error: dnsError.message, status: result.status
                     }, runId);
+                    results.push({ ...result, previousStatus, slsDiagnostic });
                 }
             }
         } catch (e: any) {
             const result = {
+                id: testId,
                 success: false,
                 status: 'error',
                 domain: test.domain,
                 testName: test.testName,
                 srcPort: dnsSrcPort,
-                error: e.message
+                error: e.message,
+                reason: `Execution Error: ${e.message}`
             };
-            results.push(result);
-            await addTestResult('dns_security', test.testName, result, testId, {
-                domain: test.domain, srcPort: dnsSrcPort
+            const { previousStatus, slsDiagnostic } = await addTestResult('dns_security', test.testName, result, testId, {
+                domain: test.domain, srcPort: dnsSrcPort, error: e.message
             }, runId);
+            results.push({ ...result, previousStatus, slsDiagnostic });
         }
 
         // Add a small delay between tests to avoid triggering firewall flood protection
