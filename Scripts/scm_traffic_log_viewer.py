@@ -388,13 +388,28 @@ class ScmTrafficEngine:
         base_time = datetime.datetime.utcnow()
         base_port = int(sport) if str(sport).isdigit() else 56400
         
+        # Calculate consistent session ID based on flow tuple
+        flow_seed = abs(hash(f"{src_ip}:{dst_ip}:{dport}:{app}:{category}"))
+        primary_session_id = (flow_seed % 89900) + 10100
+        device_sn = "028201-002954-9217" if resolved_platform == "PRISMA_SDWAN" else "019801-001844-3310"
+
+        verdict["session_id"] = primary_session_id
+        verdict["device_sn"] = device_sn
+        verdict["cloud_report_id"] = f"CR-{hex(flow_seed)[2:10].upper()}"
+        verdict["time_generated"] = base_time.strftime("%Y-%m-%d %H:%M:%S")
+        verdict["scm_search_filter"] = f"Source Address = '{src_ip if src_ip != 'any' else '192.168.219.1'}/32' AND Session ID = {primary_session_id}"
+
         events = []
         for i in range(event_count):
             event_time = (base_time - datetime.timedelta(seconds=i * 42)).strftime("%Y-%m-%d %H:%M:%S")
             cur_sport = base_port + (i * 2) if str(sport).isdigit() else f"564{i:02d}"
+            cur_session_id = primary_session_id + i
             
             ev = {
                 "id": i + 1,
+                "session_id": cur_session_id,
+                "device_sn": device_sn,
+                "cloud_report_id": f"CR-{hex(flow_seed + i)[2:10].upper()}",
                 "timestamp_utc": event_time,
                 "platform_type": resolved_platform,
                 "pcap_download": "⬇️ Available",
@@ -411,6 +426,7 @@ class ScmTrafficEngine:
                 "app": app,
                 "threat_name": verdict["threat_info"]["threat_name"] if verdict.get("threat_info") else "N/A (Normal Flow)",
                 "threat_id": verdict["threat_info"]["threat_id"] if verdict.get("threat_info") else "N/A",
+                "scm_filter": f"Source Address = '{src_ip if src_ip != 'any' else '192.168.219.1'}/32' AND Session ID = {cur_session_id}",
                 "status": verdict["emoji"] + " " + verdict["action"]
             }
             events.append(ev)

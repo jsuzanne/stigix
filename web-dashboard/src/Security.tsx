@@ -3578,20 +3578,54 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         {(() => {
                                             const sls = selectedTest.details?.slsDiagnostic || selectedTest.slsDiagnostic;
                                             if (!sls) return null;
+                                            const scmFilterStr = sls.scm_search_filter || (sls.session_id ? `Source Address = '192.168.219.1/32' AND Session ID = ${sls.session_id}` : null);
                                             return (
                                                 <div className="mt-8 p-6 bg-slate-900/50 border border-slate-700/50 rounded-2xl relative overflow-hidden shadow-2xl">
                                                     <div className="absolute top-0 right-0 p-4 opacity-20">
                                                         <Shield size={60} className="text-slate-400" />
                                                     </div>
-                                                    <div className="flex items-center gap-3 mb-6">
-                                                        <div className="p-2 bg-blue-600/20 rounded-lg border border-blue-500/30">
-                                                            <Zap size={18} className="text-blue-500" />
+                                                    <div className="flex items-center justify-between gap-3 mb-6">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="p-2 bg-blue-600/20 rounded-lg border border-blue-500/30">
+                                                                <Zap size={18} className="text-blue-500" />
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-blue-500 font-black uppercase text-[10px] tracking-widest block">Cloud Execution Context</span>
+                                                                <h4 className="text-sm font-black text-text-primary uppercase tracking-tight">Strata Logging Service (SLS)</h4>
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <span className="text-blue-500 font-black uppercase text-[10px] tracking-widest block">Cloud Execution Context</span>
-                                                            <h4 className="text-sm font-black text-text-primary uppercase tracking-tight">Strata Logging Service (SLS)</h4>
-                                                        </div>
+                                                        {sls.session_id && (
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-[10px] font-mono font-black bg-blue-950/80 text-blue-400 border border-blue-500/40 px-2.5 py-1 rounded-lg shadow-sm">
+                                                                    SESSION #{sls.session_id}
+                                                                </span>
+                                                            </div>
+                                                        )}
                                                     </div>
+
+                                                    {/* SCM Log Viewer 1-Click Verification Query Bar */}
+                                                    {scmFilterStr && (
+                                                        <div className="mb-5 p-3 bg-blue-950/30 border border-blue-500/20 rounded-xl flex items-center justify-between gap-3">
+                                                            <div className="flex items-center gap-2 overflow-hidden">
+                                                                <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest shrink-0">Log Viewer Filter:</span>
+                                                                <code className="text-[11px] font-mono font-bold text-slate-300 truncate bg-slate-950/70 px-2 py-0.5 rounded border border-slate-700/50 select-all">
+                                                                    {scmFilterStr}
+                                                                </code>
+                                                            </div>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    navigator.clipboard.writeText(scmFilterStr);
+                                                                    showToast('Log Viewer filter copied to clipboard!', 'success');
+                                                                }}
+                                                                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5 transition-all shrink-0 shadow active:scale-95"
+                                                                title="Copy query for Palo Alto Strata Cloud Manager Log Viewer"
+                                                            >
+                                                                <Copy size={12} />
+                                                                <span>Copy Filter</span>
+                                                            </button>
+                                                        </div>
+                                                    )}
 
                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                         <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
@@ -3615,8 +3649,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                             <span className="text-xs font-bold text-text-primary truncate">{sls.device_name || 'Unknown Device'}</span>
                                                         </div>
                                                         <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">System (VSYS)</span>
-                                                            <span className="text-xs font-bold text-text-primary uppercase">{sls.vsys_name || 'N/A'}</span>
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Device Serial Number (SN)</span>
+                                                            <span className="text-xs font-mono font-bold text-text-primary truncate">{sls.device_sn || '028201-002954-9217'}</span>
                                                         </div>
                                                         <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50 col-span-2">
                                                             <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Service Provider / Origin</span>
