@@ -438,13 +438,13 @@ class ScmTrafficEngine:
             if attached_groups or 'virus_and_wildfire_analysis' in profile_setting or 'best-practice' in str(profile_setting):
                 threat_triggered = True
                 threat_details = {
-                    "threat_name": "EICAR Standard Anti-Virus Test File" if "eicar" in threat_lower else f"Threat / Signature ({threat})",
-                    "threat_id": "6000 (Virus/Win32.Worm.Eicar.1)" if "eicar" in threat_lower else "PAN-OS Threat ID",
-                    "threat_type": "Virus / WildFire Malware",
-                    "category": category or "virus",
-                    "severity": "High",
+                    "threat_name": "Eicar File Detected" if "eicar" in threat_lower else f"Threat / Signature ({threat})",
+                    "threat_id": "39040" if "eicar" in threat_lower else "PAN-OS Threat ID",
+                    "threat_type": "Threat Prevention (Vulnerability Signature)" if "eicar" in threat_lower else "Virus / WildFire Malware",
+                    "category": "code-execution" if "eicar" in threat_lower else (category or "virus"),
+                    "severity": "Medium" if "eicar" in threat_lower else "High",
                     "action": "RESET-BOTH / BLOCK",
-                    "sub_type": "virus",
+                    "sub_type": "vulnerability" if "eicar" in threat_lower else "virus",
                     "platform_type": resolved_platform,
                     "pcap_available": True,
                     "profile_group": profile_group,
@@ -572,10 +572,15 @@ class ScmTrafficEngine:
         verdict["device_sn"] = device_sn
         verdict["cloud_report_id"] = f"CR-{hex(flow_seed)[2:10].upper()}"
         verdict["time_generated"] = base_time.strftime("%Y-%m-%d %H:%M:%S")
-        verdict["scm_search_filter"] = f"Source Address = '{safe_src}/32' AND Source Port = {base_port}"
-        verdict["scm_search_filter_port"] = f"Source Address = '{safe_src}/32' AND Source Port = {base_port}"
-        verdict["scm_search_filter_session"] = f"Source Address = '{safe_src}/32' AND Session ID = {primary_session_id}"
-        verdict["scm_search_filter_exact"] = f"Source Address = '{safe_src}/32' AND Source Port = {base_port} AND Session ID = {primary_session_id}"
+        verdict["scm_search_filter"] = f"Source Address = '{safe_src}'"
+        verdict["scm_search_filter_port"] = f"Source Address = '{safe_src}' AND Source Port = {base_port}"
+        verdict["scm_search_filter_session"] = f"Source Address = '{safe_src}' AND Session ID = {primary_session_id}"
+        verdict["scm_search_filter_exact"] = f"Source Address = '{safe_src}' AND Source Port = {base_port}"
+        if threat_triggered and threat_details:
+            if threat_details.get("threat_id"):
+                verdict["scm_search_filter_threat"] = f"Threat ID = {threat_details['threat_id']}"
+            if threat_details.get("threat_name"):
+                verdict["scm_search_filter_threat_name"] = f"Threat Name Firewall = '{threat_details['threat_name']}'"
 
         events = []
         for i in range(event_count):

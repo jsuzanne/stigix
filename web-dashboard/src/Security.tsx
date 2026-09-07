@@ -3578,7 +3578,10 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         {(() => {
                                             const sls = selectedTest.details?.slsDiagnostic || selectedTest.slsDiagnostic;
                                             if (!sls) return null;
-                                            const scmQuery = sls.scm_search_filter_port || (sls.src_port ? `Source Address = '${sls.src_ip || '192.168.219.1'}/32' AND Source Port = ${sls.src_port}` : `Source Address = '${sls.src_ip || '192.168.219.1'}/32'`);
+                                            const scmQueryIp = sls.scm_search_filter || `Source Address = '${sls.src_ip || '192.168.219.1'}'`;
+                                            const scmQueryPort = sls.scm_search_filter_port || (sls.src_port ? `Source Address = '${sls.src_ip || '192.168.219.1'}' AND Source Port = ${sls.src_port}` : scmQueryIp);
+                                            const scmQueryThreat = sls.scm_search_filter_threat || (sls.threat_id ? `Threat ID = ${sls.threat_id}` : (sls.threat_name ? `Threat Name Firewall = '${sls.threat_name}'` : ''));
+                                            const scmQuery = scmQueryIp;
 
                                             return (
                                                 <div className="mt-8 p-6 bg-slate-900/50 border border-slate-700/50 rounded-2xl relative overflow-hidden shadow-2xl">
@@ -3606,26 +3609,54 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
                                                     {/* SCM Log Viewer 1-Click Verification Query Bar */}
                                                     <div className="mb-5 p-3.5 bg-blue-950/40 border border-blue-500/30 rounded-xl space-y-2.5">
-                                                        <div className="flex items-center justify-between gap-2">
+                                                        <div className="flex items-center justify-between gap-2 flex-wrap">
                                                             <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1.5">
                                                                 <span>SCM Log Viewer Exact Query:</span>
                                                             </span>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    navigator.clipboard.writeText(scmQuery);
-                                                                    showToast('SCM Log Viewer query copied to clipboard!', 'success');
-                                                                }}
-                                                                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5 transition-all shadow active:scale-95"
-                                                                title="Copy SCM Log Viewer Filter"
-                                                            >
-                                                                <Copy size={12} />
-                                                                <span>Copy SCM Query</span>
-                                                            </button>
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        navigator.clipboard.writeText(scmQueryIp);
+                                                                        showToast('IP filter copied: ' + scmQueryIp, 'success');
+                                                                    }}
+                                                                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 transition-all shadow"
+                                                                    title="Copy IP Only Filter"
+                                                                >
+                                                                    <Copy size={10} />
+                                                                    <span>IP Only</span>
+                                                                </button>
+                                                                {scmQueryThreat && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            navigator.clipboard.writeText(scmQueryThreat);
+                                                                            showToast('Threat filter copied: ' + scmQueryThreat, 'success');
+                                                                        }}
+                                                                        className="px-2 py-0.5 bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-500/40 rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 transition-all shadow"
+                                                                        title="Copy Threat ID Filter"
+                                                                    >
+                                                                        <Copy size={10} />
+                                                                        <span>Threat ID</span>
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        navigator.clipboard.writeText(scmQueryPort);
+                                                                        showToast('IP + Port query copied!', 'success');
+                                                                    }}
+                                                                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5 transition-all shadow active:scale-95"
+                                                                    title="Copy SCM Log Viewer Filter (IP + Port)"
+                                                                >
+                                                                    <Copy size={12} />
+                                                                    <span>Copy SCM Query</span>
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                         <div className="flex items-center gap-2">
                                                             <code className="text-[11px] font-mono font-bold text-slate-200 bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-700/60 select-all w-full overflow-x-auto whitespace-nowrap block">
-                                                                {scmQuery}
+                                                                {scmQueryIp}
                                                             </code>
                                                         </div>
                                                     </div>
