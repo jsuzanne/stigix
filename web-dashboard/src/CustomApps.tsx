@@ -1022,12 +1022,12 @@ const secs = seconds % 60;
                                 No incoming sessions match "{sessionSearch}".
                             </div>
                         ) : (
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full text-left text-xs border-collapse table-fixed">
                                 <thead>
                                     <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
-                                        <th className="pb-3 px-3 whitespace-nowrap">Declared Origin</th>
-                                        <th className="pb-3 px-3 whitespace-nowrap">State & Uptime</th>
-                                        <th className="pb-3 px-3 text-right whitespace-nowrap">Throughput (RX / TX)</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap w-[35%]">Declared Origin</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap w-[25%]">State & Uptime</th>
+                                        <th className="pb-3 px-3 text-right whitespace-nowrap w-[40%]">Throughput (RX / TX)</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
@@ -1044,8 +1044,8 @@ const secs = seconds % 60;
                                                 className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
                                                 title="Click to open full Session Deep Dive"
                                             >
-                                                <td className="py-2.5 px-3 whitespace-nowrap">
-                                                    <div className="font-semibold text-text-primary">
+                                                <td className="py-2.5 px-3 whitespace-nowrap truncate">
+                                                    <div className="font-semibold text-text-primary truncate">
                                                         {isStigixPeer ? (
                                                             <span className="group-hover:text-indigo-500 transition-colors" title={`Hostname: ${s.declaredHostname || 'n/a'} | ID: ${s.sessionId}`}>
                                                                 {originLabel}
@@ -1056,7 +1056,7 @@ const secs = seconds % 60;
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div className="font-mono text-text-muted text-[10px] mt-0.5">
+                                                    <div className="font-mono text-text-muted text-[10px] mt-0.5 truncate">
                                                         {s.remoteIp}:{s.remotePort}
                                                     </div>
                                                 </td>
@@ -1138,13 +1138,18 @@ const secs = seconds % 60;
                                 No outgoing sessions match "{sessionSearch}".
                             </div>
                         ) : (
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full text-left text-xs border-collapse table-fixed">
                                 <thead>
                                     <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
-                                        <th className="pb-3 px-3 whitespace-nowrap">Target Peer</th>
-                                        <th className="pb-3 px-3 whitespace-nowrap">State & Uptime</th>
-                                        <th className="pb-3 px-3 text-right whitespace-nowrap">
-                                            RTT Wave & Latency <span className="text-[9px] font-normal text-text-muted opacity-75 font-sans">(avg / p50 / p95)</span>
+                                        <th className="pb-3 px-3 whitespace-nowrap w-[30%]">Target Peer</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap w-[24%]">State & Uptime</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap w-[46%]">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-text-muted">RTT Trend</span>
+                                                <span className="text-right">
+                                                    Latency <span className="text-[9px] font-normal text-text-muted opacity-75 font-sans">(avg / p50 / p95)</span>
+                                                </span>
+                                            </div>
                                         </th>
                                     </tr>
                                 </thead>
@@ -1160,16 +1165,16 @@ const secs = seconds % 60;
                                                 className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
                                                 title="Click to open full Session Deep Dive"
                                             >
-                                                <td className="py-2.5 px-3 whitespace-nowrap">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="font-semibold text-text-primary group-hover:text-emerald-500 transition-colors">{s.peerName}</span>
+                                                <td className="py-2.5 px-3 whitespace-nowrap truncate">
+                                                    <div className="flex items-center gap-1.5 truncate">
+                                                        <span className="font-semibold text-text-primary group-hover:text-emerald-500 transition-colors truncate">{s.peerName}</span>
                                                         {streamBadge && (
-                                                            <span className="px-1.5 py-0.2 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded text-[9px] font-mono font-bold">
+                                                            <span className="px-1.5 py-0.2 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded text-[9px] font-mono font-bold shrink-0">
                                                                 {streamBadge}
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div className="font-mono text-text-muted text-[10px] mt-0.5">
+                                                    <div className="font-mono text-text-muted text-[10px] mt-0.5 truncate">
                                                         {s.peerHost}:{s.peerPort}
                                                     </div>
                                                 </td>
@@ -1194,15 +1199,17 @@ const secs = seconds % 60;
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="py-2.5 px-3 text-right font-mono text-[11px] whitespace-nowrap">
-                                                    <div className="flex items-center justify-end gap-3">
-                                                        {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 ? (
-                                                            <div className="w-[48px] shrink-0 flex items-center justify-center">
-                                                                <MicroSparkline samples={s.rttMs.recentSamples} width={48} height={18} />
-                                                            </div>
-                                                        ) : null}
-                                                        <div className="text-right">
-                                                            <div className="text-amber-500 dark:text-amber-400 font-bold whitespace-nowrap tabular-nums text-xs">
+                                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div className="w-[52px] h-[20px] shrink-0 flex items-center justify-start">
+                                                            {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 ? (
+                                                                <MicroSparkline samples={s.rttMs.recentSamples} width={52} height={20} />
+                                                            ) : (
+                                                                <div className="w-full h-0.5 bg-border/30 rounded" />
+                                                            )}
+                                                        </div>
+                                                        <div className="text-right min-w-0">
+                                                            <div className="text-amber-500 dark:text-amber-400 font-bold whitespace-nowrap tabular-nums text-xs font-mono">
                                                                 {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
                                                             </div>
                                                             {s.rttMs.avg > 0 && (
