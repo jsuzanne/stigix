@@ -69,11 +69,12 @@ RTT Samples Sorted: [ 10ms, 10ms, 11ms, 12ms ... 15ms ... 45ms ... 1000ms ]
   - Optional IPv4 CIDR subnet allowlist (`allowCidrs`).
   - Strict 5-second handshake timeout (`CLIENT_HELLO` $\rightarrow$ `SERVER_HELLO`).
   - Pre-shared authentication tokens (`auth.token`).
-- **Real-Time Operational Dashboard**:
-  - Live charts and rolling percentile RTT metrics ($p50, p95, \text{min}, \text{avg}, \text{max}$).
-  - Live table of incoming client sessions displaying Declared Site ID vs Socket Remote IP.
+- **Real-Time Operational Dashboard & Fleet Controls**:
+  - **Global Appliance Start/Stop**: One-click global controls to start or stop all local TCP listeners and outbound client workloads across the appliance.
+  - **Live Percentile Telemetry**: Real-time charts and rolling percentile RTT metrics ($p50, p95, \text{min}, \text{avg}, \text{max}$).
+  - **High-Density Synchronized Session Tables**: Incoming and Outgoing session tables with strict column formatting (`table-fixed`), synchronized RTT Trend sparklines, live reconnect counters, and site-level correlation.
   - Outgoing session status, instant handshake diagnostics, and non-destructive port availability checks.
-- **Interactive CLI & REST APIs**: Full control via `stigix-cli` (`tcp-app` subcommands) and REST API `/api/custom-tcp-apps`.
+- **Interactive CLI & REST APIs**: Full control via `stigix-cli` (`tcp-app` subcommands) and REST API `/api/custom-tcp-apps` (including `/actions/start-all` and `/actions/stop-all`).
 
 ---
 
