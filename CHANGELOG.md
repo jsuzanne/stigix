@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.8] - 2026-09-08
+
+### Added / Changed
+- **Global Appliance-Level Custom TCP Controls** 🎛️:
+  - **Start All / Stop All**: Added one-click global appliance actions to simultaneously start or stop all configured TCP application listeners and outbound client workloads across the node.
+  - **REST Endpoints**: `/api/custom-tcp-apps/actions/start-all` and `/api/custom-tcp-apps/actions/stop-all` for programmatic fleet automation.
+- **Dedicated EICAR Anti-Virus / Security Target Endpoint (Port 8082)** 🛡️:
+  - Streamlined `engines/http_server.py` to a dedicated EICAR security endpoint (`http://<ip>:8082/eicar.com.txt`) specifically designed for NGFW, SASE, and AV/IPS automated test suites.
+  - Removed legacy HTTP delay simulation modes (`NORMAL`, `ALWAYS_SLOW`, `RANDOM_SLOW`, `LOOPING_SLOW`) as latency and brownout simulations are now handled with higher precision in Custom TCP Apps.
+  - Added 1-click EICAR URL copying and direct browser test links in Settings.
+- **Targets Dashboard Simplification & Visual Density** 🎯:
+  - **Single Unified Origin Badge**: Cleaned up conflicting and redundant badges (`REMOTE PEER`, `STATIC`, `LEARNED`). Every target now displays exactly one authoritative origin tag: `🟢 LOCAL NODE`, `⚡ Learned · <time>`, or `📌 Static`.
+  - **Compact Service Indicator (Mini-Dots + Tooltips)**: Replaced bulky 6-box text pills with 6 color-coded status indicator dots and an `All Services (6)` / `X/6 Services` badge, reducing card height by 50%.
+  - **Inlined IP & Telemetry**: Host IP, reachability status (`🟢`/`🔴`), and RTT telemetry (`1.2ms • v2.0`) are consolidated onto a single compact line.
+- **Custom TCP Apps Live Telemetry Alignment** 📐:
+  - **Strict Table Layout (`table-fixed`)**: Column widths locked to 30% / 24% / 46% across `Incoming Sessions` and `Outgoing Sessions` tables, eliminating layout shifting when reconnect badges appear.
+  - **Sparkline Header Synchronization**: RTT Trend header positioned directly above the micro-sparkline, with tabular latency numbers (`avg / p50 / p95`) and jitter metrics aligned to the right.
+  - Streamlined live status badges and removed extraneous UUID clutter from header bars.
+- **SCM Traffic Log Viewer & Palo Alto SASE Security Analysis** 🔒:
+  - Integrated full SSL Decryption rule evaluation, dynamically resolving HTTPS threat bypasses (`Allowed (No SSL Decryption)`).
+  - Enhanced DNS security evaluation across Allowed, Sinkholed, and Blocked dispositions with dynamic rule correlation.
+  - URL Access Profile single-active evaluation preventing false blocks on allowed categories.
+  - CLI search shortcuts (`--dst`, `--threat-id`) and instant modal rendering with zero latency.
+
+---
+
 ## [2.0.5] - 2026-09-03
 
 ### Added / Changed
