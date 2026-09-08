@@ -7,9 +7,13 @@ import {
     Play, Square, RefreshCw, Server, Globe, Activity, Plus,
     Copy, Trash2, Edit3, Shield, AlertTriangle, CheckCircle2,
     Clock, Cpu, ArrowDownRight, ArrowUpRight, Zap, ExternalLink,
-    Layers, Cloud, Search, X, Info
+    Layers, Cloud, Search, X, Info, ChevronDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+function cn(...inputs: (string | undefined | null | false)[]) {
+    return inputs.filter(Boolean).join(' ');
+}
 import type {
     CustomTcpApplicationConfig,
     AppRuntimeMetrics,
@@ -46,6 +50,8 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const [editingApp, setEditingApp] = useState<CustomTcpApplicationConfig | null>(null);
     const [peerTestModal, setPeerTestModal] = useState<{ isOpen: boolean; peerId: string; peerName: string; host: string; port: number } | null>(null);
     const [peerTestResult, setPeerTestResult] = useState<{ loading: boolean; success?: boolean; rttMs?: number; error?: string } | null>(null);
+    const [startMenuOpen, setStartMenuOpen] = useState(false);
+    const [stopMenuOpen, setStopMenuOpen] = useState(false);
 
     // Auto-refresh interval (1.5s)
     useEffect(() => {
@@ -97,6 +103,47 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                 setAllAppSummaries(map);
             }
         } catch {}
+    };
+
+    const handleGlobalAction = async (action: 'start-all' | 'stop-all' | 'start-clients' | 'stop-clients' | 'start-listeners' | 'stop-listeners') => {
+        if (isActionLoading || !token) return;
+        setIsActionLoading(true);
+        try {
+            const res = await fetch(`/api/custom-tcp-apps/actions/${action}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok) {
+                if (action === 'start-all') {
+                    const lCount = data.listeners?.started?.length || 0;
+                    const cCount = data.clients?.started?.length || 0;
+                    toast.success(`Started all workloads (${lCount} listeners, ${cCount} active clients)`);
+                } else if (action === 'stop-all') {
+                    const cCount = data.clients?.stopped?.length || 0;
+                    const lCount = data.listeners?.stopped?.length || 0;
+                    toast.success(`Stopped all workloads (${cCount} clients, ${lCount} listeners)`);
+                } else if (action === 'start-clients') {
+                    const count = data.started?.length || 0;
+                    const skipped = data.skipped?.length || 0;
+                    toast.success(`Started ${count} client workloads${skipped > 0 ? ` (${skipped} without peers skipped)` : ''}`);
+                } else if (action === 'stop-clients') {
+                    toast.success(`Stopped ${data.stopped?.length || 0} client workloads`);
+                } else if (action === 'start-listeners') {
+                    toast.success(`Started ${data.started?.length || 0} service listeners`);
+                } else if (action === 'stop-listeners') {
+                    toast.success(`Stopped ${data.stopped?.length || 0} service listeners`);
+                }
+                loadAllSummaries();
+                if (selectedAppId) loadAppStatus(selectedAppId);
+            } else {
+                toast.error(data.error || `Failed to perform ${action}`);
+            }
+        } catch (e: any) {
+            toast.error(e.message || 'Action failed');
+        } finally {
+            setIsActionLoading(false);
+        }
     };
 
     const loadAppStatus = async (appId: string) => {
@@ -399,33 +446,153 @@ const secs = seconds % 60;
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2.5">
                     {instanceInfo && (
-                        <div className="flex items-center gap-2 bg-card-secondary border border-border px-3.5 py-1.5 rounded-xl text-xs shadow-sm">
+                        <div className="flex items-center gap-2 bg-card-secondary border border-border px-3 py-1.5 rounded-xl text-xs shadow-sm">
                             <span className="text-text-muted font-medium">Local Site:</span>
                             <span className="font-bold text-text-primary font-mono">{instanceInfo.siteName}</span>
-                            {instanceInfo.instanceId && (
-                                <>
-                                    <span className="text-text-muted">•</span>
-                                    <span className="text-text-muted font-mono text-[11px]" title={instanceInfo.instanceId}>
-                                        UUID: {instanceInfo.instanceId.substring(0, 8)}...
-                                    </span>
-                                </>
-                            )}
                         </div>
                     )}
 
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-card-secondary border border-border rounded-xl text-xs font-mono text-text-secondary shadow-sm">
+                    {/* Global Appliance Controls: Start All & Stop All */}
+                    <div className="flex items-center gap-1.5">
+                        {/* Start All Split / Dropdown Button */}
+                        <div className="relative">
+                            <div className="inline-flex rounded-xl shadow-sm overflow-hidden border border-emerald-500/30">
+                                <button
+                                    disabled={isActionLoading}
+                                    onClick={() => handleGlobalAction('start-all')}
+                                    className="h-[32px] px-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                                    title="Start all service listeners and all client workloads with configured peers"
+                                >
+                                    <Play size={12} fill="currentColor" />
+                                    <span>Start All</span>
+                                </button>
+                                <button
+                                    disabled={isActionLoading}
+                                    onClick={() => { setStartMenuOpen(!startMenuOpen); setStopMenuOpen(false); }}
+                                    className="h-[32px] px-2 bg-emerald-700 hover:bg-emerald-600 text-white border-l border-emerald-600 transition-colors cursor-pointer disabled:opacity-50"
+                                    title="More start options"
+                                >
+                                    <ChevronDown size={12} className={cn("transition-transform duration-200", startMenuOpen && "rotate-180")} />
+                                </button>
+                            </div>
+
+                            {/* Start Dropdown Menu */}
+                            {startMenuOpen && (
+                                <div 
+                                    className="absolute right-0 mt-1.5 w-64 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
+                                    onMouseLeave={() => setStartMenuOpen(false)}
+                                >
+                                    <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
+                                        Appliance Start Options
+                                    </div>
+                                    <button
+                                        onClick={() => { setStartMenuOpen(false); handleGlobalAction('start-all'); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                                        <div>
+                                            <div className="font-bold">Start All Workloads</div>
+                                            <div className="text-[10px] text-text-muted">Listeners on all ports + Clients with peers</div>
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => { setStartMenuOpen(false); handleGlobalAction('start-clients'); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                        <div className="w-2 h-2 rounded-full bg-amber-500" />
+                                        <div>
+                                            <div className="font-bold">Start Clients Only</div>
+                                            <div className="text-[10px] text-text-muted">Generate traffic to configured target peers</div>
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => { setStartMenuOpen(false); handleGlobalAction('start-listeners'); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                        <div>
+                                            <div className="font-bold">Start Listeners Only</div>
+                                            <div className="text-[10px] text-text-muted">Listen on all configured application ports</div>
+                                        </div>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Stop All Split / Dropdown Button */}
+                        <div className="relative">
+                            <div className="inline-flex rounded-xl shadow-sm overflow-hidden border border-rose-500/30">
+                                <button
+                                    disabled={isActionLoading}
+                                    onClick={() => handleGlobalAction('stop-all')}
+                                    className="h-[32px] px-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                                    title="Stop all running clients and listeners on this appliance"
+                                >
+                                    <Square size={12} fill="currentColor" />
+                                    <span>Stop All</span>
+                                </button>
+                                <button
+                                    disabled={isActionLoading}
+                                    onClick={() => { setStopMenuOpen(!stopMenuOpen); setStartMenuOpen(false); }}
+                                    className="h-[32px] px-2 bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border-l border-rose-500/20 transition-colors cursor-pointer disabled:opacity-50"
+                                    title="More stop options"
+                                >
+                                    <ChevronDown size={12} className={cn("transition-transform duration-200", stopMenuOpen && "rotate-180")} />
+                                </button>
+                            </div>
+
+                            {/* Stop Dropdown Menu */}
+                            {stopMenuOpen && (
+                                <div 
+                                    className="absolute right-0 mt-1.5 w-60 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
+                                    onMouseLeave={() => setStopMenuOpen(false)}
+                                >
+                                    <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
+                                        Appliance Stop Options
+                                    </div>
+                                    <button
+                                        onClick={() => { setStopMenuOpen(false); handleGlobalAction('stop-all'); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer font-bold"
+                                    >
+                                        <Square size={12} fill="currentColor" />
+                                        <span>Stop All (Clients + Listeners)</span>
+                                    </button>
+                                    <button
+                                        onClick={() => { setStopMenuOpen(false); handleGlobalAction('stop-clients'); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                        <Square size={12} />
+                                        <span>Stop Clients Only</span>
+                                    </button>
+                                    <button
+                                        onClick={() => { setStopMenuOpen(false); handleGlobalAction('stop-listeners'); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                        <Square size={12} />
+                                        <span>Stop Listeners Only</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Streamlined Live indicator */}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card-secondary border border-border rounded-xl text-xs font-mono shadow-sm" title="Real-time socket telemetry active (1.5s interval)">
                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span>Live Telemetry: 1.5s</span>
+                        <span className="text-[10px] font-bold text-emerald-400">LIVE</span>
                     </div>
 
                     <button
-                        onClick={() => loadAppStatus(selectedAppId)}
+                        onClick={() => {
+                            if (selectedAppId) loadAppStatus(selectedAppId);
+                            loadAllSummaries();
+                        }}
                         className="p-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-text-muted hover:text-text-primary transition-colors cursor-pointer shadow-sm"
                         title="Refresh Telemetry Now"
                     >
-                        <RefreshCw size={14} className={isActionLoading ? 'animate-spin' : ''} />
+                        <RefreshCw size={13} className={isActionLoading ? 'animate-spin' : ''} />
                     </button>
                 </div>
             </div>
@@ -855,12 +1022,12 @@ const secs = seconds % 60;
                                 No incoming sessions match "{sessionSearch}".
                             </div>
                         ) : (
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full text-left text-xs border-collapse table-fixed">
                                 <thead>
                                     <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
-                                        <th className="pb-3 px-3 whitespace-nowrap">Declared Origin</th>
-                                        <th className="pb-3 px-3 whitespace-nowrap">State & Uptime</th>
-                                        <th className="pb-3 px-3 text-right whitespace-nowrap">Throughput (RX / TX)</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap w-[35%]">Declared Origin</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap w-[25%]">State & Uptime</th>
+                                        <th className="pb-3 px-3 text-right whitespace-nowrap w-[40%]">Throughput (RX / TX)</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
@@ -877,8 +1044,8 @@ const secs = seconds % 60;
                                                 className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
                                                 title="Click to open full Session Deep Dive"
                                             >
-                                                <td className="py-2.5 px-3 whitespace-nowrap">
-                                                    <div className="font-semibold text-text-primary">
+                                                <td className="py-2.5 px-3 whitespace-nowrap truncate">
+                                                    <div className="font-semibold text-text-primary truncate">
                                                         {isStigixPeer ? (
                                                             <span className="group-hover:text-indigo-500 transition-colors" title={`Hostname: ${s.declaredHostname || 'n/a'} | ID: ${s.sessionId}`}>
                                                                 {originLabel}
@@ -889,7 +1056,7 @@ const secs = seconds % 60;
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div className="font-mono text-text-muted text-[10px] mt-0.5">
+                                                    <div className="font-mono text-text-muted text-[10px] mt-0.5 truncate">
                                                         {s.remoteIp}:{s.remotePort}
                                                     </div>
                                                 </td>
@@ -971,13 +1138,18 @@ const secs = seconds % 60;
                                 No outgoing sessions match "{sessionSearch}".
                             </div>
                         ) : (
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full text-left text-xs border-collapse table-fixed">
                                 <thead>
                                     <tr className="border-b border-border text-text-muted font-semibold text-[11px]">
-                                        <th className="pb-3 px-3 whitespace-nowrap">Target Peer</th>
-                                        <th className="pb-3 px-3 whitespace-nowrap">State & Uptime</th>
-                                        <th className="pb-3 px-3 text-right whitespace-nowrap">
-                                            RTT Wave & Latency <span className="text-[9px] font-normal text-text-muted opacity-75 font-sans">(avg / p50 / p95)</span>
+                                        <th className="pb-3 px-3 whitespace-nowrap w-[30%]">Target Peer</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap w-[24%]">State & Uptime</th>
+                                        <th className="pb-3 px-3 whitespace-nowrap w-[46%]">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-text-muted">RTT Trend</span>
+                                                <span className="text-right">
+                                                    Latency <span className="text-[9px] font-normal text-text-muted opacity-75 font-sans">(avg / p50 / p95)</span>
+                                                </span>
+                                            </div>
                                         </th>
                                     </tr>
                                 </thead>
@@ -993,16 +1165,16 @@ const secs = seconds % 60;
                                                 className="hover:bg-card-secondary/70 cursor-pointer transition-colors group"
                                                 title="Click to open full Session Deep Dive"
                                             >
-                                                <td className="py-2.5 px-3 whitespace-nowrap">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="font-semibold text-text-primary group-hover:text-emerald-500 transition-colors">{s.peerName}</span>
+                                                <td className="py-2.5 px-3 whitespace-nowrap truncate">
+                                                    <div className="flex items-center gap-1.5 truncate">
+                                                        <span className="font-semibold text-text-primary group-hover:text-emerald-500 transition-colors truncate">{s.peerName}</span>
                                                         {streamBadge && (
-                                                            <span className="px-1.5 py-0.2 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded text-[9px] font-mono font-bold">
+                                                            <span className="px-1.5 py-0.2 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded text-[9px] font-mono font-bold shrink-0">
                                                                 {streamBadge}
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div className="font-mono text-text-muted text-[10px] mt-0.5">
+                                                    <div className="font-mono text-text-muted text-[10px] mt-0.5 truncate">
                                                         {s.peerHost}:{s.peerPort}
                                                     </div>
                                                 </td>
@@ -1027,15 +1199,17 @@ const secs = seconds % 60;
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="py-2.5 px-3 text-right font-mono text-[11px] whitespace-nowrap">
-                                                    <div className="flex items-center justify-end gap-3">
-                                                        {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 ? (
-                                                            <div className="w-[48px] shrink-0 flex items-center justify-center">
-                                                                <MicroSparkline samples={s.rttMs.recentSamples} width={48} height={18} />
-                                                            </div>
-                                                        ) : null}
-                                                        <div className="text-right">
-                                                            <div className="text-amber-500 dark:text-amber-400 font-bold whitespace-nowrap tabular-nums text-xs">
+                                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div className="w-[52px] h-[20px] shrink-0 flex items-center justify-start">
+                                                            {s.rttMs.recentSamples && s.rttMs.recentSamples.length >= 2 ? (
+                                                                <MicroSparkline samples={s.rttMs.recentSamples} width={52} height={20} />
+                                                            ) : (
+                                                                <div className="w-full h-0.5 bg-border/30 rounded" />
+                                                            )}
+                                                        </div>
+                                                        <div className="text-right min-w-0">
+                                                            <div className="text-amber-500 dark:text-amber-400 font-bold whitespace-nowrap tabular-nums text-xs font-mono">
                                                                 {s.rttMs.avg > 0 ? `${s.rttMs.avg} / ${s.rttMs.p50} / ${s.rttMs.p95} ms` : '—'}
                                                             </div>
                                                             {s.rttMs.avg > 0 && (

@@ -62,6 +62,8 @@ export default function Iot({ token }: IotProps) {
     });
     const [prismaLoading, setPrismaLoading] = useState(false);
     const [prismaResult, setPrismaResult] = useState<{ imported: number; bad_behavior: number } | null>(null);
+    const [expandedThreats, setExpandedThreats] = useState<{ [deviceId: string]: boolean }>({});
+    const toggleThreat = (id: string) => setExpandedThreats(prev => ({ ...prev, [id]: !prev[id] }));
     // Vulnerability CSV import state
     const [showVulnModal, setShowVulnModal] = useState(false);
     const [vulnFile, setVulnFile] = useState<File | null>(null);
@@ -944,68 +946,99 @@ export default function Iot({ token }: IotProps) {
                                     const parts = device.description.split(' | ');
                                     return (
                                         <div className="mb-4 space-y-2">
-                                            {meta ? (
-                                                <div className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-3 space-y-2">
-                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                        <span className="bg-orange-500/20 text-orange-400 text-[9px] font-black px-2 py-0.5 rounded border border-orange-500/30 uppercase tracking-tight">
-                                                            ☠ Score {meta.danger_score}
-                                                        </span>
-                                                        <span className="bg-card-secondary text-text-muted text-[9px] font-bold px-2 py-0.5 rounded border border-border uppercase tracking-tight">
-                                                            {meta.cve_count} CVEs
-                                                        </span>
-                                                        {meta.critical_cves > 0 && (
-                                                            <span className="bg-red-500/15 text-red-400 text-[9px] font-black px-2 py-0.5 rounded border border-red-500/25 uppercase tracking-tight">
-                                                                {meta.critical_cves} Critical
-                                                            </span>
-                                                        )}
-                                                        {meta.high_cves > 0 && (
-                                                            <span className="bg-orange-500/15 text-orange-400 text-[9px] font-bold px-2 py-0.5 rounded border border-orange-500/25 uppercase tracking-tight">
-                                                                {meta.high_cves} High
-                                                            </span>
-                                                        )}
-                                                        {meta.max_cvss > 0 && (
-                                                            <span className="bg-card-secondary text-text-secondary text-[9px] font-bold px-2 py-0.5 rounded border border-border uppercase tracking-tight">
-                                                                CVSS {meta.max_cvss.toFixed(1)}
-                                                            </span>
-                                                        )}
-                                                        {meta.apt_groups?.length > 0 && (
-                                                            <span className="bg-purple-500/15 text-purple-400 text-[9px] font-bold px-2 py-0.5 rounded border border-purple-500/25 uppercase tracking-tight">
-                                                                {meta.apt_groups.length} APT
-                                                            </span>
-                                                        )}
-                                                        {meta.has_ics_cert && (
-                                                            <span className="bg-yellow-500/15 text-yellow-400 text-[9px] font-black px-2 py-0.5 rounded border border-yellow-500/25 uppercase tracking-tight">
-                                                                ⚠ ICS-CERT
-                                                            </span>
+                                            {meta ? (() => {
+                                                const devKey = device.id || device.name;
+                                                const isExpanded = !!expandedThreats[devKey];
+                                                return (
+                                                    <div className="bg-card-secondary/40 border border-orange-500/20 rounded-xl p-2.5 transition-all">
+                                                        {/* Compact Header Summary Row */}
+                                                        <div 
+                                                            className="flex items-center justify-between gap-1.5 cursor-pointer select-none group/threat"
+                                                            onClick={() => toggleThreat(devKey)}
+                                                            title="Click to expand/collapse threat intelligence details"
+                                                        >
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                <span className="bg-orange-500/15 text-orange-400 text-[9px] font-black px-2 py-0.5 rounded border border-orange-500/30 uppercase tracking-tight">
+                                                                    Score {meta.danger_score}
+                                                                </span>
+                                                                {meta.critical_cves > 0 && (
+                                                                    <span className="bg-red-500/15 text-red-400 text-[9px] font-black px-2 py-0.5 rounded border border-red-500/25 uppercase tracking-tight">
+                                                                        {meta.critical_cves} Critical
+                                                                    </span>
+                                                                )}
+                                                                {meta.os && (
+                                                                    <span className="text-[9px] font-mono text-text-muted bg-card-secondary px-1.5 py-0.5 rounded border border-border">
+                                                                        {meta.os}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            <button
+                                                                type="button"
+                                                                className="flex items-center gap-1 text-[9px] font-bold text-text-muted group-hover/threat:text-orange-400 transition-colors px-1 py-0.5"
+                                                            >
+                                                                <span>{isExpanded ? 'Hide' : 'Details'}</span>
+                                                                <ChevronDown size={12} className={cn("transition-transform duration-200", isExpanded && "rotate-180")} />
+                                                            </button>
+                                                        </div>
+
+                                                        {/* Expandable Detailed Intel */}
+                                                        {isExpanded && (
+                                                            <div className="mt-2.5 pt-2 border-t border-border/40 space-y-2 animate-in fade-in duration-150">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <span className="bg-card-secondary text-text-muted text-[9px] font-bold px-2 py-0.5 rounded border border-border uppercase tracking-tight">
+                                                                        {meta.cve_count} CVEs
+                                                                    </span>
+                                                                    {meta.high_cves > 0 && (
+                                                                        <span className="bg-orange-500/15 text-orange-400 text-[9px] font-bold px-2 py-0.5 rounded border border-orange-500/25 uppercase tracking-tight">
+                                                                            {meta.high_cves} High
+                                                                        </span>
+                                                                    )}
+                                                                    {meta.max_cvss > 0 && (
+                                                                        <span className="bg-card-secondary text-text-secondary text-[9px] font-bold px-2 py-0.5 rounded border border-border uppercase tracking-tight">
+                                                                            CVSS {meta.max_cvss.toFixed(1)}
+                                                                        </span>
+                                                                    )}
+                                                                    {meta.apt_groups?.length > 0 && (
+                                                                        <span className="bg-purple-500/15 text-purple-400 text-[9px] font-bold px-2 py-0.5 rounded border border-purple-500/25 uppercase tracking-tight">
+                                                                            {meta.apt_groups.length} APT
+                                                                        </span>
+                                                                    )}
+                                                                    {meta.has_ics_cert && (
+                                                                        <span className="bg-yellow-500/15 text-yellow-400 text-[9px] font-black px-2 py-0.5 rounded border border-yellow-500/25 uppercase tracking-tight">
+                                                                            ⚠ ICS-CERT
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {meta.top_cves?.length > 0 && (
+                                                                    <div className="flex flex-wrap gap-1">
+                                                                        {(meta.top_cves as string[]).slice(0, 4).map((cve) => (
+                                                                            <span key={cve} className="text-[8px] font-mono text-text-muted bg-card px-1.5 py-0.5 rounded border border-border">
+                                                                                {cve}
+                                                                            </span>
+                                                                        ))}
+                                                                        {meta.top_cves.length > 4 && (
+                                                                            <span className="text-[8px] text-text-muted font-bold">+{meta.top_cves.length - 4}</span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                {meta.apt_groups?.length > 0 && (
+                                                                    <p className="text-[9px] text-text-muted leading-relaxed">
+                                                                        <span className="text-purple-400 font-bold">APT: </span>
+                                                                        {(meta.apt_groups as string[]).slice(0, 5).join(', ')}
+                                                                        {meta.apt_groups.length > 5 && <span className="font-bold"> +{meta.apt_groups.length - 5}</span>}
+                                                                    </p>
+                                                                )}
+                                                                {meta.site && (
+                                                                    <p className="text-[9px] text-text-muted">
+                                                                        Site: <span className="text-text-secondary">{meta.site}</span>
+                                                                    </p>
+                                                                )}
+                                                            </div>
                                                         )}
                                                     </div>
-                                                    {meta.top_cves?.length > 0 && (
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {(meta.top_cves as string[]).slice(0, 4).map((cve) => (
-                                                                <span key={cve} className="text-[8px] font-mono text-text-muted bg-card-secondary px-1.5 py-0.5 rounded border border-border">
-                                                                    {cve}
-                                                                </span>
-                                                            ))}
-                                                            {meta.top_cves.length > 4 && (
-                                                                <span className="text-[8px] text-text-muted font-bold">+{meta.top_cves.length - 4}</span>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                    {meta.apt_groups?.length > 0 && (
-                                                        <p className="text-[9px] text-text-muted leading-relaxed">
-                                                            <span className="text-purple-400 font-bold">APT: </span>
-                                                            {(meta.apt_groups as string[]).slice(0, 5).join(', ')}
-                                                            {meta.apt_groups.length > 5 && <span className="font-bold"> +{meta.apt_groups.length - 5}</span>}
-                                                        </p>
-                                                    )}
-                                                    {(meta.os || meta.site) && (
-                                                        <p className="text-[9px] text-text-muted">
-                                                            {meta.os && <span className="mr-2">OS: <span className="text-text-secondary">{meta.os}</span></span>}
-                                                            {meta.site && <span>Site: <span className="text-text-secondary">{meta.site}</span></span>}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            ) : parts.length > 1 ? (
+                                                );
+                                            })() : parts.length > 1 ? (
                                                 <div className="flex flex-wrap gap-1 px-1">
                                                     {parts.map((p, i) => (
                                                         <span key={i} className="text-[9px] text-text-muted bg-card-secondary px-2 py-0.5 rounded border border-border">

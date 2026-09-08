@@ -1073,64 +1073,53 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Speed + Density pill controls */}
-                <div className="flex-1 flex items-center justify-center gap-6 bg-card-secondary/50 px-4 py-3 rounded-lg border border-border/50 shadow-inner">
-                  {/* Speed pills */}
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Speed</span>
-                    <div className="flex items-center gap-0.5 bg-card rounded-md border border-border p-0.5">
-                      {([
-                        { label: '🚀 Turbo', value: 0.1 },
-                        { label: '⚡ Fast',  value: 0.5 },
-                        { label: '📱 Normal', value: 2 },
-                        { label: '🐢 Slow',  value: 10 },
-                      ] as const).map(({ label, value }) => {
-                        const steps = [0.1, 0.5, 2, 10];
-                        const closest = steps.reduce((a, b) => Math.abs(b - trafficRate) < Math.abs(a - trafficRate) ? b : a);
-                        const isActive = closest === value;
-                        return (
-                          <button
-                            key={value}
-                            disabled={updatingRate}
-                            onClick={() => updateTrafficSettings(value, undefined)}
-                            className={cn(
-                              'px-2.5 py-1 rounded text-[10px] font-black tracking-tight transition-all whitespace-nowrap',
-                              isActive
-                                ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400/50 ring-offset-1 ring-offset-card'
-                                : 'text-text-muted hover:text-text-primary hover:bg-card-secondary/60 disabled:cursor-not-allowed'
-                            )}
-                          >
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <span className="text-[9px] font-mono text-text-muted/60">{trafficRate < 1 ? `${Math.round(trafficRate * 1000)}ms` : `${trafficRate}s`} delay</span>
+                {/* Unified Load & Intensity segmented control */}
+                <div className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-card-secondary/50 px-4 py-2.5 rounded-lg border border-border/50 shadow-inner">
+                  <div className="w-full flex items-center justify-between">
+                    <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Traffic Load & Intensity</span>
+                    <span className="text-[9px] font-mono text-text-muted/80">
+                      {trafficRate < 1 ? `${Math.round(trafficRate * 1000)}ms` : `${trafficRate}s`} delay · x{trafficClientCount} parallel
+                    </span>
                   </div>
+                  <div className="w-full grid grid-cols-4 gap-1 bg-card rounded-md border border-border p-1">
+                    {([
+                      { id: 'minimal', label: 'Minimal', sub: '~1 req/s', rate: 1.0, clients: 1 },
+                      { id: 'moderate', label: 'Moderate', sub: '~7 req/s', rate: 0.3, clients: 2 },
+                      { id: 'high', label: 'High Load', sub: '~40 req/s', rate: 0.1, clients: 4 },
+                      { id: 'stress', label: 'Stress', sub: '~160 req/s', rate: 0.05, clients: 8 },
+                    ] as const).map((preset) => {
+                      const presets = [
+                        { id: 'minimal', rate: 1.0, clients: 1 },
+                        { id: 'moderate', rate: 0.3, clients: 2 },
+                        { id: 'high', rate: 0.1, clients: 4 },
+                        { id: 'stress', rate: 0.05, clients: 8 },
+                      ];
+                      const currentScore = trafficClientCount / Math.max(0.01, trafficRate);
+                      const isClosest = presets.reduce((prev, curr) => {
+                        const prevDiff = Math.abs((prev.clients / prev.rate) - currentScore);
+                        const currDiff = Math.abs((curr.clients / curr.rate) - currentScore);
+                        return currDiff < prevDiff ? curr : prev;
+                      }).id === preset.id;
 
-                  <div className="w-px h-10 bg-border/50 self-center" />
-
-                  {/* Density pills */}
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Density</span>
-                    <div className="flex items-center gap-0.5 bg-card rounded-md border border-border p-0.5">
-                      {[1, 2, 3, 5, 10].map((n) => (
+                      return (
                         <button
-                          key={n}
+                          key={preset.id}
                           disabled={updatingRate}
-                          onClick={() => updateTrafficSettings(undefined, n)}
+                          onClick={() => updateTrafficSettings(preset.rate, preset.clients)}
                           className={cn(
-                            'px-2.5 py-1 rounded text-[10px] font-black tracking-tight transition-all',
-                            trafficClientCount === n
-                              ? 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-400/50 ring-offset-1 ring-offset-card'
-                              : 'text-text-muted hover:text-text-primary hover:bg-card-secondary/60 disabled:cursor-not-allowed'
+                            'flex flex-col items-center justify-center py-1.5 px-2 rounded text-center transition-all disabled:cursor-not-allowed',
+                            isClosest
+                              ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400/50'
+                              : 'text-text-muted hover:text-text-primary hover:bg-card-secondary/60'
                           )}
                         >
-                          {n}
+                          <span className="text-[10px] font-black tracking-tight leading-tight">{preset.label}</span>
+                          <span className={cn('text-[8px] font-mono leading-tight', isClosest ? 'text-blue-100' : 'text-text-muted/60')}>
+                            {preset.sub}
+                          </span>
                         </button>
-                      ))}
-                    </div>
-                    <span className="text-[9px] font-mono text-text-muted/60">x{trafficClientCount} parallel</span>
+                      );
+                    })}
                   </div>
                 </div>
 

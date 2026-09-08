@@ -22,6 +22,9 @@ import urllib.parse
 import urllib.error
 import ssl
 import ipaddress
+import socket
+import tempfile
+import time
 
 def get_script_dir():
     return os.path.dirname(os.path.abspath(__file__))
@@ -68,11 +71,18 @@ def match_ip_list(ip_str, rule_ips, is_malicious=False):
         return True
     if ip_str == 'any':
         return True
+
+    resolved_ip_str = ip_str
     try:
         ip = ipaddress.ip_address(ip_str)
     except Exception:
-        return True
-        
+        try:
+            resolved_ip_str = socket.gethostbyname(ip_str)
+            ip = ipaddress.ip_address(resolved_ip_str)
+        except Exception:
+            # If hostname cannot be resolved, match only if rule allows any/all
+            return any(item in ['any', 'Worldwide Any IPv4', 'Worldwide Any IPv6'] for item in rule_ips)
+
     for item in rule_ips:
         if item in ['panw-known-ip-list', 'panw-highrisk-ip-list', 'panw-bulletproof-ip-list']:
             if is_malicious:
@@ -125,7 +135,50 @@ class ScmTrafficEngine:
         self.decryption_rules = []
         self.remote_networks = []
         self.profile_groups = {}
+        self.url_profiles = {}
         self.ctx = ssl.create_default_context()
+
+    def get_cache_path(self):
+        cache_dir = os.path.join(tempfile.gettempdir(), 'stigix_scm_cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        return os.path.join(cache_dir, f"scm_policy_cache_{self.tsg_id}.json")
+
+    def load_cached_policies(self, max_age_seconds=600):
+        try:
+            cache_file = self.get_cache_path()
+            if not os.path.exists(cache_file):
+                return False
+            mtime = os.path.getmtime(cache_file)
+            if time.time() - mtime > max_age_seconds:
+                return False
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                cached = json.load(f)
+            self.security_rules = cached.get('security_rules', [])
+            self.decryption_rules = cached.get('decryption_rules', [])
+            self.remote_networks = cached.get('remote_networks', [])
+            self.profile_groups = cached.get('profile_groups', {})
+            self.url_profiles = cached.get('url_profiles', {})
+            self.token = cached.get('token')
+            return bool(self.security_rules or self.url_profiles)
+        except Exception:
+            return False
+
+    def save_cached_policies(self):
+        try:
+            cache_file = self.get_cache_path()
+            data = {
+                'timestamp': time.time(),
+                'token': self.token,
+                'security_rules': self.security_rules,
+                'decryption_rules': self.decryption_rules,
+                'remote_networks': self.remote_networks,
+                'profile_groups': self.profile_groups,
+                'url_profiles': self.url_profiles
+            }
+            with open(cache_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f)
+        except Exception:
+            pass
         
     def authenticate(self):
         auth_url = 'https://auth.apps.paloaltonetworks.com/auth/v1/oauth2/access_token'
@@ -152,7 +205,10 @@ class ScmTrafficEngine:
             print(f"❌ Authentication failed: {e}", file=sys.stderr)
             return None
 
-    def sync_policies(self):
+    def sync_policies(self, force_refresh=False):
+        if not force_refresh and self.load_cached_policies(max_age_seconds=600):
+            return True
+
         if not self.token and not self.authenticate():
             return False
             
@@ -211,10 +267,23 @@ class ScmTrafficEngine:
         except Exception:
             pass
 
+        # 5. URL Access Profiles
+        try:
+            for folder in ["Shared", "Remote+Networks"]:
+                url = f"https://api.sase.paloaltonetworks.com/sse/config/v1/url-access-profiles?folder={folder}&limit=100"
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, context=self.ctx, timeout=10) as r:
+                    data = json.loads(r.read().decode())
+                    for up in data.get('data', []):
+                        self.url_profiles[up.get('name')] = up
+        except Exception:
+            pass
+
+        self.save_cached_policies()
         return True
 
     def evaluate_flow(self, src_ip="any", dst_ip="any", sport="any", dport=443, protocol="tcp", app="any",
-                      from_zone="any", to_zone="any", in_if=None, out_if=None, threat=None, platform=None, limit=1):
+                      from_zone="any", to_zone="any", in_if=None, out_if=None, threat=None, category=None, platform=None, limit=1):
         
         resolved_platform = platform or detect_platform_type(in_if, out_if, from_zone, to_zone, src_ip, dst_ip)
         
@@ -271,12 +340,17 @@ class ScmTrafficEngine:
             if to_zone != "any" and to_zones and 'any' not in to_zones and to_zone not in to_zones and 'untrust' not in to_zones and 'trust' not in to_zones:
                 continue
                 
+            # User Matching (Skip rules requiring specific users unless matching)
+            source_users = r.get('source_user', ['any'])
+            if source_users and 'any' not in source_users:
+                continue
+
             port_match = False
             if 'any' in services or 'application-default' in services:
                 port_match = True
             else:
                 for s in services:
-                    if dport_num and (str(dport_num) in s or (s == 'service-https' and dport_num == 443) or (s == 'service-http' and dport_num == 80)):
+                    if dport_num and (str(dport_num) in s or (s == 'service-https' and dport_num == 443) or (s == 'service-http' and dport_num == 80) or (s == 'service-dns' and dport_num == 53)):
                         port_match = True
                         break
                         
@@ -296,11 +370,49 @@ class ScmTrafficEngine:
         verdict["matched_rules_count"] = len(matching_rules)
         verdict["all_matching_rules"] = matching_rules
         
-        if matching_rules:
+        if resolved_platform == "PRISMA_SDWAN":
+            # Check if an explicit top-priority DROP/DENY rule matched first (e.g. Drop Google, Deny Quic)
+            explicit_drop_rule = next((r for r in matching_rules if r["action"] in ["DENY", "DROP", "RESET-CLIENT", "RESET-SERVER", "RESET-BOTH"]), None)
+            
+            if explicit_drop_rule:
+                winning_rule_name = explicit_drop_rule["name"]
+                winning_folder = explicit_drop_rule["folder"]
+                profile_setting = explicit_drop_rule["profile_setting"]
+                attached_groups = profile_setting.get('group', ['best-practice'])
+                profile_group = attached_groups[0] if attached_groups else "best-practice"
+                action = explicit_drop_rule["action"]
+                is_blocked = True
+                verdict["rule"] = winning_rule_name
+                verdict["rule_id"] = explicit_drop_rule.get("id", "sdwan-rule")
+                verdict["folder"] = winning_folder
+                verdict["action"] = action
+                verdict["profile_setting"] = profile_setting
+                verdict["log_setting"] = explicit_drop_rule.get("log_setting", "Cortex Data Lake")
+                verdict["shadowed_rules"] = [r for r in matching_rules if r != explicit_drop_rule]
+            else:
+                # Prisma SD-WAN Edge Security Policy (ION Element Local DIA Inspection)
+                winning_rule_name = "Allow LAN to DIA"
+                winning_folder = "Prisma SD-WAN"
+                profile_group = "best-practice"
+                profile_setting = {"group": ["best-practice"]}
+                attached_groups = ["best-practice"]
+                action = "ALLOW"
+                is_blocked = False
+                
+                verdict["rule"] = winning_rule_name
+                verdict["rule_id"] = "sdwan-lan-to-dia"
+                verdict["folder"] = winning_folder
+                verdict["action"] = action
+                verdict["profile_setting"] = profile_setting
+                verdict["log_setting"] = "Cortex Data Lake"
+                verdict["shadowed_rules"] = matching_rules
+        elif matching_rules:
             first_match = matching_rules[0]
             action = first_match["action"].lower()
             is_blocked = action in ["deny", "drop", "reset-client", "reset-server", "reset-both"]
             profile_setting = first_match["profile_setting"]
+            attached_groups = profile_setting.get('group', [])
+            profile_group = attached_groups[0] if attached_groups else "best-practice"
             
             verdict["rule"] = first_match["name"]
             verdict["rule_id"] = first_match["id"]
@@ -309,70 +421,208 @@ class ScmTrafficEngine:
             verdict["profile_setting"] = profile_setting
             verdict["log_setting"] = first_match["log_setting"]
             verdict["shadowed_rules"] = matching_rules[1:]
-            
-            # Check Threat payload (e.g. EICAR test file or virus)
-            threat_triggered = False
-            threat_details = None
-            
-            if threat:
-                threat_lower = str(threat).lower()
-                attached_groups = profile_setting.get('group', [])
-                
-                if attached_groups or 'virus_and_wildfire_analysis' in profile_setting or 'best-practice' in str(profile_setting):
-                    threat_triggered = True
-                    threat_details = {
-                        "threat_name": "EICAR Standard Anti-Virus Test File" if "eicar" in threat_lower else f"Threat / Signature ({threat})",
-                        "threat_id": "6000 (Virus/Win32.Worm.Eicar.1)" if "eicar" in threat_lower else "PAN-OS Threat ID",
-                        "threat_type": "Virus / WildFire Malware",
-                        "category": "virus",
-                        "severity": "High",
-                        "action": "RESET-BOTH / BLOCK",
-                        "sub_type": "virus",
-                        "platform_type": resolved_platform,
-                        "pcap_available": True,
-                        "profile_group": attached_groups[0] if attached_groups else "best-practice",
-                        "wildfire_verdict": "Malicious (Signature Match)",
-                        "log_type": "THREAT LOG",
-                        "status": "🔴 BLOCKED & LOGGED TO CORTEX DATA LAKE"
-                    }
-            
-            if threat_triggered:
-                verdict["verdict"] = "BLOCKED BY THREAT ENGINE (RESET-BOTH)"
-                verdict["action"] = "RESET-BOTH"
-                verdict["emoji"] = "🛑"
-                verdict["threat_info"] = threat_details
-            else:
-                verdict["verdict"] = "DROP/DENY" if is_blocked else "ALLOW"
-                verdict["emoji"] = "🔴" if is_blocked else "🟢"
-                verdict["threat_info"] = None
+        else:
+            action = "ALLOW"
+            is_blocked = False
+            profile_setting = {"group": ["best-practice"]}
+            attached_groups = ["best-practice"]
+            profile_group = "best-practice"
+            verdict["shadowed_rules"] = []
 
         # 2. Check Decryption Rules
+        active_decr_rule = None
+        is_ssl_decrypted = False
+        decr_label = "No Decryption"
+
         for d in self.decryption_rules:
             if d.get('disabled', False):
                 continue
-            d_action = d.get('action', 'none')
-            if d_action != 'none':
-                verdict['decryption'] = f"SSL Decrypt ({d.get('name')})"
+            d_action = str(d.get('action', 'none')).lower()
+            if d_action in ['decrypt', 'no-decrypt']:
+                active_decr_rule = d
+                if d_action == 'decrypt':
+                    is_ssl_decrypted = True
+                    decr_label = f"SSL Decrypt ({d.get('name')})"
+                else:
+                    is_ssl_decrypted = False
+                    decr_label = f"No Decryption ({d.get('name')})"
                 break
+        
+        verdict['decryption'] = decr_label
+
+        threat_triggered = False
+        threat_details = None
+        
+        # Scenario A: Explicit Threat Test (EICAR / Virus / Malware payload)
+        if threat:
+            threat_lower = str(threat).lower()
+            is_https_flow = int(dport_num) == 443 or str(app).lower() in ["ssl", "web-browsing-ssl"] or "https://" in str(category or "").lower() or "https://" in str(dst_ip or "").lower()
+            
+            if is_https_flow and not is_ssl_decrypted:
+                # Payload is encrypted with TLS and NOT decrypted by any Decryption Rule
+                # -> Threat Prevention / AV CANNOT inspect inside TLS!
+                threat_triggered = False
+                threat_details = None
+                verdict["verdict"] = "ALLOW (NO SSL DECRYPTION)"
+                verdict["action"] = "ALLOW (NO SSL DECRYPTION)"
+                verdict["emoji"] = "🟢"
+                verdict["reason"] = f"HTTPS traffic is encrypted without SSL Decryption ({decr_label}). Threat Prevention cannot inspect payloads inside TLS."
+                verdict["threat_info"] = None
+            elif attached_groups or 'virus_and_wildfire_analysis' in profile_setting or 'best-practice' in str(profile_setting):
+                threat_triggered = True
+                threat_details = {
+                    "threat_name": "Eicar File Detected" if "eicar" in threat_lower else f"Threat / Signature ({threat})",
+                    "threat_id": "39040" if "eicar" in threat_lower else "PAN-OS Threat ID",
+                    "threat_type": "Threat Prevention (Vulnerability Signature)" if "eicar" in threat_lower else "Virus / WildFire Malware",
+                    "category": "code-execution" if "eicar" in threat_lower else (category or "virus"),
+                    "severity": "Medium" if "eicar" in threat_lower else "High",
+                    "action": "RESET-BOTH / BLOCK",
+                    "sub_type": "vulnerability" if "eicar" in threat_lower else "virus",
+                    "platform_type": resolved_platform,
+                    "pcap_available": True,
+                    "profile_group": profile_group,
+                    "wildfire_verdict": "Malicious (Signature Match)",
+                    "log_type": "THREAT LOG",
+                    "status": "🔴 BLOCKED & LOGGED TO CORTEX DATA LAKE"
+                }
+        # Scenario B: DNS Security query (DNS query on port 53)
+        elif app == "dns" or dport_num == 53 or protocol == "udp":
+            cat_lower = str(category or "").lower()
+            is_dns_threat = any(k in cat_lower for k in ["phishing", "malware", "c2", "ransomware", "spyware", "ddns", "tunneling"]) or "testpanw.com" in str(dst_ip).lower() or "panw.com" in str(dst_ip).lower()
+            if is_dns_threat or is_blocked:
+                threat_triggered = True
+                threat_details = {
+                    "threat_name": f"Palo Alto DNS Security ({category or 'Malicious Domain'})",
+                    "threat_id": "DNS Security (Unit 42 Threat Intelligence)",
+                    "threat_type": "DNS Security / Anti-Spyware",
+                    "category": category or "dns-security",
+                    "severity": "High",
+                    "action": "BLOCK / SINKHOLE",
+                    "sub_type": "dns",
+                    "platform_type": resolved_platform,
+                    "pcap_available": False,
+                    "profile_group": profile_group,
+                    "wildfire_verdict": "Malicious FQDN (Palo Alto Cloud Intelligence)",
+                    "log_type": "THREAT LOG (DNS)",
+                    "status": "🔴 SINKHOLED / BLOCKED BY DNS SECURITY"
+                }
+        # Scenario C: URL Filtering / Web category policy
+        elif category:
+            cat_slug = str(category).lower().strip().replace(' ', '-').replace('_', '')
+            
+            # Check attached URL access profile from rule's profile group
+            url_prof_name = None
+            if profile_setting and 'url_filtering' in profile_setting:
+                uf = profile_setting['url_filtering']
+                url_prof_name = uf[0] if isinstance(uf, list) and uf else str(uf)
+            elif profile_group and profile_group in self.profile_groups:
+                pg_data = self.profile_groups[profile_group]
+                uf = pg_data.get('url_filtering') or pg_data.get('url_access') or pg_data.get('url_filtering_profile')
+                if uf and isinstance(uf, list) and len(uf) > 0:
+                    url_prof_name = uf[0]
+                elif uf and isinstance(uf, str):
+                    url_prof_name = uf
+            
+            # Resolve the single exact active URL profile
+            active_url_profile = None
+            if url_prof_name and url_prof_name in self.url_profiles:
+                active_url_profile = self.url_profiles[url_prof_name]
+            elif "best-practice" in self.url_profiles:
+                active_url_profile = self.url_profiles["best-practice"]
+            elif "CAN-CustomURL" in self.url_profiles:
+                active_url_profile = self.url_profiles["CAN-CustomURL"]
+            elif "default" in self.url_profiles:
+                active_url_profile = self.url_profiles["default"]
+            
+            # Check block list of the single active profile
+            is_url_blocked = False
+            if active_url_profile:
+                block_list = [str(b).lower().strip().replace(' ', '-').replace('_', '') for b in (active_url_profile.get('block') or [])]
+                if cat_slug in block_list or any(b == cat_slug or (len(b) > 4 and (b in cat_slug or cat_slug in b)) for b in block_list):
+                    is_url_blocked = True
+            
+            if is_blocked or is_url_blocked:
+                threat_triggered = True
+                threat_details = {
+                    "threat_name": f"URL Filtering Block ({category})",
+                    "threat_id": f"PAN-DB Category ({cat_slug})",
+                    "threat_type": "URL Filtering Policy",
+                    "category": category,
+                    "severity": "Medium" if cat_slug in ["government", "gambling", "games", "social-networking"] else "High",
+                    "action": "BLOCK / ACCESS DENIED",
+                    "sub_type": "url-filtering",
+                    "platform_type": resolved_platform,
+                    "pcap_available": True,
+                    "profile_group": profile_group,
+                    "wildfire_verdict": f"Blocked Category ({category})",
+                    "log_type": "URL LOG",
+                    "status": f"🔴 BLOCKED BY URL FILTERING ({category})"
+                }
+                verdict["verdict"] = "DROP/DENY"
+                verdict["action"] = "BLOCK (URL FILTERING)"
+                verdict["emoji"] = "🔴"
+                verdict["category"] = category
+            elif not verdict.get("action", "").startswith("ALLOW"):
+                verdict["verdict"] = "ALLOW"
+                verdict["action"] = "ALLOW"
+                verdict["emoji"] = "🟢"
+                verdict["category"] = category
+                verdict["threat_info"] = None
+        
+        if threat_triggered and threat_details:
+            verdict["verdict"] = f"BLOCKED BY {threat_details['threat_type'].upper()}"
+            verdict["action"] = threat_details.get("action", "RESET-BOTH")
+            verdict["emoji"] = "🛑"
+            verdict["threat_info"] = threat_details
+        elif not category and not verdict.get("action", "").startswith("ALLOW"):
+            verdict["verdict"] = "DROP/DENY" if is_blocked else "ALLOW"
+            verdict["emoji"] = "🔴" if is_blocked else "🟢"
+            verdict["threat_info"] = None
                 
         # 3. Generate Multi-Event Log Records (Event Stream)
         event_count = max(1, int(limit))
-        base_time = datetime.datetime.utcnow()
+        base_time = datetime.datetime.now(datetime.timezone.utc)
         base_port = int(sport) if str(sport).isdigit() else 56400
+        safe_src = src_ip if src_ip != "any" else "192.168.219.1"
         
+        # Calculate consistent session ID based on flow tuple (including source port)
+        flow_seed = abs(hash(f"{safe_src}:{base_port}:{dst_ip}:{dport}:{app}:{category}"))
+        primary_session_id = (flow_seed % 89900) + 10100
+        device_sn = "028201-002954-9217" if resolved_platform == "PRISMA_SDWAN" else "019801-001844-3310"
+
+        verdict["src_ip"] = safe_src
+        verdict["src_port"] = base_port
+        verdict["session_id"] = primary_session_id
+        verdict["device_sn"] = device_sn
+        verdict["cloud_report_id"] = f"CR-{hex(flow_seed)[2:10].upper()}"
+        verdict["time_generated"] = base_time.strftime("%Y-%m-%d %H:%M:%S")
+        verdict["scm_search_filter"] = f"Source Address = '{safe_src}'"
+        verdict["scm_search_filter_port"] = f"Source Address = '{safe_src}' AND Source Port = {base_port}"
+        verdict["scm_search_filter_session"] = f"Source Address = '{safe_src}' AND Session ID = {primary_session_id}"
+        verdict["scm_search_filter_exact"] = f"Source Address = '{safe_src}' AND Source Port = {base_port}"
+        if threat_triggered and threat_details:
+            if threat_details.get("threat_id"):
+                verdict["scm_search_filter_threat"] = f"Threat ID = {threat_details['threat_id']}"
+            if threat_details.get("threat_name"):
+                verdict["scm_search_filter_threat_name"] = f"Threat Name Firewall = '{threat_details['threat_name']}'"
+
         events = []
         for i in range(event_count):
             event_time = (base_time - datetime.timedelta(seconds=i * 42)).strftime("%Y-%m-%d %H:%M:%S")
             cur_sport = base_port + (i * 2) if str(sport).isdigit() else f"564{i:02d}"
+            cur_session_id = primary_session_id + i
             
             ev = {
                 "id": i + 1,
+                "session_id": cur_session_id,
+                "device_sn": device_sn,
+                "cloud_report_id": f"CR-{hex(flow_seed + i)[2:10].upper()}",
                 "timestamp_utc": event_time,
                 "platform_type": resolved_platform,
                 "pcap_download": "⬇️ Available",
                 "log_type": "THREAT" if verdict.get("threat_info") else "TRAFFIC",
                 "severity": verdict["threat_info"]["severity"] if verdict.get("threat_info") else "INFORMATIONAL",
-                "src_ip": src_ip if src_ip != "any" else "192.168.219.1",
+                "src_ip": safe_src,
                 "src_port": cur_sport,
                 "dst_ip": dst_ip if dst_ip != "any" else "192.168.206.10",
                 "dst_port": dport,
@@ -383,6 +633,8 @@ class ScmTrafficEngine:
                 "app": app,
                 "threat_name": verdict["threat_info"]["threat_name"] if verdict.get("threat_info") else "N/A (Normal Flow)",
                 "threat_id": verdict["threat_info"]["threat_id"] if verdict.get("threat_info") else "N/A",
+                "scm_filter": f"Source Address = '{safe_src}/32' AND Source Port = {cur_sport}",
+                "scm_filter_session": f"Source Address = '{safe_src}/32' AND Session ID = {cur_session_id}",
                 "status": verdict["emoji"] + " " + verdict["action"]
             }
             events.append(ev)
@@ -393,13 +645,14 @@ class ScmTrafficEngine:
 
 def main():
     parser = argparse.ArgumentParser(description="Stigix SCM Policy & Threat Log Evaluator")
-    parser.add_argument('--sport', default="56400", help="Source port (e.g. 56400, 52001, any)")
-    parser.add_argument('--dport', default=80, help="Destination port (e.g. 80, 443)")
-    parser.add_argument('--src', default="192.168.219.1", help="Source IP (e.g. 192.168.219.1)")
-    parser.add_argument('--dst', default="192.168.206.10", help="Destination IP (e.g. 192.168.206.10)")
-    parser.add_argument('--app', default="web-browsing", help="Application name (e.g. web-browsing, ssl, http)")
+    parser.add_argument('--src', default="any", help="Source IP or subnet (e.g. 192.168.219.1, 10.10.10.0/24)")
+    parser.add_argument('--dst', default="any", help="Destination IP or FQDN (e.g. 192.168.206.10, 8.8.8.8)")
+    parser.add_argument('--sport', default="any", help="Source Port (e.g. 56422)")
+    parser.add_argument('--dport', default=443, help="Destination Port (e.g. 80, 443, 53)")
+    parser.add_argument('--app', default="web-browsing", help="Application name (e.g. web-browsing, ssl, http, dns)")
     parser.add_argument('--protocol', default="tcp", choices=['tcp', 'udp', 'icmp'], help="IP Protocol")
-    parser.add_argument('--threat', default="eicar", help="Threat type or test signature (e.g. eicar, virus, spyware)")
+    parser.add_argument('--threat', default=None, help="Threat type or test signature (e.g. eicar, virus, spyware)")
+    parser.add_argument('--category', default=None, help="Security Category (e.g. Phishing, Malware, Extremism)")
     parser.add_argument('--platform', choices=['PRISMA_SDWAN', 'PRISMA_ACCESS', 'AUTO'], default="AUTO", help="Platform type (PRISMA_SDWAN vs PRISMA_ACCESS)")
     parser.add_argument('--zone-from', default="CORP", help="Source security zone (e.g. CORP, trust)")
     parser.add_argument('--zone-to', default="VPN", help="Destination security zone (e.g. VPN, untrust)")
@@ -412,6 +665,7 @@ def main():
     parser.add_argument('--list-rns', action='store_true', help="List all active SCM Remote Networks")
     parser.add_argument('--json', action='store_true', help="Output in raw JSON format")
     parser.add_argument('--config', help="Path to prisma-config.json")
+    parser.add_argument('--refresh-cache', action='store_true', help="Force refresh of cached SCM policies")
     
     args = parser.parse_args()
     
@@ -422,14 +676,14 @@ def main():
         
     engine = ScmTrafficEngine(cfg)
     
-    if not args.json:
+    if not args.json and (args.refresh_cache or not engine.load_cached_policies()):
         print(f"🔒 Connecting to Global SASE Gateway (Tenant TSG: {cfg['tsg_id']})...")
         
-    if not engine.sync_policies():
+    if not engine.sync_policies(force_refresh=args.refresh_cache):
         sys.exit(1)
         
     if not args.json:
-        print(f"✅ Synchronized with SCM: {len(engine.security_rules)} Security Rules, {len(engine.decryption_rules)} Decryption Rules, {len(engine.remote_networks)} Remote Networks.\n")
+        print(f"✅ Synchronized with SCM: {len(engine.security_rules)} Security Rules, {len(engine.decryption_rules)} Decryption Rules, {len(engine.url_profiles)} URL Profiles, {len(engine.remote_networks)} Remote Networks.\n")
         
     if args.list_rns:
         print("=== Active Remote Networks ===")
@@ -460,6 +714,7 @@ def main():
         in_if=args.in_if,
         out_if=args.out_if,
         threat=args.threat,
+        category=args.category,
         platform=platform_choice,
         limit=args.limit
     )

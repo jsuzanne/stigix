@@ -106,6 +106,7 @@ COPY iot ./iot
 COPY mcp-server /app/mcp-server
 COPY traffic-generator.sh ./
 COPY stigix-all-in-one ./stigix-all-in-one
+COPY Scripts ./Scripts
 
 # Copy CLI script
 COPY Scripts/stigix-cli.py /usr/local/lib/stigix/stigix-cli.py

@@ -86,6 +86,68 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
         }
     });
 
+    // ─── Batch / Fleet Appliance Operations ──────────────────────────────────
+
+    // POST /api/custom-tcp-apps/actions/start-all — Start all listeners and clients (with peers)
+    router.post('/actions/start-all', async (_req: Request, res: Response) => {
+        try {
+            const result = await tcpAppManager.startAll();
+            res.json({ success: true, ...result });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/actions/stop-all — Stop all clients and listeners
+    router.post('/actions/stop-all', async (_req: Request, res: Response) => {
+        try {
+            const result = await tcpAppManager.stopAllWorkloads();
+            res.json({ success: true, ...result });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/actions/start-clients — Start clients for all apps with peers
+    router.post('/actions/start-clients', async (_req: Request, res: Response) => {
+        try {
+            const result = await tcpAppManager.startAllClients();
+            res.json({ success: true, ...result });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/actions/stop-clients — Stop all running clients
+    router.post('/actions/stop-clients', async (_req: Request, res: Response) => {
+        try {
+            const result = await tcpAppManager.stopAllClients();
+            res.json({ success: true, ...result });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/actions/start-listeners — Start all service listeners
+    router.post('/actions/start-listeners', async (_req: Request, res: Response) => {
+        try {
+            const result = await tcpAppManager.startAllListeners();
+            res.json({ success: true, ...result });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/actions/stop-listeners — Stop all listeners
+    router.post('/actions/stop-listeners', async (_req: Request, res: Response) => {
+        try {
+            const result = await tcpAppManager.stopAllListeners();
+            res.json({ success: true, ...result });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
     // ─── Prisma SD-WAN Custom Apps Sync Endpoints (Static prefix before /:id) ─
 
     // GET /api/custom-tcp-apps/prisma/status — Check tenant status and list Prisma appdefs

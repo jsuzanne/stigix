@@ -688,18 +688,26 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         return () => clearTimeout(timer);
     }, [searchQuery, testTypeFilter]);
 
-    const viewTestDetails = async (testId: number) => {
+    const viewTestDetails = async (testId: number, initialData?: any) => {
         setModalSearchQuery('');
+        if (initialData) {
+            setSelectedTest(initialData);
+            setShowDetailModal(true);
+        }
         try {
             const response = await fetch(`/api/security/results/${testId}`, {
                 headers: authHeaders()
             });
             const data = await response.json();
             setSelectedTest(data);
-            setShowDetailModal(true);
+            if (!initialData) {
+                setShowDetailModal(true);
+            }
         } catch (e) {
             console.error('Failed to fetch test details:', e);
-            showToast('Failed to load test details', 'error');
+            if (!initialData) {
+                showToast('Failed to load test details', 'error');
+            }
         }
     };
 
@@ -3057,7 +3065,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                 return (
                                                     <tr
                                                         key={result.testId || index}
-                                                        onClick={() => result.testId && viewTestDetails(result.testId)}
+                                                        onClick={() => result.testId && viewTestDetails(result.testId, result)}
                                                         className={`hover:bg-card-secondary/50 transition-all cursor-pointer group ${
                                                             isRegression ? 'bg-red-500/5' : isImprovement ? 'bg-green-500/5' : ''
                                                         }`}
@@ -3575,84 +3583,220 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                             </div>
                                         )}
 
-                                        {selectedTest.details.slsDiagnostic && (
-                                            <div className="mt-8 p-6 bg-slate-900/50 border border-slate-700/50 rounded-2xl relative overflow-hidden shadow-2xl">
-                                                <div className="absolute top-0 right-0 p-4 opacity-20">
-                                                    <Shield size={60} className="text-slate-400" />
-                                                </div>
-                                                <div className="flex items-center gap-3 mb-6">
-                                                    <div className="p-2 bg-blue-600/20 rounded-lg border border-blue-500/30">
-                                                        <Zap size={18} className="text-blue-500" />
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-blue-500 font-black uppercase text-[10px] tracking-widest block">Cloud Execution Context</span>
-                                                        <h4 className="text-sm font-black text-text-primary uppercase tracking-tight">Strata Logging Service (SLS)</h4>
-                                                    </div>
-                                                </div>
+                                        {(() => {
+                                            const sls = selectedTest.details?.slsDiagnostic || selectedTest.slsDiagnostic;
+                                            if (!sls) return null;
+                                            const scmQueryIp = sls.scm_search_filter || `Source Address = '${sls.src_ip || '192.168.219.1'}'`;
+                                            const scmQueryPort = sls.scm_search_filter_port || (sls.src_port ? `Source Address = '${sls.src_ip || '192.168.219.1'}' AND Source Port = ${sls.src_port}` : scmQueryIp);
+                                            const scmQueryThreat = sls.scm_search_filter_threat || (sls.threat_id ? `Threat ID = ${sls.threat_id}` : (sls.threat_name ? `Threat Name Firewall = '${sls.threat_name}'` : ''));
+                                            
+                                            // Extract Destination IP/Host for 1-click query
+                                            const rawDst = selectedTest.details?.resolvedIp || selectedTest.details?.domain || selectedTest.details?.url || selectedTest.details?.endpoint || '';
+                                            let cleanDstHost = '';
+                                            try {
+                                                cleanDstHost = rawDst.startsWith('http') ? new URL(rawDst).hostname : rawDst;
+                                            } catch (e) {
+                                                cleanDstHost = rawDst;
+                                            }
+                                            const scmQueryDst = cleanDstHost ? `Destination Address = '${cleanDstHost}'` : '';
+                                            const scmQuery = scmQueryThreat || scmQueryIp;
 
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Matched Rule</span>
-                                                        <span className="text-xs font-bold text-text-primary">{selectedTest.details.slsDiagnostic.rule || 'Unknown Rule'}</span>
+                                            return (
+                                                <div className="mt-8 p-6 bg-slate-900/50 border border-slate-700/50 rounded-2xl relative overflow-hidden shadow-2xl">
+                                                    <div className="absolute top-0 right-0 p-4 opacity-20">
+                                                        <Shield size={60} className="text-slate-400" />
                                                     </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Security Profile</span>
-                                                        <span className="text-xs font-bold text-text-primary">{selectedTest.details.slsDiagnostic.security_profile || 'None'}</span>
-                                                    </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Application ID</span>
-                                                        <span className="text-xs font-mono font-bold text-blue-500 uppercase">{selectedTest.details.slsDiagnostic.app || 'Any'}</span>
-                                                    </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">URL Category</span>
-                                                        <span className="text-xs font-bold text-text-primary uppercase">{selectedTest.details.slsDiagnostic.category || 'N/A'}</span>
-                                                    </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Device / Site</span>
-                                                        <span className="text-xs font-bold text-text-primary truncate">{selectedTest.details.slsDiagnostic.device_name || 'Unknown Device'}</span>
-                                                    </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">System (VSYS)</span>
-                                                        <span className="text-xs font-bold text-text-primary uppercase">{selectedTest.details.slsDiagnostic.vsys_name || 'N/A'}</span>
-                                                    </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50 col-span-2">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Service Provider / Origin</span>
+                                                    <div className="flex items-center justify-between gap-3 mb-6">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="p-2 bg-blue-600/20 rounded-lg border border-blue-500/30">
+                                                                <Zap size={18} className="text-blue-500" />
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-blue-500 font-black uppercase text-[10px] tracking-widest block">Cloud Policy Evaluation</span>
+                                                                <h4 className="text-sm font-black text-text-primary uppercase tracking-tight">Strata Cloud Manager (SCM) Policy Evaluation</h4>
+                                                            </div>
+                                                        </div>
                                                         <div className="flex items-center gap-2">
-                                                            <span className={twMerge(
-                                                                "text-[10px] font-black px-2 py-0.5 rounded border",
-                                                                selectedTest.details.slsDiagnostic.parent_device_group?.toLowerCase().includes('access') 
-                                                                    ? "bg-purple-600/10 text-purple-600 border-purple-500/20" 
-                                                                    : "bg-blue-600/10 text-blue-600 border-blue-500/20"
-                                                            )}>
-                                                                {selectedTest.details.slsDiagnostic.parent_device_group?.toLowerCase().includes('access') ? 'PRISMA ACCESS' : 'PRISMA SD-WAN'}
+                                                            {sls.src_port && (
+                                                                <span className="text-[10px] font-mono font-black bg-purple-950/80 text-purple-300 border border-purple-500/40 px-2.5 py-1 rounded-lg shadow-sm">
+                                                                    PORT #{sls.src_port}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* SCM Log Viewer 1-Click Verification Query Bar */}
+                                                    <div className="mb-5 p-3.5 bg-blue-950/40 border border-blue-500/30 rounded-xl space-y-2.5">
+                                                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                            <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                                <span>SCM Log Viewer Exact Query:</span>
                                                             </span>
-                                                            <span className="text-xs font-bold text-text-primary opacity-70">
-                                                                ({selectedTest.details.slsDiagnostic.parent_device_group || 'Default DG'})
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                {scmQueryThreat && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            navigator.clipboard.writeText(scmQueryThreat);
+                                                                            showToast('Threat filter copied: ' + scmQueryThreat, 'success');
+                                                                        }}
+                                                                        className="px-2 py-0.5 bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-500/40 rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 transition-all shadow"
+                                                                        title="Copy Threat ID Filter (Guaranteed match even with NAT/PAT)"
+                                                                    >
+                                                                        <Copy size={10} />
+                                                                        <span>Threat ID</span>
+                                                                    </button>
+                                                                )}
+                                                                {scmQueryDst && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            navigator.clipboard.writeText(scmQueryDst);
+                                                                            showToast('Destination filter copied: ' + scmQueryDst, 'success');
+                                                                        }}
+                                                                        className="px-2 py-0.5 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-500/40 rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 transition-all shadow"
+                                                                        title="Copy Destination IP Filter"
+                                                                    >
+                                                                        <Copy size={10} />
+                                                                        <span>Dest IP</span>
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        navigator.clipboard.writeText(scmQueryIp);
+                                                                        showToast('IP filter copied: ' + scmQueryIp, 'success');
+                                                                    }}
+                                                                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 transition-all shadow"
+                                                                    title="Copy Source IP Only Filter"
+                                                                >
+                                                                    <Copy size={10} />
+                                                                    <span>Source IP</span>
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        navigator.clipboard.writeText(scmQueryPort);
+                                                                        showToast('IP + Port query copied!', 'success');
+                                                                    }}
+                                                                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5 transition-all shadow active:scale-95"
+                                                                    title="Copy SCM Log Viewer Filter (Pre-NAT Port)"
+                                                                >
+                                                                    <Copy size={12} />
+                                                                    <span>Copy IP+Port</span>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <code className="text-[11px] font-mono font-bold text-slate-200 bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-700/60 select-all w-full overflow-x-auto whitespace-nowrap block">
+                                                                {scmQueryThreat || scmQueryIp}
+                                                            </code>
+                                                        </div>
+                                                        <div className="text-[9px] text-slate-400 font-medium flex items-center gap-1">
+                                                            <span className="text-amber-400 font-black">💡 Tip:</span>
+                                                            <span>Si le NAT/PAT est actif sur la branche, SCM logue le port Post-NAT. Utilisez <b>Threat ID</b> ou <b>Dest IP</b> pour retrouver immédiatement le log.</span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Source Client (Pre-NAT)</span>
+                                                            <span className="text-xs font-mono font-bold text-blue-400">
+                                                                {sls.src_ip || '192.168.219.1'}:{sls.src_port || 'Auto'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Matched Rule</span>
+                                                            <span className="text-xs font-bold text-text-primary">{sls.rule || 'Unknown Rule'}</span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Security Profile</span>
+                                                            <span className="text-xs font-bold text-text-primary">{sls.security_profile || 'None'}</span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Application ID</span>
+                                                            <span className="text-xs font-mono font-bold text-blue-500 uppercase">{sls.app || 'Any'}</span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">URL Category / Threat</span>
+                                                            <span className="text-xs font-bold text-text-primary uppercase">
+                                                                {sls.threat_name || (sls.action?.toLowerCase().includes('allow') ? 'None (Encrypted / Decryption Bypass)' : sls.category || 'N/A')}
+                                                            </span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Device / Site</span>
+                                                            <span className="text-xs font-bold text-text-primary truncate">{sls.device_name || 'Unknown Device'}</span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Device Serial Number (SN)</span>
+                                                            <span className="text-xs font-mono font-bold text-text-primary truncate">{sls.device_sn || '028201-002954-9217'}</span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50 col-span-2">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Service Provider / Origin</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={twMerge(
+                                                                    "text-[10px] font-black px-2 py-0.5 rounded border",
+                                                                    (sls.platform_type === 'PRISMA_ACCESS' || sls.parent_device_group?.toLowerCase().includes('access')) 
+                                                                        ? "bg-purple-600/10 text-purple-600 border-purple-500/20" 
+                                                                        : "bg-blue-600/10 text-blue-600 border-blue-500/20"
+                                                                )}>
+                                                                    {sls.platform_type === 'PRISMA_ACCESS' || sls.parent_device_group?.toLowerCase().includes('access') ? 'PRISMA ACCESS' : 'PRISMA SD-WAN'}
+                                                                </span>
+                                                                <span className="text-xs font-bold text-text-primary opacity-70">
+                                                                    ({sls.parent_device_group || 'Default DG'})
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Zone Insight</span>
+                                                            <span className="text-[10px] font-bold text-text-primary uppercase flex items-center gap-2">
+                                                                {sls.source_zone || '?'}
+                                                                <ChevronRight size={12} className="text-text-muted" />
+                                                                {sls.dest_zone || '?'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
+                                                            <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Cloud Action</span>
+                                                            <span className={twMerge(
+                                                                "px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border",
+                                                                (sls.action?.toLowerCase().includes('allow') || sls.action === 'allowed')
+                                                                    ? "bg-green-600/10 text-green-600 border-green-500/20" 
+                                                                    : "bg-red-600/10 text-red-600 border-red-500/20"
+                                                            )}>
+                                                                {sls.action || 'Unknown'}
                                                             </span>
                                                         </div>
                                                     </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Zone Insight</span>
-                                                        <span className="text-[10px] font-bold text-text-primary uppercase flex items-center gap-2">
-                                                            {selectedTest.details.slsDiagnostic.source_zone || '?'}
-                                                            <ChevronRight size={12} className="text-text-muted" />
-                                                            {selectedTest.details.slsDiagnostic.dest_zone || '?'}
-                                                        </span>
-                                                    </div>
-                                                    <div className="bg-card-secondary/40 p-3 rounded-xl border border-border/50">
-                                                        <span className="text-[9px] font-black text-text-muted uppercase tracking-widest block mb-1 opacity-60">Cloud Action</span>
-                                                        <span className={twMerge(
-                                                            "px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border",
-                                                            selectedTest.details.slsDiagnostic.action === 'allow' 
-                                                                ? "bg-green-600/10 text-green-600 border-green-500/20" 
-                                                                : "bg-red-600/10 text-red-600 border-red-500/20"
-                                                        )}>
-                                                            {selectedTest.details.slsDiagnostic.action || 'Unknown'}
-                                                        </span>
-                                                    </div>
+
+                                                    {/* SCM Policy Evaluation CLI Script Command */}
+                                                    {sls.scm_cli_command && (
+                                                        <div className="mt-4 p-3.5 bg-slate-950/80 border border-slate-700/60 rounded-xl space-y-2">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                                    <span>SCM Policy Evaluation CLI Script:</span>
+                                                                </span>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        navigator.clipboard.writeText(sls.scm_cli_command);
+                                                                        showToast('SCM CLI script command copied!', 'success');
+                                                                    }}
+                                                                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5 transition-all shadow active:scale-95 border border-slate-600/50"
+                                                                    title="Copy full CLI python command"
+                                                                >
+                                                                    <Copy size={12} />
+                                                                    <span>Copy Script Command</span>
+                                                                </button>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <code className="text-[10px] font-mono text-slate-300 bg-black/70 px-2.5 py-2 rounded-lg border border-slate-800 select-all w-full overflow-x-auto whitespace-nowrap block">
+                                                                    {sls.scm_cli_command}
+                                                                </code>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            </div>
-                                        )}
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             )}

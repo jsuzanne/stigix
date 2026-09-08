@@ -136,12 +136,10 @@ const formatTargetTimestamp = (isoStr?: string) => {
 };
 
 interface TargetServiceStatus {
-    mode: 'NORMAL' | 'ALWAYS_SLOW' | 'RANDOM_SLOW' | 'LOOPING_SLOW';
-    slow_delay: number;
-    loop_slow: number;
-    loop_normal: number;
-    random_prob: number;
-    current_loop_state: string;
+    status?: string;
+    service?: string;
+    port?: number;
+    eicar_endpoint?: string;
     error?: string;
 }
 
@@ -423,7 +421,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [isProbeModalOpen, setIsProbeModalOpen] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
-    const [showOverview, setShowOverview] = useState(true);
+    const [showOverview, setShowOverview] = useState(false);
 
     // Maintenance State (from System.tsx)
     const [status, setStatus] = useState<MaintenanceStatus | null>(null);
@@ -448,24 +446,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
             }
         } catch (e) {
             setTargetServiceStatus({ error: 'Connection failed' } as any);
-        }
-    };
-
-    const setTargetServiceMode = async (mode: string) => {
-        try {
-            const res = await fetch('/api/target-service/mode', {
-                method: 'POST',
-                headers: { 
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ mode })
-            });
-            if (res.ok) {
-                fetchTargetServiceStatus();
-            }
-        } catch (e) {
-            console.error('Failed to set mode:', e);
         }
     };
 
@@ -1703,13 +1683,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         fetchTargets();
     };
 
-    const CAP_LABELS: { key: keyof TargetCapability; label: string; color: string }[] = [
-        { key: 'voice', label: 'Voice', color: 'blue' },
-        { key: 'convergence', label: 'Failover', color: 'purple' },
-        { key: 'custom_app', label: 'Custom Apps', color: 'teal' },
-        { key: 'xfr', label: 'Speedtest', color: 'cyan' },
-        { key: 'security', label: 'Security', color: 'red' },
-        { key: 'connectivity', label: 'Connectivity', color: 'green' },
+    const CAP_LABELS: { key: keyof TargetCapability; label: string; color: string; dotClass: string }[] = [
+        { key: 'voice', label: 'Voice', color: 'blue', dotClass: 'bg-blue-500' },
+        { key: 'convergence', label: 'Failover', color: 'purple', dotClass: 'bg-purple-500' },
+        { key: 'custom_app', label: 'Custom Apps', color: 'teal', dotClass: 'bg-teal-500' },
+        { key: 'xfr', label: 'Speedtest', color: 'cyan', dotClass: 'bg-cyan-500' },
+        { key: 'security', label: 'Security', color: 'red', dotClass: 'bg-rose-500' },
+        { key: 'connectivity', label: 'Connectivity', color: 'green', dotClass: 'bg-emerald-500' },
     ];
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -2739,7 +2719,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         </div>
                                         <BarChart3 size={12} className="text-blue-500" />
                                         Distribution Overview
-                                        <span className="ml-auto text-[8px] font-semibold text-text-muted/60 normal-case tracking-normal">◀ weight · apps ▶</span>
+                                        <span className="ml-auto flex items-center gap-2 text-[8px] font-semibold text-text-muted/60 normal-case tracking-normal">
+                                            <span>{categories.length} categories · {categories.reduce((acc, c) => acc + c.apps.length, 0)} apps</span>
+                                            {showOverview ? <span>◀ weight · apps ▶</span> : <span className="text-blue-400 font-bold">Expand ▾</span>}
+                                        </span>
                                     </div>
                                     {showOverview && (() => {
                                         const maxCatPct = Math.max(...categories.map(c =>
@@ -4491,105 +4474,68 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                         </div>
                     )}
 
-                        {/* ── Local Target Service Control ── */}
-                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-5 shadow-inner flex flex-col">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-[10px] font-black text-text-muted tracking-[0.2em] uppercase flex items-center gap-2">
-                                    <Globe size={12} className="text-emerald-500" />
-                                    Local Target Service
-                                </h3>
+                        {/* ── Local Target Service Control (EICAR Security Target) ── */}
+                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 shadow-inner">
+                            <div className="flex items-center justify-between pb-4 border-b border-border/60">
+                                <div className="flex items-center gap-2">
+                                    <Shield size={14} className="text-emerald-500" />
+                                    <h3 className="text-xs font-black text-text-primary uppercase tracking-wider">
+                                        Local Appliance Target & Security Service
+                                    </h3>
+                                </div>
                                 <div className="flex items-center gap-2">
                                     {(() => {
                                         const isOffline = targetServiceStatus?.error || !targetServiceStatus;
-                                        const isNormal = targetServiceStatus?.mode === 'NORMAL';
                                         if (isOffline) return (
                                             <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 text-[9px] font-black tracking-widest shadow-sm">OFFLINE</span>
                                         );
-                                        if (isNormal) return (
-                                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[9px] font-black tracking-widest shadow-sm">READY</span>
-                                        );
                                         return (
-                                            <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[9px] font-black tracking-widest shadow-sm">IMPAIRED</span>
+                                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[9px] font-black tracking-widest shadow-sm">PORT 8082 · ACTIVE</span>
                                         );
                                     })()}
                                 </div>
                             </div>
 
-                            {/* ── Site Name Inline Editor ── */}
-                            <div className="bg-card/60 border border-border rounded-xl p-3 space-y-2 max-w-md">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Site Name</span>
-                                    {siteNameSaved && (
-                                        <span className="flex items-center gap-1 text-[8px] font-black text-emerald-400 uppercase tracking-widest animate-in fade-in duration-300">
-                                            <CheckCircle size={10} /> Saved — heartbeat sent
-                                        </span>
-                                    )}
-                                    {siteNameError && (
-                                        <span className="text-[8px] font-black text-red-400 uppercase tracking-widest">{siteNameError}</span>
-                                    )}
-                                </div>
-                                <div className="flex gap-2">
-                                    <input
-                                        id="site-name-edit"
-                                        type="text"
-                                        value={siteNameEdit}
-                                        onChange={(e) => { setSiteNameEdit(e.target.value); setSiteNameError(null); setSiteNameSaved(false); }}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleSaveSiteName()}
-                                        placeholder="e.g. BR5-Paris"
-                                        className="flex-1 bg-card border border-border focus:border-emerald-500/50 rounded-lg px-3 py-1.5 text-xs font-mono transition-all"
-                                    />
-                                    <button
-                                        id="site-name-save"
-                                        onClick={handleSaveSiteName}
-                                        disabled={siteNameSaving || !siteNameEdit.trim() || siteNameEdit.trim() === registryStatus?.site_name}
-                                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
-                                    >
-                                        {siteNameSaving ? <RefreshCw size={10} className="animate-spin" /> : <CheckCircle size={10} />}
-                                        Save
-                                    </button>
-                                </div>
-                                <p className="text-[8px] text-text-muted italic opacity-50">Identifies this node in the leader registry. Saved immediately + heartbeat sent.</p>
-                            </div>
-
-                            <div className="space-y-6 flex-1">
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-center px-1">
-                                        <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Service Mode</span>
-                                        {targetServiceStatus?.mode === 'LOOPING_SLOW' && (
-                                            <div className="flex items-center gap-1.5 text-[8px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                                                <RefreshCw size={8} className="animate-spin" />
-                                                LOOPING: {targetServiceStatus.current_loop_state}
-                                            </div>
-                                        )}
-                                    </div>
-                                    
-                                    {/* Segmented Control Mode Switcher */}
-                                    <div className="bg-card/50 border border-border rounded-xl p-1 flex gap-1 shadow-inner">
-                                        {[
-                                            { id: 'NORMAL', label: 'Fast' },
-                                            { id: 'RANDOM_SLOW', label: 'Random' },
-                                            { id: 'ALWAYS_SLOW', label: 'Always' },
-                                            { id: 'LOOPING_SLOW', label: 'Loop' }
-                                        ].map(({ id, label }) => (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
+                                {/* ── Left Column: Site Name Inline Editor ── */}
+                                <div className="bg-card/60 border border-border rounded-xl p-4 space-y-2 flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Local Site Name</span>
+                                            {siteNameSaved && (
+                                                <span className="flex items-center gap-1 text-[8px] font-black text-emerald-400 uppercase tracking-widest animate-in fade-in duration-300">
+                                                    <CheckCircle size={10} /> Saved — heartbeat sent
+                                                </span>
+                                            )}
+                                            {siteNameError && (
+                                                <span className="text-[8px] font-black text-red-400 uppercase tracking-widest">{siteNameError}</span>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input
+                                                id="site-name-edit"
+                                                type="text"
+                                                value={siteNameEdit}
+                                                onChange={(e) => { setSiteNameEdit(e.target.value); setSiteNameError(null); setSiteNameSaved(false); }}
+                                                onKeyDown={(e) => e.key === 'Enter' && handleSaveSiteName()}
+                                                placeholder="e.g. BR5-Paris"
+                                                className="flex-1 bg-card border border-border focus:border-emerald-500/50 rounded-lg px-3 py-1.5 text-xs font-mono transition-all"
+                                            />
                                             <button
-                                                key={id}
-                                                onClick={() => setTargetServiceMode(id)}
-                                                disabled={targetServiceStatus?.mode === id}
-                                                className={cn(
-                                                    "flex-1 py-2 px-1 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all duration-200",
-                                                    targetServiceStatus?.mode === id
-                                                        ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow-sm"
-                                                        : "text-text-muted hover:text-text-primary hover:bg-card-hover border border-transparent"
-                                                )}
+                                                id="site-name-save"
+                                                onClick={handleSaveSiteName}
+                                                disabled={siteNameSaving || !siteNameEdit.trim() || siteNameEdit.trim() === registryStatus?.site_name}
+                                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
                                             >
-                                                {label}
+                                                {siteNameSaving ? <RefreshCw size={10} className="animate-spin" /> : <CheckCircle size={10} />}
+                                                Save
                                             </button>
-                                        ))}
+                                        </div>
                                     </div>
+                                    <p className="text-[8.5px] text-text-muted opacity-60">Identifies this appliance across the mesh and Target Controller Leader.</p>
                                 </div>
-                            </div>
 
-                            <div className="pt-4 border-t border-border space-y-2">
+                                {/* ── Right Column: EICAR Security Target Service ── */}
                                 {(() => {
                                     const inbandHost = (() => {
                                         if (interfaces && interfaces.length > 0 && systemInfo?.interfaceIps) {
@@ -4613,51 +4559,48 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         return window.location.hostname;
                                     })();
 
+                                    const eicarUrl = `http://${inbandHost}:8082/eicar.com.txt`;
+
                                     return (
-                                        <>
-                                            <div className="flex items-center justify-between">
-                                                <h4 className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Test Links</h4>
-                                                <span className="text-[8.5px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                                    Inband Target: {inbandHost}
-                                                </span>
+                                        <div className="bg-card/60 border border-border rounded-xl p-4 space-y-2 flex flex-col justify-between">
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <span className="text-[9px] font-black text-rose-400 tracking-widest uppercase flex items-center gap-1.5">
+                                                        <Shield size={10} className="text-rose-400" />
+                                                        EICAR Test Service (AV / IPS Target)
+                                                    </span>
+                                                    <span className="text-[8.5px] font-mono text-emerald-400/80 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                                                        Port 8082
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2 bg-card border border-border/80 rounded-lg px-2.5 py-1.5">
+                                                    <span className="text-xs font-mono text-text-primary flex-1 truncate select-all">{eicarUrl}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(eicarUrl);
+                                                            toast.success('EICAR URL copied to clipboard');
+                                                        }}
+                                                        className="p-1 hover:bg-white/10 text-text-muted hover:text-text-primary rounded transition-colors"
+                                                        title="Copy EICAR URL"
+                                                    >
+                                                        <Copy size={12} />
+                                                    </button>
+                                                    <a
+                                                        href={eicarUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="p-1 hover:bg-emerald-500/10 text-text-muted hover:text-emerald-400 rounded transition-colors"
+                                                        title="Open in new tab"
+                                                    >
+                                                        <ExternalLink size={12} />
+                                                    </a>
+                                                </div>
                                             </div>
-                                            <div className="grid grid-cols-1 gap-1.5">
-                                                {[
-                                                    { label: 'Health Check (Clean Flow)', path: '/ok', color: 'emerald' },
-                                                    { label: 'WAN Brownout (Simulated Delay)', path: '/slow', color: 'amber' },
-                                                    { label: 'Security Block (IPS/AV Test)', path: '/eicar.com.txt', color: 'red' }
-                                                ].map(({ label, path, color }) => {
-                                                    const fullUrl = `http://${inbandHost}:8082${path}`;
-                                                    return (
-                                                        <div
-                                                            key={path}
-                                                            className="flex flex-col gap-1 p-2 rounded-lg bg-card/30 border border-border hover:border-emerald-500/30 transition-all group"
-                                                        >
-                                                            <div className="flex items-center justify-between">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className={`w-1 h-1 rounded-full bg-${color}-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]`} />
-                                                                    <span className="text-[10px] font-bold text-text-muted group-hover:text-text-primary">{label}</span>
-                                                                </div>
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <a
-                                                                        href={fullUrl}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        className="p-1 hover:bg-emerald-500/10 text-text-muted hover:text-emerald-500 rounded transition-colors"
-                                                                        title="Open in new tab"
-                                                                    >
-                                                                        <ExternalLink size={10} />
-                                                                    </a>
-                                                                </div>
-                                                            </div>
-                                                            <div className="text-[9px] font-mono text-emerald-500/70 truncate px-1">
-                                                                {fullUrl}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </>
+                                            <p className="text-[8.5px] text-text-muted opacity-60">
+                                                Dedicated lightweight endpoint serving the standard EICAR anti-virus string for Security test suites.
+                                            </p>
+                                        </div>
                                     );
                                 })()}
                             </div>
@@ -4692,67 +4635,58 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                             <div
                                 key={t.id}
                                 className={cn(
-                                    "group bg-card border border-border hover:border-emerald-500/30 rounded-2xl p-5 flex items-center justify-between transition-all shadow-sm",
+                                    "group bg-card border border-border hover:border-emerald-500/30 rounded-xl p-3.5 flex items-center justify-between transition-all shadow-sm",
                                     !t.enabled && "opacity-50"
                                 )}
                             >
-                                <div className="flex items-center gap-4 min-w-0">
-                                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", isSelf ? "bg-emerald-600/10 text-emerald-500" : "bg-blue-600/10 text-blue-500")}>
-                                        <MapPin size={18} />
+                                <div className="flex items-center gap-3.5 min-w-0">
+                                    <div className={cn(
+                                        "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-inner",
+                                        isSelf ? "bg-emerald-600/10 text-emerald-500 border border-emerald-500/20" : "bg-blue-600/10 text-blue-400 border border-blue-500/20"
+                                    )}>
+                                        {isSelf ? <Globe size={15} /> : <Server size={15} />}
                                     </div>
-                                    <div className="min-w-0">
+                                    <div className="min-w-0 space-y-1">
                                         <div className="flex items-center gap-2 flex-wrap">
                                             {targetReachability[t.id] === 'loading' || targetReachability[t.id] === undefined ? (
                                                 <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
                                             ) : targetReachability[t.id] ? (
                                                 <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
-                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
-                                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]"></span>
                                                 </div>
                                             ) : (
-                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
+                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)] shrink-0" title="Unreachable" />
                                             )}
-                                            <span className="text-[11px] font-black text-text-primary tracking-tight">{t.name}</span>
+                                            <span className="text-xs font-black text-text-primary tracking-tight">{t.name}</span>
 
-                                            {/* Local Node vs Remote Peer Distinction Tag */}
+                                            {/* ── Single Unified Origin Badge ── */}
                                             {isSelf ? (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-sm" title="This is your local Stigix instance">
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-sm" title="Local Stigix Appliance">
                                                     <Globe size={8} /> Local Node
                                                 </span>
+                                            ) : t.meta?.registry ? (
+                                                (() => {
+                                                    const ts = t.meta?.last_seen || t.updated_at || t.created_at;
+                                                    const formatted = formatTargetTimestamp(ts);
+                                                    return (
+                                                        <span 
+                                                            className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/30 flex items-center gap-1 shadow-sm" 
+                                                            title={`Discovered via Target Controller · Last sync: ${formatted?.full || 'N/A'}`}
+                                                        >
+                                                            <Zap size={8} className="animate-pulse text-blue-400" />
+                                                            <span>Learned {formatted ? `· ${formatted.relative}` : ''}</span>
+                                                        </span>
+                                                    );
+                                                })()
                                             ) : (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-purple-500/10 text-purple-400 border border-purple-500/30 flex items-center gap-1 shadow-sm" title="Remote peer instance in the Stigix mesh network">
-                                                    <Radio size={8} /> Remote Peer
-                                                </span>
-                                            )}
-
-                                            {t.meta?.local_config && (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30" title="This target is saved in a local component configuration file">
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/15 text-amber-400 border border-amber-500/30" title="Configured in local static file">
                                                     Static
                                                 </span>
                                             )}
-                                            {t.meta?.registry && (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-500 border border-blue-500/30 flex items-center gap-1 shadow-sm" title="Discovered automatically via the Target Controller and cached in-memory">
-                                                    <Zap size={8} className="animate-pulse" /> Learned
-                                                </span>
-                                            )}
-
-                                            {(() => {
-                                                const ts = t.meta?.last_seen || t.updated_at || t.created_at;
-                                                const formatted = formatTargetTimestamp(ts);
-                                                if (!formatted) return null;
-                                                return (
-                                                    <span 
-                                                        className="px-1.5 py-0.5 rounded text-[8px] font-mono text-text-muted bg-card-secondary border border-border/80 flex items-center gap-1 shadow-sm shrink-0" 
-                                                        title={`Last sync / update: ${formatted.full}`}
-                                                    >
-                                                        <Clock size={8} className="opacity-60 text-blue-400" />
-                                                        <span>{formatted.relative}</span>
-                                                    </span>
-                                                );
-                                            })()}
                                         </div>
-                                        <div className="text-[10px] text-text-muted font-mono tracking-tighter opacity-70 flex items-center gap-2">
-                                            <span>{t.host}</span>
+                                        <div className="flex items-center gap-2.5 flex-wrap">
+                                            <span className="text-[10px] text-text-muted font-mono tracking-tight font-medium">{t.host}</span>
                                             {targetTestResults[t.id] && (
                                                 <span className={cn(
                                                     "text-[9px] font-mono px-1.5 py-0.2 rounded border font-bold",
@@ -4765,56 +4699,78 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                         : 'Unreachable'}
                                                 </span>
                                             )}
-                                        </div>
-                                        <div className="flex flex-wrap gap-1 mt-1.5">
-                                            {CAP_LABELS.filter(c => t.capabilities[c.key]).map(({ key, label, color }) => (
-                                                <span key={key} className={`px-1.5 py-0.5 rounded text-[8px] font-black tracking-widest bg-${color}-500/10 text-${color}-500 border border-${color}-500/20`}>
-                                                    {label}
-                                                </span>
-                                            ))}
+
+                                            {/* Compact Services Indicator */}
+                                            {(() => {
+                                                const activeCaps = CAP_LABELS.filter(c => t.capabilities[c.key]);
+                                                const allActive = activeCaps.length === CAP_LABELS.length;
+                                                return (
+                                                    <div 
+                                                        className="flex items-center gap-1.5 bg-card-secondary/60 px-2 py-0.5 rounded border border-border/60" 
+                                                        title={`Services: ${activeCaps.map(c => c.label).join(', ')}`}
+                                                    >
+                                                        <div className="flex items-center gap-1">
+                                                            {CAP_LABELS.map(({ key, label, dotClass }) => {
+                                                                const isEnabled = !!t.capabilities[key];
+                                                                return (
+                                                                    <div
+                                                                        key={key}
+                                                                        className={cn(
+                                                                            "w-1.5 h-1.5 rounded-full",
+                                                                            isEnabled ? `${dotClass} shadow-[0_0_4px_currentColor]` : "bg-white/10 opacity-30"
+                                                                        )}
+                                                                        title={`${label}: ${isEnabled ? 'Enabled' : 'Disabled'}`}
+                                                                    />
+                                                                );
+                                                            })}
+                                                        </div>
+                                                        <span className="text-[8px] font-mono font-bold text-text-muted">
+                                                            {allActive ? 'All Services (6)' : `${activeCaps.length}/${CAP_LABELS.length} Services`}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex gap-1.5 px-2 shrink-0">
-                                        <>
-                                            <button
-                                                onClick={() => handleTestTarget(t)}
-                                                disabled={testingTargetId === t.id}
-                                                className={cn(
-                                                    "p-2 rounded-xl transition-all",
-                                                    testingTargetId === t.id
-                                                        ? "text-amber-400 bg-amber-500/10"
-                                                        : "text-text-muted hover:text-amber-400 hover:bg-amber-500/10"
-                                                )}
-                                                title="Test Target Reachability & Services"
-                                            >
-                                                {testingTargetId === t.id ? <RefreshCw size={14} className="animate-spin" /> : <Activity size={14} />}
-                                            </button>
-                                            <button
-                                                onClick={() => toggleTargetEnabled(t)}
-                                                className={cn(
-                                                    "p-2 rounded-xl transition-all",
-                                                    t.enabled ? "text-green-500 hover:bg-green-500/10" : "text-text-muted hover:bg-card-hover"
-                                                )}
-                                                title="Toggle"
-                                            >
-                                                <Power size={14} />
-                                            </button>
-                                            <button
-                                                onClick={() => startEditTarget(t)}
-                                                className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
-                                                title="Edit"
-                                            >
-                                                <Edit2 size={14} />
-                                            </button>
-                                            <button
-                                                onClick={() => deleteTarget(t.id)}
-                                                className="p-2 hover:bg-red-600/10 rounded-xl text-text-muted hover:text-red-500 transition-all"
-                                                title="Delete"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </>
+                                <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                        onClick={() => handleTestTarget(t)}
+                                        disabled={testingTargetId === t.id}
+                                        className={cn(
+                                            "p-1.5 rounded-lg transition-all",
+                                            testingTargetId === t.id
+                                                ? "text-amber-400 bg-amber-500/10"
+                                                : "text-text-muted hover:text-amber-400 hover:bg-amber-500/10"
+                                        )}
+                                        title="Test Target Reachability & Services"
+                                    >
+                                        {testingTargetId === t.id ? <RefreshCw size={13} className="animate-spin" /> : <Activity size={13} />}
+                                    </button>
+                                    <button
+                                        onClick={() => toggleTargetEnabled(t)}
+                                        className={cn(
+                                            "p-1.5 rounded-lg transition-all",
+                                            t.enabled ? "text-emerald-400 hover:bg-emerald-500/10" : "text-text-muted hover:bg-card-hover"
+                                        )}
+                                        title="Enable/Disable"
+                                    >
+                                        <Power size={13} />
+                                    </button>
+                                    <button
+                                        onClick={() => startEditTarget(t)}
+                                        className="p-1.5 hover:bg-card-hover rounded-lg text-text-muted hover:text-text-primary transition-all"
+                                        title="Edit"
+                                    >
+                                        <Edit2 size={13} />
+                                    </button>
+                                    <button
+                                        onClick={() => deleteTarget(t.id)}
+                                        className="p-1.5 hover:bg-red-600/10 rounded-lg text-text-muted hover:text-red-500 transition-all"
+                                        title="Delete"
+                                    >
+                                        <Trash2 size={13} />
+                                    </button>
                                 </div>
                             </div>
                         );
