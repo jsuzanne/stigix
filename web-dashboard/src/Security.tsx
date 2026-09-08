@@ -688,18 +688,26 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         return () => clearTimeout(timer);
     }, [searchQuery, testTypeFilter]);
 
-    const viewTestDetails = async (testId: number) => {
+    const viewTestDetails = async (testId: number, initialData?: any) => {
         setModalSearchQuery('');
+        if (initialData) {
+            setSelectedTest(initialData);
+            setShowDetailModal(true);
+        }
         try {
             const response = await fetch(`/api/security/results/${testId}`, {
                 headers: authHeaders()
             });
             const data = await response.json();
             setSelectedTest(data);
-            setShowDetailModal(true);
+            if (!initialData) {
+                setShowDetailModal(true);
+            }
         } catch (e) {
             console.error('Failed to fetch test details:', e);
-            showToast('Failed to load test details', 'error');
+            if (!initialData) {
+                showToast('Failed to load test details', 'error');
+            }
         }
     };
 
@@ -3057,7 +3065,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                 return (
                                                     <tr
                                                         key={result.testId || index}
-                                                        onClick={() => result.testId && viewTestDetails(result.testId)}
+                                                        onClick={() => result.testId && viewTestDetails(result.testId, result)}
                                                         className={`hover:bg-card-secondary/50 transition-all cursor-pointer group ${
                                                             isRegression ? 'bg-red-500/5' : isImprovement ? 'bg-green-500/5' : ''
                                                         }`}
@@ -3581,7 +3589,17 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                             const scmQueryIp = sls.scm_search_filter || `Source Address = '${sls.src_ip || '192.168.219.1'}'`;
                                             const scmQueryPort = sls.scm_search_filter_port || (sls.src_port ? `Source Address = '${sls.src_ip || '192.168.219.1'}' AND Source Port = ${sls.src_port}` : scmQueryIp);
                                             const scmQueryThreat = sls.scm_search_filter_threat || (sls.threat_id ? `Threat ID = ${sls.threat_id}` : (sls.threat_name ? `Threat Name Firewall = '${sls.threat_name}'` : ''));
-                                            const scmQuery = scmQueryIp;
+                                            
+                                            // Extract Destination IP/Host for 1-click query
+                                            const rawDst = selectedTest.details?.resolvedIp || selectedTest.details?.domain || selectedTest.details?.url || selectedTest.details?.endpoint || '';
+                                            let cleanDstHost = '';
+                                            try {
+                                                cleanDstHost = rawDst.startsWith('http') ? new URL(rawDst).hostname : rawDst;
+                                            } catch (e) {
+                                                cleanDstHost = rawDst;
+                                            }
+                                            const scmQueryDst = cleanDstHost ? `Destination Address = '${cleanDstHost}'` : '';
+                                            const scmQuery = scmQueryThreat || scmQueryIp;
 
                                             return (
                                                 <div className="mt-8 p-6 bg-slate-900/50 border border-slate-700/50 rounded-2xl relative overflow-hidden shadow-2xl">
@@ -3614,18 +3632,6 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                                 <span>SCM Log Viewer Exact Query:</span>
                                                             </span>
                                                             <div className="flex items-center gap-1.5 flex-wrap">
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        navigator.clipboard.writeText(scmQueryIp);
-                                                                        showToast('IP filter copied: ' + scmQueryIp, 'success');
-                                                                    }}
-                                                                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 transition-all shadow"
-                                                                    title="Copy IP Only Filter"
-                                                                >
-                                                                    <Copy size={10} />
-                                                                    <span>IP Only</span>
-                                                                </button>
                                                                 {scmQueryThreat && (
                                                                     <button
                                                                         onClick={(e) => {
@@ -3634,12 +3640,38 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                                             showToast('Threat filter copied: ' + scmQueryThreat, 'success');
                                                                         }}
                                                                         className="px-2 py-0.5 bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-500/40 rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 transition-all shadow"
-                                                                        title="Copy Threat ID Filter"
+                                                                        title="Copy Threat ID Filter (Guaranteed match even with NAT/PAT)"
                                                                     >
                                                                         <Copy size={10} />
                                                                         <span>Threat ID</span>
                                                                     </button>
                                                                 )}
+                                                                {scmQueryDst && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            navigator.clipboard.writeText(scmQueryDst);
+                                                                            showToast('Destination filter copied: ' + scmQueryDst, 'success');
+                                                                        }}
+                                                                        className="px-2 py-0.5 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-500/40 rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 transition-all shadow"
+                                                                        title="Copy Destination IP Filter"
+                                                                    >
+                                                                        <Copy size={10} />
+                                                                        <span>Dest IP</span>
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        navigator.clipboard.writeText(scmQueryIp);
+                                                                        showToast('IP filter copied: ' + scmQueryIp, 'success');
+                                                                    }}
+                                                                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 transition-all shadow"
+                                                                    title="Copy Source IP Only Filter"
+                                                                >
+                                                                    <Copy size={10} />
+                                                                    <span>Source IP</span>
+                                                                </button>
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -3647,17 +3679,21 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                                         showToast('IP + Port query copied!', 'success');
                                                                     }}
                                                                     className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5 transition-all shadow active:scale-95"
-                                                                    title="Copy SCM Log Viewer Filter (IP + Port)"
+                                                                    title="Copy SCM Log Viewer Filter (Pre-NAT Port)"
                                                                 >
                                                                     <Copy size={12} />
-                                                                    <span>Copy SCM Query</span>
+                                                                    <span>Copy IP+Port</span>
                                                                 </button>
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-2">
                                                             <code className="text-[11px] font-mono font-bold text-slate-200 bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-700/60 select-all w-full overflow-x-auto whitespace-nowrap block">
-                                                                {scmQueryIp}
+                                                                {scmQueryThreat || scmQueryIp}
                                                             </code>
+                                                        </div>
+                                                        <div className="text-[9px] text-slate-400 font-medium flex items-center gap-1">
+                                                            <span className="text-amber-400 font-black">💡 Tip:</span>
+                                                            <span>Si le NAT/PAT est actif sur la branche, SCM logue le port Post-NAT. Utilisez <b>Threat ID</b> ou <b>Dest IP</b> pour retrouver immédiatement le log.</span>
                                                         </div>
                                                     </div>
 
