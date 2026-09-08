@@ -1683,13 +1683,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         fetchTargets();
     };
 
-    const CAP_LABELS: { key: keyof TargetCapability; label: string; color: string }[] = [
-        { key: 'voice', label: 'Voice', color: 'blue' },
-        { key: 'convergence', label: 'Failover', color: 'purple' },
-        { key: 'custom_app', label: 'Custom Apps', color: 'teal' },
-        { key: 'xfr', label: 'Speedtest', color: 'cyan' },
-        { key: 'security', label: 'Security', color: 'red' },
-        { key: 'connectivity', label: 'Connectivity', color: 'green' },
+    const CAP_LABELS: { key: keyof TargetCapability; label: string; color: string; dotClass: string }[] = [
+        { key: 'voice', label: 'Voice', color: 'blue', dotClass: 'bg-blue-500' },
+        { key: 'convergence', label: 'Failover', color: 'purple', dotClass: 'bg-purple-500' },
+        { key: 'custom_app', label: 'Custom Apps', color: 'teal', dotClass: 'bg-teal-500' },
+        { key: 'xfr', label: 'Speedtest', color: 'cyan', dotClass: 'bg-cyan-500' },
+        { key: 'security', label: 'Security', color: 'red', dotClass: 'bg-rose-500' },
+        { key: 'connectivity', label: 'Connectivity', color: 'green', dotClass: 'bg-emerald-500' },
     ];
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -4635,67 +4635,58 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                             <div
                                 key={t.id}
                                 className={cn(
-                                    "group bg-card border border-border hover:border-emerald-500/30 rounded-2xl p-5 flex items-center justify-between transition-all shadow-sm",
+                                    "group bg-card border border-border hover:border-emerald-500/30 rounded-xl p-3.5 flex items-center justify-between transition-all shadow-sm",
                                     !t.enabled && "opacity-50"
                                 )}
                             >
-                                <div className="flex items-center gap-4 min-w-0">
-                                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", isSelf ? "bg-emerald-600/10 text-emerald-500" : "bg-blue-600/10 text-blue-500")}>
-                                        <MapPin size={18} />
+                                <div className="flex items-center gap-3.5 min-w-0">
+                                    <div className={cn(
+                                        "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-inner",
+                                        isSelf ? "bg-emerald-600/10 text-emerald-500 border border-emerald-500/20" : "bg-blue-600/10 text-blue-400 border border-blue-500/20"
+                                    )}>
+                                        {isSelf ? <Globe size={15} /> : <Server size={15} />}
                                     </div>
-                                    <div className="min-w-0">
+                                    <div className="min-w-0 space-y-1">
                                         <div className="flex items-center gap-2 flex-wrap">
                                             {targetReachability[t.id] === 'loading' || targetReachability[t.id] === undefined ? (
                                                 <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse shrink-0" title="Checking reachability..." />
                                             ) : targetReachability[t.id] ? (
                                                 <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
-                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
-                                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]"></span>
                                                 </div>
                                             ) : (
-                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] shrink-0" title="Unreachable" />
+                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)] shrink-0" title="Unreachable" />
                                             )}
-                                            <span className="text-[11px] font-black text-text-primary tracking-tight">{t.name}</span>
+                                            <span className="text-xs font-black text-text-primary tracking-tight">{t.name}</span>
 
-                                            {/* Local Node vs Remote Peer Distinction Tag */}
+                                            {/* ── Single Unified Origin Badge ── */}
                                             {isSelf ? (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-sm" title="This is your local Stigix instance">
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-sm" title="Local Stigix Appliance">
                                                     <Globe size={8} /> Local Node
                                                 </span>
+                                            ) : t.meta?.registry ? (
+                                                (() => {
+                                                    const ts = t.meta?.last_seen || t.updated_at || t.created_at;
+                                                    const formatted = formatTargetTimestamp(ts);
+                                                    return (
+                                                        <span 
+                                                            className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/30 flex items-center gap-1 shadow-sm" 
+                                                            title={`Discovered via Target Controller · Last sync: ${formatted?.full || 'N/A'}`}
+                                                        >
+                                                            <Zap size={8} className="animate-pulse text-blue-400" />
+                                                            <span>Learned {formatted ? `· ${formatted.relative}` : ''}</span>
+                                                        </span>
+                                                    );
+                                                })()
                                             ) : (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-purple-500/10 text-purple-400 border border-purple-500/30 flex items-center gap-1 shadow-sm" title="Remote peer instance in the Stigix mesh network">
-                                                    <Radio size={8} /> Remote Peer
-                                                </span>
-                                            )}
-
-                                            {t.meta?.local_config && (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30" title="This target is saved in a local component configuration file">
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/15 text-amber-400 border border-amber-500/30" title="Configured in local static file">
                                                     Static
                                                 </span>
                                             )}
-                                            {t.meta?.registry && (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-500 border border-blue-500/30 flex items-center gap-1 shadow-sm" title="Discovered automatically via the Target Controller and cached in-memory">
-                                                    <Zap size={8} className="animate-pulse" /> Learned
-                                                </span>
-                                            )}
-
-                                            {(() => {
-                                                const ts = t.meta?.last_seen || t.updated_at || t.created_at;
-                                                const formatted = formatTargetTimestamp(ts);
-                                                if (!formatted) return null;
-                                                return (
-                                                    <span 
-                                                        className="px-1.5 py-0.5 rounded text-[8px] font-mono text-text-muted bg-card-secondary border border-border/80 flex items-center gap-1 shadow-sm shrink-0" 
-                                                        title={`Last sync / update: ${formatted.full}`}
-                                                    >
-                                                        <Clock size={8} className="opacity-60 text-blue-400" />
-                                                        <span>{formatted.relative}</span>
-                                                    </span>
-                                                );
-                                            })()}
                                         </div>
-                                        <div className="text-[10px] text-text-muted font-mono tracking-tighter opacity-70 flex items-center gap-2">
-                                            <span>{t.host}</span>
+                                        <div className="flex items-center gap-2.5 flex-wrap">
+                                            <span className="text-[10px] text-text-muted font-mono tracking-tight font-medium">{t.host}</span>
                                             {targetTestResults[t.id] && (
                                                 <span className={cn(
                                                     "text-[9px] font-mono px-1.5 py-0.2 rounded border font-bold",
@@ -4708,56 +4699,78 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                         : 'Unreachable'}
                                                 </span>
                                             )}
-                                        </div>
-                                        <div className="flex flex-wrap gap-1 mt-1.5">
-                                            {CAP_LABELS.filter(c => t.capabilities[c.key]).map(({ key, label, color }) => (
-                                                <span key={key} className={`px-1.5 py-0.5 rounded text-[8px] font-black tracking-widest bg-${color}-500/10 text-${color}-500 border border-${color}-500/20`}>
-                                                    {label}
-                                                </span>
-                                            ))}
+
+                                            {/* Compact Services Indicator */}
+                                            {(() => {
+                                                const activeCaps = CAP_LABELS.filter(c => t.capabilities[c.key]);
+                                                const allActive = activeCaps.length === CAP_LABELS.length;
+                                                return (
+                                                    <div 
+                                                        className="flex items-center gap-1.5 bg-card-secondary/60 px-2 py-0.5 rounded border border-border/60" 
+                                                        title={`Services: ${activeCaps.map(c => c.label).join(', ')}`}
+                                                    >
+                                                        <div className="flex items-center gap-1">
+                                                            {CAP_LABELS.map(({ key, label, dotClass }) => {
+                                                                const isEnabled = !!t.capabilities[key];
+                                                                return (
+                                                                    <div
+                                                                        key={key}
+                                                                        className={cn(
+                                                                            "w-1.5 h-1.5 rounded-full",
+                                                                            isEnabled ? `${dotClass} shadow-[0_0_4px_currentColor]` : "bg-white/10 opacity-30"
+                                                                        )}
+                                                                        title={`${label}: ${isEnabled ? 'Enabled' : 'Disabled'}`}
+                                                                    />
+                                                                );
+                                                            })}
+                                                        </div>
+                                                        <span className="text-[8px] font-mono font-bold text-text-muted">
+                                                            {allActive ? 'All Services (6)' : `${activeCaps.length}/${CAP_LABELS.length} Services`}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex gap-1.5 px-2 shrink-0">
-                                        <>
-                                            <button
-                                                onClick={() => handleTestTarget(t)}
-                                                disabled={testingTargetId === t.id}
-                                                className={cn(
-                                                    "p-2 rounded-xl transition-all",
-                                                    testingTargetId === t.id
-                                                        ? "text-amber-400 bg-amber-500/10"
-                                                        : "text-text-muted hover:text-amber-400 hover:bg-amber-500/10"
-                                                )}
-                                                title="Test Target Reachability & Services"
-                                            >
-                                                {testingTargetId === t.id ? <RefreshCw size={14} className="animate-spin" /> : <Activity size={14} />}
-                                            </button>
-                                            <button
-                                                onClick={() => toggleTargetEnabled(t)}
-                                                className={cn(
-                                                    "p-2 rounded-xl transition-all",
-                                                    t.enabled ? "text-green-500 hover:bg-green-500/10" : "text-text-muted hover:bg-card-hover"
-                                                )}
-                                                title="Toggle"
-                                            >
-                                                <Power size={14} />
-                                            </button>
-                                            <button
-                                                onClick={() => startEditTarget(t)}
-                                                className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
-                                                title="Edit"
-                                            >
-                                                <Edit2 size={14} />
-                                            </button>
-                                            <button
-                                                onClick={() => deleteTarget(t.id)}
-                                                className="p-2 hover:bg-red-600/10 rounded-xl text-text-muted hover:text-red-500 transition-all"
-                                                title="Delete"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </>
+                                <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                        onClick={() => handleTestTarget(t)}
+                                        disabled={testingTargetId === t.id}
+                                        className={cn(
+                                            "p-1.5 rounded-lg transition-all",
+                                            testingTargetId === t.id
+                                                ? "text-amber-400 bg-amber-500/10"
+                                                : "text-text-muted hover:text-amber-400 hover:bg-amber-500/10"
+                                        )}
+                                        title="Test Target Reachability & Services"
+                                    >
+                                        {testingTargetId === t.id ? <RefreshCw size={13} className="animate-spin" /> : <Activity size={13} />}
+                                    </button>
+                                    <button
+                                        onClick={() => toggleTargetEnabled(t)}
+                                        className={cn(
+                                            "p-1.5 rounded-lg transition-all",
+                                            t.enabled ? "text-emerald-400 hover:bg-emerald-500/10" : "text-text-muted hover:bg-card-hover"
+                                        )}
+                                        title="Enable/Disable"
+                                    >
+                                        <Power size={13} />
+                                    </button>
+                                    <button
+                                        onClick={() => startEditTarget(t)}
+                                        className="p-1.5 hover:bg-card-hover rounded-lg text-text-muted hover:text-text-primary transition-all"
+                                        title="Edit"
+                                    >
+                                        <Edit2 size={13} />
+                                    </button>
+                                    <button
+                                        onClick={() => deleteTarget(t.id)}
+                                        className="p-1.5 hover:bg-red-600/10 rounded-lg text-text-muted hover:text-red-500 transition-all"
+                                        title="Delete"
+                                    >
+                                        <Trash2 size={13} />
+                                    </button>
                                 </div>
                             </div>
                         );
