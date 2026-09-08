@@ -423,7 +423,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [isProbeModalOpen, setIsProbeModalOpen] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
-    const [showOverview, setShowOverview] = useState(true);
+    const [showOverview, setShowOverview] = useState(false);
 
     // Maintenance State (from System.tsx)
     const [status, setStatus] = useState<MaintenanceStatus | null>(null);
@@ -2739,7 +2739,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         </div>
                                         <BarChart3 size={12} className="text-blue-500" />
                                         Distribution Overview
-                                        <span className="ml-auto text-[8px] font-semibold text-text-muted/60 normal-case tracking-normal">◀ weight · apps ▶</span>
+                                        <span className="ml-auto flex items-center gap-2 text-[8px] font-semibold text-text-muted/60 normal-case tracking-normal">
+                                            <span>{categories.length} categories · {categories.reduce((acc, c) => acc + c.apps.length, 0)} apps</span>
+                                            {showOverview ? <span>◀ weight · apps ▶</span> : <span className="text-blue-400 font-bold">Expand ▾</span>}
+                                        </span>
                                     </div>
                                     {showOverview && (() => {
                                         const maxCatPct = Math.max(...categories.map(c =>

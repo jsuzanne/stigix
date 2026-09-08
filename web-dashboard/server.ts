@@ -4300,21 +4300,13 @@ app.get('/api/connectivity/test', authenticateToken, async (req, res) => {
 
         const key = `${legacyFormat.type}:${legacyFormat.name}`;
         const lastStatus = lastConnectivityStatusMap.get(key);
-        const lastScore = lastConnectivityScoreMap.get(key) || 0;
-        const lastLogTime = lastConnectivityLogTimeMap.get(key) || 0;
-        const now = Date.now();
 
-        const shouldLog = !lastStatus ||
-            lastStatus !== legacyFormat.status ||
-            Math.abs(lastScore - legacyFormat.score) >= 20 ||
-            (now - lastLogTime) > 60000;
-
-        if (shouldLog) {
-            log('CONNECTIVITY', `${legacyFormat.name} status: ${legacyFormat.status} (${legacyFormat.score}/100)`);
-            lastConnectivityStatusMap.set(key, legacyFormat.status);
-            lastConnectivityScoreMap.set(key, legacyFormat.score);
-            lastConnectivityLogTimeMap.set(key, now);
+        if (DEBUG && lastStatus && lastStatus !== legacyFormat.status) {
+            log('CONNECTIVITY', `[STATUS CHANGE] ${legacyFormat.name}: ${lastStatus} -> ${legacyFormat.status} (${legacyFormat.score}/100)`, 'debug');
         }
+        lastConnectivityStatusMap.set(key, legacyFormat.status);
+        lastConnectivityScoreMap.set(key, legacyFormat.score);
+        lastConnectivityLogTimeMap.set(key, Date.now());
     }
 
     res.json({

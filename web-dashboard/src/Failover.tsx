@@ -1561,11 +1561,6 @@ export default function Failover(props: FailoverProps) {
                                                                                 )}
                                                                             </div>
                                                                         <div className="flex items-center gap-3" data-no-export="true">
-                                                                            <div className="flex gap-2.5 text-[9px] font-bold">
-                                                                                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm bg-emerald-500" /> <span className="text-text-muted uppercase">RTT</span></div>
-                                                                                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm bg-amber-500" /> <span className="text-text-muted uppercase">Jitter</span></div>
-                                                                                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm bg-red-500" /> <span className="text-text-muted uppercase">Loss</span></div>
-                                                                            </div>
                                                                             <button
                                                                                 data-no-export="true"
                                                                                 onClick={(e) => handleExportPocCard(cardDomId, `stigix-poc-history-${convId}-${test.timestamp}`, e)}

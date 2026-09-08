@@ -134,15 +134,57 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
-# Validate --controller URL
+# Validate and test reachability of --controller URL
 if [ -n "$CONTROLLER_URL" ]; then
-    if [[ ! "$CONTROLLER_URL" =~ ^https?:// ]]; then
-        echo "❌ Error: --controller URL must start with http:// or https://"
-        echo "   Example: --controller https://stigix-central.example.net"
-        exit 1
-    fi
-    CONTROLLER_URL="${CONTROLLER_URL%/}" # Remove trailing slash
-    echo "🔗 Direct peer mode: will join controller at $CONTROLLER_URL"
+    while true; do
+        if [[ ! "$CONTROLLER_URL" =~ ^https?:// ]]; then
+            echo "❌ Error: --controller URL must start with http:// or https://"
+            echo "   Example: --controller https://stigix-central.example.net"
+            if [ -t 0 ]; then
+                read -p "Enter valid controller URL (or leave empty to cancel): " CONTROLLER_URL
+                if [ -z "$CONTROLLER_URL" ]; then exit 1; fi
+                continue
+            else
+                exit 1
+            fi
+        fi
+        CONTROLLER_URL="${CONTROLLER_URL%/}" # Remove trailing slash
+
+        echo "🔍 Verifying controller reachability at $CONTROLLER_URL..."
+        HTTP_CODE=$(curl -s -k -o /dev/null -w "%{http_code}" --connect-timeout 4 -m 6 "$CONTROLLER_URL/api/health" 2>/dev/null || echo "000")
+        if [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "404" ]; then
+            # Try root URL as fallback
+            FALLBACK_CODE=$(curl -s -k -o /dev/null -w "%{http_code}" --connect-timeout 4 -m 6 "$CONTROLLER_URL" 2>/dev/null || echo "000")
+            if [ "$FALLBACK_CODE" != "000" ]; then
+                HTTP_CODE=$FALLBACK_CODE
+            fi
+        fi
+
+        if [ "$HTTP_CODE" != "000" ]; then
+            echo "✅ Controller reached successfully (HTTP $HTTP_CODE) at $CONTROLLER_URL"
+            echo "🔗 Direct peer mode: will join controller at $CONTROLLER_URL"
+            break
+        else
+            echo "⚠️  Warning: Unable to reach controller at $CONTROLLER_URL (Connection timed out, refused, or DNS error)."
+            if [ -t 0 ]; then
+                echo "Options: [r] Retry / [e] Edit URL / [c] Continue anyway (offline install)"
+                read -p "Choice [r/e/C]: " CTRL_CHOICE
+                CTRL_CHOICE=${CTRL_CHOICE:-c}
+                if [[ "$CTRL_CHOICE" =~ ^[Rr] ]]; then
+                    continue
+                elif [[ "$CTRL_CHOICE" =~ ^[Ee] ]]; then
+                    read -p "Enter Controller URL: " CONTROLLER_URL
+                    continue
+                else
+                    echo "⚠️  Proceeding with controller URL: $CONTROLLER_URL"
+                    break
+                fi
+            else
+                echo "⚠️  Non-interactive mode: proceeding with controller URL: $CONTROLLER_URL"
+                break
+            fi
+        fi
+    done
 fi
 
 echo "🚀 Stigix (All-in-One) - Installation"
