@@ -7,9 +7,13 @@ import {
     Play, Square, RefreshCw, Server, Globe, Activity, Plus,
     Copy, Trash2, Edit3, Shield, AlertTriangle, CheckCircle2,
     Clock, Cpu, ArrowDownRight, ArrowUpRight, Zap, ExternalLink,
-    Layers, Cloud, Search, X, Info
+    Layers, Cloud, Search, X, Info, ChevronDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+function cn(...inputs: (string | undefined | null | false)[]) {
+    return inputs.filter(Boolean).join(' ');
+}
 import type {
     CustomTcpApplicationConfig,
     AppRuntimeMetrics,
@@ -46,6 +50,8 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const [editingApp, setEditingApp] = useState<CustomTcpApplicationConfig | null>(null);
     const [peerTestModal, setPeerTestModal] = useState<{ isOpen: boolean; peerId: string; peerName: string; host: string; port: number } | null>(null);
     const [peerTestResult, setPeerTestResult] = useState<{ loading: boolean; success?: boolean; rttMs?: number; error?: string } | null>(null);
+    const [startMenuOpen, setStartMenuOpen] = useState(false);
+    const [stopMenuOpen, setStopMenuOpen] = useState(false);
 
     // Auto-refresh interval (1.5s)
     useEffect(() => {
@@ -97,6 +103,47 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                 setAllAppSummaries(map);
             }
         } catch {}
+    };
+
+    const handleGlobalAction = async (action: 'start-all' | 'stop-all' | 'start-clients' | 'stop-clients' | 'start-listeners' | 'stop-listeners') => {
+        if (isActionLoading || !token) return;
+        setIsActionLoading(true);
+        try {
+            const res = await fetch(`/api/custom-tcp-apps/actions/${action}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok) {
+                if (action === 'start-all') {
+                    const lCount = data.listeners?.started?.length || 0;
+                    const cCount = data.clients?.started?.length || 0;
+                    toast.success(`Started all workloads (${lCount} listeners, ${cCount} active clients)`);
+                } else if (action === 'stop-all') {
+                    const cCount = data.clients?.stopped?.length || 0;
+                    const lCount = data.listeners?.stopped?.length || 0;
+                    toast.success(`Stopped all workloads (${cCount} clients, ${lCount} listeners)`);
+                } else if (action === 'start-clients') {
+                    const count = data.started?.length || 0;
+                    const skipped = data.skipped?.length || 0;
+                    toast.success(`Started ${count} client workloads${skipped > 0 ? ` (${skipped} without peers skipped)` : ''}`);
+                } else if (action === 'stop-clients') {
+                    toast.success(`Stopped ${data.stopped?.length || 0} client workloads`);
+                } else if (action === 'start-listeners') {
+                    toast.success(`Started ${data.started?.length || 0} service listeners`);
+                } else if (action === 'stop-listeners') {
+                    toast.success(`Stopped ${data.stopped?.length || 0} service listeners`);
+                }
+                loadAllSummaries();
+                if (selectedAppId) loadAppStatus(selectedAppId);
+            } else {
+                toast.error(data.error || `Failed to perform ${action}`);
+            }
+        } catch (e: any) {
+            toast.error(e.message || 'Action failed');
+        } finally {
+            setIsActionLoading(false);
+        }
     };
 
     const loadAppStatus = async (appId: string) => {
@@ -399,33 +446,153 @@ const secs = seconds % 60;
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2.5">
                     {instanceInfo && (
-                        <div className="flex items-center gap-2 bg-card-secondary border border-border px-3.5 py-1.5 rounded-xl text-xs shadow-sm">
+                        <div className="flex items-center gap-2 bg-card-secondary border border-border px-3 py-1.5 rounded-xl text-xs shadow-sm">
                             <span className="text-text-muted font-medium">Local Site:</span>
                             <span className="font-bold text-text-primary font-mono">{instanceInfo.siteName}</span>
-                            {instanceInfo.instanceId && (
-                                <>
-                                    <span className="text-text-muted">•</span>
-                                    <span className="text-text-muted font-mono text-[11px]" title={instanceInfo.instanceId}>
-                                        UUID: {instanceInfo.instanceId.substring(0, 8)}...
-                                    </span>
-                                </>
-                            )}
                         </div>
                     )}
 
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-card-secondary border border-border rounded-xl text-xs font-mono text-text-secondary shadow-sm">
+                    {/* Global Appliance Controls: Start All & Stop All */}
+                    <div className="flex items-center gap-1.5">
+                        {/* Start All Split / Dropdown Button */}
+                        <div className="relative">
+                            <div className="inline-flex rounded-xl shadow-sm overflow-hidden border border-emerald-500/30">
+                                <button
+                                    disabled={isActionLoading}
+                                    onClick={() => handleGlobalAction('start-all')}
+                                    className="h-[32px] px-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                                    title="Start all service listeners and all client workloads with configured peers"
+                                >
+                                    <Play size={12} fill="currentColor" />
+                                    <span>Start All</span>
+                                </button>
+                                <button
+                                    disabled={isActionLoading}
+                                    onClick={() => { setStartMenuOpen(!startMenuOpen); setStopMenuOpen(false); }}
+                                    className="h-[32px] px-2 bg-emerald-700 hover:bg-emerald-600 text-white border-l border-emerald-600 transition-colors cursor-pointer disabled:opacity-50"
+                                    title="More start options"
+                                >
+                                    <ChevronDown size={12} className={cn("transition-transform duration-200", startMenuOpen && "rotate-180")} />
+                                </button>
+                            </div>
+
+                            {/* Start Dropdown Menu */}
+                            {startMenuOpen && (
+                                <div 
+                                    className="absolute right-0 mt-1.5 w-64 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
+                                    onMouseLeave={() => setStartMenuOpen(false)}
+                                >
+                                    <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
+                                        Appliance Start Options
+                                    </div>
+                                    <button
+                                        onClick={() => { setStartMenuOpen(false); handleGlobalAction('start-all'); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                                        <div>
+                                            <div className="font-bold">Start All Workloads</div>
+                                            <div className="text-[10px] text-text-muted">Listeners on all ports + Clients with peers</div>
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => { setStartMenuOpen(false); handleGlobalAction('start-clients'); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                        <div className="w-2 h-2 rounded-full bg-amber-500" />
+                                        <div>
+                                            <div className="font-bold">Start Clients Only</div>
+                                            <div className="text-[10px] text-text-muted">Generate traffic to configured target peers</div>
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => { setStartMenuOpen(false); handleGlobalAction('start-listeners'); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                        <div>
+                                            <div className="font-bold">Start Listeners Only</div>
+                                            <div className="text-[10px] text-text-muted">Listen on all configured application ports</div>
+                                        </div>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Stop All Split / Dropdown Button */}
+                        <div className="relative">
+                            <div className="inline-flex rounded-xl shadow-sm overflow-hidden border border-rose-500/30">
+                                <button
+                                    disabled={isActionLoading}
+                                    onClick={() => handleGlobalAction('stop-all')}
+                                    className="h-[32px] px-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                                    title="Stop all running clients and listeners on this appliance"
+                                >
+                                    <Square size={12} fill="currentColor" />
+                                    <span>Stop All</span>
+                                </button>
+                                <button
+                                    disabled={isActionLoading}
+                                    onClick={() => { setStopMenuOpen(!stopMenuOpen); setStartMenuOpen(false); }}
+                                    className="h-[32px] px-2 bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border-l border-rose-500/20 transition-colors cursor-pointer disabled:opacity-50"
+                                    title="More stop options"
+                                >
+                                    <ChevronDown size={12} className={cn("transition-transform duration-200", stopMenuOpen && "rotate-180")} />
+                                </button>
+                            </div>
+
+                            {/* Stop Dropdown Menu */}
+                            {stopMenuOpen && (
+                                <div 
+                                    className="absolute right-0 mt-1.5 w-60 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
+                                    onMouseLeave={() => setStopMenuOpen(false)}
+                                >
+                                    <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
+                                        Appliance Stop Options
+                                    </div>
+                                    <button
+                                        onClick={() => { setStopMenuOpen(false); handleGlobalAction('stop-all'); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer font-bold"
+                                    >
+                                        <Square size={12} fill="currentColor" />
+                                        <span>Stop All (Clients + Listeners)</span>
+                                    </button>
+                                    <button
+                                        onClick={() => { setStopMenuOpen(false); handleGlobalAction('stop-clients'); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                        <Square size={12} />
+                                        <span>Stop Clients Only</span>
+                                    </button>
+                                    <button
+                                        onClick={() => { setStopMenuOpen(false); handleGlobalAction('stop-listeners'); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                        <Square size={12} />
+                                        <span>Stop Listeners Only</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Streamlined Live indicator */}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card-secondary border border-border rounded-xl text-xs font-mono shadow-sm" title="Real-time socket telemetry active (1.5s interval)">
                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span>Live Telemetry: 1.5s</span>
+                        <span className="text-[10px] font-bold text-emerald-400">LIVE</span>
                     </div>
 
                     <button
-                        onClick={() => loadAppStatus(selectedAppId)}
+                        onClick={() => {
+                            if (selectedAppId) loadAppStatus(selectedAppId);
+                            loadAllSummaries();
+                        }}
                         className="p-2 bg-card-secondary hover:bg-card-hover border border-border rounded-xl text-text-muted hover:text-text-primary transition-colors cursor-pointer shadow-sm"
                         title="Refresh Telemetry Now"
                     >
-                        <RefreshCw size={14} className={isActionLoading ? 'animate-spin' : ''} />
+                        <RefreshCw size={13} className={isActionLoading ? 'animate-spin' : ''} />
                     </button>
                 </div>
             </div>

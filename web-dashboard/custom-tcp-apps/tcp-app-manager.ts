@@ -440,6 +440,90 @@ export class TcpAppManager extends EventEmitter {
         }
     }
 
+    public async startAllListeners(persist: boolean = true): Promise<{ started: string[]; failed: { appId: string; appName: string; error: string }[] }> {
+        const started: string[] = [];
+        const failed: { appId: string; appName: string; error: string }[] = [];
+
+        for (const [appId, ctx] of this.appInstances.entries()) {
+            if (!ctx.config.enabled) continue;
+            if (ctx.metrics.listenerState === 'listening') {
+                started.push(ctx.config.name);
+                continue;
+            }
+            try {
+                await this.startListener(appId, persist);
+                started.push(ctx.config.name);
+            } catch (err: any) {
+                failed.push({ appId, appName: ctx.config.name, error: err.message });
+            }
+        }
+        return { started, failed };
+    }
+
+    public async stopAllListeners(persist: boolean = true): Promise<{ stopped: string[] }> {
+        const stopped: string[] = [];
+        for (const [appId, ctx] of this.appInstances.entries()) {
+            if (ctx.metrics.listenerState === 'listening') {
+                try {
+                    await this.stopListener(appId, persist);
+                    stopped.push(ctx.config.name);
+                } catch {}
+            }
+        }
+        return { stopped };
+    }
+
+    public async startAllClients(persist: boolean = true): Promise<{ started: string[]; skipped: string[]; failed: { appId: string; appName: string; error: string }[] }> {
+        const started: string[] = [];
+        const skipped: string[] = [];
+        const failed: { appId: string; appName: string; error: string }[] = [];
+
+        for (const [appId, ctx] of this.appInstances.entries()) {
+            if (!ctx.config.enabled) continue;
+            const peers = ctx.config.peers || [];
+            if (peers.length === 0) {
+                skipped.push(ctx.config.name);
+                continue;
+            }
+            if (ctx.metrics.clientWorkloadRunning) {
+                started.push(ctx.config.name);
+                continue;
+            }
+            try {
+                await this.startClient(appId, undefined, persist);
+                started.push(ctx.config.name);
+            } catch (err: any) {
+                failed.push({ appId, appName: ctx.config.name, error: err.message });
+            }
+        }
+        return { started, skipped, failed };
+    }
+
+    public async stopAllClients(persist: boolean = true): Promise<{ stopped: string[] }> {
+        const stopped: string[] = [];
+        for (const [appId, ctx] of this.appInstances.entries()) {
+            if (ctx.metrics.clientWorkloadRunning) {
+                try {
+                    await this.stopClient(appId, persist);
+                    stopped.push(ctx.config.name);
+                } catch {}
+            }
+        }
+        return { stopped };
+    }
+
+    public async startAll(persist: boolean = true) {
+        const listeners = await this.startAllListeners(persist);
+        const clients = await this.startAllClients(persist);
+        return { listeners, clients };
+    }
+
+    public async stopAllWorkloads(persist: boolean = true) {
+        const clients = await this.stopAllClients(persist);
+        const listeners = await this.stopAllListeners(persist);
+        return { clients, listeners };
+    }
+
     public async stopAll(): Promise<void> {
         for (const ctx of this.appInstances.values()) {
             try { await ctx.clientRuntime.stop(); } catch {}
