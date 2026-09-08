@@ -136,12 +136,10 @@ const formatTargetTimestamp = (isoStr?: string) => {
 };
 
 interface TargetServiceStatus {
-    mode: 'NORMAL' | 'ALWAYS_SLOW' | 'RANDOM_SLOW' | 'LOOPING_SLOW';
-    slow_delay: number;
-    loop_slow: number;
-    loop_normal: number;
-    random_prob: number;
-    current_loop_state: string;
+    status?: string;
+    service?: string;
+    port?: number;
+    eicar_endpoint?: string;
     error?: string;
 }
 
@@ -448,24 +446,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
             }
         } catch (e) {
             setTargetServiceStatus({ error: 'Connection failed' } as any);
-        }
-    };
-
-    const setTargetServiceMode = async (mode: string) => {
-        try {
-            const res = await fetch('/api/target-service/mode', {
-                method: 'POST',
-                headers: { 
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ mode })
-            });
-            if (res.ok) {
-                fetchTargetServiceStatus();
-            }
-        } catch (e) {
-            console.error('Failed to set mode:', e);
         }
     };
 
@@ -4494,105 +4474,68 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                         </div>
                     )}
 
-                        {/* ── Local Target Service Control ── */}
-                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-5 shadow-inner flex flex-col">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-[10px] font-black text-text-muted tracking-[0.2em] uppercase flex items-center gap-2">
-                                    <Globe size={12} className="text-emerald-500" />
-                                    Local Target Service
-                                </h3>
+                        {/* ── Local Target Service Control (EICAR Security Target) ── */}
+                        <div className="bg-card-secondary/30 border border-border rounded-2xl p-5 shadow-inner">
+                            <div className="flex items-center justify-between pb-4 border-b border-border/60">
+                                <div className="flex items-center gap-2">
+                                    <Shield size={14} className="text-emerald-500" />
+                                    <h3 className="text-xs font-black text-text-primary uppercase tracking-wider">
+                                        Local Appliance Target & Security Service
+                                    </h3>
+                                </div>
                                 <div className="flex items-center gap-2">
                                     {(() => {
                                         const isOffline = targetServiceStatus?.error || !targetServiceStatus;
-                                        const isNormal = targetServiceStatus?.mode === 'NORMAL';
                                         if (isOffline) return (
                                             <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 text-[9px] font-black tracking-widest shadow-sm">OFFLINE</span>
                                         );
-                                        if (isNormal) return (
-                                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[9px] font-black tracking-widest shadow-sm">READY</span>
-                                        );
                                         return (
-                                            <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[9px] font-black tracking-widest shadow-sm">IMPAIRED</span>
+                                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[9px] font-black tracking-widest shadow-sm">PORT 8082 · ACTIVE</span>
                                         );
                                     })()}
                                 </div>
                             </div>
 
-                            {/* ── Site Name Inline Editor ── */}
-                            <div className="bg-card/60 border border-border rounded-xl p-3 space-y-2 max-w-md">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Site Name</span>
-                                    {siteNameSaved && (
-                                        <span className="flex items-center gap-1 text-[8px] font-black text-emerald-400 uppercase tracking-widest animate-in fade-in duration-300">
-                                            <CheckCircle size={10} /> Saved — heartbeat sent
-                                        </span>
-                                    )}
-                                    {siteNameError && (
-                                        <span className="text-[8px] font-black text-red-400 uppercase tracking-widest">{siteNameError}</span>
-                                    )}
-                                </div>
-                                <div className="flex gap-2">
-                                    <input
-                                        id="site-name-edit"
-                                        type="text"
-                                        value={siteNameEdit}
-                                        onChange={(e) => { setSiteNameEdit(e.target.value); setSiteNameError(null); setSiteNameSaved(false); }}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleSaveSiteName()}
-                                        placeholder="e.g. BR5-Paris"
-                                        className="flex-1 bg-card border border-border focus:border-emerald-500/50 rounded-lg px-3 py-1.5 text-xs font-mono transition-all"
-                                    />
-                                    <button
-                                        id="site-name-save"
-                                        onClick={handleSaveSiteName}
-                                        disabled={siteNameSaving || !siteNameEdit.trim() || siteNameEdit.trim() === registryStatus?.site_name}
-                                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
-                                    >
-                                        {siteNameSaving ? <RefreshCw size={10} className="animate-spin" /> : <CheckCircle size={10} />}
-                                        Save
-                                    </button>
-                                </div>
-                                <p className="text-[8px] text-text-muted italic opacity-50">Identifies this node in the leader registry. Saved immediately + heartbeat sent.</p>
-                            </div>
-
-                            <div className="space-y-6 flex-1">
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-center px-1">
-                                        <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Service Mode</span>
-                                        {targetServiceStatus?.mode === 'LOOPING_SLOW' && (
-                                            <div className="flex items-center gap-1.5 text-[8px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                                                <RefreshCw size={8} className="animate-spin" />
-                                                LOOPING: {targetServiceStatus.current_loop_state}
-                                            </div>
-                                        )}
-                                    </div>
-                                    
-                                    {/* Segmented Control Mode Switcher */}
-                                    <div className="bg-card/50 border border-border rounded-xl p-1 flex gap-1 shadow-inner">
-                                        {[
-                                            { id: 'NORMAL', label: 'Fast' },
-                                            { id: 'RANDOM_SLOW', label: 'Random' },
-                                            { id: 'ALWAYS_SLOW', label: 'Always' },
-                                            { id: 'LOOPING_SLOW', label: 'Loop' }
-                                        ].map(({ id, label }) => (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
+                                {/* ── Left Column: Site Name Inline Editor ── */}
+                                <div className="bg-card/60 border border-border rounded-xl p-4 space-y-2 flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <span className="text-[9px] font-black text-text-muted tracking-widest uppercase">Local Site Name</span>
+                                            {siteNameSaved && (
+                                                <span className="flex items-center gap-1 text-[8px] font-black text-emerald-400 uppercase tracking-widest animate-in fade-in duration-300">
+                                                    <CheckCircle size={10} /> Saved — heartbeat sent
+                                                </span>
+                                            )}
+                                            {siteNameError && (
+                                                <span className="text-[8px] font-black text-red-400 uppercase tracking-widest">{siteNameError}</span>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input
+                                                id="site-name-edit"
+                                                type="text"
+                                                value={siteNameEdit}
+                                                onChange={(e) => { setSiteNameEdit(e.target.value); setSiteNameError(null); setSiteNameSaved(false); }}
+                                                onKeyDown={(e) => e.key === 'Enter' && handleSaveSiteName()}
+                                                placeholder="e.g. BR5-Paris"
+                                                className="flex-1 bg-card border border-border focus:border-emerald-500/50 rounded-lg px-3 py-1.5 text-xs font-mono transition-all"
+                                            />
                                             <button
-                                                key={id}
-                                                onClick={() => setTargetServiceMode(id)}
-                                                disabled={targetServiceStatus?.mode === id}
-                                                className={cn(
-                                                    "flex-1 py-2 px-1 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all duration-200",
-                                                    targetServiceStatus?.mode === id
-                                                        ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow-sm"
-                                                        : "text-text-muted hover:text-text-primary hover:bg-card-hover border border-transparent"
-                                                )}
+                                                id="site-name-save"
+                                                onClick={handleSaveSiteName}
+                                                disabled={siteNameSaving || !siteNameEdit.trim() || siteNameEdit.trim() === registryStatus?.site_name}
+                                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
                                             >
-                                                {label}
+                                                {siteNameSaving ? <RefreshCw size={10} className="animate-spin" /> : <CheckCircle size={10} />}
+                                                Save
                                             </button>
-                                        ))}
+                                        </div>
                                     </div>
+                                    <p className="text-[8.5px] text-text-muted opacity-60">Identifies this appliance across the mesh and Target Controller Leader.</p>
                                 </div>
-                            </div>
 
-                            <div className="pt-4 border-t border-border space-y-2">
+                                {/* ── Right Column: EICAR Security Target Service ── */}
                                 {(() => {
                                     const inbandHost = (() => {
                                         if (interfaces && interfaces.length > 0 && systemInfo?.interfaceIps) {
@@ -4616,51 +4559,48 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         return window.location.hostname;
                                     })();
 
+                                    const eicarUrl = `http://${inbandHost}:8082/eicar.com.txt`;
+
                                     return (
-                                        <>
-                                            <div className="flex items-center justify-between">
-                                                <h4 className="text-[9px] font-black text-text-muted tracking-[0.2em] uppercase">Test Links</h4>
-                                                <span className="text-[8.5px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                                    Inband Target: {inbandHost}
-                                                </span>
+                                        <div className="bg-card/60 border border-border rounded-xl p-4 space-y-2 flex flex-col justify-between">
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <span className="text-[9px] font-black text-rose-400 tracking-widest uppercase flex items-center gap-1.5">
+                                                        <Shield size={10} className="text-rose-400" />
+                                                        EICAR Test Service (AV / IPS Target)
+                                                    </span>
+                                                    <span className="text-[8.5px] font-mono text-emerald-400/80 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                                                        Port 8082
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2 bg-card border border-border/80 rounded-lg px-2.5 py-1.5">
+                                                    <span className="text-xs font-mono text-text-primary flex-1 truncate select-all">{eicarUrl}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(eicarUrl);
+                                                            toast.success('EICAR URL copied to clipboard');
+                                                        }}
+                                                        className="p-1 hover:bg-white/10 text-text-muted hover:text-text-primary rounded transition-colors"
+                                                        title="Copy EICAR URL"
+                                                    >
+                                                        <Copy size={12} />
+                                                    </button>
+                                                    <a
+                                                        href={eicarUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="p-1 hover:bg-emerald-500/10 text-text-muted hover:text-emerald-400 rounded transition-colors"
+                                                        title="Open in new tab"
+                                                    >
+                                                        <ExternalLink size={12} />
+                                                    </a>
+                                                </div>
                                             </div>
-                                            <div className="grid grid-cols-1 gap-1.5">
-                                                {[
-                                                    { label: 'Health Check (Clean Flow)', path: '/ok', color: 'emerald' },
-                                                    { label: 'WAN Brownout (Simulated Delay)', path: '/slow', color: 'amber' },
-                                                    { label: 'Security Block (IPS/AV Test)', path: '/eicar.com.txt', color: 'red' }
-                                                ].map(({ label, path, color }) => {
-                                                    const fullUrl = `http://${inbandHost}:8082${path}`;
-                                                    return (
-                                                        <div
-                                                            key={path}
-                                                            className="flex flex-col gap-1 p-2 rounded-lg bg-card/30 border border-border hover:border-emerald-500/30 transition-all group"
-                                                        >
-                                                            <div className="flex items-center justify-between">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className={`w-1 h-1 rounded-full bg-${color}-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]`} />
-                                                                    <span className="text-[10px] font-bold text-text-muted group-hover:text-text-primary">{label}</span>
-                                                                </div>
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <a
-                                                                        href={fullUrl}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        className="p-1 hover:bg-emerald-500/10 text-text-muted hover:text-emerald-500 rounded transition-colors"
-                                                                        title="Open in new tab"
-                                                                    >
-                                                                        <ExternalLink size={10} />
-                                                                    </a>
-                                                                </div>
-                                                            </div>
-                                                            <div className="text-[9px] font-mono text-emerald-500/70 truncate px-1">
-                                                                {fullUrl}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </>
+                                            <p className="text-[8.5px] text-text-muted opacity-60">
+                                                Dedicated lightweight endpoint serving the standard EICAR anti-virus string for Security test suites.
+                                            </p>
+                                        </div>
                                     );
                                 })()}
                             </div>
