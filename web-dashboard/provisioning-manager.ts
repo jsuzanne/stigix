@@ -977,6 +977,21 @@ export class ProvisioningManager {
         const globalById = new Map<string, any>(normalizedGlobal.map(g => [g.id, g]));
         const overrides = this.getLocalOverrides(type);
 
+        // Build set of item IDs currently submitted by the user
+        const currentUserIds = new Set<string>();
+        for (const rawItem of userItems) {
+            const id = this.generateDeterministicId(type, rawItem);
+            currentUserIds.add(id);
+        }
+
+        // 1. Purge deleted local-only items or removed overrides no longer in userItems
+        for (const id of Object.keys(overrides)) {
+            if (!currentUserIds.has(id)) {
+                delete overrides[id];
+            }
+        }
+
+        // 2. Process and save remaining user items
         for (const rawItem of userItems) {
             const id = this.generateDeterministicId(type, rawItem);
             const gItem = globalById.get(id);
