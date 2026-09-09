@@ -921,8 +921,8 @@ export default function App() {
             view === 'dashboard' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
-          <LayoutDashboard size={18} /> Traffic Control
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Control SaaS traffic generation</span>
+          <LayoutDashboard size={18} /> Traffic Generator
+          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Generate background SaaS traffic load and monitor telemetry</span>
         </button>
         <button
           onClick={() => setView('performance')}
