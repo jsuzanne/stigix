@@ -77,7 +77,19 @@ async function runTests() {
     if (stats.avg !== 505) throw new Error(`Avg mismatch: ${stats.avg}`);
     if (stats.p50 < 490 || stats.p50 > 520) throw new Error(`p50 mismatch: ${stats.p50}`);
     if (stats.p95 < 940 || stats.p95 > 960) throw new Error(`p95 mismatch: ${stats.p95}`);
-    console.log('  ✅ RTT Percentile stats passed!');
+    // 5. Test FrameParser rejection on HTTP banner
+    console.log('Test 5: FrameParser HTTP banner error handling');
+    const httpParser = new FrameParser();
+    let errorCaught = false;
+    let errorMessage = '';
+    httpParser.on('error', err => {
+        errorCaught = true;
+        errorMessage = err.message;
+    });
+    httpParser.push(Buffer.from('HTTP/1.1 400 Bad Request\r\n\r\n<!DOCTYPE html>'));
+    if (!errorCaught) throw new Error('HTTP banner should trigger parser error');
+    if (!errorMessage.includes('HTTP')) throw new Error('Error message should identify HTTP banner');
+    console.log('  ✅ HTTP banner rejection test passed!');
 
     console.log('🎉 ALL BACKEND PROTOCOL AND RUNTIME TESTS PASSED SUCCESSFULLY!');
 }

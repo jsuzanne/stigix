@@ -255,58 +255,143 @@ export class TcpClientRuntime extends EventEmitter {
     }> {
         return new Promise(resolve => {
             const socket = new net.Socket();
-            const parser = new FrameParser(this.appConfig.listener.maxPayloadBytes || 1048576);
+            const parser = new FrameParser(this.appConfig.listener?.maxPayloadBytes || 1048576);
             const clientSessionId = `test-${crypto.randomUUID().substring(0, 8)}`;
             let startTs = 0;
+            let settled = false;
+
+            const finish = (result: { success: boolean; rttMs?: number; responder?: any; error?: string }) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeout);
+                try { socket.destroy(); } catch {}
+                resolve(result);
+            };
 
             const timeout = setTimeout(() => {
-                socket.destroy();
-                resolve({ success: false, error: 'Connection or handshake timeout (5s)' });
+                finish({ success: false, error: 'Connection or handshake timeout (5s)' });
             }, 5000);
 
             socket.once('error', (err: any) => {
-                clearTimeout(timeout);
-                socket.destroy();
-                resolve({ success: false, error: err.message });
+                finish({ success: false, error: err.message || 'TCP socket error' });
+            });
+
+            socket.once('close', () => {
+                if (!settled) {
+                    finish({ success: false, error: 'Connection closed by peer before handshake completed' });
+                }
+            });
+
+            parser.on('error', (err: any) => {
+                finish({
+                    success: false,
+                    error: `Protocol framing error: ${err.message}`
+                });
             });
 
             socket.connect(peer.port, peer.host, () => {
                 startTs = Date.now();
-                const hello = buildClientHello({
-                    appId: this.appConfig.id,
-                    clientSessionId,
-                    origin: {
-                        instanceId: this.localIdentity.instanceId,
-                        siteName: this.localIdentity.siteName,
-                        hostname: this.localIdentity.hostname
-                    },
-                    authToken: peer.token || this.appConfig.listener.auth?.token
-                });
-                socket.write(encodeFrame(hello));
+                if (this.appConfig.protocol === 'http_1_1') {
+                    // Send standard HTTP/1.1 Probe request
+                    const httpProbe = [
+                        `GET /api/v1/health HTTP/1.1`,
+                        `Host: ${peer.host}:${peer.port}`,
+                        `User-Agent: Stigix-App-Emulator/2.0 (${this.localIdentity.siteName})`,
+                        `X-Stigix-Site-Name: ${this.localIdentity.siteName}`,
+                        `X-Stigix-Instance-Id: ${this.localIdentity.instanceId}`,
+                        `X-Stigix-Hostname: ${this.localIdentity.hostname}`,
+                        `X-Stigix-App-Id: ${this.appConfig.id}`,
+                        `X-Stigix-Session-Id: ${clientSessionId}`,
+                        `Connection: close`,
+                        '',
+                        ''
+                    ].join('\r\n');
+                    socket.write(Buffer.from(httpProbe, 'utf8'));
+                } else {
+                    const hello = buildClientHello({
+                        appId: this.appConfig.id,
+                        clientSessionId,
+                        origin: {
+                            instanceId: this.localIdentity.instanceId,
+                            siteName: this.localIdentity.siteName,
+                            hostname: this.localIdentity.hostname
+                        },
+                        authToken: peer.token || this.appConfig.listener?.auth?.token
+                    });
+                    socket.write(encodeFrame(hello));
+                }
             });
 
-            socket.on('data', chunk => parser.push(chunk));
+            socket.on('data', chunk => {
+                if (this.appConfig.protocol === 'http_1_1') {
+                    const rtt = Date.now() - startTs;
+                    const raw = chunk.toString('utf8');
+                    const statusMatch = raw.match(/HTTP\/1\.[01]\s+(\d{3})(?:\s+([^\r\n]+))?/);
+                    if (statusMatch) {
+                        const statusCode = parseInt(statusMatch[1], 10);
+                        const statusText = statusMatch[2] || 'OK';
+                        if (statusCode < 400 || statusCode === 404 || statusCode === 401 || statusCode === 403) {
+                            finish({
+                                success: statusCode < 400 || statusCode === 404,
+                                rttMs: rtt,
+                                responder: {
+                                    protocol: 'HTTP/1.1',
+                                    statusCode,
+                                    statusText
+                                },
+                                error: statusCode >= 400 && statusCode !== 404 ? `HTTP ${statusCode} ${statusText}` : undefined
+                            });
+                        } else {
+                            finish({
+                                success: false,
+                                rttMs: rtt,
+                                error: `HTTP ${statusCode} ${statusText}`
+                            });
+                        }
+                    } else {
+                        finish({
+                            success: true,
+                            rttMs: rtt,
+                            responder: { protocol: 'HTTP/1.1 (Raw)' }
+                        });
+                    }
+                } else {
+                    // Check if peer is an HTTP/Web endpoint while expecting Stigix TCP framing
+                    const preview = chunk.subarray(0, 16).toString('utf8');
+                    if (preview.startsWith('HTTP/') || preview.startsWith('<!DOC') || preview.startsWith('<html') || preview.startsWith('GET ') || preview.startsWith('POST ')) {
+                        const rtt = Date.now() - startTs;
+                        const statusMatch = chunk.toString('utf8').match(/HTTP\/1\.[01]\s+(\d{3})(?:\s+([^\r\n]+))?/);
+                        const statusDesc = statusMatch ? ` (${statusMatch[0]})` : '';
+                        finish({
+                            success: false,
+                            rttMs: rtt,
+                            error: `Target endpoint is an HTTP/Web service${statusDesc}, not Stigix Native TCP. Set Application Wire Protocol to "HTTP/1.1 REST" in settings.`
+                        });
+                        return;
+                    }
+
+                    parser.push(chunk);
+                }
+            });
 
             parser.once('message', msg => {
-                clearTimeout(timeout);
                 const rtt = Date.now() - startTs;
-                socket.destroy();
 
                 if (msg.type === 'SERVER_HELLO') {
                     const sHello = msg as ServerHelloMessage;
-                    resolve({
+                    finish({
                         success: true,
                         rttMs: rtt,
                         responder: sHello.responder
                     });
                 } else if (msg.type === 'REJECT') {
                     const reject = msg as RejectMessage;
-                    resolve({
+                    finish({
                         success: false,
                         error: `Rejected by peer: ${reject.reason} (${reject.code})`
                     });
                 } else {
-                    resolve({
+                    finish({
                         success: false,
                         error: `Unexpected message from peer: ${msg.type}`
                     });
@@ -416,6 +501,13 @@ export class TcpClientRuntime extends EventEmitter {
 
         session.parser.on('message', msg => {
             this.handleIncomingMessage(session, msg);
+        });
+
+        session.parser.on('error', (err: any) => {
+            session.state.errors++;
+            session.state.lastError = err.message;
+            this.metricsTracker.totalErrors++;
+            session.socket?.destroy();
         });
 
         socket.on('timeout', () => {
