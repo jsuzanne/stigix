@@ -445,14 +445,14 @@ const secs = seconds % 60;
                     <div>
                         <div className="flex items-center gap-2">
                             <h1 className="text-xl font-bold text-text-primary tracking-wide">
-                                Custom TCP Applications
+                                Custom Applications
                             </h1>
                             <span className="px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 rounded text-[10px] font-bold uppercase tracking-wider">
-                                East-West & North-South SD-WAN Simulator
+                                Inter-Site & Cloud Simulator
                             </span>
                         </div>
                         <p className="text-xs text-text-muted mt-0.5">
-                            Simulate stateful multi-site application traffic across overlay tunnels with live RTT, failover observation, and chaos injection.
+                            Simulate stateful multi-site TCP & HTTP application traffic across SD-WAN overlays, direct internet breakouts, and enterprise networks with live RTT, failover observation, and chaos injection.
                         </p>
                     </div>
                 </div>
