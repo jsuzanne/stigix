@@ -48,6 +48,8 @@ This project is my way to turn all that lab and demo experience into an open-sou
 
 ### 🚀 Traffic Generation
 - **67 Pre-configured Applications** - Popular SaaS apps (Google, Microsoft 365, Salesforce, Zoom, etc.).
+- **Real-Time Application Telemetry & RUM** ⚡ - Extracts live client timing metrics (`DNS resolution`, `TCP connect`, `TLS negotiation`, `Server TTFB`, and `Total RTT`) natively from `curl` during background load generation with zero network overhead. Includes interactive glassmorphism hover cards and rolling EMA statistics.
+- **1-Click DEM Promotion** 🎯 - One-click promotion of any active business application directly into continuous 1-minute synthetic monitoring probes with custom SLA thresholds.
 - **Realistic Traffic Patterns** - Authentic HTTP requests with proper headers, User-Agents, and Referers
 - **Real-time Dashboard** - Live traffic visualization, metrics, and status monitoring
 - **Weighted Distribution** - Configure application traffic ratios using a visual Group/App percentage system
@@ -66,7 +68,7 @@ This project is my way to turn all that lab and demo experience into an open-sou
 - **Smart Networking** - Auto-detection of default gateways and interfaces (enp2s0, eth0) for a "Zero-Config" experience on physical Linux boxes. [Read more](docs/SMART_NETWORKING.md)
 - **VyOS Control** - Orchestrate network events and perturbations (latency, loss, rate-limiting, ip blocking) on VyOS routers via Vyos API. [Read more](docs/VYOS_CONTROL.md)
 - **Autodiscovery & Registry** - Automatic peer-to-peer discovery using Cloudflare Workers. "Zero-Config" multi-node setup with stateless authentication. [Read more](docs/AUTODISCOVERY_GUIDE.md) 📡✨
-- **Central Global Provisioning** - Publish Applications Catalogue and Synthetic Connectivity Probes centrally from the Leader to connected branch peers with pull-mode distribution (`30s` cycle), revisioning, field-level local site overrides, and orphan protection. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🌐
+- **Central Global Provisioning** - Publish 9 core configuration bundles (`Applications Catalogue`, `Connectivity Probes`, `Convergence SLA`, `Prisma SASE`, `Security Policy`, `Voice Settings`, `IoT Simulation`, `Custom TCP Apps`, and `Cloud Probes Credentials`) centrally from the Leader to connected branch peers with pull-mode distribution (`30s` cycle), revisioning, field-level local site overrides, auto-save broadcast, and zero-touch hot reload. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🌐
 - **Direct Controller Peer Onboarding** - Single-command onboarding (`curl -sSL http://<LEADER_IP>:8080/onboard.sh | bash`) to instantly join remote Linux nodes to a Stigix Leader with zero-touch configuration. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🚀
 - **Smart Identity** - Automatic instance identification using system hostname. Simplifies deployment by reducing environment variables. 🆔
 - **Target Site Mode** - Standalone container acting as a branch/hub target with HTTP, Voice, Failover tests and Bandwidth services (IPerf AND XFR speedtest). [Read more](docs/TARGET_CAPABILITIES.md)

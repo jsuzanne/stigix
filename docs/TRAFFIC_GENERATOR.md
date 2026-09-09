@@ -377,6 +377,52 @@ MAX_TIMEOUT=15  # Change to desired timeout
 
 ---
 
+## Real-Time Application Telemetry & RUM
+
+The Stigix Traffic Generator extracts real-time client timing metrics (**Real User Monitoring / APM**) natively from `curl` on every background request without incurring additional network traffic or remote server overhead.
+
+### Captured Layer Metrics
+
+| Metric | Source | Description |
+| :--- | :--- | :--- |
+| **Avg Latency (RTT)** | `time_total` | Total round-trip time from request initiation to complete response transfer. |
+| **TTFB (Server Time)** | `time_starttransfer` | Time To First Byte reflecting remote backend server responsiveness after TLS negotiation. |
+| **DNS Resolution** | `time_namelookup` | Time taken for local/upstream DNS resolver to resolve domain name. |
+| **TCP Handshake** | `time_connect` | Network transport latency (SYN/ACK 3-way handshake). |
+| **TLS Negotiation** | `time_appconnect` | SSL/TLS cryptographic handshake and cipher negotiation time. |
+
+### Rolling Telemetry in `stats.json`
+
+For each application, the traffic engine maintains an Exponential Moving Average (EMA) with $\alpha = 0.3$:
+
+```json
+{
+  "timestamp": 1725890100,
+  "client_id": "client01",
+  "total_requests": 1680,
+  "requests_by_app": { "salesforce.com": 98 },
+  "errors_by_app": { "salesforce.com": 0 },
+  "telemetry_by_app": {
+    "salesforce.com": {
+      "rtt_ms": 18.4,
+      "ttfb_ms": 11.2,
+      "dns_ms": 1.2,
+      "tcp_ms": 6.4,
+      "tls_ms": 5.1,
+      "last_code": "200"
+    }
+  }
+}
+```
+
+### Dashboard Applications Table & 1-Click DEM Promotion
+
+- **Avg Latency Badge**: Displays rolling RTT with status dot (🟢 `<50ms`, 🟡 `<150ms`, 🔴 `≥150ms`).
+- **Interactive Hover Breakdown**: Hovering over the latency pill displays a floating card with `DNS`, `TCP`, `TLS`, and `TTFB` breakdown.
+- **1-Click "+ DEM" Button**: Instantly promotes any business application into a dedicated 1-minute synthetic probe with threshold SLA tracking in **Digital Experience Monitoring (DEM)**.
+
+---
+
 ## Best Practices
 
 ### 1. Start Small
@@ -390,9 +436,9 @@ Mirror actual user behavior:
 - Business apps: Moderate weights (50-75)
 - Social media: Variable (25-150 depending on demo)
 
-### 3. Monitor Stats
+### 3. Monitor Stats & Telemetry
 
-Check `stats.json` regularly to ensure distribution matches expectations.
+Check `stats.json` or the web dashboard to observe application latency trends across SD-WAN paths.
 
 ### 4. Avoid Overloading
 
@@ -436,5 +482,5 @@ Add applications gradually and verify they're reachable before adding more.
 
 ---
 
-**Last Updated:** 2026-02-27  
-**Version:** 1.2.1-patch.109
+**Last Updated:** 2026-09-09  
+**Version:** 2.0.8
