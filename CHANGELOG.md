@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.9] - 2026-09-09
+
+### Added / Changed
+- **Real-Time Application Telemetry & RUM** ⚡:
+  - **Native curl Timing Extraction**: Captured client timing metrics on every live background request (`time_namelookup`, `time_connect`, `time_appconnect`, `time_starttransfer`, and `time_total`) with zero network overhead and zero remote server impact.
+  - **Rolling EMA Telemetry**: Computed Exponential Moving Average (EMA) in `traffic-generator.sh` per application: `rtt_ms`, `ttfb_ms`, `dns_ms`, `tcp_ms`, and `tls_ms` persisted in `stats-${CLIENTID}.json`.
+  - **Enriched Applications Table**: Added **Avg Latency (RTT)** with status pills (🟢 `<50ms`, 🟡 `<150ms`, 🔴 `≥150ms`) and **TTFB (Server Time)** columns.
+  - **Interactive Hover Breakdown**: Glassmorphism tooltip breaking down `DNS`, `TCP`, `TLS`, and `TTFB` layer timings with HTTP status code.
+- **1-Click DEM Promotion (`+ DEM`)** 🎯:
+  - Added 1-click action button on application rows to instantly promote any business app into continuous 1-minute synthetic monitoring probes with SLA tracking (`POST /api/probes/promote-app`).
+- **Global Provisioning `cloud-config` Bundle (9th Bundle)** 🌐:
+  - Integrated `cloud-config` (`cloud-config.json`) into Central Global Provisioning with revisioning, checksums, and audit logs.
+  - Automatic broadcast to all connected branch peers on saving credentials in Settings, with instant Zero-Touch hot reload via `targetManager.reload()`.
+- **Dedicated Synthetic Probes Settings Tab** ☁️:
+  - Extracted Cloudflare Worker credentials, Master Key, and POP diagnostic tests out of Target Controller into a clean, dedicated **Synthetic Probes** tab.
+
+---
+
 ## [2.0.8] - 2026-09-08
 
 ### Added / Changed
