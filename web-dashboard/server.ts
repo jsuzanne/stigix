@@ -3355,6 +3355,14 @@ const aggregateStats = () => {
         total_requests: 0,
         requests_by_app: {} as Record<string, number>,
         errors_by_app: {} as Record<string, number>,
+        telemetry_by_app: {} as Record<string, {
+            rtt_ms: number;
+            ttfb_ms: number;
+            dns_ms?: number;
+            tcp_ms?: number;
+            tls_ms?: number;
+            last_code?: string | number;
+        }>,
         clients: [] as string[]
     };
 
@@ -3378,6 +3386,31 @@ const aggregateStats = () => {
             if (data.errors_by_app) {
                 Object.entries(data.errors_by_app).forEach(([app, count]) => {
                     aggregate.errors_by_app[app] = (aggregate.errors_by_app[app] || 0) + (count as number);
+                });
+            }
+
+            // Aggregate telemetry by app
+            if (data.telemetry_by_app) {
+                Object.entries(data.telemetry_by_app).forEach(([app, tel]: [string, any]) => {
+                    if (!aggregate.telemetry_by_app[app]) {
+                        aggregate.telemetry_by_app[app] = {
+                            rtt_ms: tel.rtt_ms || 0,
+                            ttfb_ms: tel.ttfb_ms || 0,
+                            dns_ms: tel.dns_ms || 0,
+                            tcp_ms: tel.tcp_ms || 0,
+                            tls_ms: tel.tls_ms || 0,
+                            last_code: tel.last_code || 200
+                        };
+                    } else {
+                        // Average across multiple worker clients
+                        const existing = aggregate.telemetry_by_app[app];
+                        existing.rtt_ms = Math.round(((existing.rtt_ms + (tel.rtt_ms || 0)) / 2) * 10) / 10;
+                        existing.ttfb_ms = Math.round(((existing.ttfb_ms + (tel.ttfb_ms || 0)) / 2) * 10) / 10;
+                        existing.dns_ms = Math.round(((existing.dns_ms + (tel.dns_ms || 0)) / 2) * 10) / 10;
+                        existing.tcp_ms = Math.round(((existing.tcp_ms + (tel.tcp_ms || 0)) / 2) * 10) / 10;
+                        existing.tls_ms = Math.round(((existing.tls_ms + (tel.tls_ms || 0)) / 2) * 10) / 10;
+                        existing.last_code = tel.last_code || existing.last_code;
+                    }
                 });
             }
         } catch (e) {
@@ -4507,6 +4540,57 @@ app.post('/api/connectivity/custom/import', authenticateToken, (req, res) => {
         res.json({ success: true, message: 'Probes imported successfully', count: probes.length });
     } catch (e: any) {
         res.status(500).json({ error: 'Import failed: ' + e.message });
+    }
+});
+
+// API: Promote Application to Synthetic DEM Probe (1-Click Action)
+app.post('/api/probes/promote-app', authenticateToken, async (req, res) => {
+    const { domain, name } = req.body;
+    if (!domain) {
+        return res.status(400).json({ error: 'domain is required' });
+    }
+
+    try {
+        const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+        const probeName = name || cleanDomain;
+        const targetUrl = domain.startsWith('http') ? domain : `https://${cleanDomain}/`;
+        
+        const existing = getCustomConnectivityEndpoints();
+        const alreadyExists = existing.find((p: any) => p.name.toLowerCase() === probeName.toLowerCase() || p.target === targetUrl);
+
+        if (alreadyExists) {
+            return res.json({ success: true, message: 'Probe already exists', probe: alreadyExists, created: false });
+        }
+
+        const newProbe = {
+            id: `app-probe-${Date.now()}`,
+            name: probeName,
+            target: targetUrl,
+            type: 'HTTP',
+            interval: 60,
+            enabled: true,
+            warning_threshold_ms: 200,
+            critical_threshold_ms: 500
+        };
+
+        const updated = [...existing, newProbe];
+        saveCustomConnectivityEndpoints(updated);
+        provisioningManager.handleLocalSave('connectivity-probes', updated);
+
+        // Immediate first check
+        setImmediate(async () => {
+            try {
+                const checkResult = await performConnectivityCheck(newProbe);
+                await connectivityLogger.logResult(checkResult);
+            } catch (err) {
+                console.error('[DEM] Immediate trigger error for promoted app:', err);
+            }
+        });
+
+        log('DEM', `Promoted application "${cleanDomain}" to Synthetic DEM probe`);
+        res.json({ success: true, probe: newProbe, created: true });
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to promote application to probe', message: e.message });
     }
 });
 

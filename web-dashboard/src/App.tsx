@@ -39,6 +39,7 @@ interface Stats {
   total_requests: number;
   requests_by_app: Record<string, number>;
   errors_by_app: Record<string, number>;
+  telemetry_by_app?: Record<string, any>;
 }
 
 interface SiteInfo {
@@ -1545,7 +1546,7 @@ export default function App() {
 
             {/* Statistics Table */}
             <div className="mb-8 mt-4">
-              <Statistics stats={stats} appConfig={appConfig} onReset={resetTrafficStats} />
+              <Statistics stats={stats} appConfig={appConfig} onReset={resetTrafficStats} token={token} />
             </div>
 
             {/* Logs Terminal */}

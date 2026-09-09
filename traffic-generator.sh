@@ -45,6 +45,12 @@ echo "📝 Logs: ${LOGFILE}"
 echo "📱 Client ID: ${CLIENTID}"
 echo "============================================================================"
 declare -A APP_ERRORS
+declare -A APP_RTT_MS
+declare -A APP_TTFB_MS
+declare -A APP_DNS_MS
+declare -A APP_TCP_MS
+declare -A APP_TLS_MS
+declare -A APP_LAST_CODE
 declare -A BACKOFF_LEVEL
 TOTAL_REQUESTS=0
 
@@ -236,7 +242,7 @@ function checkBackoff() {
     
     # Check if backoff variable exists
     local backoff_var="${key}_BACKOFF"
-    if [[ -v "$backoff_var" ]]; then
+    if [ -n "${!backoff_var:-}" ]; then
         local backoff_time="${!backoff_var}"
         if [[ $current_time -gt $backoff_time ]]; then
             # Backoff expired
@@ -276,22 +282,25 @@ function resetBackoff() {
 function updateStats() {
     local app=$1
     local code=$2
+    local dns_s=${3:-0}
+    local tcp_s=${4:-0}
+    local tls_s=${5:-0}
+    local ttfb_s=${6:-0}
+    local total_s=${7:-0}
     
     # Clean app name (remove protocol and keep more parts for IPs)
     local app_name="${app#*://}"
     if [[ "$app_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        # It's an IP, keep it full
         app_name="$app_name"
     else
-        # It's a domain, keep it full for better mapping in the UI
         app_name="$app_name"
     fi
     
     # Initialiser les compteurs s'ils n'existent pas
-    if [[ ! -v "APP_COUNTERS[$app_name]" ]]; then
+    if [ -z "${APP_COUNTERS[$app_name]:-}" ]; then
         APP_COUNTERS[$app_name]=0
     fi
-    if [[ ! -v "APP_ERRORS[$app_name]" ]]; then
+    if [ -z "${APP_ERRORS[$app_name]:-}" ]; then
         APP_ERRORS[$app_name]=0
     fi
     
@@ -300,6 +309,45 @@ function updateStats() {
     
     if [[ "$code" == "000"* ]]; then
         ((APP_ERRORS[$app_name]++))
+    fi
+    
+    # Calculate telemetry in ms (only on successful responses or valid timing)
+    if [[ "$total_s" != "0" && "$total_s" != "0.000000" && "$total_s" != "" ]]; then
+        local metrics
+        metrics=$(awk -v d="$dns_s" -v c="$tcp_s" -v l="$tls_s" -v f="$ttfb_s" -v t="$total_s" \
+                      -v prev_rtt="${APP_RTT_MS[$app_name]:-0}" \
+                      -v prev_ttfb="${APP_TTFB_MS[$app_name]:-0}" \
+                      -v prev_dns="${APP_DNS_MS[$app_name]:-0}" \
+                      -v prev_tcp="${APP_TCP_MS[$app_name]:-0}" \
+                      -v prev_tls="${APP_TLS_MS[$app_name]:-0}" '
+            BEGIN {
+                dns_ms = d * 1000
+                tcp_ms = (c > d ? (c - d) : c) * 1000
+                tls_ms = (l > c ? (l - c) : 0) * 1000
+                ttfb_ms = (f > l && l > 0 ? (f - l) : (f > c ? (f - c) : f)) * 1000
+                rtt_ms = t * 1000
+                
+                # Rolling average (EMA with alpha=0.3 if previous exists, else direct)
+                if (prev_rtt > 0) {
+                    rtt_ms = (prev_rtt * 0.7) + (rtt_ms * 0.3)
+                    ttfb_ms = (prev_ttfb * 0.7) + (ttfb_ms * 0.3)
+                    dns_ms = (prev_dns * 0.7) + (dns_ms * 0.3)
+                    tcp_ms = (prev_tcp * 0.7) + (tcp_ms * 0.3)
+                    tls_ms = (prev_tls * 0.7) + (tls_ms * 0.3)
+                }
+                
+                printf "%.1f|%.1f|%.1f|%.1f|%.1f", rtt_ms, ttfb_ms, dns_ms, tcp_ms, tls_ms
+            }' 2>/dev/null)
+        
+        if [[ -n "$metrics" ]]; then
+            IFS='|' read -r rtt_ms ttfb_ms dns_ms tcp_ms tls_ms <<< "$metrics"
+            APP_RTT_MS[$app_name]="$rtt_ms"
+            APP_TTFB_MS[$app_name]="$ttfb_ms"
+            APP_DNS_MS[$app_name]="$dns_ms"
+            APP_TCP_MS[$app_name]="$tcp_ms"
+            APP_TLS_MS[$app_name]="$tls_ms"
+            APP_LAST_CODE[$app_name]="$code"
+        fi
     fi
     
     # Write stats every 5 requests (or first request)
@@ -339,6 +387,26 @@ function writeStats() {
             echo -n "    \"$app\": ${APP_ERRORS[$app]:-0}"
         done
         echo ""
+        echo "  },"
+        
+        echo "  \"telemetry_by_app\": {"
+        first=true
+        for app in "${!APP_RTT_MS[@]}"; do
+            if [[ "$first" == "true" ]]; then
+                first=false
+            else
+                echo ","
+            fi
+            echo "    \"$app\": {"
+            echo "      \"rtt_ms\": ${APP_RTT_MS[$app]:-0},"
+            echo "      \"ttfb_ms\": ${APP_TTFB_MS[$app]:-0},"
+            echo "      \"dns_ms\": ${APP_DNS_MS[$app]:-0},"
+            echo "      \"tcp_ms\": ${APP_TCP_MS[$app]:-0},"
+            echo "      \"tls_ms\": ${APP_TLS_MS[$app]:-0},"
+            echo "      \"last_code\": \"${APP_LAST_CODE[$app]:-200}\""
+            echo -n "    }"
+        done
+        echo ""
         echo "  }"
         echo "}"
     } > "$STATS_FILE" 2>/dev/null || log_error "Failed to write stats"
@@ -365,9 +433,10 @@ function makeRequest() {
     
     log_info "$CLIENTID requesting $url via $interface (traceid: $trace_id)"
     
-    # Execute curl and capture only HTTP code
-    local http_code
-    http_code=$(curl \
+    # Execute curl and capture HTTP code + timing breakdown in seconds
+    # Format: http_code|time_namelookup|time_connect|time_appconnect|time_starttransfer|time_total
+    local raw_res
+    raw_res=$(curl \
         --interface "$interface" \
         --ipv4 \
         -H "User-Agent: $user_agent" \
@@ -375,16 +444,11 @@ function makeRequest() {
         -H "Accept-Language: en-US,en;q=0.9,fr;q=0.8" \
         -sL \
         -m "$MAX_TIMEOUT" \
-        -w "%{http_code}" \
+        -w "%{http_code}|%{time_namelookup}|%{time_connect}|%{time_appconnect}|%{time_starttransfer}|%{time_total}" \
         -o /dev/null \
-        "$url" 2>/dev/null || echo "000")
+        "$url" 2>/dev/null || echo "000|0|0|0|0|0")
     
-    # Validate http_code
-    if [[ -z "$http_code" ]] || [[ ! "$http_code" =~ ^[0-9]+$ ]]; then
-        http_code="000"
-    fi
-    
-    echo "${http_code}|${url}"
+    echo "${raw_res}|${url}"
 }
 
 # ============================================================================
@@ -432,6 +496,18 @@ function main() {
             declare -A APP_COUNTERS
             unset APP_ERRORS
             declare -A APP_ERRORS
+            unset APP_RTT_MS
+            declare -A APP_RTT_MS
+            unset APP_TTFB_MS
+            declare -A APP_TTFB_MS
+            unset APP_DNS_MS
+            declare -A APP_DNS_MS
+            unset APP_TCP_MS
+            declare -A APP_TCP_MS
+            unset APP_TLS_MS
+            declare -A APP_TLS_MS
+            unset APP_LAST_CODE
+            declare -A APP_LAST_CODE
             rm -f "${LOG_DIR}/.reset_stats"
             loadAppsToMemory
             writeStats
@@ -486,8 +562,17 @@ function main() {
         
         # Make request
         local result=$(makeRequest "$interface" "$app" "$endpoint" "$user_agent")
-        local code="${result%%|*}"
-        local url="${result#*|}"
+        
+        # Result format: code|dns|tcp|tls|ttfb|total|url
+        local code="000"
+        local dns_s="0"
+        local tcp_s="0"
+        local tls_s="0"
+        local ttfb_s="0"
+        local total_s="0"
+        local url=""
+        
+        IFS='|' read -r code dns_s tcp_s tls_s ttfb_s total_s url <<< "$result"
         
         # Handle result
         if [[ "$code" == "000"* ]]; then
@@ -495,11 +580,11 @@ function main() {
             log_error "$CLIENTID FAILED $url via $interface - code: $code"
         else
             resetBackoff "$backoff_key"
-            log_info "$CLIENTID SUCCESS $url - code: $code"
+            log_info "$CLIENTID SUCCESS $url - code: $code (${total_s}s)"
         fi
         
         # Update stats
-        updateStats "$app" "$code"
+        updateStats "$app" "$code" "$dns_s" "$tcp_s" "$tls_s" "$ttfb_s" "$total_s"
         
         # Sleep between requests
         sleep "$SLEEP_BETWEEN_REQUESTS"
