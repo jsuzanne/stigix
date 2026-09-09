@@ -1507,13 +1507,19 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const saveConvergenceThresholds = async () => {
         setSaving(true);
         try {
+            const sanitized = {
+                good: Math.max(1, Math.min(100, Number(convergenceThresholds.good) || 1)),
+                degraded: Math.max(1, Math.min(100, Number(convergenceThresholds.degraded) || 5)),
+                critical: Math.max(1, Math.min(100, Number(convergenceThresholds.critical) || 10))
+            };
+            setConvergenceThresholds(sanitized);
             const res = await fetch('/api/config/convergence', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(convergenceThresholds)
+                body: JSON.stringify(sanitized)
             });
             if (res.ok) {
                 showSuccess('Failover thresholds saved');
@@ -1530,13 +1536,21 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const saveTrafficThresholds = async () => {
         setSaving(true);
         try {
+            const sanitized = {
+                good_latency_ms: Math.max(1, Number(trafficThresholds.good_latency_ms) || 80),
+                degraded_latency_ms: Math.max(1, Number(trafficThresholds.degraded_latency_ms) || 200),
+                critical_latency_ms: Math.max(1, Number(trafficThresholds.critical_latency_ms) || 350),
+                ttfb_warning_ms: Math.max(1, Number(trafficThresholds.ttfb_warning_ms) || 150),
+                error_rate_warning_pct: Math.max(0.1, Number(trafficThresholds.error_rate_warning_pct) || 5)
+            };
+            setTrafficThresholds(sanitized);
             const res = await fetch('/api/config/traffic-thresholds', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(trafficThresholds)
+                body: JSON.stringify(sanitized)
             });
             if (res.ok) {
                 showSuccess('Application SLA thresholds saved successfully');
@@ -1829,10 +1843,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                         <div className="max-w-2xl space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {[
-                                    { key: 'good', label: 'Good Threshold', color: 'text-green-500', icon: CheckCircle2 },
-                                    { key: 'degraded', label: 'Degraded Threshold', color: 'text-orange-500', icon: AlertCircle },
-                                    { key: 'critical', label: 'Critical Threshold', color: 'text-red-500', icon: Shield },
-                                ].map(({ key, label, color, icon: Icon }) => (
+                                    { key: 'good', label: 'Good Threshold', color: 'text-green-500', icon: CheckCircle2, def: 1 },
+                                    { key: 'degraded', label: 'Degraded Threshold', color: 'text-orange-500', icon: AlertCircle, def: 5 },
+                                    { key: 'critical', label: 'Critical Threshold', color: 'text-red-500', icon: Shield, def: 10 },
+                                ].map(({ key, label, color, icon: Icon, def }) => (
                                     <div key={key} className="space-y-2">
                                         <div className="flex items-center gap-2 pl-1">
                                             <Icon size={12} className={color} />
@@ -1843,10 +1857,17 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                 type="number"
                                                 min="1"
                                                 max="100"
-                                                value={(convergenceThresholds as any)[key]}
+                                                value={(convergenceThresholds as any)[key] ?? ''}
                                                 onChange={e => {
-                                                    const val = Math.max(1, Math.min(100, parseInt(e.target.value) || 1));
-                                                    setConvergenceThresholds(prev => ({ ...prev, [key]: val }));
+                                                    const raw = e.target.value;
+                                                    setConvergenceThresholds(prev => ({ ...prev, [key]: raw === '' ? ('' as any) : Number(raw) }));
+                                                }}
+                                                onBlur={() => {
+                                                    setConvergenceThresholds(prev => {
+                                                        const current = Number((prev as any)[key]);
+                                                        const clamped = isNaN(current) || current <= 0 ? def : Math.max(1, Math.min(100, current));
+                                                        return { ...prev, [key]: clamped };
+                                                    });
                                                 }}
                                                 className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 text-sm font-black outline-none focus:ring-1 focus:ring-purple-500 transition-all shadow-inner"
                                             />
@@ -3109,12 +3130,19 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         <div className="relative group">
                                             <input
                                                 type="number"
-                                                min="5"
-                                                max="1000"
-                                                value={trafficThresholds.good_latency_ms}
+                                                min="1"
+                                                max="5000"
+                                                value={trafficThresholds.good_latency_ms ?? ''}
                                                 onChange={e => {
-                                                    const val = Math.max(5, Math.min(1000, parseInt(e.target.value) || 5));
-                                                    setTrafficThresholds(prev => ({ ...prev, good_latency_ms: val }));
+                                                    const raw = e.target.value;
+                                                    setTrafficThresholds(prev => ({ ...prev, good_latency_ms: raw === '' ? ('' as any) : Number(raw) }));
+                                                }}
+                                                onBlur={() => {
+                                                    setTrafficThresholds(prev => {
+                                                        const current = Number(prev.good_latency_ms);
+                                                        const clamped = isNaN(current) || current <= 0 ? 80 : Math.max(1, Math.min(5000, current));
+                                                        return { ...prev, good_latency_ms: clamped };
+                                                    });
                                                 }}
                                                 className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 text-xs font-black outline-none focus:ring-1 focus:ring-emerald-500 transition-all shadow-inner"
                                             />
@@ -3131,12 +3159,19 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         <div className="relative group">
                                             <input
                                                 type="number"
-                                                min="10"
-                                                max="2000"
-                                                value={trafficThresholds.degraded_latency_ms}
+                                                min="1"
+                                                max="5000"
+                                                value={trafficThresholds.degraded_latency_ms ?? ''}
                                                 onChange={e => {
-                                                    const val = Math.max(10, Math.min(2000, parseInt(e.target.value) || 10));
-                                                    setTrafficThresholds(prev => ({ ...prev, degraded_latency_ms: val }));
+                                                    const raw = e.target.value;
+                                                    setTrafficThresholds(prev => ({ ...prev, degraded_latency_ms: raw === '' ? ('' as any) : Number(raw) }));
+                                                }}
+                                                onBlur={() => {
+                                                    setTrafficThresholds(prev => {
+                                                        const current = Number(prev.degraded_latency_ms);
+                                                        const clamped = isNaN(current) || current <= 0 ? 200 : Math.max(1, Math.min(5000, current));
+                                                        return { ...prev, degraded_latency_ms: clamped };
+                                                    });
                                                 }}
                                                 className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 text-xs font-black outline-none focus:ring-1 focus:ring-amber-500 transition-all shadow-inner"
                                             />
@@ -3153,12 +3188,19 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         <div className="relative group">
                                             <input
                                                 type="number"
-                                                min="20"
-                                                max="5000"
-                                                value={trafficThresholds.critical_latency_ms}
+                                                min="1"
+                                                max="10000"
+                                                value={trafficThresholds.critical_latency_ms ?? ''}
                                                 onChange={e => {
-                                                    const val = Math.max(20, Math.min(5000, parseInt(e.target.value) || 20));
-                                                    setTrafficThresholds(prev => ({ ...prev, critical_latency_ms: val }));
+                                                    const raw = e.target.value;
+                                                    setTrafficThresholds(prev => ({ ...prev, critical_latency_ms: raw === '' ? ('' as any) : Number(raw) }));
+                                                }}
+                                                onBlur={() => {
+                                                    setTrafficThresholds(prev => {
+                                                        const current = Number(prev.critical_latency_ms);
+                                                        const clamped = isNaN(current) || current <= 0 ? 350 : Math.max(1, Math.min(10000, current));
+                                                        return { ...prev, critical_latency_ms: clamped };
+                                                    });
                                                 }}
                                                 className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 text-xs font-black outline-none focus:ring-1 focus:ring-red-500 transition-all shadow-inner"
                                             />
@@ -3175,12 +3217,19 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         <div className="relative group">
                                             <input
                                                 type="number"
-                                                min="5"
-                                                max="3000"
-                                                value={trafficThresholds.ttfb_warning_ms}
+                                                min="1"
+                                                max="10000"
+                                                value={trafficThresholds.ttfb_warning_ms ?? ''}
                                                 onChange={e => {
-                                                    const val = Math.max(5, Math.min(3000, parseInt(e.target.value) || 5));
-                                                    setTrafficThresholds(prev => ({ ...prev, ttfb_warning_ms: val }));
+                                                    const raw = e.target.value;
+                                                    setTrafficThresholds(prev => ({ ...prev, ttfb_warning_ms: raw === '' ? ('' as any) : Number(raw) }));
+                                                }}
+                                                onBlur={() => {
+                                                    setTrafficThresholds(prev => {
+                                                        const current = Number(prev.ttfb_warning_ms);
+                                                        const clamped = isNaN(current) || current <= 0 ? 150 : Math.max(1, Math.min(10000, current));
+                                                        return { ...prev, ttfb_warning_ms: clamped };
+                                                    });
                                                 }}
                                                 className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 text-xs font-black outline-none focus:ring-1 focus:ring-purple-500 transition-all shadow-inner"
                                             />
@@ -3200,10 +3249,17 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                 min="0.1"
                                                 max="100"
                                                 step="0.5"
-                                                value={trafficThresholds.error_rate_warning_pct}
+                                                value={trafficThresholds.error_rate_warning_pct ?? ''}
                                                 onChange={e => {
-                                                    const val = Math.max(0.1, Math.min(100, parseFloat(e.target.value) || 0.1));
-                                                    setTrafficThresholds(prev => ({ ...prev, error_rate_warning_pct: val }));
+                                                    const raw = e.target.value;
+                                                    setTrafficThresholds(prev => ({ ...prev, error_rate_warning_pct: raw === '' ? ('' as any) : Number(raw) }));
+                                                }}
+                                                onBlur={() => {
+                                                    setTrafficThresholds(prev => {
+                                                        const current = Number(prev.error_rate_warning_pct);
+                                                        const clamped = isNaN(current) || current <= 0 ? 5 : Math.max(0.1, Math.min(100, current));
+                                                        return { ...prev, error_rate_warning_pct: clamped };
+                                                    });
                                                 }}
                                                 className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 text-xs font-black outline-none focus:ring-1 focus:ring-rose-500 transition-all shadow-inner"
                                             />
