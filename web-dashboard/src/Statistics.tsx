@@ -44,16 +44,22 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
     const authToken = token || localStorage.getItem('token');
 
     useEffect(() => {
-        fetch('/api/config/traffic-thresholds', {
-            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
-        })
-            .then(r => r.json())
-            .then(data => {
-                if (data && typeof data === 'object' && 'good_latency_ms' in data) {
-                    setThresholds(data);
-                }
+        const fetchThresholds = () => {
+            fetch('/api/config/traffic-thresholds', {
+                headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
             })
-            .catch(() => {});
+                .then(r => r.json())
+                .then(data => {
+                    if (data && typeof data === 'object' && 'good_latency_ms' in data) {
+                        setThresholds(data);
+                    }
+                })
+                .catch(() => {});
+        };
+
+        fetchThresholds();
+        const interval = setInterval(fetchThresholds, 5000);
+        return () => clearInterval(interval);
     }, [authToken]);
 
     if (!stats) {
@@ -328,7 +334,7 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
                                         <td className="px-4 py-3.5 text-right relative">
                                             {app.rtt_ms !== null ? (() => {
                                                 const isGood = app.rtt_ms < thresholds.good_latency_ms;
-                                                const isDegraded = app.rtt_ms >= thresholds.good_latency_ms && app.rtt_ms < thresholds.degraded_latency_ms;
+                                                const isDegraded = app.rtt_ms >= thresholds.good_latency_ms && app.rtt_ms < thresholds.critical_latency_ms;
                                                 return (
                                                     <div
                                                         className="inline-flex items-center gap-1.5 cursor-help"
@@ -341,10 +347,10 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
                                                         }`} />
                                                         <span className={`font-mono text-xs font-black px-2 py-0.5 rounded border ${
                                                             isGood
-                                                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                                                : isDegraded
-                                                                ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                                                : 'bg-red-500/10 text-red-400 border-red-500/20'
+                                                                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                                                 : isDegraded
+                                                                 ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                                 : 'bg-red-500/10 text-red-400 border-red-500/20'
                                                         }`}>
                                                             {app.rtt_ms.toFixed(1)} ms
                                                         </span>

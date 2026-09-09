@@ -3288,7 +3288,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         <div className="flex items-center gap-2">
                                             <div className="w-2 h-2 rounded-full bg-amber-400" />
                                             <span className="font-bold text-text-secondary">Warning RTT:</span>
-                                            <span className="text-text-muted">Round-trip latency between <span className="text-text-primary font-black">{trafficThresholds.good_latency_ms} ms</span> and <span className="text-text-primary font-black">{trafficThresholds.degraded_latency_ms} ms</span> (Amber)</span>
+                                            <span className="text-text-muted">Round-trip latency between <span className="text-text-primary font-black">{trafficThresholds.good_latency_ms} ms</span> and <span className="text-text-primary font-black">{trafficThresholds.critical_latency_ms} ms</span> (Amber)</span>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <div className="w-2 h-2 rounded-full bg-rose-400" />
@@ -3298,7 +3298,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         <div className="flex items-center gap-2 md:col-span-2">
                                             <div className="w-2 h-2 rounded-full bg-red-400" />
                                             <span className="font-bold text-text-secondary">Critical RTT:</span>
-                                            <span className="text-text-muted">Round-trip latency &ge; <span className="text-text-primary font-black">{trafficThresholds.degraded_latency_ms} ms</span> (Red badge)</span>
+                                            <span className="text-text-muted">Round-trip latency &ge; <span className="text-text-primary font-black">{trafficThresholds.critical_latency_ms} ms</span> (Red badge)</span>
                                         </div>
                                     </div>
                                 </div>
