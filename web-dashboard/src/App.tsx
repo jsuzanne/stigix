@@ -1003,7 +1003,7 @@ export default function App() {
             view === 'topology' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
           )}
         >
-          <Network size={18} /> Topology <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">Beta</span>
+          <Network size={18} /> Topology
           <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Visualize tunnels, hubs and path status</span>
         </button>
         <button
