@@ -357,14 +357,25 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            const data = await res.json();
+            const text = await res.text();
+            let data: any = {};
+            try {
+                data = JSON.parse(text);
+            } catch {
+                setPeerTestResult({
+                    loading: false,
+                    success: false,
+                    error: `Invalid server response (${res.status}): ${text.slice(0, 120)}`
+                });
+                return;
+            }
             if (res.ok && data.success) {
                 setPeerTestResult({ loading: false, success: true, rttMs: data.rttMs });
             } else {
                 setPeerTestResult({ loading: false, success: false, error: data.error || 'Handshake failed' });
             }
         } catch (e: any) {
-            setPeerTestResult({ loading: false, success: false, error: e.message });
+            setPeerTestResult({ loading: false, success: false, error: e.message || 'Handshake request failed' });
         }
     };
 
@@ -1236,16 +1247,39 @@ const secs = seconds % 60;
                 </div>
             </div>
 
-            {/* Peer Handshake Test Modal */}
+            {/* Session Deep Dive Drawer (Side panel) */}
+            <SessionDeepDiveDrawer
+                session={deepDiveSession}
+                appPort={currentApp?.listener?.port}
+                appName={currentApp?.name}
+                onClose={() => setDeepDiveSession(null)}
+                onTestPeer={(peerId) => {
+                    if (currentApp) {
+                        const p = currentApp.peers?.find(x => x.id === peerId);
+                        if (p) {
+                            setPeerTestModal({
+                                isOpen: true,
+                                peerId: p.id,
+                                peerName: p.name,
+                                host: p.host,
+                                port: p.port
+                            });
+                            handleTestPeer(p.id);
+                        }
+                    }
+                }}
+            />
+
+            {/* Peer Handshake Test Modal (Rendered on top of Drawer with z-[70]) */}
             {peerTestModal?.isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
                     <div className="bg-card border border-border rounded-2xl p-6 max-w-md w-full shadow-2xl text-text-primary space-y-4">
                         <div className="flex items-center justify-between border-b border-border pb-3">
                             <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
                                 <Zap size={16} className="text-amber-500" /> Handshake Test: {peerTestModal.peerName}
                             </h3>
                             <button onClick={() => setPeerTestModal(null)} className="text-text-muted hover:text-text-primary p-1 rounded-lg hover:bg-card-secondary transition-colors">
-                                <Square size={16} />
+                                <X size={16} />
                             </button>
                         </div>
 
@@ -1290,29 +1324,6 @@ const secs = seconds % 60;
                     </div>
                 </div>
             )}
-
-            {/* Session Deep Dive Drawer (Side panel) */}
-            <SessionDeepDiveDrawer
-                session={deepDiveSession}
-                appPort={currentApp?.listener?.port}
-                appName={currentApp?.name}
-                onClose={() => setDeepDiveSession(null)}
-                onTestPeer={(peerId) => {
-                    if (currentApp) {
-                        const p = currentApp.peers?.find(x => x.id === peerId);
-                        if (p) {
-                            setPeerTestModal({
-                                isOpen: true,
-                                peerId: p.id,
-                                peerName: p.name,
-                                host: p.host,
-                                port: p.port
-                            });
-                            handleTestPeer(p.id);
-                        }
-                    }
-                }}
-            />
 
             {/* Creation / Edition Wizard Modal */}
             <CustomAppWizardModal

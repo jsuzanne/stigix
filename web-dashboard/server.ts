@@ -9929,15 +9929,18 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             let totalHealth = 0;
 
             for (const st of allStatuses) {
-                if (st.listenerState === 'running') customAppsStatus.active_listeners++;
-                if (st.clientState === 'running') customAppsStatus.active_workloads++;
+                if (st.listenerState === 'listening') customAppsStatus.active_listeners++;
+                if (st.clientWorkloadRunning || (st.activeOutgoingSessions && st.activeOutgoingSessions > 0) || (st.clientSessionCount && st.clientSessionCount > 0)) customAppsStatus.active_workloads++;
                 if (st.healthScore !== undefined) totalHealth += st.healthScore;
-                if (st.latency?.avg) {
-                    totalLatency += st.latency.avg;
+                const rttVal = st.avgRttMs || st.latency?.avg;
+                if (rttVal) {
+                    totalLatency += rttVal;
                     latencyCount++;
                 }
-                if (st.latency?.p50) allP50.push(st.latency.p50);
-                if (st.latency?.p95) allP95.push(st.latency.p95);
+                const p50Val = st.p50RttMs || st.latency?.p50;
+                if (p50Val) allP50.push(p50Val);
+                const p95Val = st.p95RttMs || st.latency?.p95;
+                if (p95Val) allP95.push(p95Val);
             }
 
             if (allStatuses.length > 0) {
@@ -9954,8 +9957,8 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
             }
         } else if (tcpApps.length > 0) {
             for (const app of tcpApps) {
-                if (app.startup?.startListener) customAppsStatus.active_listeners++;
-                if (app.startup?.startClientWorkload) customAppsStatus.active_workloads++;
+                if (app.enabled !== false && app.startup?.startListener !== false) customAppsStatus.active_listeners++;
+                if (app.enabled !== false && app.startup?.startClientWorkload === true) customAppsStatus.active_workloads++;
             }
         }
         customAppsStatus.status = customAppsStatus.total_apps > 0
@@ -9965,7 +9968,8 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
         // 4. Digital Experience (DEM) & Bandwidth
         let demStatus: any = {
             status: 'ready',
-            probes_count: 0
+            probes_count: 0,
+            global_score: 100
         };
         try {
             const envProbes = getEnvConnectivityEndpoints();
@@ -9983,6 +9987,12 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
                 demStatus.probes_count += targets.length;
             } catch {}
         }
+        try {
+            const stats = await connectivityLogger.getStats({ timeRange: '1h' });
+            if (stats && stats.globalHealth !== undefined && stats.globalHealth !== null) {
+                demStatus.global_score = Math.round(stats.globalHealth);
+            }
+        } catch {}
         demStatus.status = demStatus.probes_count > 0 ? 'active' : 'ready';
 
         let bandwidthStatus: any = {
@@ -10002,8 +10012,40 @@ app.get('/api/system/health-matrix', authenticateToken, async (req, res) => {
         let voiceStatus: any = {
             status: voiceActive ? 'active' : 'ready',
             mos_score: 4.41,
+            avg_rtt_ms: 0,
+            avg_jitter_ms: 0,
+            avg_loss_pct: 0,
+            active_calls_count: 0,
+            total_calls_count: 0,
             active: voiceActive
         };
+        try {
+            if (fs.existsSync(VOICE_STATS_FILE)) {
+                const raw = fs.readFileSync(VOICE_STATS_FILE, 'utf8').trim();
+                const lines = raw.split('\n').filter(l => l.trim()).slice(-100);
+                const calls = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+                if (calls.length > 0) {
+                    const mosCalls = calls.filter((c: any) => c.mos_score && c.mos_score > 0);
+                    if (mosCalls.length > 0) {
+                        voiceStatus.mos_score = parseFloat((mosCalls.reduce((s: number, c: any) => s + c.mos_score, 0) / mosCalls.length).toFixed(2));
+                    }
+                    const rttCalls = calls.filter((c: any) => c.rtt && c.rtt > 0);
+                    if (rttCalls.length > 0) {
+                        voiceStatus.avg_rtt_ms = Math.round(rttCalls.reduce((s: number, c: any) => s + c.rtt, 0) / rttCalls.length);
+                    }
+                    const jitterCalls = calls.filter((c: any) => c.jitter !== undefined && c.jitter !== null);
+                    if (jitterCalls.length > 0) {
+                        voiceStatus.avg_jitter_ms = parseFloat((jitterCalls.reduce((s: number, c: any) => s + Number(c.jitter), 0) / jitterCalls.length).toFixed(1));
+                    }
+                    const lossCalls = calls.filter((c: any) => c.loss_percent !== undefined || c.loss !== undefined);
+                    if (lossCalls.length > 0) {
+                        voiceStatus.avg_loss_pct = parseFloat((lossCalls.reduce((s: number, c: any) => s + Number(c.loss_percent ?? c.loss ?? 0), 0) / lossCalls.length).toFixed(1));
+                    }
+                    voiceStatus.total_calls_count = calls.length;
+                    voiceStatus.status = 'active';
+                }
+            }
+        } catch {}
 
         // 6. Live Events / Event Stream
         let eventsStatus: any = {

@@ -47,9 +47,12 @@ export class FrameParser extends EventEmitter {
 
             // Validation: payload size bounds
             if (payloadLength <= 0 || payloadLength > this.maxPayloadBytes) {
-                const err = new Error(
-                    `Invalid frame length: ${payloadLength} bytes (limit is 1 to ${this.maxPayloadBytes} bytes)`
-                );
+                const prefix = this.buffer.subarray(0, 4).toString('utf8');
+                const isHttp = prefix === 'HTTP' || prefix === 'GET ' || prefix === 'POST' || prefix === 'HEAD';
+                const errMsg = isHttp
+                    ? `Received HTTP response banner (${prefix}...) instead of Stigix binary framing`
+                    : `Invalid frame length: ${payloadLength} bytes (limit is 1 to ${this.maxPayloadBytes} bytes)`;
+                const err = new Error(errMsg);
                 this.emit('error', err);
                 this.reset();
                 return;

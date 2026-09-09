@@ -164,6 +164,15 @@ const BetaBadge = ({ className }: { className?: string }) => (
     </span>
 );
 
+const NewBadge = ({ className }: { className?: string }) => (
+    <span className={cn(
+        "px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
+        className
+    )}>
+        New
+    </span>
+);
+
 // ─── IoT Advanced Debug Monitor ──────────────────────────────────────────────
 
 const MAX_HISTORY_PTS = 720; // 720 × 30s = 6h
@@ -1697,14 +1706,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const tabs = [
         { id: 'distribution', label: 'Traffic Distribution' },
         { id: 'probes', label: 'Synthetic Probes' },
-        { id: 'custom-tcp', label: 'Custom TCP Apps', beta: true },
+        { id: 'custom-tcp', label: 'Custom TCP Apps', isNew: true },
         { id: 'convergence', label: 'Failover' },
         { id: 'system', label: 'System Info' },
         ...(systemInfo?.beta ? [{ id: 'maintenance', label: 'System Maintenance', beta: true }] : []),
         { id: 'targets', label: 'Stigix Targets' },
-        { id: 'registry', label: 'Target Controller', beta: true },
+        { id: 'registry', label: 'Target Controller' },
         { id: 'mcp', label: 'MCP Server', beta: true },
-        { id: 'prisma-api', label: 'Prisma SASE API', beta: true },
+        { id: 'prisma-api', label: 'Prisma SASE API' },
     ];
 
     return (
@@ -1722,7 +1731,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                 <span className="text-[10px] text-text-muted font-bold tracking-widest opacity-60">Control Center • {status?.current || 'v1.2.1-patch.237'}</span>
                             </div>
                             <div className="flex items-center gap-4 mt-1">
-                                {tabs.map((tab) => (
+                                {tabs.map((tab: any) => (
                                     <button
                                         key={tab.id}
                                         onClick={() => setActiveTab(tab.id as any)}
@@ -1735,6 +1744,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                     >
                                         {tab.label}
                                         {tab.beta && <BetaBadge />}
+                                        {tab.isNew && <NewBadge />}
                                     </button>
                                 ))}
                             </div>
