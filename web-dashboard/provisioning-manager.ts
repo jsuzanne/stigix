@@ -11,7 +11,8 @@ export type GlobalBundleType =
     | 'security-config'
     | 'voice-config'
     | 'iot-config'
-    | 'custom-tcp-apps';
+    | 'custom-tcp-apps'
+    | 'cloud-config';
 
 export interface ProvisioningManifestBundle {
     type: GlobalBundleType;
@@ -440,6 +441,8 @@ export class ProvisioningManager {
                 return path.join(this.configDir, 'iot-devices.json');
             case 'custom-tcp-apps':
                 return path.join(this.configDir, 'custom-tcp-applications.json');
+            case 'cloud-config':
+                return path.join(this.configDir, 'cloud-config.json');
             default:
                 return path.join(this.configDir, `${type}-config.json`);
         }
