@@ -448,7 +448,7 @@ const secs = seconds % 60;
                                 Custom TCP Applications
                             </h1>
                             <span className="px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 rounded text-[10px] font-bold uppercase tracking-wider">
-                                East-West SD-WAN Simulator
+                                East-West & North-South SD-WAN Simulator
                             </span>
                         </div>
                         <p className="text-xs text-text-muted mt-0.5">
