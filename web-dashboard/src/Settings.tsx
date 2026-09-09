@@ -2658,6 +2658,129 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                 </div>
                             </div>
                         )}
+
+                        {/* ── Stigix Cloudflare Worker Credentials (Cloud Probes) ── */}
+                        <div className="pt-6 border-t border-border/50">
+                            <div className="bg-card-secondary/30 border border-border/70 rounded-2xl p-6 space-y-6">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2.5 bg-blue-600/10 rounded-xl text-blue-500">
+                                            <Globe size={22} />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-sm font-black text-text-primary tracking-tight">Stigix Cloud Probes — Credentials &amp; Worker URL</h3>
+                                                {cloudConfig?.hasKey && (
+                                                    <span className="flex items-center gap-1.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 shadow-sm">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                        Active
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">
+                                                HMAC-SHA256 signature credentials required for Synthetic Cloud Probes targeting the Cloudflare edge
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                                    {/* Left inputs */}
+                                    <div className="lg:col-span-2 space-y-4">
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center justify-between pl-1">
+                                                <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Master Key</label>
+                                                {cloudConfig?.hasKey && (
+                                                    <span className="text-[9px] font-bold text-text-muted opacity-60">
+                                                        Saved key active on disk
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="relative">
+                                                <input
+                                                    type={showCloudKey ? "text" : "password"}
+                                                    autoComplete="new-password"
+                                                    placeholder={cloudConfig?.hasKey ? "•••••••••••••••• (Leave empty to keep saved key)" : "Enter Master Key..."}
+                                                    value={cloudMasterKey}
+                                                    onChange={e => { setCloudMasterKey(e.target.value); setCloudDirty(true); setCloudTestResult(null); }}
+                                                    className="w-full bg-card hover:bg-card-hover border border-border text-xs font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all pr-12"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowCloudKey(!showCloudKey)}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-card-secondary rounded-lg text-text-muted transition-colors"
+                                                    title={showCloudKey ? "Hide key" : "Show key"}
+                                                >
+                                                    <Globe size={13} className={showCloudKey ? "text-blue-500" : "opacity-40"} />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1">Worker Base URL</label>
+                                            <input
+                                                type="text"
+                                                placeholder="https://target.stigix.io"
+                                                value={cloudConfig?.baseUrl || ''}
+                                                onChange={e => { setCloudConfig(prev => prev ? { ...prev, baseUrl: e.target.value } : null); setCloudDirty(true); setCloudTestResult(null); }}
+                                                className="w-full bg-card hover:bg-card-hover border border-border text-xs font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                                            />
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                                            <button
+                                                onClick={handleTestCloud}
+                                                disabled={isTestingCloud || !cloudConfig?.baseUrl}
+                                                className="px-4 py-2 bg-card hover:bg-card-hover border border-border hover:border-blue-500/40 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+                                            >
+                                                {isTestingCloud ? <RefreshCw size={12} className="animate-spin text-blue-500" /> : <Activity size={12} className="text-blue-500" />}
+                                                Test
+                                            </button>
+                                            <button
+                                                onClick={saveCloudConfig}
+                                                disabled={isSavingCloud || (!cloudMasterKey && !cloudDirty)}
+                                                className={cn(
+                                                    "px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm disabled:opacity-50",
+                                                    isSavingCloud ? "bg-card-secondary text-text-muted border border-border" : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
+                                                )}
+                                            >
+                                                {isSavingCloud ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                                                Save
+                                            </button>
+                                            {cloudTestResult && (
+                                                <div className={cn(
+                                                    "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5",
+                                                    cloudTestResult.success ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" : "bg-red-500/10 text-red-500 border-red-500/30"
+                                                )}>
+                                                    {cloudTestResult.success ? (
+                                                        <>
+                                                            <CheckCircle2 size={11} />
+                                                            <span>Worker Reachable • Signature OK</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <XCircle size={11} />
+                                                            <span>{cloudTestResult.error || 'Test Failed'}</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Right Info Box */}
+                                    <div className="p-4 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl space-y-2.5">
+                                        <div className="flex items-center gap-2 text-blue-500">
+                                            <Info size={14} />
+                                            <h4 className="text-[11px] font-black uppercase tracking-wider">What does this enable?</h4>
+                                        </div>
+                                        <p className="text-[10px] text-text-muted leading-relaxed opacity-85">
+                                            Allows executing <strong>CLOUD synthetic probes</strong> (SaaS emulation, payload downloads, EICAR security inspection, speedtest) against Stigix-managed Cloudflare Workers with precise DNS, TCP, TLS, and TTFB layer timing metrics.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 )}
                 {activeTab === 'distribution' && (
@@ -3588,6 +3711,63 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                         </div>
                     </div>
 
+                    {/* ── Mesh Role Mode Selector ── */}
+                    <div className="bg-card border border-border p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-amber-500/10 rounded-xl text-amber-500 shrink-0">
+                                <ShieldAlert size={18} />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h4 className="text-xs font-black text-text-primary uppercase tracking-wider">Mesh Role Mode</h4>
+                                    <span className="text-[9px] font-mono font-bold text-text-muted opacity-60">
+                                        (Active: {systemSettings.registry_mode === 'leader' ? 'Forced Leader' : systemSettings.registry_mode === 'peer' ? 'Forced Peer' : 'Auto-Detect'})
+                                    </span>
+                                </div>
+                                <p className="text-[10px] text-text-muted opacity-70 mt-0.5">
+                                    {(systemSettings.registry_mode || 'auto') === 'auto'
+                                        ? 'Auto-Detect: Automatically elects this node as Leader on SD-WAN HUB / Branch Gateway, or Peer on spoke nodes.'
+                                        : (systemSettings.registry_mode === 'leader'
+                                            ? 'Forced Leader: This instance hosts the central registry on :8080 and acts as master configuration publisher.'
+                                            : 'Forced Peer: This instance connects to an external Leader as a managed branch member.')}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="flex bg-card-secondary p-1 rounded-xl border border-border shrink-0">
+                                {[
+                                    { id: 'auto', label: 'Auto-Detect', icon: RefreshCw },
+                                    { id: 'leader', label: 'Leader', icon: Globe },
+                                    { id: 'peer', label: 'Peer', icon: Users },
+                                ].map((m) => {
+                                    const Icon = m.icon;
+                                    const active = (systemSettings.registry_mode || 'auto') === m.id;
+                                    return (
+                                        <button
+                                            key={m.id}
+                                            onClick={async () => {
+                                                if (m.id === 'leader' && (systemSettings.registry_mode || 'auto') !== 'leader') {
+                                                    const confirmed = window.confirm(`Set this Stigix node as Leader?\n\nPeers will connect to this node at http://${detectedIp || 'your-ip'}:8080/api/registry.`);
+                                                    if (!confirmed) return;
+                                                }
+                                                await saveSystemSetting('registry_mode', m.id);
+                                            }}
+                                            className={cn(
+                                                "px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all flex items-center gap-1.5",
+                                                active
+                                                    ? "bg-purple-600 text-white shadow-sm"
+                                                    : "text-text-muted hover:text-text-primary hover:bg-card-hover"
+                                            )}
+                                        >
+                                            <Icon size={12} className={savingSystemSettings ? "animate-spin" : ""} />
+                                            {m.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
                     {/* ════════ LEADER VIEW ════════ */}
                     {isLeader && (
                         <>
@@ -4152,138 +4332,6 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                             </div>
                         </div>
                     )}
-
-                    {/* ════════ DANGER ZONE ════════ */}
-                    <details className="group">
-                        <summary className="flex items-center gap-2 cursor-pointer select-none px-1 py-2 text-[10px] font-black text-text-muted uppercase tracking-widest hover:text-text-primary transition-colors list-none">
-                            <ChevronRight size={12} className="group-open:rotate-90 transition-transform" />
-                            Advanced / Danger Zone
-                        </summary>
-                        <div className="mt-3 space-y-4 border border-border/60 border-dashed rounded-2xl p-5">
-                            <div className="flex items-center gap-2 mb-2">
-                                <ShieldAlert size={14} className="text-amber-500" />
-                                <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Registry Role Override</span>
-                                <span className="text-[9px] text-text-muted opacity-60">— normally auto-detected, do not change unless you know what you're doing</span>
-                            </div>
-                            <div className="flex bg-card p-1 rounded-lg border border-border shadow-sm">
-                                {['auto', 'leader', 'peer'].map((mode) => (
-                                    <button
-                                        key={mode}
-                                        onClick={async () => {
-                                            if (mode === 'leader') {
-                                                const confirmed = window.confirm("Are you sure you want to force this instance to be the Leader?\n\nIf another active Leader exists, this instance will be blocked from taking over.");
-                                                if (!confirmed) return;
-                                            }
-                                            await saveSystemSetting('registry_mode', mode);
-                                        }}
-                                        className={cn(
-                                            "flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-md transition-all flex justify-center items-center gap-1.5",
-                                            (systemSettings.registry_mode || 'auto') === mode
-                                                ? "bg-amber-500/10 text-amber-500 shadow-sm border border-amber-500/20"
-                                                : "text-text-muted hover:text-text-primary hover:bg-card-hover border border-transparent"
-                                        )}
-                                    >
-                                        {mode === 'auto' && <RefreshCw size={12} />}
-                                        {mode === 'leader' && <Globe size={12} />}
-                                        {mode === 'peer' && <Users size={12} />}
-                                        {mode === 'auto' ? 'Auto-Detect' : `Force ${mode}`}
-                                    </button>
-                                ))}
-                            </div>
-                            {savingSystemSettings && (
-                                <div className="flex items-center gap-2 text-[9px] text-text-muted">
-                                    <RefreshCw size={10} className="animate-spin text-blue-500" /> Saving…
-                                </div>
-                            )}
-
-                            {/* Cloud Target Security */}
-                            <div className="mt-4 pt-4 border-t border-border/40">
-                                <div id="cloud-target-security" className="space-y-5">
-                                    <div className="flex items-center gap-2">
-                                        <Lock size={14} className="text-blue-500 opacity-60" />
-                                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Cloud Probe Signing — Master Key &amp; Worker URL</span>
-                                        <span className="text-[8px] text-text-muted opacity-50 font-bold tracking-widest">Required for Cloudflare-backed synthetic probes (SaaS / Download / Security)</span>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                                        <div className="space-y-4">
-                                            <div className="space-y-2">
-                                                <div className="flex items-center justify-between pl-1">
-                                                    <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Master Key</label>
-                                                    {cloudConfig?.hasKey && (
-                                                        <span className="flex items-center gap-1.5 text-[8px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                                            <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
-                                                            Active
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="relative">
-                                                    <input
-                                                        type={showCloudKey ? "text" : "password"}
-                                                        autoComplete="new-password"
-                                                        placeholder={cloudConfig?.hasKey ? "Leave empty to keep saved key" : "paste your master key here..."}
-                                                        value={cloudMasterKey}
-                                                        onChange={e => { setCloudMasterKey(e.target.value); setCloudDirty(true); setCloudTestResult(null); }}
-                                                        className="w-full bg-card-secondary/50 border border-border text-[11px] font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all"
-                                                    />
-                                                    <button
-                                                        onClick={() => setShowCloudKey(!showCloudKey)}
-                                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-card rounded text-text-muted transition-colors"
-                                                    >
-                                                        <Globe size={12} className={showCloudKey ? "text-blue-500" : "opacity-40"} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] pl-1">Worker Base URL</label>
-                                                <input
-                                                    type="text"
-                                                    placeholder="https://stigix-target.your-account.workers.dev"
-                                                    value={cloudConfig?.baseUrl || ''}
-                                                    onChange={e => { setCloudConfig(prev => prev ? { ...prev, baseUrl: e.target.value } : null); setCloudDirty(true); setCloudTestResult(null); }}
-                                                    className="w-full bg-card-secondary/50 border border-border text-[11px] font-mono text-text-primary rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-blue-500 transition-all"
-                                                />
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={handleTestCloud}
-                                                    disabled={isTestingCloud || !cloudConfig?.baseUrl}
-                                                    className="px-4 py-2 bg-card hover:bg-card-hover border border-border hover:border-blue-500/30 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 disabled:opacity-50"
-                                                >
-                                                    {isTestingCloud ? <RefreshCw size={12} className="animate-spin text-blue-500" /> : <Activity size={12} className="text-blue-500" />}
-                                                    Test
-                                                </button>
-                                                <button
-                                                    onClick={saveCloudConfig}
-                                                    disabled={isSavingCloud || (!cloudMasterKey && cloudConfig?.baseUrl === (registryStatus?.remote_url || 'https://stigix-target.jlsuzanne.workers.dev'))}
-                                                    className={cn(
-                                                        "px-5 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center gap-2",
-                                                        isSavingCloud ? "bg-card-secondary text-text-muted border border-border" : "bg-blue-600 hover:bg-blue-500 text-white"
-                                                    )}
-                                                >
-                                                    {isSavingCloud ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                                                    Save
-                                                </button>
-                                                {cloudTestResult && !cloudDirty && (
-                                                    <span className={cn(
-                                                        "px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5",
-                                                        cloudTestResult.success ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" : "bg-red-500/10 text-red-500 border-red-500/30"
-                                                    )}>
-                                                        {cloudTestResult.success ? <><CheckCircle2 size={11} /> OK</> : <><XCircle size={11} /> {cloudTestResult.error || 'Failed'}</>}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="p-4 bg-blue-600/5 border border-dashed border-blue-500/20 rounded-xl flex gap-3 items-start">
-                                            <Info size={14} className="text-blue-500 mt-0.5 shrink-0" />
-                                            <p className="text-[10px] font-bold text-text-muted leading-relaxed opacity-80">
-                                                The The Master Key signs Synthetic Cloud Probes (Slow SaaS, Download, Security) before they reach your Cloudflare Worker. This is separate from peer-to-peer discovery — removing Cloudflare as a registry bootstrap does not affect cloud probe signing.
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </details>
                 </div>
                 );
             })()}
