@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BarChart3, Search, Activity, Zap, Check, Plus, Clock, Server, Shield, Globe, Info } from 'lucide-react';
 import { Favicon } from './components/Favicon';
 
@@ -33,8 +33,28 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
     const [promotedApps, setPromotedApps] = useState<Record<string, boolean>>({});
     const [hoveredApp, setHoveredApp] = useState<string | null>(null);
     const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [thresholds, setThresholds] = useState({
+        good_latency_ms: 80,
+        degraded_latency_ms: 200,
+        critical_latency_ms: 350,
+        ttfb_warning_ms: 150,
+        error_rate_warning_pct: 5
+    });
 
     const authToken = token || localStorage.getItem('token');
+
+    useEffect(() => {
+        fetch('/api/config/traffic-thresholds', {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data && typeof data === 'object' && 'good_latency_ms' in data) {
+                    setThresholds(data);
+                }
+            })
+            .catch(() => {});
+    }, [authToken]);
 
     if (!stats) {
         return (
@@ -287,68 +307,95 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
 
                                         {/* Errors */}
                                         <td className="px-4 py-3.5 text-right">
-                                            <span className={`font-mono text-xs font-bold ${app.errors > 0 ? 'text-red-400' : 'text-text-muted opacity-40'}`}>
-                                                {app.errors.toLocaleString()}
-                                            </span>
+                                            {(() => {
+                                                const errorRate = app.requests > 0 ? (app.errors / app.requests) * 100 : 0;
+                                                const isSlaViolated = app.errors > 0 && errorRate >= thresholds.error_rate_warning_pct;
+                                                return (
+                                                    <span className={`font-mono text-xs font-bold ${
+                                                        app.errors > 0
+                                                            ? isSlaViolated
+                                                                ? 'text-red-400 bg-red-500/10 border border-red-500/30 px-1.5 py-0.5 rounded'
+                                                                : 'text-red-400'
+                                                            : 'text-text-muted opacity-40'
+                                                    }`} title={isSlaViolated ? `SLA Violation: ${errorRate.toFixed(1)}% error rate (threshold: ${thresholds.error_rate_warning_pct}%)` : undefined}>
+                                                        {app.errors.toLocaleString()}
+                                                    </span>
+                                                );
+                                            })()}
                                         </td>
 
                                         {/* Avg Latency (RTT) with Hover Breakdown Pill */}
                                         <td className="px-4 py-3.5 text-right relative">
-                                            {app.rtt_ms !== null ? (
-                                                <div
-                                                    className="inline-flex items-center gap-1.5 cursor-help"
-                                                    onMouseEnter={() => setHoveredApp(app.name)}
-                                                    onMouseLeave={() => setHoveredApp(null)}
-                                                >
-                                                    <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-                                                        app.rtt_ms < 50 ? 'bg-emerald-400' :
-                                                        app.rtt_ms < 150 ? 'bg-amber-400' : 'bg-red-400'
-                                                    }`} />
-                                                    <span className={`font-mono text-xs font-black px-2 py-0.5 rounded border ${
-                                                        app.rtt_ms < 50
-                                                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                                            : app.rtt_ms < 150
-                                                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                                            : 'bg-red-500/10 text-red-400 border-red-500/20'
-                                                    }`}>
-                                                        {app.rtt_ms.toFixed(1)} ms
-                                                    </span>
+                                            {app.rtt_ms !== null ? (() => {
+                                                const isGood = app.rtt_ms < thresholds.good_latency_ms;
+                                                const isDegraded = app.rtt_ms >= thresholds.good_latency_ms && app.rtt_ms < thresholds.degraded_latency_ms;
+                                                return (
+                                                    <div
+                                                        className="inline-flex items-center gap-1.5 cursor-help"
+                                                        onMouseEnter={() => setHoveredApp(app.name)}
+                                                        onMouseLeave={() => setHoveredApp(null)}
+                                                    >
+                                                        <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                                                            isGood ? 'bg-emerald-400' :
+                                                            isDegraded ? 'bg-amber-400' : 'bg-red-400'
+                                                        }`} />
+                                                        <span className={`font-mono text-xs font-black px-2 py-0.5 rounded border ${
+                                                            isGood
+                                                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                                                : isDegraded
+                                                                ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                                : 'bg-red-500/10 text-red-400 border-red-500/20'
+                                                        }`}>
+                                                            {app.rtt_ms.toFixed(1)} ms
+                                                        </span>
 
-                                                    {/* Floating Telemetry Breakdown Card */}
-                                                    {isHovered && (
-                                                        <div className="absolute right-0 top-full mt-1 z-30 w-64 p-3 bg-card-secondary/95 backdrop-blur-md border border-blue-500/30 rounded-xl shadow-2xl text-left text-[10px] space-y-1.5 pointer-events-none animate-in fade-in duration-150">
-                                                            <div className="flex items-center justify-between border-b border-border/60 pb-1 font-black text-text-primary uppercase tracking-wider">
-                                                                <span className="flex items-center gap-1">
-                                                                    <Zap size={11} className="text-blue-400" />
-                                                                    Curl RUM Timing
-                                                                </span>
-                                                                <span className="font-mono text-emerald-400">HTTP {app.last_code}</span>
+                                                        {/* Floating Telemetry Breakdown Card */}
+                                                        {isHovered && (
+                                                            <div className="absolute right-0 top-full mt-1 z-30 w-64 p-3 bg-card-secondary/95 backdrop-blur-md border border-blue-500/30 rounded-xl shadow-2xl text-left text-[10px] space-y-1.5 pointer-events-none animate-in fade-in duration-150">
+                                                                <div className="flex items-center justify-between border-b border-border/60 pb-1 font-black text-text-primary uppercase tracking-wider">
+                                                                    <span className="flex items-center gap-1">
+                                                                        <Zap size={11} className="text-blue-400" />
+                                                                        Curl RUM Timing
+                                                                    </span>
+                                                                    <span className="font-mono text-emerald-400">HTTP {app.last_code}</span>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-1.5 pt-0.5 text-text-muted font-mono">
+                                                                    <div>🌐 DNS: <span className="text-text-primary font-bold">{app.dns_ms.toFixed(1)} ms</span></div>
+                                                                    <div>🔌 TCP: <span className="text-text-primary font-bold">{app.tcp_ms.toFixed(1)} ms</span></div>
+                                                                    <div>🔒 TLS: <span className="text-text-primary font-bold">{app.tls_ms.toFixed(1)} ms</span></div>
+                                                                    <div>⚡ TTFB: <span className="text-purple-400 font-bold">{app.ttfb_ms?.toFixed(1) || '0'} ms</span></div>
+                                                                </div>
+                                                                <div className="border-t border-border/40 pt-1 flex justify-between font-black text-text-primary">
+                                                                    <span>Total RTT:</span>
+                                                                    <span className="text-blue-400 font-mono">{app.rtt_ms.toFixed(1)} ms</span>
+                                                                </div>
                                                             </div>
-                                                            <div className="grid grid-cols-2 gap-1.5 pt-0.5 text-text-muted font-mono">
-                                                                <div>🌐 DNS: <span className="text-text-primary font-bold">{app.dns_ms.toFixed(1)} ms</span></div>
-                                                                <div>🔌 TCP: <span className="text-text-primary font-bold">{app.tcp_ms.toFixed(1)} ms</span></div>
-                                                                <div>🔒 TLS: <span className="text-text-primary font-bold">{app.tls_ms.toFixed(1)} ms</span></div>
-                                                                <div>⚡ TTFB: <span className="text-purple-400 font-bold">{app.ttfb_ms?.toFixed(1) || '0'} ms</span></div>
-                                                            </div>
-                                                            <div className="border-t border-border/40 pt-1 flex justify-between font-black text-text-primary">
-                                                                <span>Total RTT:</span>
-                                                                <span className="text-blue-400 font-mono">{app.rtt_ms.toFixed(1)} ms</span>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ) : (
+                                                        )}
+                                                    </div>
+                                                );
+                                            })() : (
                                                 <span className="text-text-muted opacity-30 font-mono text-xs">-</span>
                                             )}
                                         </td>
 
                                         {/* TTFB (Server Time) */}
                                         <td className="px-4 py-3.5 text-right font-mono text-xs">
-                                            {app.ttfb_ms !== null ? (
-                                                <span className="text-purple-400 font-bold">
-                                                    {app.ttfb_ms.toFixed(1)} ms
-                                                </span>
-                                            ) : (
+                                            {app.ttfb_ms !== null ? (() => {
+                                                const isTtfbHigh = app.ttfb_ms >= thresholds.ttfb_warning_ms;
+                                                return (
+                                                    <span
+                                                        className={`font-bold inline-flex items-center gap-1 ${
+                                                            isTtfbHigh
+                                                                ? 'text-purple-300 bg-purple-500/15 border border-purple-500/30 px-1.5 py-0.5 rounded'
+                                                                : 'text-purple-400'
+                                                        }`}
+                                                        title={isTtfbHigh ? `High Server Processing Time (≥ ${thresholds.ttfb_warning_ms} ms)` : undefined}
+                                                    >
+                                                        {isTtfbHigh && <Zap size={10} className="text-purple-400" />}
+                                                        {app.ttfb_ms.toFixed(1)} ms
+                                                    </span>
+                                                );
+                                            })() : (
                                                 <span className="text-text-muted opacity-30">-</span>
                                             )}
                                         </td>
