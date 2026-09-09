@@ -2868,7 +2868,22 @@ app.post('/api/config/cloud', authenticateToken, (req, res) => {
         fs.writeFileSync(CLOUD_CONFIG_FILE, JSON.stringify(newConfig, null, 2));
         targetManager.reload(); // Refresh the manager signature logic
         log('SYSTEM', `Cloud Target configuration updated via UI: baseUrl=${newConfig.baseUrl}${masterKey ? ' (Master Key updated)' : ''}`);
-        res.json({ success: true });
+
+        // If this node is Leader or has global provisioning enabled, automatically publish cloud-config bundle
+        const isLeader = typeof registryManager?.isLeader === 'function' 
+            ? registryManager.isLeader() 
+            : (registryManager?.getStatus?.()?.mode === 'leader');
+            
+        if (isLeader) {
+            try {
+                provisioningManager.publishBundle('cloud-config', newConfig);
+                log('PROVISIONING', `📢 Automatically published Cloud Config bundle to peers`);
+            } catch (pubErr: any) {
+                log('PROVISIONING', `Failed to auto-publish cloud-config bundle: ${pubErr.message}`, 'warn');
+            }
+        }
+
+        res.json({ success: true, published: isLeader });
     } catch (e: any) {
         res.status(500).json({ error: 'Failed to save cloud config', message: e.message });
     }
@@ -11381,6 +11396,9 @@ provisioningManager.onBundleApplied((type, payload) => {
         const apps = payload?.applications || (Array.isArray(payload) ? payload : []);
         log('PROVISIONING', `⚡ Hot-reloading ${apps.length} Custom TCP Application(s) on peer...`);
         tcpAppManager.hotReload(apps);
+    } else if (type === 'cloud-config') {
+        log('PROVISIONING', `⚡ Hot-reloading Cloud Probes credentials and Worker URL on peer...`);
+        targetManager.reload();
     }
 });
 
@@ -11415,6 +11433,7 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     const voicePending = provisioningManager.hasUnpublishedChanges('voice-config', readJson(path.join(APP_CONFIG.configDir, 'voice-config.json')));
     const iotPending = provisioningManager.hasUnpublishedChanges('iot-config', readJson(IOT_DEVICES_FILE));
     const customTcpPending = provisioningManager.hasUnpublishedChanges('custom-tcp-apps', readJson(path.join(APP_CONFIG.configDir, 'custom-tcp-applications.json')));
+    const cloudPending = provisioningManager.hasUnpublishedChanges('cloud-config', readJson(CLOUD_CONFIG_FILE));
 
     const isLeader = typeof registryManager?.isLeader === 'function' 
         ? registryManager.isLeader() 
@@ -11432,7 +11451,8 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
             securityConfig: securityPending,
             voiceConfig: voicePending,
             iotConfig: iotPending,
-            customTcpApps: customTcpPending
+            customTcpApps: customTcpPending,
+            cloudConfig: cloudPending
         }
     });
 });
@@ -11462,7 +11482,7 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
         'prisma-sase', 'security-config', 'voice-config', 'iot-config',
-        'custom-tcp-apps'
+        'custom-tcp-apps', 'cloud-config'
     ];
     if (!validTypes.includes(type)) {
         return res.status(400).json({ error: 'invalid_bundle_type' });
