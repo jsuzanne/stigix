@@ -14,6 +14,7 @@ import { Favicon } from './components/Favicon';
 import { twMerge } from 'tailwind-merge';
 import { toast } from 'react-hot-toast';
 import { CustomTcpSettingsTab } from './components/custom-tcp/CustomTcpSettingsTab';
+import { ApiStudio } from './ApiStudio';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -411,9 +412,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     token: string, 
     uiConfig?: { maxCaptures: number; globalScoreTypes?: string[] },
     onUpdateUIConfig?: () => void,
-    initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp'
+    initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'
 }) {
-    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp'>(initialTab || 'distribution');
+    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'>(initialTab || 'distribution');
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -1771,6 +1772,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         { id: 'registry', label: 'Target Controller' },
         { id: 'mcp', label: 'MCP Server', beta: true },
         { id: 'prisma-api', label: 'Prisma SASE API' },
+        { id: 'api-studio', label: 'API Studio', isNew: true },
     ];
 
     return (
@@ -5496,6 +5498,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
 
             {activeTab === 'custom-tcp' && (
                 <CustomTcpSettingsTab token={token} />
+            )}
+
+            {activeTab === 'api-studio' && (
+                <div className="pt-2">
+                    <ApiStudio token={token} />
+                </div>
             )}
             </div>
         );
