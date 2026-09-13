@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.55] - 2026-09-13
+
+### Added / Changed
+- **Live API Log Inspector & Interactive API Studio** 🚀:
+  - **Real-Time API Observability**: Implemented in-memory ring buffer (500 events) and Server-Sent Events (`GET /api/logs/stream`) to capture and stream all API calls across Node.js backend, Python SDK engines (`getflow.py`, `prisma_custom_apps.py`), and VyOS controllers.
+  - **Interactive API Playground**: Built a visual request composer with preset catalog for Palo Alto Prisma SD-WAN (Sites, Elements, AppDefs, Flowmetrics), Strata Logging Service (SLS/SCM), VyOS Router REST API, and Stigix platform endpoints.
+  - **Auto-Authentication & Proxy Execution**: Added `POST /api/playground/execute` with automatic SASE OAuth token resolution, VyOS API key injection, and Stigix JWT support.
+  - **1-Click Replay & Code Generator**: Enabled 1-click cloning of captured historical logs into the Playground editor, and instant code generation in **cURL**, **Python (`prisma_sase`)**, **Python (`requests`)**, and **Node.js (`fetch`)**.
+  - **Secret Sanitization**: Automated redaction of sensitive credentials (`Authorization: Bearer`, `client_secret`, `token`, `password`) in logs conforming to security guidelines.
+
+---
+
 ## [2.0.9] - 2026-09-09
 
 ### Added / Changed
