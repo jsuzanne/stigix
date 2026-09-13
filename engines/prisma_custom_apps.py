@@ -19,12 +19,6 @@ from typing import Optional, Dict, Any, List
 
 from prisma_sase import API, jd
 
-try:
-    from stigix_telemetry import init_telemetry
-    init_telemetry("prisma_custom_apps.py")
-except Exception:
-    pass
-
 
 def parse_arguments():
     """Parse CLI arguments for Custom Application management"""

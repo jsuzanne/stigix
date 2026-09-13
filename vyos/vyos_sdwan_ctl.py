@@ -7,17 +7,9 @@ import textwrap
 import requests
 import urllib3
 import ipaddress
-import os
 
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-try:
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'engines'))
-    from stigix_telemetry import init_telemetry
-    init_telemetry("vyos_sdwan_ctl.py")
-except Exception:
-    pass
 
 def resolve_input(ip_input):
     """

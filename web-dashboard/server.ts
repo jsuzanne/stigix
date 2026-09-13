@@ -32,8 +32,6 @@ import { ProvisioningManager } from './provisioning-manager.js';
 import { UnderlayTopologyManager } from './underlay-topology-manager.js';
 import { TcpAppManager } from './custom-tcp-apps/tcp-app-manager.js';
 import { createCustomTcpApiRouter } from './custom-tcp-apps/api-routes.js';
-import { createApiStudioRouter } from './api-studio-routes.js';
-import { apiLogBuffer } from './api-logger.js';
 
 import { Server } from 'socket.io';
 import multer from 'multer';
@@ -2014,38 +2012,6 @@ if (DEBUG_API) {
         next();
     });
 }
-
-// Inbound API telemetry for Stigix API Studio (captures REST operations)
-app.use((req, res, next) => {
-    if (
-        !req.path.startsWith('/api/') || 
-        req.path.startsWith('/api/logs/stream') || 
-        req.path.startsWith('/api/api-studio/stream') ||
-        req.path === '/api/internal/log-event' ||
-        req.path === '/api/api-studio/internal/log-event' ||
-        req.path === '/api/playground/execute' ||
-        req.path === '/api/api-studio/playground/execute' ||
-        req.path === '/api/stats'
-    ) {
-        return next();
-    }
-
-    const startTime = Date.now();
-    res.on('finish', () => {
-        const duration = Date.now() - startTime;
-        apiLogBuffer.record({
-            source: 'node',
-            direction: 'inbound',
-            method: req.method as any,
-            url: req.originalUrl || req.url,
-            statusCode: res.statusCode,
-            durationMs: duration,
-            requestHeaders: req.headers as Record<string, string>,
-            requestBody: req.body
-        });
-    });
-    next();
-});
 
 // --- Authentication Middleware ---
 const authenticateToken = (req: any, res: any, next: any) => {
@@ -11507,22 +11473,6 @@ log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry (Dynamic Mo
 // --- Custom TCP Inter-Site Applications API ---
 app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
 log('CUSTOM_TCP', `🖧 Custom TCP Applications API mounted at /api/custom-tcp-apps`);
-
-// --- Stigix API Studio & Telemetry Routes ---
-const apiStudioRouter = createApiStudioRouter(APP_CONFIG.configDir, PROJECT_ROOT, vyosManager);
-app.use('/api/api-studio', authenticateToken, apiStudioRouter);
-app.use('/api/logs', authenticateToken, apiStudioRouter);
-app.use('/api/playground', authenticateToken, apiStudioRouter);
-// Allow unauthenticated local/internal log ingestion from Python micro-engines
-app.post('/api/internal/log-event', (req, res) => {
-    try {
-        const entry = apiLogBuffer.record(req.body);
-        res.json({ success: true, id: entry.id });
-    } catch (e: any) {
-        res.status(400).json({ success: false, error: e.message });
-    }
-});
-log('SYSTEM', `⚡ API Studio & Real-Time Log Inspector mounted at /api/api-studio, /api/logs, /api/playground`);
 
 // Hook Global Provisioning sync to hot-reload Custom TCP App runtimes on peers
 provisioningManager.onBundleApplied((type, payload) => {
