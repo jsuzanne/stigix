@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.56] - 2026-09-13
+
+### Fixed
+- **Rollback API Studio to stable v2.0.53 baseline**: Restored stable release state on `main` while API Studio feature undergoes testing and fixes on `v2` branch. 🛡️
+
+---
+
 ## [2.0.9] - 2026-09-09
 
 ### Added / Changed
