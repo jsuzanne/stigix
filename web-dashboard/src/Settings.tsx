@@ -14,6 +14,7 @@ import { Favicon } from './components/Favicon';
 import { twMerge } from 'tailwind-merge';
 import { toast } from 'react-hot-toast';
 import { CustomTcpSettingsTab } from './components/custom-tcp/CustomTcpSettingsTab';
+import { ApiStudio } from './ApiStudio';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -411,9 +412,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     token: string, 
     uiConfig?: { maxCaptures: number; globalScoreTypes?: string[] },
     onUpdateUIConfig?: () => void,
-    initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp'
+    initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'
 }) {
-    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp'>(initialTab || 'distribution');
+    const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'>(initialTab || 'distribution');
 
     // Shared State
     const [loading, setLoading] = useState(true);
@@ -571,8 +572,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const [cloudTestResult, setCloudTestResult] = useState<{ success?: boolean; error?: string } | null>(null);
     const [cloudDirty, setCloudDirty] = useState(false);
 
-    // Convergence State
+    // Convergence & Traffic SLA State
     const [convergenceThresholds, setConvergenceThresholds] = useState({ good: 1, degraded: 5, critical: 10 });
+    const [trafficThresholds, setTrafficThresholds] = useState({
+        good_latency_ms: 80,
+        degraded_latency_ms: 200,
+        critical_latency_ms: 350,
+        ttfb_warning_ms: 150,
+        error_rate_warning_pct: 5
+    });
     const [mcpStatus, setMcpStatus] = useState<{ online: boolean; status?: string; transport?: string; url?: string; error?: string } | null>(null);
     const [mcpHistory, setMcpHistory] = useState<{ entries: any[]; stats: { totalCalls: number; errorCount: number; avgDuration: number } } | null>(null);
     const [slsConfig, setSlsConfig] = useState<any>(null);
@@ -726,6 +734,16 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
             .then(data => {
                 if (data && typeof data === 'object' && 'good' in data) {
                     setConvergenceThresholds(data);
+                }
+            })
+            .catch(() => { });
+
+        // Fetch Traffic SLA Thresholds
+        fetch('/api/config/traffic-thresholds', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(data => {
+                if (data && typeof data === 'object' && 'good_latency_ms' in data) {
+                    setTrafficThresholds(data);
                 }
             })
             .catch(() => { });
@@ -1490,18 +1508,55 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     const saveConvergenceThresholds = async () => {
         setSaving(true);
         try {
+            const sanitized = {
+                good: Math.max(1, Math.min(100, Number(convergenceThresholds.good) || 1)),
+                degraded: Math.max(1, Math.min(100, Number(convergenceThresholds.degraded) || 5)),
+                critical: Math.max(1, Math.min(100, Number(convergenceThresholds.critical) || 10))
+            };
+            setConvergenceThresholds(sanitized);
             const res = await fetch('/api/config/convergence', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(convergenceThresholds)
+                body: JSON.stringify(sanitized)
             });
             if (res.ok) {
                 showSuccess('Failover thresholds saved');
             } else {
                 setErrorMsg('Failed to save thresholds');
+            }
+        } catch (e) {
+            setErrorMsg('Network error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const saveTrafficThresholds = async () => {
+        setSaving(true);
+        try {
+            const sanitized = {
+                good_latency_ms: Math.max(1, Number(trafficThresholds.good_latency_ms) || 80),
+                degraded_latency_ms: Math.max(1, Number(trafficThresholds.degraded_latency_ms) || 200),
+                critical_latency_ms: Math.max(1, Number(trafficThresholds.critical_latency_ms) || 350),
+                ttfb_warning_ms: Math.max(1, Number(trafficThresholds.ttfb_warning_ms) || 150),
+                error_rate_warning_pct: Math.max(0.1, Number(trafficThresholds.error_rate_warning_pct) || 5)
+            };
+            setTrafficThresholds(sanitized);
+            const res = await fetch('/api/config/traffic-thresholds', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(sanitized)
+            });
+            if (res.ok) {
+                showSuccess('Application SLA thresholds saved successfully');
+            } else {
+                setErrorMsg('Failed to save SLA thresholds');
             }
         } catch (e) {
             setErrorMsg('Network error');
@@ -1717,6 +1772,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         { id: 'registry', label: 'Target Controller' },
         { id: 'mcp', label: 'MCP Server', beta: true },
         { id: 'prisma-api', label: 'Prisma SASE API' },
+        { id: 'api-studio', label: 'API Studio', isNew: true },
     ];
 
     return (
@@ -1789,10 +1845,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                         <div className="max-w-2xl space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {[
-                                    { key: 'good', label: 'Good Threshold', color: 'text-green-500', icon: CheckCircle2 },
-                                    { key: 'degraded', label: 'Degraded Threshold', color: 'text-orange-500', icon: AlertCircle },
-                                    { key: 'critical', label: 'Critical Threshold', color: 'text-red-500', icon: Shield },
-                                ].map(({ key, label, color, icon: Icon }) => (
+                                    { key: 'good', label: 'Good Threshold', color: 'text-green-500', icon: CheckCircle2, def: 1 },
+                                    { key: 'degraded', label: 'Degraded Threshold', color: 'text-orange-500', icon: AlertCircle, def: 5 },
+                                    { key: 'critical', label: 'Critical Threshold', color: 'text-red-500', icon: Shield, def: 10 },
+                                ].map(({ key, label, color, icon: Icon, def }) => (
                                     <div key={key} className="space-y-2">
                                         <div className="flex items-center gap-2 pl-1">
                                             <Icon size={12} className={color} />
@@ -1803,10 +1859,17 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                 type="number"
                                                 min="1"
                                                 max="100"
-                                                value={(convergenceThresholds as any)[key]}
+                                                value={(convergenceThresholds as any)[key] ?? ''}
                                                 onChange={e => {
-                                                    const val = Math.max(1, Math.min(100, parseInt(e.target.value) || 1));
-                                                    setConvergenceThresholds(prev => ({ ...prev, [key]: val }));
+                                                    const raw = e.target.value;
+                                                    setConvergenceThresholds(prev => ({ ...prev, [key]: raw === '' ? ('' as any) : Number(raw) }));
+                                                }}
+                                                onBlur={() => {
+                                                    setConvergenceThresholds(prev => {
+                                                        const current = Number((prev as any)[key]);
+                                                        const clamped = isNaN(current) || current <= 0 ? def : Math.max(1, Math.min(100, current));
+                                                        return { ...prev, [key]: clamped };
+                                                    });
                                                 }}
                                                 className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-4 py-3 text-sm font-black outline-none focus:ring-1 focus:ring-purple-500 transition-all shadow-inner"
                                             />
@@ -3011,6 +3074,249 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                     </div>
                                 );
                             })}
+                        </div>
+
+                        {/* ── Application SLA & Performance Thresholds ─────────────────────────────── */}
+                        <div className="pt-8 border-t border-border/50">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-blue-600/10 rounded-lg text-blue-600 dark:text-blue-400 font-bold">
+                                        <Activity size={24} />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-black text-text-primary tracking-tight">Application SLA & Latency Thresholds</h2>
+                                        <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">
+                                            Configure latency, server TTFB, and error rate triggers for live telemetry and dashboard color grading
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Quick Presets */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-text-muted mr-1">Presets:</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTrafficThresholds({ good_latency_ms: 25, degraded_latency_ms: 80, critical_latency_ms: 150, ttfb_warning_ms: 50, error_rate_warning_pct: 1 })}
+                                        className="px-2.5 py-1.5 bg-card-secondary hover:bg-card-hover border border-border rounded-lg text-[9.5px] font-black uppercase tracking-wider text-text-primary transition-all flex items-center gap-1 shadow-sm"
+                                        title="Strict LAN / Campus preset"
+                                    >
+                                        🚀 Campus
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTrafficThresholds({ good_latency_ms: 80, degraded_latency_ms: 200, critical_latency_ms: 350, ttfb_warning_ms: 150, error_rate_warning_pct: 5 })}
+                                        className="px-2.5 py-1.5 bg-card-secondary hover:bg-card-hover border border-border rounded-lg text-[9.5px] font-black uppercase tracking-wider text-blue-400 transition-all flex items-center gap-1 shadow-sm"
+                                        title="Standard SD-WAN Enterprise preset"
+                                    >
+                                        🌐 SD-WAN
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTrafficThresholds({ good_latency_ms: 150, degraded_latency_ms: 350, critical_latency_ms: 600, ttfb_warning_ms: 250, error_rate_warning_pct: 10 })}
+                                        className="px-2.5 py-1.5 bg-card-secondary hover:bg-card-hover border border-border rounded-lg text-[9.5px] font-black uppercase tracking-wider text-purple-400 transition-all flex items-center gap-1 shadow-sm"
+                                        title="Global / Inter-Cloud WAN preset"
+                                    >
+                                        🌍 Global
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                                    {/* Good Latency */}
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center gap-1.5 pl-1">
+                                            <CheckCircle2 size={12} className="text-emerald-400" />
+                                            <label className="text-[9px] font-black text-text-muted uppercase tracking-widest">Optimal Latency</label>
+                                        </div>
+                                        <div className="relative group">
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                max="5000"
+                                                value={trafficThresholds.good_latency_ms ?? ''}
+                                                onChange={e => {
+                                                    const raw = e.target.value;
+                                                    setTrafficThresholds(prev => ({ ...prev, good_latency_ms: raw === '' ? ('' as any) : Number(raw) }));
+                                                }}
+                                                onBlur={() => {
+                                                    setTrafficThresholds(prev => {
+                                                        const current = Number(prev.good_latency_ms);
+                                                        const clamped = isNaN(current) || current <= 0 ? 80 : Math.max(1, Math.min(5000, current));
+                                                        return { ...prev, good_latency_ms: clamped };
+                                                    });
+                                                }}
+                                                className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 text-xs font-black outline-none focus:ring-1 focus:ring-emerald-500 transition-all shadow-inner"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-text-muted opacity-40">MS</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Degraded Latency */}
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center gap-1.5 pl-1">
+                                            <AlertCircle size={12} className="text-amber-400" />
+                                            <label className="text-[9px] font-black text-text-muted uppercase tracking-widest">Warning Latency</label>
+                                        </div>
+                                        <div className="relative group">
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                max="5000"
+                                                value={trafficThresholds.degraded_latency_ms ?? ''}
+                                                onChange={e => {
+                                                    const raw = e.target.value;
+                                                    setTrafficThresholds(prev => ({ ...prev, degraded_latency_ms: raw === '' ? ('' as any) : Number(raw) }));
+                                                }}
+                                                onBlur={() => {
+                                                    setTrafficThresholds(prev => {
+                                                        const current = Number(prev.degraded_latency_ms);
+                                                        const clamped = isNaN(current) || current <= 0 ? 200 : Math.max(1, Math.min(5000, current));
+                                                        return { ...prev, degraded_latency_ms: clamped };
+                                                    });
+                                                }}
+                                                className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 text-xs font-black outline-none focus:ring-1 focus:ring-amber-500 transition-all shadow-inner"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-text-muted opacity-40">MS</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Critical Latency */}
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center gap-1.5 pl-1">
+                                            <Shield size={12} className="text-red-400" />
+                                            <label className="text-[9px] font-black text-text-muted uppercase tracking-widest">Critical Latency</label>
+                                        </div>
+                                        <div className="relative group">
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                max="10000"
+                                                value={trafficThresholds.critical_latency_ms ?? ''}
+                                                onChange={e => {
+                                                    const raw = e.target.value;
+                                                    setTrafficThresholds(prev => ({ ...prev, critical_latency_ms: raw === '' ? ('' as any) : Number(raw) }));
+                                                }}
+                                                onBlur={() => {
+                                                    setTrafficThresholds(prev => {
+                                                        const current = Number(prev.critical_latency_ms);
+                                                        const clamped = isNaN(current) || current <= 0 ? 350 : Math.max(1, Math.min(10000, current));
+                                                        return { ...prev, critical_latency_ms: clamped };
+                                                    });
+                                                }}
+                                                className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 text-xs font-black outline-none focus:ring-1 focus:ring-red-500 transition-all shadow-inner"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-text-muted opacity-40">MS</span>
+                                        </div>
+                                    </div>
+
+                                    {/* TTFB Warning */}
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center gap-1.5 pl-1">
+                                            <Server size={12} className="text-purple-400" />
+                                            <label className="text-[9px] font-black text-text-muted uppercase tracking-widest">TTFB Warning</label>
+                                        </div>
+                                        <div className="relative group">
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                max="10000"
+                                                value={trafficThresholds.ttfb_warning_ms ?? ''}
+                                                onChange={e => {
+                                                    const raw = e.target.value;
+                                                    setTrafficThresholds(prev => ({ ...prev, ttfb_warning_ms: raw === '' ? ('' as any) : Number(raw) }));
+                                                }}
+                                                onBlur={() => {
+                                                    setTrafficThresholds(prev => {
+                                                        const current = Number(prev.ttfb_warning_ms);
+                                                        const clamped = isNaN(current) || current <= 0 ? 150 : Math.max(1, Math.min(10000, current));
+                                                        return { ...prev, ttfb_warning_ms: clamped };
+                                                    });
+                                                }}
+                                                className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 text-xs font-black outline-none focus:ring-1 focus:ring-purple-500 transition-all shadow-inner"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-text-muted opacity-40">MS</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Error Rate Warning */}
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center gap-1.5 pl-1">
+                                            <AlertTriangle size={12} className="text-rose-400" />
+                                            <label className="text-[9px] font-black text-text-muted uppercase tracking-widest">Error Rate SLA</label>
+                                        </div>
+                                        <div className="relative group">
+                                            <input
+                                                type="number"
+                                                min="0.1"
+                                                max="100"
+                                                step="0.5"
+                                                value={trafficThresholds.error_rate_warning_pct ?? ''}
+                                                onChange={e => {
+                                                    const raw = e.target.value;
+                                                    setTrafficThresholds(prev => ({ ...prev, error_rate_warning_pct: raw === '' ? ('' as any) : Number(raw) }));
+                                                }}
+                                                onBlur={() => {
+                                                    setTrafficThresholds(prev => {
+                                                        const current = Number(prev.error_rate_warning_pct);
+                                                        const clamped = isNaN(current) || current <= 0 ? 5 : Math.max(0.1, Math.min(100, current));
+                                                        return { ...prev, error_rate_warning_pct: clamped };
+                                                    });
+                                                }}
+                                                className="w-full bg-card-secondary border border-border text-text-primary rounded-xl px-3 py-2.5 text-xs font-black outline-none focus:ring-1 focus:ring-rose-500 transition-all shadow-inner"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-text-muted opacity-40">%</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Logic Explanation Box */}
+                                <div className="p-4 bg-blue-600/5 border border-blue-500/20 rounded-xl space-y-2.5">
+                                    <div className="flex items-center gap-2 text-blue-500 dark:text-blue-400">
+                                        <Info size={14} />
+                                        <span className="text-[10px] font-black uppercase tracking-widest">SLA Trigger Logic</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px]">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                                            <span className="font-bold text-text-secondary">Optimal RTT:</span>
+                                            <span className="text-text-muted">Round-trip latency &lt; <span className="text-text-primary font-black">{trafficThresholds.good_latency_ms} ms</span> (Green)</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-purple-400" />
+                                            <span className="font-bold text-text-secondary">Server TTFB:</span>
+                                            <span className="text-text-muted">Warning if backend processing &ge; <span className="text-text-primary font-black">{trafficThresholds.ttfb_warning_ms} ms</span></span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-amber-400" />
+                                            <span className="font-bold text-text-secondary">Warning RTT:</span>
+                                            <span className="text-text-muted">Round-trip latency between <span className="text-text-primary font-black">{trafficThresholds.good_latency_ms} ms</span> and <span className="text-text-primary font-black">{trafficThresholds.critical_latency_ms} ms</span> (Amber)</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-rose-400" />
+                                            <span className="font-bold text-text-secondary">Error Rate SLA:</span>
+                                            <span className="text-text-muted">Warning if failure rate &ge; <span className="text-text-primary font-black">{trafficThresholds.error_rate_warning_pct}%</span></span>
+                                        </div>
+                                        <div className="flex items-center gap-2 md:col-span-2">
+                                            <div className="w-2 h-2 rounded-full bg-red-400" />
+                                            <span className="font-bold text-text-secondary">Critical RTT:</span>
+                                            <span className="text-text-muted">Round-trip latency &ge; <span className="text-text-primary font-black">{trafficThresholds.critical_latency_ms} ms</span> (Red badge)</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={saveTrafficThresholds}
+                                        disabled={saving}
+                                        className="px-8 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black tracking-[0.2em] transition-all flex items-center gap-2 shadow-lg shadow-blue-900/40 disabled:opacity-50"
+                                    >
+                                        {saving ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                                        {saving ? 'SAVING...' : 'SAVE SLA THRESHOLDS'}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -5192,6 +5498,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
 
             {activeTab === 'custom-tcp' && (
                 <CustomTcpSettingsTab token={token} />
+            )}
+
+            {activeTab === 'api-studio' && (
+                <div className="pt-2">
+                    <ApiStudio token={token} />
+                </div>
             )}
             </div>
         );

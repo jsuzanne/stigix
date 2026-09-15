@@ -32,6 +32,8 @@ import { ProvisioningManager } from './provisioning-manager.js';
 import { UnderlayTopologyManager } from './underlay-topology-manager.js';
 import { TcpAppManager } from './custom-tcp-apps/tcp-app-manager.js';
 import { createCustomTcpApiRouter } from './custom-tcp-apps/api-routes.js';
+import { createApiStudioRouter } from './api-studio-routes.js';
+import { apiLogBuffer } from './api-logger.js';
 
 import { Server } from 'socket.io';
 import multer from 'multer';
@@ -436,8 +438,25 @@ const IOT_DEVICES_FILE = path.join(APP_CONFIG.configDir, 'iot-devices.json');
 const APPLICATIONS_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'applications-config.json');
 const VYOS_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'vyos-config.json');
 const CONVERGENCE_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'convergence-config.json');
+const TRAFFIC_THRESHOLDS_FILE = path.join(APP_CONFIG.configDir, 'traffic-thresholds.json');
 const ICON_CACHE_FILE = path.join(APP_CONFIG.configDir, 'icon-cache.json');
 const SYSTEM_SETTINGS_FILE = path.join(APP_CONFIG.configDir, 'system-settings.json');
+
+interface TrafficThresholds {
+    good_latency_ms: number;
+    degraded_latency_ms: number;
+    critical_latency_ms: number;
+    ttfb_warning_ms: number;
+    error_rate_warning_pct: number;
+}
+
+const DEFAULT_TRAFFIC_THRESHOLDS: TrafficThresholds = {
+    good_latency_ms: 80,
+    degraded_latency_ms: 200,
+    critical_latency_ms: 350,
+    ttfb_warning_ms: 150,
+    error_rate_warning_pct: 5
+};
 
 // ── System Settings helper (startup behaviour, etc.) ────────────────────────
 interface SystemSettings {
@@ -2012,6 +2031,38 @@ if (DEBUG_API) {
         next();
     });
 }
+
+// Inbound API telemetry for Stigix API Studio (captures REST operations)
+app.use((req, res, next) => {
+    if (
+        !req.path.startsWith('/api/') || 
+        req.path.startsWith('/api/logs/stream') || 
+        req.path.startsWith('/api/api-studio/stream') ||
+        req.path === '/api/internal/log-event' ||
+        req.path === '/api/api-studio/internal/log-event' ||
+        req.path === '/api/playground/execute' ||
+        req.path === '/api/api-studio/playground/execute' ||
+        req.path === '/api/stats'
+    ) {
+        return next();
+    }
+
+    const startTime = Date.now();
+    res.on('finish', () => {
+        const duration = Date.now() - startTime;
+        apiLogBuffer.record({
+            source: 'node',
+            direction: 'inbound',
+            method: req.method as any,
+            url: req.originalUrl || req.url,
+            statusCode: res.statusCode,
+            durationMs: duration,
+            requestHeaders: req.headers as Record<string, string>,
+            requestBody: req.body
+        });
+    });
+    next();
+});
 
 // --- Authentication Middleware ---
 const authenticateToken = (req: any, res: any, next: any) => {
@@ -5531,6 +5582,38 @@ app.post('/api/config/convergence', authenticateToken, (req, res) => {
         res.json({ success: true, config });
     } catch (e) {
         res.status(500).json({ error: 'Failed to save convergence config' });
+    }
+});
+
+// API: GET Traffic SLA Thresholds
+app.get('/api/config/traffic-thresholds', authenticateToken, (req, res) => {
+    try {
+        if (!fs.existsSync(TRAFFIC_THRESHOLDS_FILE)) {
+            return res.json(DEFAULT_TRAFFIC_THRESHOLDS);
+        }
+        const data = JSON.parse(fs.readFileSync(TRAFFIC_THRESHOLDS_FILE, 'utf8'));
+        res.json({ ...DEFAULT_TRAFFIC_THRESHOLDS, ...data });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to read traffic thresholds' });
+    }
+});
+
+// API: POST Traffic SLA Thresholds
+app.post('/api/config/traffic-thresholds', authenticateToken, (req, res) => {
+    try {
+        const { good_latency_ms, degraded_latency_ms, critical_latency_ms, ttfb_warning_ms, error_rate_warning_pct } = req.body;
+        const config: TrafficThresholds = {
+            good_latency_ms: Math.max(5, Math.min(1000, parseInt(good_latency_ms) || 80)),
+            degraded_latency_ms: Math.max(10, Math.min(2000, parseInt(degraded_latency_ms) || 200)),
+            critical_latency_ms: Math.max(20, Math.min(5000, parseInt(critical_latency_ms) || 350)),
+            ttfb_warning_ms: Math.max(5, Math.min(3000, parseInt(ttfb_warning_ms) || 150)),
+            error_rate_warning_pct: Math.max(0.1, Math.min(100, parseFloat(error_rate_warning_pct) || 5))
+        };
+        fs.writeFileSync(TRAFFIC_THRESHOLDS_FILE, JSON.stringify(config, null, 2));
+        log('CONFIG', `Updated Traffic SLA Thresholds: Good=${config.good_latency_ms}ms, Degraded=${config.degraded_latency_ms}ms, TTFB=${config.ttfb_warning_ms}ms`);
+        res.json({ success: true, config });
+    } catch (e: any) {
+        res.status(500).json({ error: 'Failed to save traffic thresholds: ' + e.message });
     }
 });
 
@@ -11473,6 +11556,22 @@ log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry (Dynamic Mo
 // --- Custom TCP Inter-Site Applications API ---
 app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
 log('CUSTOM_TCP', `🖧 Custom TCP Applications API mounted at /api/custom-tcp-apps`);
+
+// --- Stigix API Studio & Telemetry Routes ---
+const apiStudioRouter = createApiStudioRouter(APP_CONFIG.configDir, PROJECT_ROOT, vyosManager);
+app.use('/api/api-studio', authenticateToken, apiStudioRouter);
+app.use('/api/logs', authenticateToken, apiStudioRouter);
+app.use('/api/playground', authenticateToken, apiStudioRouter);
+// Allow unauthenticated local/internal log ingestion from Python micro-engines
+app.post('/api/internal/log-event', (req, res) => {
+    try {
+        const entry = apiLogBuffer.record(req.body);
+        res.json({ success: true, id: entry.id });
+    } catch (e: any) {
+        res.status(400).json({ success: false, error: e.message });
+    }
+});
+log('SYSTEM', `⚡ API Studio & Real-Time Log Inspector mounted at /api/api-studio, /api/logs, /api/playground`);
 
 // Hook Global Provisioning sync to hot-reload Custom TCP App runtimes on peers
 provisioningManager.onBundleApplied((type, payload) => {

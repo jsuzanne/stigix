@@ -2,6 +2,17 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2-dev] - 2026-09-13 — Live API Log Inspector & Interactive API Studio
+
+### Added
+- **Live API Log Inspector & Interactive API Studio** 🚀:
+  - **Real-Time API Observability**: In-memory ring buffer (500 events) and Server-Sent Events (`GET /api/logs/stream`) capturing Node.js, Python SDK (`getflow.py`, `prisma_custom_apps.py`), and VyOS calls.
+  - **Interactive API Playground**: Visual request composer with preset catalog for Prisma SD-WAN, SCM/SLS, VyOS, and Stigix.
+  - **Auto-Authentication Proxy**: Server-side proxy (`POST /api/playground/execute`) with automatic Prisma SASE OAuth token and VyOS API key injection.
+  - **1-Click Replay & Code Generator**: Instant cloning from log inspector and code export to cURL, Python (`prisma_sase`/`requests`), and Node.js (`fetch`).
+
+---
+
 ## [v2-dev] - 2026-09-09 — Real-Time Application Telemetry (RUM/APM), 1-Click DEM Promotion & Cloud Probes Provisioning
 
 ### Added
