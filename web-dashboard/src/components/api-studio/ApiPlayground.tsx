@@ -185,7 +185,15 @@ export const ApiPlayground: React.FC<ApiPlaygroundProps> = ({
                 })
             });
 
-            const data = await res.json();
+            const contentType = res.headers.get('content-type') || '';
+            let data: any;
+            if (contentType.includes('application/json')) {
+                data = await res.json();
+            } else {
+                const rawText = await res.text();
+                throw new Error(`Server returned HTTP ${res.status} (${contentType || 'non-JSON'}): ${rawText.slice(0, 150)}`);
+            }
+
             setExecutionResult(data);
 
             if (data.success && data.statusCode >= 200 && data.statusCode < 300) {
