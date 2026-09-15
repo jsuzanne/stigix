@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.57] - 2026-09-15
+
+### Added / Changed
+- **API Studio Tab in Settings** 🎛️:
+  - Relocated API Studio directly into the Settings view tabs with a dedicated `NEW` badge for improved UX and seamless NOC navigation.
+  - Comprehensive user guide for NOC engineers added in `docs/API_STUDIO_GUIDE.md`.
+- **Telemetry & Docker Fixes** 🛠️:
+  - Fixed `prisma_sase.API.rest_call` argument handling in telemetry scripts.
+  - Bundled API Logger and Studio routes inside `stigix-all-in-one` Dockerfile for multi-arch builds.
+  - Added Video Streaming simulation specifications and telemetry proxy PRD.
+
+---
+
 ## [2.0.55] - 2026-09-13
 
 ### Added / Changed
