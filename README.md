@@ -6,7 +6,7 @@
 
 A modern web-based SD-WAN traffic generator with real-time monitoring, customizable traffic patterns, and comprehensive security testing. Perfect for testing SD-WAN deployments, network QoS policies, and application performance.
 
-![Stigix](docs/hero-banner.png)
+![Stigix](docs/stigix-banner.gif)
 
 ---
 
