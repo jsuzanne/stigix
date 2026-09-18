@@ -199,3 +199,41 @@ export function buildServerClose(params: {
         sentTs: Date.now()
     };
 }
+
+export function buildPathProbe(params: {
+    probeId: string;
+    clientSessionId: string;
+    seq: number;
+    stepBytes: number;
+    padding?: string;
+}): PathProbeMessage {
+    return {
+        type: 'PATH_PROBE',
+        probeId: params.probeId,
+        clientSessionId: params.clientSessionId,
+        seq: params.seq,
+        stepBytes: params.stepBytes,
+        padding: params.padding,
+        sentTs: Date.now()
+    };
+}
+
+export function buildPathProbeAck(params: {
+    probeId: string;
+    clientSessionId: string;
+    seq: number;
+    receivedBytes: number;
+    clientSentTs: number;
+    serverRecvTs: number;
+}): PathProbeAckMessage {
+    return {
+        type: 'PATH_PROBE_ACK',
+        probeId: params.probeId,
+        clientSessionId: params.clientSessionId,
+        seq: params.seq,
+        receivedBytes: params.receivedBytes,
+        clientSentTs: params.clientSentTs,
+        serverRecvTs: params.serverRecvTs,
+        sentTs: Date.now()
+    };
+}

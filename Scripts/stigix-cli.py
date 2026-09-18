@@ -4541,6 +4541,73 @@ def cmd_custom_tcp_app(args):
                 ])
             table(["Peer Name", "Remote Host", "State", "Last RTT", "Tx Reqs", "Rx Resps", "Timeouts"], out_rows)
 
+    elif sub in ("diagnose", "path-probe", "mtu", "pmtud"):
+        aid = args[1] if len(args) > 1 else None
+        if not aid:
+            err("Usage: tcp-app diagnose <app-id> [target-host]")
+            return
+        target_host = args[2] if len(args) > 2 else None
+        if not target_host:
+            status_res = api_get(f"/api/custom-tcp-apps/{aid}/status")
+            app_cfg = status_res.get("app", {}) if status_res else {}
+            peers = app_cfg.get("peers", [])
+            if peers:
+                target_host = peers[0].get("host")
+            else:
+                err(f"No target host specified and no peers configured for app '{aid}'.")
+                err(f"Usage: tcp-app diagnose {aid} <target-ip>")
+                return
+
+        info(f"Running Path MTU discovery and Prisma SD-WAN flow correlation for '{aid}' -> {target_host}...")
+        r = api_post(f"/api/custom-tcp-apps/{aid}/diagnose-path", {"targetHost": target_host, "runPrismaCorrelation": True})
+        if r and r.get("success"):
+            res = r.get("result", {})
+            hdr(f"━━ Path MTU & SD-WAN Diagnostics: {res.get('appName', aid)} ━━━━━━━━━━━━━━━━━━")
+            info(f"Target: {res.get('targetHost')}:{res.get('targetPort')} | Local 5-Tuple: {res.get('sourceIp')}:{res.get('sourcePort')}")
+
+            mtu = res.get("maxPathMtu", 0)
+            mss = res.get("recommendedMss", 0)
+            frag = res.get("fragmentationDetected", False)
+            overhead = res.get("overheadBytes", 0)
+            rtt = res.get("avgRttMs", 0)
+
+            rows = [
+                ["Max Path MTU", f"{mtu} Bytes", status_badge("FAIL" if frag else "OK")],
+                ["Recommended MSS", f"{mss} Bytes", "TCP MSS Clamping"],
+                ["Fragmentation Status", f"Overhead ~{overhead}B" if frag else "Clean (No drops)", status_badge("WARN" if frag else "OK")],
+                ["Average RTT", f"{rtt:.2f} ms" if isinstance(rtt, (int, float)) else str(rtt), "Round-Trip"]
+            ]
+
+            ow = res.get("oneWayDelay")
+            if ow:
+                rows.append(["Forward Delay (Spoke➔DC)", f"{ow.get('forwardMs')} ms", "One-Way"])
+                rows.append(["Reverse Delay (DC➔Spoke)", f"{ow.get('reverseMs')} ms", "One-Way"])
+                rows.append(["Routing Symmetry", f"Delta: {ow.get('asymmetryMs')} ms ({ow.get('status')})", status_badge("OK" if ow.get("status") == "SYMMETRIC" else "WARN")])
+
+            table(["Metric", "Measurement", "Status / Notes"], rows)
+
+            pf = res.get("prismaFlow")
+            if pf and pf.get("flowFound"):
+                hdr("━━ Prisma SD-WAN Flow Browser Correlation ━━━━━━━━━━━━━━━━━━━━━━━━━")
+                pf_rows = [
+                    ["Active Circuit", pf.get("activeCircuit", "N/A"), status_badge("OK")],
+                    ["Circuit ID", pf.get("circuitId", "N/A"), "WAN Interface"],
+                    ["ION Interface", pf.get("ionInterface", "N/A"), pf.get("siteName", "Local")],
+                    ["Path Policy", pf.get("pathPolicy", "N/A"), pf.get("pathType", "SD-WAN")],
+                    ["Egress Path", pf.get("egressPath", "N/A"), "Path Evolution"]
+                ]
+                table(["SD-WAN Property", "Value", "Context"], pf_rows)
+
+            recs = res.get("recommendations", {})
+            if recs:
+                hdr("━━ Recommended Fix & Router Configuration ━━━━━━━━━━━━━━━━━━━━━━━━━")
+                print(f"  Summary: {recs.get('summary')}\n")
+                print(f"  VyOS:    {recs.get('vyos')}")
+                print(f"  Cisco:   {recs.get('ciscoIos')}")
+                print(f"  Linux:   {recs.get('linux')}\n")
+        else:
+            err(f"Diagnostic probe failed: {r.get('error', 'Unknown error') if r else 'Unknown error'}")
+
     elif sub == "reset-metrics":
         aid = args[1] if len(args) > 1 else None
         if not aid:
@@ -4554,15 +4621,16 @@ def cmd_custom_tcp_app(args):
 
     else:
         _help_section("CUSTOM TCP INTER-SITE APPLICATIONS", [
-            ("tcp-app list",               "List configured Custom TCP Applications"),
-            ("tcp-app status [id]",        "Show comprehensive status & metrics"),
-            ("tcp-app start-listener <id>","Start local TCP listener"),
-            ("tcp-app stop-listener <id>", "Stop local TCP listener"),
-            ("tcp-app start-client <id>",  "Start client workload generator"),
-            ("tcp-app stop-client <id>",   "Stop client workload generator"),
-            ("tcp-app test <id> [peerId]", "Run instant handshake latency test"),
-            ("tcp-app sessions <id>",      "List live incoming/outgoing sessions"),
-            ("tcp-app reset-metrics <id>", "Reset metrics counters"),
+            ("tcp-app list",                      "List configured Custom TCP Applications"),
+            ("tcp-app status [id]",               "Show comprehensive status & metrics"),
+            ("tcp-app diagnose <id> [host]",      "Run Path MTU & SD-WAN transport diagnostics"),
+            ("tcp-app start-listener <id>",       "Start local TCP listener"),
+            ("tcp-app stop-listener <id>",        "Stop local TCP listener"),
+            ("tcp-app start-client <id>",         "Start client workload generator"),
+            ("tcp-app stop-client <id>",          "Stop client workload generator"),
+            ("tcp-app test <id> [peerId]",        "Run instant handshake latency test"),
+            ("tcp-app sessions <id>",             "List live incoming/outgoing sessions"),
+            ("tcp-app reset-metrics <id>",        "Reset metrics counters"),
         ])
 
 

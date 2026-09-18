@@ -62,7 +62,9 @@ export type ProtocolMessageType =
     | 'PING'
     | 'PONG'
     | 'CLIENT_CLOSE'
-    | 'SERVER_CLOSE';
+    | 'SERVER_CLOSE'
+    | 'PATH_PROBE'
+    | 'PATH_PROBE_ACK';
 
 export interface BaseMessage {
     type: ProtocolMessageType;
@@ -161,6 +163,25 @@ export interface ServerCloseMessage extends BaseMessage {
     simulated?: boolean;
 }
 
+export interface PathProbeMessage extends BaseMessage {
+    type: 'PATH_PROBE';
+    probeId: string;
+    clientSessionId: string;
+    seq: number;
+    stepBytes: number;
+    padding?: string;
+}
+
+export interface PathProbeAckMessage extends BaseMessage {
+    type: 'PATH_PROBE_ACK';
+    probeId: string;
+    clientSessionId: string;
+    seq: number;
+    receivedBytes: number;
+    clientSentTs: number;
+    serverRecvTs: number;
+}
+
 export type CustomTcpMessage =
     | ClientHelloMessage
     | ServerHelloMessage
@@ -171,7 +192,9 @@ export type CustomTcpMessage =
     | PingMessage
     | PongMessage
     | ClientCloseMessage
-    | ServerCloseMessage;
+    | ServerCloseMessage
+    | PathProbeMessage
+    | PathProbeAckMessage;
 
 // ─── Configuration Models ─────────────────────────────────────────────────────
 
@@ -391,4 +414,74 @@ export interface RunHistoryRecord {
     rttStats: RttStats;
     status: 'completed' | 'stopped' | 'failed';
     summary: string;
+}
+
+// ─── Path MTU & SD-WAN Diagnostic Models ──────────────────────────────────────
+
+export interface PathProbeStepResult {
+    stepBytes: number;
+    success: boolean;
+    rttMs: number;
+    forwardDelayMs?: number;
+    reverseDelayMs?: number;
+    error?: string;
+}
+
+export interface PrismaFlowCorrelation {
+    matched: boolean;
+    flowFound: boolean;
+    siteName?: string;
+    sourceIp?: string;
+    sourcePort?: number;
+    destinationIp?: string;
+    destinationPort?: number;
+    activeCircuit?: string;
+    circuitId?: string;
+    ionInterface?: string;
+    pathPolicy?: string;
+    pathType?: string;
+    egressPath?: string;
+    pathEvolution?: string;
+    backupCircuit?: string;
+    lossPercent?: number;
+    jitterMs?: number;
+    rawFlow?: any;
+    error?: string;
+}
+
+export interface PathProbeResult {
+    probeId: string;
+    appId: string;
+    appName: string;
+    targetHost: string;
+    targetPort: number;
+    sourceIp?: string;
+    sourcePort?: number;
+    timestamp: string;
+    durationMs: number;
+    connected: boolean;
+    maxPathMtu: number;
+    recommendedMss: number;
+    fragmentationDetected: boolean;
+    overheadBytes: number;
+    avgRttMs: number;
+    oneWayDelay?: {
+        forwardMs: number;
+        reverseMs: number;
+        asymmetryMs: number;
+        status: 'SYMMETRIC' | 'ASYMMETRIC' | 'UNKNOWN';
+    };
+    steps: PathProbeStepResult[];
+    prismaFlow?: PrismaFlowCorrelation;
+    recommendations: {
+        summary: string;
+        ciscoIos: string;
+        vyos: string;
+        linux: string;
+    };
+    peerCapabilities: {
+        supportsOneWay: boolean;
+        serverVersion?: string;
+    };
+    error?: string;
 }

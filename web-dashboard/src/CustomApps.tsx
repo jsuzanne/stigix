@@ -18,10 +18,12 @@ import type {
     CustomTcpApplicationConfig,
     AppRuntimeMetrics,
     IncomingSessionState,
-    OutgoingSessionState
+    OutgoingSessionState,
+    PathProbeResult
 } from '../custom-tcp-apps/types.js';
 import { CustomAppWizardModal } from './components/custom-tcp/CustomAppWizardModal';
 import { PrismaAppSyncModal } from './components/custom-tcp/PrismaAppSyncModal';
+import { PathProbeModal } from './components/custom-tcp/PathProbeModal';
 import { MicroSparkline } from './components/custom-tcp/MicroSparkline';
 import { SessionDeepDiveDrawer } from './components/custom-tcp/SessionDeepDiveDrawer';
 
@@ -47,6 +49,9 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     // Modals
     const [isWizardOpen, setIsWizardOpen] = useState(false);
     const [isPrismaModalOpen, setIsPrismaModalOpen] = useState(false);
+    const [isPathProbeOpen, setIsPathProbeOpen] = useState(false);
+    const [probeTargetHost, setProbeTargetHost] = useState<string | undefined>(undefined);
+    const [cachedProbeResults, setCachedProbeResults] = useState<Record<string, PathProbeResult>>({});
     const [editingApp, setEditingApp] = useState<CustomTcpApplicationConfig | null>(null);
     const [peerTestModal, setPeerTestModal] = useState<{ isOpen: boolean; peerId: string; peerName: string; host: string; port: number } | null>(null);
     const [peerTestResult, setPeerTestResult] = useState<{ loading: boolean; success?: boolean; rttMs?: number; error?: string } | null>(null);
@@ -775,6 +780,18 @@ const secs = seconds % 60;
                             <Cloud size={14} />
                             <span>Push to Prisma SD-WAN</span>
                         </button>
+
+                        <button
+                            onClick={() => {
+                                setProbeTargetHost(undefined);
+                                setIsPathProbeOpen(true);
+                            }}
+                            className="h-[38px] px-3.5 py-2 bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 border border-teal-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            title="Run on-demand Path MTU discovery, One-Way delay, and Prisma SD-WAN flow routing correlation"
+                        >
+                            <Activity size={14} />
+                            <span>Path MTU Probe</span>
+                        </button>
                     </div>
                 </div>
 
@@ -1228,12 +1245,39 @@ const secs = seconds % 60;
                                                                     <span>Jitter: ±{s.rttMs.jitterMs ?? 0}ms</span>
                                                                     {(s.txBps ?? 0) > 0 && (
                                                                         <>
-                                                                            <span className="text-text-muted/60">•</span>
-                                                                            <span className="text-indigo-400 font-mono font-bold">{formatBitrate(s.txBps)}</span>
+                                                                            <span>•</span>
+                                                                            <span>{((s.txBps ?? 0) / 1000).toFixed(1)} Kbps</span>
                                                                         </>
                                                                     )}
                                                                 </div>
                                                             )}
+                                                        </div>
+
+                                                        {/* Path MTU Probe Quick Action & Cached Badge */}
+                                                        <div className="flex items-center gap-1.5 shrink-0 pl-1">
+                                                            {cachedProbeResults[s.peerHost] && (
+                                                                <span
+                                                                    className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
+                                                                        cachedProbeResults[s.peerHost].fragmentationDetected
+                                                                            ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                                                                            : 'bg-teal-500/15 text-teal-300 border border-teal-500/30'
+                                                                    }`}
+                                                                    title={`Max Path MTU: ${cachedProbeResults[s.peerHost].maxPathMtu}B (MSS: ${cachedProbeResults[s.peerHost].recommendedMss}B)`}
+                                                                >
+                                                                    MTU {cachedProbeResults[s.peerHost].maxPathMtu}B
+                                                                </span>
+                                                            )}
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setProbeTargetHost(s.peerHost);
+                                                                    setIsPathProbeOpen(true);
+                                                                }}
+                                                                className="p-1 rounded-md bg-slate-800/80 hover:bg-teal-500/20 text-slate-400 hover:text-teal-300 border border-slate-700/60 transition-colors shadow-sm"
+                                                                title="Diagnose Path MTU & SD-WAN Routing"
+                                                            >
+                                                                <Activity size={12} />
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 </td>
@@ -1343,6 +1387,22 @@ const secs = seconds % 60;
                 onClose={() => setIsPrismaModalOpen(false)}
                 token={token}
                 applications={applications}
+            />
+
+            {/* Path MTU & SD-WAN Transport Probe Modal */}
+            <PathProbeModal
+                isOpen={isPathProbeOpen}
+                onClose={() => setIsPathProbeOpen(false)}
+                app={currentApp || null}
+                initialTargetHost={probeTargetHost}
+                token={token}
+                onProbeComplete={(appId, res) => {
+                    setCachedProbeResults(prev => ({
+                        ...prev,
+                        [res.targetHost]: res,
+                        [appId]: res
+                    }));
+                }}
             />
         </div>
     );

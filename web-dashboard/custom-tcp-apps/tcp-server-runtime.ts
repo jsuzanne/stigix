@@ -13,7 +13,8 @@ import {
     ClientHelloMessage,
     RequestMessage,
     PingMessage,
-    ClientCloseMessage
+    ClientCloseMessage,
+    PathProbeMessage
 } from './types.js';
 import { FrameParser } from './frame-parser.js';
 import {
@@ -23,7 +24,8 @@ import {
     buildResponse,
     buildError,
     buildPong,
-    buildServerClose
+    buildServerClose,
+    buildPathProbeAck
 } from './protocol.js';
 import { isIpInCidrs, normalizeIp } from './cidr.js';
 import { AppMetricsTracker } from './metrics.js';
@@ -544,6 +546,22 @@ export class TcpServerRuntime extends EventEmitter {
                 state.bytesSent += pongBuf.length;
                 this.metricsTracker.recordServerTx(pongBuf.length);
                 break;
+            case 'PATH_PROBE': {
+                const probeMsg = msg as PathProbeMessage;
+                const now = Date.now();
+                const ackBuf = encodeFrame(buildPathProbeAck({
+                    probeId: probeMsg.probeId,
+                    clientSessionId: client.sessionId,
+                    seq: probeMsg.seq,
+                    receivedBytes: probeMsg.stepBytes || raw.length,
+                    clientSentTs: probeMsg.sentTs,
+                    serverRecvTs: now
+                }));
+                socket.write(ackBuf);
+                state.bytesSent += ackBuf.length;
+                this.metricsTracker.recordServerTx(ackBuf.length);
+                break;
+            }
             case 'CLIENT_CLOSE':
                 socket.end();
                 break;

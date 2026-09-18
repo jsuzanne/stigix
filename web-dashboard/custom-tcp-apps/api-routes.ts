@@ -5,6 +5,8 @@
 import { Router, Request, Response } from 'express';
 import { TcpAppManager } from './tcp-app-manager.js';
 import { validateApplicationConfig, checkHostPortAvailable } from './validation.js';
+import { runPathProbe } from './path-probe.js';
+import { PathProbeResult, PrismaFlowCorrelation } from './types.js';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
@@ -13,6 +15,9 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// In-memory cache for latest path probe results
+const lastProbeResults = new Map<string, PathProbeResult>();
 
 export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
     const router = Router();
@@ -431,6 +436,132 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
         }
     });
 
+    // ─── Path MTU & SD-WAN Diagnostic Endpoints ──────────────────────────────
+
+    // POST /api/custom-tcp-apps/:id/diagnose-path — Run on-demand Path MTU & SD-WAN diagnostic
+    router.post('/:id/diagnose-path', async (req: Request, res: Response) => {
+        try {
+            const appId = req.params.id;
+            const config = tcpAppManager.getConfig();
+            const app = config?.applications?.find(a => a.id === appId || a.id === appId.toLowerCase() || a.name.toLowerCase() === appId.toLowerCase());
+            if (!app) {
+                return res.status(404).json({ success: false, error: `Application ${appId} not found` });
+            }
+
+            const { targetHost, targetPort: reqPort, preferredSourcePort, runPrismaCorrelation = true } = req.body;
+            if (!targetHost) {
+                return res.status(400).json({ success: false, error: 'Missing targetHost in request body' });
+            }
+
+            const targetPort = Number(reqPort) || app.listener?.port || 8083;
+            const identity = tcpAppManager.getIdentity();
+
+            const probeResult = await runPathProbe({
+                appId: app.id,
+                appName: app.name,
+                targetHost: String(targetHost).trim(),
+                targetPort,
+                authToken: app.listener?.auth?.token,
+                identity,
+                preferredSourcePort: preferredSourcePort ? Number(preferredSourcePort) : undefined,
+                runPrismaCorrelation: Boolean(runPrismaCorrelation),
+                prismaLookupFn: async (siteName, srcPort, dstIp, dstPort) => {
+                    return await runGetflowCorrelation(siteName, srcPort, dstIp, dstPort);
+                }
+            });
+
+            // Save to in-memory cache
+            const cacheKey = `${app.id}:${targetHost}`;
+            lastProbeResults.set(cacheKey, probeResult);
+            lastProbeResults.set(app.id, probeResult);
+
+            res.json({ success: true, result: probeResult });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message || String(err) });
+        }
+    });
+
+    // GET /api/custom-tcp-apps/:id/diagnose-path/last — Retrieve last diagnostic result
+    router.get('/:id/diagnose-path/last', (req: Request, res: Response) => {
+        try {
+            const appId = req.params.id;
+            const targetHost = req.query.targetHost as string;
+            const cacheKey = targetHost ? `${appId}:${targetHost}` : appId;
+            const cached = lastProbeResults.get(cacheKey) || lastProbeResults.get(appId);
+
+            res.json({ success: true, result: cached || null });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/:id/diagnose-all — Run path diagnostics across all configured target peers
+    router.post('/:id/diagnose-all', async (req: Request, res: Response) => {
+        try {
+            const appId = req.params.id;
+            const config = tcpAppManager.getConfig();
+            const app = config?.applications?.find(a => a.id === appId || a.name.toLowerCase() === appId.toLowerCase());
+            if (!app) {
+                return res.status(404).json({ success: false, error: `Application ${appId} not found` });
+            }
+
+            const activePeers = (app.peers || []).filter(p => p.enabled);
+            if (activePeers.length === 0) {
+                return res.status(400).json({ success: false, error: 'No active target peers configured for this application' });
+            }
+
+            const identity = tcpAppManager.getIdentity();
+            const results: PathProbeResult[] = [];
+
+            // Probe peers sequentially to prevent port collisions
+            for (const peer of activePeers) {
+                const targetPort = peer.port || app.listener?.port || 8083;
+                try {
+                    const probeResult = await runPathProbe({
+                        appId: app.id,
+                        appName: app.name,
+                        targetHost: peer.host,
+                        targetPort,
+                        authToken: peer.authToken || app.listener?.auth?.token,
+                        identity,
+                        runPrismaCorrelation: true,
+                        prismaLookupFn: async (siteName, srcPort, dstIp, dstPort) => {
+                            return await runGetflowCorrelation(siteName, srcPort, dstIp, dstPort);
+                        }
+                    });
+
+                    const cacheKey = `${app.id}:${peer.host}`;
+                    lastProbeResults.set(cacheKey, probeResult);
+                    results.push(probeResult);
+                } catch (err: any) {
+                    results.push({
+                        probeId: `ERR-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
+                        appId: app.id,
+                        appName: app.name,
+                        targetHost: peer.host,
+                        targetPort,
+                        timestamp: new Date().toISOString(),
+                        durationMs: 0,
+                        connected: false,
+                        maxPathMtu: 0,
+                        recommendedMss: 536,
+                        fragmentationDetected: false,
+                        overheadBytes: 0,
+                        avgRttMs: 0,
+                        steps: [],
+                        recommendations: { summary: '', ciscoIos: '', vyos: '', linux: '' },
+                        peerCapabilities: { supportsOneWay: false },
+                        error: err.message || String(err)
+                    });
+                }
+            }
+
+            res.json({ success: true, results });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message || String(err) });
+        }
+    });
+
     return router;
 }
 
@@ -558,5 +689,147 @@ function runPrismaCustomApps(args: string[]): Promise<any> {
         proc.on('error', (err) => {
             reject(err);
         });
+    });
+}
+
+function getGetflowScript(): string {
+    const root = findProjectRoot();
+    const candidates = [
+        path.join(root, 'engines', 'getflow.py'),
+        '/app/engines/getflow.py',
+        path.join(process.cwd(), 'engines', 'getflow.py')
+    ];
+    for (const c of candidates) {
+        if (fs.existsSync(c)) return c;
+    }
+    return 'engines/getflow.py';
+}
+
+async function runGetflowCorrelation(siteName: string, srcPort: number, dstIp: string, dstPort: number): Promise<PrismaFlowCorrelation | null> {
+    return new Promise((resolve) => {
+        try {
+            const root = findProjectRoot();
+            const script = getGetflowScript();
+            if (!fs.existsSync(script)) {
+                return resolve(null);
+            }
+
+            const python = getPythonPath();
+            const args = [
+                script,
+                '--site-name', siteName,
+                '--tcp-src-port', String(srcPort),
+                '--tcp-dst-port', String(dstPort),
+                '--dst-ip', dstIp,
+                '--minutes', '5',
+                '--json'
+            ];
+
+            const childEnv: Record<string, string> = {
+                ...process.env as Record<string, string>,
+                PYTHONUNBUFFERED: '1'
+            };
+
+            const tsgId = process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID;
+            if (tsgId) {
+                childEnv.PRISMA_SDWAN_TSGID = tsgId;
+                childEnv.PRISMA_SDWAN_TSG_ID = tsgId;
+            }
+
+            // Try to load credentials from prisma-config.json if missing
+            if (!childEnv.PRISMA_SDWAN_CLIENT_ID || !childEnv.PRISMA_SDWAN_CLIENT_SECRET) {
+                const configCandidates = [
+                    path.join(root, 'config', 'prisma-config.json'),
+                    path.join(root, 'config', 'credentials.json'),
+                    '/data/stigix/config/prisma-config.json',
+                    '/data/stigix/prisma-config.json',
+                    '/app/config/prisma-config.json'
+                ];
+                for (const cfgPath of configCandidates) {
+                    if (fs.existsSync(cfgPath)) {
+                        try {
+                            const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+                            if (parsed.client_id) childEnv.PRISMA_SDWAN_CLIENT_ID = parsed.client_id;
+                            if (parsed.client_secret) childEnv.PRISMA_SDWAN_CLIENT_SECRET = parsed.client_secret;
+                            const tsg = parsed.tsg_id || parsed.tsgid || parsed.tsgId;
+                            if (tsg) {
+                                childEnv.PRISMA_SDWAN_TSGID = tsg;
+                                childEnv.PRISMA_SDWAN_TSG_ID = tsg;
+                            }
+                            if (parsed.region) childEnv.PRISMA_SDWAN_REGION = parsed.region;
+                            break;
+                        } catch {}
+                    }
+                }
+            }
+
+            const proc = spawn(python, args, {
+                cwd: path.dirname(script),
+                timeout: 8000,
+                env: childEnv
+            });
+
+            let stdout = '';
+            let stderr = '';
+
+            proc.stdout.on('data', (d) => { stdout += d.toString(); });
+            proc.stderr.on('data', (d) => { stderr += d.toString(); });
+
+            proc.on('close', (code) => {
+                try {
+                    const parsed = JSON.parse(stdout);
+                    if (parsed?.flows && parsed.flows.length > 0) {
+                        const flow = parsed.flows[0];
+                        const egressPath = (flow.egress_path || flow.path_type || '').replace(/ to /g, ' → ');
+                        const pathHistory = (flow.path_history || []).map((p: any) => ({
+                            ...p,
+                            path: p.path ? p.path.replace(/ to /g, ' → ') : p.path
+                        }));
+                        const pathEvolution = pathHistory.length > 1
+                            ? pathHistory.map((p: any) => p.path).join(' ➔ ')
+                            : egressPath;
+
+                        resolve({
+                            matched: true,
+                            flowFound: true,
+                            siteName,
+                            sourceIp: flow.source_ip,
+                            sourcePort: srcPort,
+                            destinationIp: dstIp,
+                            destinationPort: dstPort,
+                            activeCircuit: flow.active_circuit || flow.circuit_name || flow.wan_interface || egressPath,
+                            circuitId: flow.circuit_id,
+                            ionInterface: flow.ion_interface || flow.interface_name,
+                            pathPolicy: flow.path_policy || flow.policy_name,
+                            pathType: flow.path_type,
+                            egressPath,
+                            pathEvolution,
+                            backupCircuit: flow.backup_circuit,
+                            lossPercent: flow.loss_percent,
+                            jitterMs: flow.jitter_ms,
+                            rawFlow: flow
+                        });
+                    } else {
+                        resolve({
+                            matched: true,
+                            flowFound: false,
+                            siteName,
+                            sourcePort: srcPort,
+                            destinationIp: dstIp,
+                            destinationPort: dstPort,
+                            error: 'No matching flow recorded in Flow Browser within last 5 minutes (flow may still be buffering in ION).'
+                        });
+                    }
+                } catch {
+                    resolve(null);
+                }
+            });
+
+            proc.on('error', () => {
+                resolve(null);
+            });
+        } catch {
+            resolve(null);
+        }
     });
 }

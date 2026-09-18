@@ -1556,6 +1556,21 @@ async def test_tcp_app_handshake(agent_id: str, app_id: str, peer_id: Optional[s
 
 
 @mcp.tool()
+async def diagnose_tcp_app_path(agent_id: str, app_id: str, target_host: str, run_prisma_correlation: bool = True) -> dict:
+    """
+    Run an on-demand Path MTU discovery (PMTUD), One-Way Delay asymmetry calculation, and Prisma SD-WAN flow correlation for a Custom TCP Application.
+    Tests tiered packet sizes (1500B to 1200B) with Don't Fragment (DF) bit, detects tunnel MTU bottlenecks, recommended TCP MSS clamping, and queries Prisma SD-WAN Flow Browser for active circuits/policies.
+
+    Args:
+        agent_id: ID of the Stigix node initiating the diagnostic.
+        app_id: Application identifier (e.g. 'Onprem8083', 'STX_CRM_App').
+        target_host: Destination IP or hostname of the remote peer (e.g. '192.168.203.100').
+        run_prisma_correlation: Whether to query Prisma SD-WAN Flow Browser for active circuit and policy correlation (default: True).
+    """
+    return await orchestrator.diagnose_tcp_app_path(agent_id, app_id, target_host, run_prisma_correlation)
+
+
+@mcp.tool()
 async def get_tcp_app_sessions(agent_id: str, app_id: str) -> dict:
     """
     Inspect active incoming and outgoing TCP sessions for a Custom TCP Application.

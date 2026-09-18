@@ -91,6 +91,41 @@ async function runTests() {
     if (!errorMessage.includes('HTTP')) throw new Error('Error message should identify HTTP banner');
     console.log('  ✅ HTTP banner rejection test passed!');
 
+    // 6. Test PathProbe and PathProbeAck Frame Parsing
+    console.log('Test 6: PathProbe & PathProbeAck protocol framing');
+    const { buildPathProbe, buildPathProbeAck } = await import('./protocol.js');
+    const probeParser = new FrameParser();
+    const probeMessages: any[] = [];
+    probeParser.on('message', m => probeMessages.push(m));
+
+    const probeMsg = buildPathProbe({
+        probeId: 'PRB-TEST',
+        clientSessionId: 'sess-diag',
+        seq: 1,
+        stepBytes: 1420,
+        padding: 'X'.repeat(500)
+    });
+    probeParser.push(encodeFrame(probeMsg));
+    if (probeMessages.length !== 1 || probeMessages[0].type !== 'PATH_PROBE') {
+        throw new Error('PathProbe frame failed to parse');
+    }
+    if (probeMessages[0].stepBytes !== 1420) throw new Error('PathProbe stepBytes mismatch');
+
+    const ackMsg = buildPathProbeAck({
+        probeId: 'PRB-TEST',
+        clientSessionId: 'sess-diag',
+        seq: 1,
+        receivedBytes: 1420,
+        clientSentTs: 1000,
+        serverRecvTs: 1015
+    });
+    probeParser.push(encodeFrame(ackMsg));
+    if (probeMessages.length !== 2 || probeMessages[1].type !== 'PATH_PROBE_ACK') {
+        throw new Error('PathProbeAck frame failed to parse');
+    }
+    if (probeMessages[1].serverRecvTs !== 1015) throw new Error('PathProbeAck timestamp mismatch');
+    console.log('  ✅ PathProbe & PathProbeAck framing tests passed!');
+
     console.log('🎉 ALL BACKEND PROTOCOL AND RUNTIME TESTS PASSED SUCCESSFULLY!');
 }
 
