@@ -48,6 +48,15 @@ const upload = multer({
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Global process error guards — prevent unhandled TCP socket errors from crashing Express
+process.on('uncaughtException', (err: any) => {
+    log('SYSTEM', `⚠️ Handled Uncaught Exception: ${err?.message || err}`, 'error');
+    if (err?.stack) console.error(err.stack);
+});
+process.on('unhandledRejection', (reason: any) => {
+    log('SYSTEM', `⚠️ Handled Unhandled Promise Rejection: ${reason?.message || reason}`, 'error');
+});
+
 /**
  * Robust project root detection.
  * Handles both containerized (flattened) and local (hierarchical) environments.

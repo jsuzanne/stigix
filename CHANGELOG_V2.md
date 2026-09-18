@@ -20,12 +20,12 @@ All notable changes made specifically on the `v2` branch are documented in this 
   - Registered `diagnose_tcp_app_path` MCP tool for Claude Desktop natural language diagnostics.
 
 ### Fixed
-- **Path MTU Probe Client/Server Framing & Timeouts (`path-probe.ts`, `tcp-server-runtime.ts`)** 🛡️:
-  - Fixed `FrameParser` integration in client probe runner to listen on `message` EventEmitter rather than expecting a return value from `.push()`.
-  - Added missing `buildRequest` import for legacy destination fallback probing.
-  - Fixed server-side `PATH_PROBE` response handler referencing undefined `raw` variable.
-  - Resolved dead variable reference `boundPort` with dynamic `socket.localPort`.
-  - Relaxed handshake and probe step timeouts (5000ms handshake, 3000ms step) for resilient WAN discovery and clear fallback diagnostics on un-upgraded remote peers.
+- **Path MTU Probe Client/Server Framing & Anti-Crash Resilience (`path-probe.ts`, `server.ts`, `tcp-server-runtime.ts`)** 🛡️:
+  - Added full error event listeners (`parser.on('error')`, `socket.on('error')`, `socket.on('close')`) to prevent uncaught EventEmitter exceptions from crashing the Express backend (resolves HTTP 502 Bad Gateway under reverse proxies).
+  - Gracefully handles non-Stigix HTTP responses (`HTTP/1.1 200 OK`) and malformed frames without throwing unhandled exceptions.
+  - Implemented short-circuit logic: disconnects or drops immediately stop subsequent stepping without wasting timeouts.
+  - Optimized probe timeouts (2.5s connect/handshake, 1.2s step, 10s overarching limit) ensuring instant, responsive UI diagnostics.
+  - Added global process `uncaughtException` and `unhandledRejection` safety hooks in `server.ts`.
 
 ---
 
