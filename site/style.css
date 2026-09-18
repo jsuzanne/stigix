@@ -549,22 +549,96 @@ a:hover { color: #fff; }
   overflow: hidden;
   background: var(--bg-card);
   box-shadow: 0 16px 60px rgba(0,0,0,0.5);
+  position: relative;
 }
 .gallery__bar {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; justify-content: space-between;
   padding: 10px 16px;
   background: var(--bg-raised); border-bottom: 1px solid var(--stroke);
+  user-select: none;
+}
+.gallery__bar-left {
+  display: flex; align-items: center; gap: 6px;
+}
+.gallery__bar-right {
+  display: flex; align-items: center; gap: 12px;
 }
 .gallery__bar-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--stroke-hi); }
 .gallery__bar-label {
   font-family: var(--mono); font-size: 0.68rem; color: var(--muted); margin-left: 8px;
 }
-.gallery__frame img { width: 100%; display: block; }
+.gallery__counter {
+  font-family: var(--mono); font-size: 0.65rem; color: var(--teal);
+  background: rgba(24, 201, 174, 0.1); border: 1px solid rgba(24, 201, 174, 0.3);
+  padding: 2px 8px; border-radius: 999px; font-weight: 500;
+}
+.gallery__dots {
+  display: flex; align-items: center; gap: 6px;
+}
+.gallery__dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--stroke-hi);
+  border: none; padding: 0; cursor: pointer; transition: all 0.2s ease;
+}
+.gallery__dot:hover { background: var(--mid); }
+.gallery__dot.active {
+  width: 16px; border-radius: 3px; background: var(--teal);
+}
+.gallery__slider {
+  position: relative;
+  overflow: hidden;
+  background: #0d1117;
+}
+.gallery__slide {
+  display: none;
+}
+.gallery__slide.active {
+  display: block;
+  animation: galleryFade 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes galleryFade {
+  from { opacity: 0; transform: scale(0.995); }
+  to { opacity: 1; transform: scale(1); }
+}
+.gallery__slide img {
+  width: 100%; display: block; height: auto;
+}
+.gallery__nav-btn {
+  position: absolute;
+  top: calc(50% - 22px);
+  z-index: 10;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(10, 14, 23, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--stroke-hi);
+  color: var(--white);
+  font-size: 1.25rem;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  opacity: 0.85;
+}
+.gallery__slider:hover .gallery__nav-btn { opacity: 1; }
+.gallery__nav-btn:hover {
+  background: rgba(24, 201, 174, 0.25);
+  border-color: var(--teal);
+  color: var(--teal);
+  transform: scale(1.1);
+  box-shadow: 0 0 20px rgba(24, 201, 174, 0.4);
+}
+.gallery__nav-btn--prev { left: 16px; }
+.gallery__nav-btn--next { right: 16px; }
 .gallery__caption {
   padding: 14px 20px;
-  font-size: 0.8rem; color: var(--mid);
+  font-size: 0.82rem; color: var(--mid);
   background: var(--bg-raised); border-top: 1px solid var(--stroke);
+  line-height: 1.6;
 }
+.gallery__caption strong { color: var(--white); }
 
 /* ─────────────────────────────────────────────
    QUICK START  — terminal-first

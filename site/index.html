@@ -628,116 +628,568 @@
       <button class="gallery__tab" data-tab="iot" role="tab" aria-selected="false" id="tab-btn-iot">IoT</button>
       <button class="gallery__tab" data-tab="voice" role="tab" aria-selected="false" id="tab-btn-voice">Voice</button>
       <button class="gallery__tab" data-tab="failover" role="tab" aria-selected="false" id="tab-btn-failover">Failover</button>
+      <button class="gallery__tab" data-tab="xfr" role="tab" aria-selected="false" id="tab-btn-xfr">Bandwidth (XFR)</button>
       <button class="gallery__tab" data-tab="vyos" role="tab" aria-selected="false" id="tab-btn-vyos">VyOS</button>
-      <button class="gallery__tab" data-tab="topology" role="tab" aria-selected="false" id="tab-btn-topology">Overlay Topology</button>
-      <button class="gallery__tab" data-tab="underlay" role="tab" aria-selected="false" id="tab-btn-underlay">Underlay Topology</button>
+      <button class="gallery__tab" data-tab="topology" role="tab" aria-selected="false" id="tab-btn-topology">Topology</button>
       <button class="gallery__tab" data-tab="customapps" role="tab" aria-selected="false" id="tab-btn-customapps">Custom Apps</button>
-      <button class="gallery__tab" data-tab="statistics" role="tab" aria-selected="false" id="tab-btn-statistics">Statistics</button>
+      <button class="gallery__tab" data-tab="apistudio" role="tab" aria-selected="false" id="tab-btn-apistudio">API Studio</button>
+      <button class="gallery__tab" data-tab="mcpserver" role="tab" aria-selected="false" id="tab-btn-mcpserver">MCP Server</button>
+      <button class="gallery__tab" data-tab="statistics" role="tab" aria-selected="false" id="tab-btn-statistics">Live Events</button>
       <button class="gallery__tab" data-tab="config" role="tab" aria-selected="false" id="tab-btn-config">Config</button>
       <button class="gallery__tab" data-tab="dashboard2" role="tab" aria-selected="false" id="tab-btn-dashboard2">Dashboard 2</button>
     </div>
 
     <div class="gallery__panel active" id="tab-dashboard">
       <div class="gallery__frame">
-        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Dashboard — real-time traffic monitoring</span></div>
-        <img src="assets/screenshots/dashboard.png" alt="Stigix main dashboard" loading="lazy">
-        <div class="gallery__caption">Live traffic generation monitoring, application status, network metrics, and system health — all in one view.</div>
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Dashboard — Traffic Volume &amp; Application Performance</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+            </div>
+            <span class="gallery__counter">1 / 2</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="Dashboard — Traffic Volume &amp; Application Performance">
+            <img src="assets/screenshots/dashboard.png" alt="Stigix Real-Time Traffic Volume and Application Performance" loading="lazy">
+            <div class="gallery__caption"><strong>Traffic Volume &amp; Application Performance:</strong> Real-time traffic volume chart, per-application request metrics, average latency, TTFB, and success rates across enterprise SaaS targets.</div>
+          </div>
+          <div class="gallery__slide" data-label="Dashboard — Traffic Generator Controls &amp; Density Settings">
+            <img src="assets/screenshots/dashboard-2.png" alt="Stigix Dashboard with density controls and live stream" loading="lazy">
+            <div class="gallery__caption"><strong>Traffic Generator Controls:</strong> Live traffic generation controls, active application matrix, and real-time WebSocket telemetry.</div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="gallery__panel" id="tab-security">
       <div class="gallery__frame">
-        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Security — URL filtering, DNS security, threat prevention</span></div>
-        <img src="assets/screenshots/security.png" alt="Stigix security testing tab" loading="lazy">
-        <div class="gallery__caption">URL filtering validation across 66 categories, DNS security tests, and EICAR-based IPS validation — with persistent result history and export.</div>
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Security — Posture Score &amp; Policy Validation</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+              <button class="gallery__dot" aria-label="Slide 4"></button>
+              <button class="gallery__dot" aria-label="Slide 5"></button>
+              <button class="gallery__dot" aria-label="Slide 6"></button>
+            </div>
+            <span class="gallery__counter">1 / 6</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="Security — Posture Score &amp; Policy Validation">
+            <img src="assets/screenshots/security.png" alt="Security Posture Score Overview" loading="lazy">
+            <div class="gallery__caption"><strong>Security Posture Score Overview:</strong> Real-time weighted posture score evaluating URL filtering, DNS Security, and Threat Prevention (EICAR) against baseline.</div>
+          </div>
+          <div class="gallery__slide" data-label="Security — URL Filtering Categories &amp; Block Status">
+            <img src="assets/screenshots/security-url.png" alt="Security URL Filtering Category Matrix" loading="lazy">
+            <div class="gallery__caption"><strong>URL Filtering Validation:</strong> 70 comprehensive categories with live block/allow indicators and policy enforcement auditing.</div>
+          </div>
+          <div class="gallery__slide" data-label="Security — DNS Security Tests &amp; Sinkhole Verification">
+            <img src="assets/screenshots/security-dns.png" alt="Security DNS Security Tests" loading="lazy">
+            <div class="gallery__caption"><strong>DNS Security Testing:</strong> 24 active malicious DNS test domains (DNS Tunneling, Dynamic DNS, DGA) with sinkhole detection.</div>
+          </div>
+          <div class="gallery__slide" data-label="Security — C2 Attack Scenarios &amp; Exploits">
+            <img src="assets/screenshots/security-c2.png" alt="Security C2 Attack Scenarios" loading="lazy">
+            <div class="gallery__caption"><strong>C2 Attack Scenarios:</strong> Automated attack simulations including SQL injection, command injection, and C2 beacons with configurable schedules.</div>
+          </div>
+          <div class="gallery__slide" data-label="Security — AI Security (AISA) Prompts &amp; DLP">
+            <img src="assets/screenshots/security-ai.png" alt="AI Security Prompts and DLP Exfiltration" loading="lazy">
+            <div class="gallery__caption"><strong>AI Security (AISA) Tests:</strong> Live DLP credit card and credential exfiltration simulations against enterprise AI assistants.</div>
+          </div>
+          <div class="gallery__slide" data-label="Security — External Dynamic Lists (EDL Feeds)">
+            <img src="assets/screenshots/security-edl.png" alt="External Dynamic Lists EDL Threat Feeds" loading="lazy">
+            <div class="gallery__caption"><strong>Automated Threat Feeds:</strong> Live automated EDL IP, URL, and DNS feeds for continuous firewall policy enforcement.</div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="gallery__panel" id="tab-performance">
       <div class="gallery__frame">
-        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Performance — synthetic probes and endpoint health</span></div>
-        <img src="assets/screenshots/performance.png" alt="Stigix performance tab" loading="lazy">
-        <div class="gallery__caption">Synthetic connectivity probes (HTTP, ICMP, TCP) with per-site latency tracking and endpoint health monitoring.</div>
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Performance — Digital Experience (DEM) Dashboard</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+              <button class="gallery__dot" aria-label="Slide 4"></button>
+              <button class="gallery__dot" aria-label="Slide 5"></button>
+            </div>
+            <span class="gallery__counter">1 / 5</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="Performance — Digital Experience (DEM) Dashboard">
+            <img src="assets/screenshots/performance.png" alt="Digital Experience DEM Overview" loading="lazy">
+            <div class="gallery__caption"><strong>Digital Experience Overview:</strong> Global weighted path score (0-100), 15m/1h/6h/24h score trends, and flaky probe detection.</div>
+          </div>
+          <div class="gallery__slide" data-label="Performance — Score Calculation &amp; Protocol Breakdown">
+            <img src="assets/screenshots/performance-score.png" alt="DEM Score Calculation and Protocols" loading="lazy">
+            <div class="gallery__caption"><strong>Path Quality &amp; Scoring Logic:</strong> Sub-second calculations across HTTP, HTTPS, ICMP, TCP, UDP, DNS, and Stigix Cloud targets.</div>
+          </div>
+          <div class="gallery__slide" data-label="Performance — Synthetic Endpoint Probes List">
+            <img src="assets/screenshots/performance-probes.png" alt="Synthetic Probes Endpoint List" loading="lazy">
+            <div class="gallery__caption"><strong>Active Endpoint Catalog:</strong> Real-time latency tracking, min/max range annotations, and availability percentages per probe.</div>
+          </div>
+          <div class="gallery__slide" data-label="Performance — DNS / TCP / TLS / TTFB Timing Breakdown">
+            <img src="assets/screenshots/performance-latency.png" alt="Probe Timing Graph Breakdown" loading="lazy">
+            <div class="gallery__caption"><strong>Multi-Phase Timing Analysis:</strong> High-resolution graphs breaking down DNS lookup, TCP connect, TLS handshake, and TTFB latency.</div>
+          </div>
+          <div class="gallery__slide" data-label="Performance — Probe History &amp; Response Inspection">
+            <img src="assets/screenshots/performance-history.png" alt="Probe Historical Log Table" loading="lazy">
+            <div class="gallery__caption"><strong>Historical Execution Log:</strong> Exact timestamped scores, server IP resolution, HTTP return codes, and content match verification.</div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="gallery__panel" id="tab-iot">
       <div class="gallery__frame">
-        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">IoT — Layer-2/3 device simulation</span></div>
-        <img src="assets/screenshots/iot.png" alt="Stigix IoT simulation tab" loading="lazy">
-        <div class="gallery__caption">Real-on-the-wire IoT simulation with DHCP/ARP presence. Includes attack mode: DNS flood, C2 beacon, port scan, data exfiltration.</div>
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">IoT — Fleet Simulation &amp; Real-Time Monitoring</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+              <button class="gallery__dot" aria-label="Slide 4"></button>
+            </div>
+            <span class="gallery__counter">1 / 4</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="IoT — Fleet Simulation &amp; Real-Time Monitoring">
+            <img src="assets/screenshots/iot.png" alt="IoT Simulation Active Devices" loading="lazy">
+            <div class="gallery__caption"><strong>IoT Simulation Engine:</strong> Real Layer-2/3 device simulation with DHCP/ARP presence, stateful packet generation, and attack modes.</div>
+          </div>
+          <div class="gallery__slide" data-label="IoT — Device Fleet Overview &amp; Hardware Profiles">
+            <img src="assets/screenshots/iot-fleet.png" alt="IoT Device Fleet Overview" loading="lazy">
+            <div class="gallery__caption"><strong>Fleet Management:</strong> Configurable device profiles (cameras, medical sensors, streaming devices) with custom MAC addresses and vendors.</div>
+          </div>
+          <div class="gallery__slide" data-label="IoT — Real-Time Log Analysis &amp; Threat Detection">
+            <img src="assets/screenshots/iot-logs.png" alt="IoT Device Real-time Logs Analysis" loading="lazy">
+            <div class="gallery__caption"><strong>Real-Time Device Logs:</strong> Live traffic monitoring, DNS security events, and anomaly detection per emulated device.</div>
+          </div>
+          <div class="gallery__slide" data-label="IoT — Device Configuration &amp; Attack Mode Settings">
+            <img src="assets/screenshots/iot-edit.png" alt="IoT Device Configuration Modal" loading="lazy">
+            <div class="gallery__caption"><strong>Profile Editor:</strong> Customize IP assignments, protocol behaviors, port scanning, C2 beacon intervals, and DNS floods.</div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="gallery__panel" id="tab-voice">
       <div class="gallery__frame">
-        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Voice — RTP simulation and QoS analytics</span></div>
-        <img src="assets/screenshots/voice.png" alt="Stigix voice simulation tab" loading="lazy">
-        <div class="gallery__caption">Scapy-based RTP forging for G.711/G.729 voice simulation. MOS score estimation, jitter and latency metrics for QoS validation.</div>
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Voice — VoIP RTP Simulation Dashboard</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+            </div>
+            <span class="gallery__counter">1 / 3</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="Voice — VoIP RTP Simulation Dashboard">
+            <img src="assets/screenshots/voice.png" alt="Voice Simulation Dashboard" loading="lazy">
+            <div class="gallery__caption"><strong>VoIP Simulation Dashboard:</strong> Multi-codec RTP generation (G.711 PCMA/PCMU, G.729) with concurrent call generation across WAN peers.</div>
+          </div>
+          <div class="gallery__slide" data-label="Voice — Per-Target QoS Statistics (MOS, Jitter, RTT, Loss)">
+            <img src="assets/screenshots/voice-qos.png" alt="VoIP Per-Target QoS Statistics" loading="lazy">
+            <div class="gallery__caption"><strong>QoS Analytics &amp; MOS Scoring:</strong> Detailed MOS quality ratings (4.4+ Good), average packet loss, RTT, and jitter per destination site.</div>
+          </div>
+          <div class="gallery__slide" data-label="Voice — Call History &amp; Active RTP Streams">
+            <img src="assets/screenshots/voice-history.png" alt="VoIP Call History and Active Streams" loading="lazy">
+            <div class="gallery__caption"><strong>Stream Trace &amp; Audit:</strong> Live inbound/outbound call inspection, duration tracking, source port mapping, and disposition logging.</div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="gallery__panel" id="tab-failover">
       <div class="gallery__frame">
-        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Failover Lab — high-precision convergence &amp; PoC test analysis</span></div>
-        <img src="assets/screenshots/failover.png" alt="Stigix failover lab tab" loading="lazy">
-        <div class="gallery__caption">UDP probe monitoring at up to 1000 PPS. Measures sub-second SD-WAN transition times, renders historical outage curves with adaptive scaling, SCM multi-path sequence tracking, and 1-click PoC card HD PNG export.</div>
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Failover Lab — Convergence Targets &amp; Monitoring</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+            </div>
+            <span class="gallery__counter">1 / 3</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="Failover Lab — Convergence Targets &amp; Monitoring">
+            <img src="assets/screenshots/failover.png" alt="Failover Lab Targets and Controls" loading="lazy">
+            <div class="gallery__caption"><strong>High-Precision Convergence Probing:</strong> UDP probe monitoring up to 1000 PPS with configurable rates and target endpoints.</div>
+          </div>
+          <div class="gallery__slide" data-label="Failover Lab — PoC Test Analysis &amp; Failover Curves">
+            <img src="assets/screenshots/failover-curves.png" alt="Failover PoC Test Analysis and Curves" loading="lazy">
+            <div class="gallery__caption"><strong>PoC Outage Curves &amp; Analysis:</strong> Millisecond-level sub-second failover outage duration, RTT spike, packet loss graphs, and 1-click PoC Card HD PNG export.</div>
+          </div>
+          <div class="gallery__slide" data-label="Failover Lab — Live Packet Counters &amp; Transition Metrics">
+            <img src="assets/screenshots/failover-metrics.png" alt="Failover Live Test Metrics and Packet Counters" loading="lazy">
+            <div class="gallery__caption"><strong>Live Transition Inspection:</strong> Real-time packets sent/received counter, Prisma SD-WAN live path inspection, and SCM sequence tracking.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-xfr">
+      <div class="gallery__frame">
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Bandwidth (XFR) — WAN Throughput &amp; Speed Testing</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+            </div>
+            <span class="gallery__counter">1 / 3</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="Bandwidth (XFR) — WAN Throughput &amp; Speed Testing">
+            <img src="assets/screenshots/xfr.png" alt="Bandwidth Test XFR Dashboard" loading="lazy">
+            <div class="gallery__caption"><strong>Bandwidth Testing Engine:</strong> Multi-stream TCP throughput testing against Stigix appliances and public targets.</div>
+          </div>
+          <div class="gallery__slide" data-label="Bandwidth (XFR) — Test Parameters &amp; Configuration Modal">
+            <img src="assets/screenshots/xfr-modal.png" alt="Bandwidth Test Configuration Modal" loading="lazy">
+            <div class="gallery__caption"><strong>Stream Configuration:</strong> Customize duration, parallel TCP streams, congestion control algorithms (Cubic/BBR), and port ranges.</div>
+          </div>
+          <div class="gallery__slide" data-label="Bandwidth (XFR) — Throughput &amp; TCP Retransmits Results">
+            <img src="assets/screenshots/xfr-results.png" alt="Bandwidth Test Results and TCP Retransmits" loading="lazy">
+            <div class="gallery__caption"><strong>Diagnostics &amp; TCP Window Analysis:</strong> Total data transferred, upload/download bitrates, TCP retransmits, and average RTT latency.</div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="gallery__panel" id="tab-vyos">
       <div class="gallery__frame">
-        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">VyOS Control — network impairment orchestration</span></div>
-        <img src="assets/screenshots/vyos.png" alt="Stigix VyOS control tab" loading="lazy">
-        <div class="gallery__caption">Inject latency, packet loss, rate-limiting, and IP blocking on VyOS routers via API — no manual CLI needed per test scenario.</div>
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">VyOS Control — Router Discovery &amp; Status</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+            </div>
+            <span class="gallery__counter">1 / 3</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="VyOS Control — Router Discovery &amp; Status">
+            <img src="assets/screenshots/vyos.png" alt="VyOS Control Routers Dashboard" loading="lazy">
+            <div class="gallery__caption"><strong>Router Discovery &amp; Health:</strong> Multi-router status, online reachability, API latency, and management interface status.</div>
+          </div>
+          <div class="gallery__slide" data-label="VyOS Control — Sequence Timelines &amp; Impairment Actions">
+            <img src="assets/screenshots/vyos-timeline.png" alt="VyOS Sequence Timelines and Actions" loading="lazy">
+            <div class="gallery__caption"><strong>Automated Impairment Sequences:</strong> Build multi-step chaos workflows with delays, netem latency, packet loss, and interface flaps.</div>
+          </div>
+          <div class="gallery__slide" data-label="VyOS Control — Execution History &amp; Audit Log">
+            <img src="assets/screenshots/vyos-history.png" alt="VyOS Execution History and Audit Logs" loading="lazy">
+            <div class="gallery__caption"><strong>Execution Audit Log:</strong> Step-by-step history of applied network impairments, execution times, and rollback status.</div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="gallery__panel" id="tab-topology">
       <div class="gallery__frame">
-        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">VPN Topology — live overlay visualization</span></div>
-        <img src="assets/screenshots/topology.png" alt="Stigix VPN topology overlay" loading="lazy">
-        <div class="gallery__caption">Live SD-WAN overlay from the Prisma SASE API — Active/Backup/Down tunnel status, hub mapping, peer device discovery.</div>
-      </div>
-    </div>
-
-    <div class="gallery__panel" id="tab-underlay">
-      <div class="gallery__frame">
-        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Physical Underlay Topology — VyOS backbone router chassis &amp; 1:1 direct port cabling</span></div>
-        <img src="assets/screenshots/underlay-topology.png" alt="Stigix Physical Underlay Topology with VyOS chassis and direct port cabling" loading="lazy">
-        <div class="gallery__caption">Interactive Underlay Topology canvas featuring VyOS backbone router chassis with DC/Hub uplinks and Branch downlinks, direct 1:1 port cable lines, live link status, one-click Shut/No-Shut, and direct Netem latency/loss impairment injection.</div>
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Topology — Physical Underlay Chassis &amp; Cabling</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+            </div>
+            <span class="gallery__counter">1 / 3</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="Topology — Physical Underlay Chassis &amp; Cabling">
+            <img src="assets/screenshots/topology.png" alt="Underlay Topology with VyOS Router Chassis" loading="lazy">
+            <div class="gallery__caption"><strong>Physical Underlay Canvas:</strong> Interactive topology with VyOS router chassis, DC/Hub uplinks, Branch downlinks, and direct port cable lines.</div>
+          </div>
+          <div class="gallery__slide" data-label="Topology — Logical SD-WAN Overlay Mesh View">
+            <img src="assets/screenshots/topology-overlay.png" alt="Logical SD-WAN Overlay Mesh View" loading="lazy">
+            <div class="gallery__caption"><strong>Logical SD-WAN Overlay:</strong> Live tunnel status (Active/Backup/Down), Prisma SASE site detection, and hub-and-spoke mapping.</div>
+          </div>
+          <div class="gallery__slide" data-label="Topology — WAN Link Details &amp; Direct Impairments">
+            <img src="assets/screenshots/topology-link.png" alt="WAN Link Details Modal" loading="lazy">
+            <div class="gallery__caption"><strong>Interactive Link Controls:</strong> One-click interface Shut/No-Shut, QoS injection, and netem latency/loss injection per link.</div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="gallery__panel" id="tab-customapps">
       <div class="gallery__frame">
-        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Custom Apps — East-West TCP workload &amp; chaos simulation</span></div>
-        <img src="assets/screenshots/custom-apps.png" alt="Stigix custom TCP applications tab" loading="lazy">
-        <div class="gallery__caption">Multi-application East-West TCP simulation with concurrent server listeners and client generators. Real-time p50/p95 latency percentiles, 8 chaos modes, Health Score, and 1-click Prisma SD-WAN AppDef sync.</div>
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Custom Apps — East-West Workload Simulation</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+              <button class="gallery__dot" aria-label="Slide 4"></button>
+              <button class="gallery__dot" aria-label="Slide 5"></button>
+            </div>
+            <span class="gallery__counter">1 / 5</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="Custom Apps — East-West Workload Simulation">
+            <img src="assets/screenshots/custom-apps.png" alt="Custom TCP Applications Dashboard" loading="lazy">
+            <div class="gallery__caption"><strong>Custom TCP Simulator:</strong> Multi-application East-West simulation across SD-WAN overlays, direct breakouts, and enterprise networks.</div>
+          </div>
+          <div class="gallery__slide" data-label="Custom Apps — Outgoing Active Sessions List">
+            <img src="assets/screenshots/custom-apps-sessions.png" alt="Custom Apps Active Outgoing Sessions" loading="lazy">
+            <div class="gallery__caption"><strong>Active Stream Monitor:</strong> Track live sessions, uptime duration, jitter, and rolling p50/p95 RTT latency percentiles.</div>
+          </div>
+          <div class="gallery__slide" data-label="Custom Apps — RTT Latency Origin Breakdown">
+            <img src="assets/screenshots/custom-apps-latency.png" alt="Custom Apps Latency Breakdown" loading="lazy">
+            <div class="gallery__caption"><strong>Latency Origin Breakdown:</strong> Isolate application processing time vs network transmission delay with sub-millisecond precision.</div>
+          </div>
+          <div class="gallery__slide" data-label="Custom Apps — Stability &amp; Chaos Percentiles">
+            <img src="assets/screenshots/custom-apps-chaos.png" alt="Custom Apps Chaos Percentiles and Stability" loading="lazy">
+            <div class="gallery__caption"><strong>Stability &amp; Chaos Modes:</strong> 8 server simulation modes (jitter, delays, drop responses, error responses) and client reconnect tracking.</div>
+          </div>
+          <div class="gallery__slide" data-label="Custom Apps — Prisma SD-WAN AppDef Sync">
+            <img src="assets/screenshots/custom-apps-prisma.png" alt="Prisma SD-WAN AppDef Sync" loading="lazy">
+            <div class="gallery__caption"><strong>Prisma SASE Integration:</strong> 1-click automatic provisioning and classification in Prisma SD-WAN for instant Flow Browser visibility.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-apistudio">
+      <div class="gallery__frame">
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">API Studio — Live Telemetry &amp; Request Inspector</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+            </div>
+            <span class="gallery__counter">1 / 1</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <div class="gallery__slide active" data-label="API Studio — Live Telemetry &amp; Request Inspector">
+            <img src="assets/screenshots/api-studio.png" alt="Stigix API Studio with live telemetry and API inspector" loading="lazy">
+            <div class="gallery__caption"><strong>Unified Observability:</strong> Real-time API telemetry across Node.js &amp; Python engines. Live call inspector with status filtering (2xx/4xx/5xx), payload inspection, and interactive request composer with preconfigured presets.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-mcpserver">
+      <div class="gallery__frame">
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">MCP Server — Natural Language AI Orchestration</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+            </div>
+            <span class="gallery__counter">1 / 2</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="MCP Server — Natural Language AI Orchestration">
+            <img src="assets/screenshots/mcp-server.png" alt="Model Context Protocol MCP Server Status" loading="lazy">
+            <div class="gallery__caption"><strong>Model Context Protocol (MCP) Service:</strong> Built-in SSE transport server exposing 35+ validation tools to Claude Desktop and AI orchestrators.</div>
+          </div>
+          <div class="gallery__slide" data-label="MCP Server — Live Interaction Audit &amp; Tool History">
+            <img src="assets/screenshots/mcp-history.png" alt="MCP Server Live Interactions History" loading="lazy">
+            <div class="gallery__caption"><strong>Live Interaction Audit:</strong> Real-time log of AI tool executions, response durations, and parameter inspection.</div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="gallery__panel" id="tab-statistics">
       <div class="gallery__frame">
-        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Statistics — traffic volume and success metrics</span></div>
-        <img src="assets/screenshots/statistics.png" alt="Stigix statistics tab" loading="lazy">
-        <div class="gallery__caption">Historical traffic volume charts, per-application success and failure rates, and latency distributions.</div>
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Live Events — Real-Time System Log Streaming</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+            </div>
+            <span class="gallery__counter">1 / 1</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <div class="gallery__slide active" data-label="Live Events — Real-Time System Log Streaming">
+            <img src="assets/screenshots/statistics.png" alt="Stigix Live Events Streaming Log" loading="lazy">
+            <div class="gallery__caption"><strong>Real-Time System Log Stream:</strong> High-throughput WebSocket event streaming capturing background daemon operations, probe runs, voice RTP commands, and diagnostics.</div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="gallery__panel" id="tab-config">
       <div class="gallery__frame">
-        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Configuration — applications, probes, interfaces</span></div>
-        <img src="assets/screenshots/configuration.png" alt="Stigix configuration tab" loading="lazy">
-        <div class="gallery__caption">Manage application groups, traffic weights, network interfaces, synthetic probes, and Prisma API credentials.</div>
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Configuration — Traffic Distribution &amp; Profiles</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+              <button class="gallery__dot" aria-label="Slide 4"></button>
+            </div>
+            <span class="gallery__counter">1 / 4</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="Configuration — Traffic Distribution &amp; Profiles">
+            <img src="assets/screenshots/configuration.png" alt="Configuration Traffic Distribution Weights" loading="lazy">
+            <div class="gallery__caption"><strong>Traffic Distribution Weights:</strong> Adjust application weights by category or individual enterprise application.</div>
+          </div>
+          <div class="gallery__slide" data-label="Configuration — Synthetic Monitoring Probes Catalog">
+            <img src="assets/screenshots/config-probes.png" alt="Synthetic Monitoring Probes Settings" loading="lazy">
+            <div class="gallery__caption"><strong>Synthetic Probes Catalog:</strong> Configure HTTP/HTTPS, ICMP, DNS, TCP, and UDP monitoring endpoints with Prisma SD-WAN sync.</div>
+          </div>
+          <div class="gallery__slide" data-label="Configuration — Central Global Provisioning (Leader / Peer Mesh)">
+            <img src="assets/screenshots/config-leader.png" alt="Central Global Provisioning Leader Peer Mesh" loading="lazy">
+            <div class="gallery__caption"><strong>Central Global Provisioning:</strong> Zero-touch multi-node cluster topology with automatic application catalogue &amp; probe sync across peers.</div>
+          </div>
+          <div class="gallery__slide" data-label="Configuration — State Persistence Across Reboots">
+            <img src="assets/screenshots/config-persistence.png" alt="State Persistence Across Reboots" loading="lazy">
+            <div class="gallery__caption"><strong>System State Persistence:</strong> Preserves background traffic generators, DEM probes, and custom TCP app sessions across container reboots.</div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="gallery__panel" id="tab-dashboard2">
       <div class="gallery__frame">
-        <div class="gallery__bar"><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-dot"></span><span class="gallery__bar-label">Dashboard — alternate view</span></div>
-        <img src="assets/screenshots/dashboard-2.png" alt="Stigix dashboard alternate view" loading="lazy">
-        <div class="gallery__caption">Alternate dashboard layout showing traffic density controls, per-application breakdown, and live WebSocket log stream.</div>
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Dashboard — Alternate View</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+            </div>
+            <span class="gallery__counter">1 / 1</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <div class="gallery__slide active" data-label="Dashboard — Alternate View">
+            <img src="assets/screenshots/dashboard-2.png" alt="Stigix dashboard alternate view" loading="lazy">
+            <div class="gallery__caption"><strong>High-Density Traffic Monitoring:</strong> Alternate layout showing traffic density controls, per-application breakdown, and live WebSocket log stream.</div>
+          </div>
+        </div>
       </div>
     </div>
 
