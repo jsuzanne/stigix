@@ -67,7 +67,7 @@ export const PathProbeModal: React.FC<PathProbeModalProps> = ({
             const peer = targetPeers.find(p => p.host === selectedTarget);
             const targetPort = peer?.port || app.listener?.port || 8083;
 
-            const res = await fetch(`/api/custom-tcp-apps/${app.id}/diagnose-path`, {
+            const res = await fetch(`/api/custom-tcp-apps/${encodeURIComponent(app.id)}/diagnose-path`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -79,6 +79,16 @@ export const PathProbeModal: React.FC<PathProbeModalProps> = ({
                     runPrismaCorrelation: true
                 })
             });
+
+            const contentType = res.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                const text = await res.text();
+                throw new Error(
+                    res.status === 404
+                        ? `Le backend n'a pas encore la route d'analyse active (HTTP 404). Assurez-vous que le conteneur Stigix v2 a été mis à jour et redémarré.`
+                        : `Réponse inattendue du serveur (HTTP ${res.status}): ${text.substring(0, 100)}`
+                );
+            }
 
             const data = await res.json();
             if (!res.ok || data.success === false) {
