@@ -21,6 +21,90 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  /* ── Gallery Carousel Controllers ── */
+  panels.forEach(panel => {
+    const slides = panel.querySelectorAll('.gallery__slide');
+    if (slides.length <= 1) return;
+
+    let currentIndex = 0;
+    const prevBtn = panel.querySelector('.gallery__nav-btn--prev');
+    const nextBtn = panel.querySelector('.gallery__nav-btn--next');
+    const dots = panel.querySelectorAll('.gallery__dot');
+    const counter = panel.querySelector('.gallery__counter');
+    const barLabel = panel.querySelector('.gallery__bar-label');
+
+    function showSlide(index) {
+      if (index < 0) index = slides.length - 1;
+      if (index >= slides.length) index = 0;
+      currentIndex = index;
+
+      slides.forEach((s, i) => {
+        s.classList.toggle('active', i === currentIndex);
+      });
+
+      dots.forEach((d, i) => {
+        d.classList.toggle('active', i === currentIndex);
+      });
+
+      if (counter) {
+        counter.textContent = `${currentIndex + 1} / ${slides.length}`;
+      }
+
+      const activeSlide = slides[currentIndex];
+      const customLabel = activeSlide?.dataset?.label;
+      if (customLabel && barLabel) {
+        barLabel.textContent = customLabel;
+      }
+    }
+
+    if (prevBtn) {
+      prevBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showSlide(currentIndex - 1);
+      });
+    }
+
+    if (nextBtn) {
+      nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showSlide(currentIndex + 1);
+      });
+    }
+
+    dots.forEach((dot, i) => {
+      dot.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showSlide(i);
+      });
+    });
+
+    // Touch swipe support
+    const slider = panel.querySelector('.gallery__slider');
+    if (slider) {
+      let touchStartX = 0;
+      let touchEndX = 0;
+      slider.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+      }, { passive: true });
+      slider.addEventListener('touchend', (e) => {
+        touchEndX = e.changedTouches[0].screenX;
+        if (touchStartX - touchEndX > 50) showSlide(currentIndex + 1);
+        if (touchEndX - touchStartX > 50) showSlide(currentIndex - 1);
+      }, { passive: true });
+    }
+  });
+
+  // Global Keyboard Arrow Navigation for active tab
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const activePanel = document.querySelector('.gallery__panel.active');
+    if (!activePanel) return;
+    const prevBtn = activePanel.querySelector('.gallery__nav-btn--prev');
+    const nextBtn = activePanel.querySelector('.gallery__nav-btn--next');
+    if (e.key === 'ArrowLeft' && prevBtn) prevBtn.click();
+    if (e.key === 'ArrowRight' && nextBtn) nextBtn.click();
+  });
+
   /* ── Clipboard copy — code blocks ── */
   document.querySelectorAll('.code-block__copy').forEach(btn => {
     btn.addEventListener('click', () => {

@@ -2,6 +2,15 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2-dev] - 2026-09-16 — Voice Echo Server Ingress Export Race Condition Fix
+
+### Fixed
+- **Voice Echo Ingress Session Export (`engines/echo_server.py`)** 🛡️:
+  - Eliminated duplicate `maintenance` background thread colliding with main thread periodic file rotation.
+  - Switched temporary export file to PID-unique path (`/tmp/ingress-voice-sessions.json.<pid>.tmp`) to prevent `[Errno 2] No such file or directory` race conditions during high-concurrency multi-branch voice session bursts.
+
+---
+
 ## [v2-dev] - 2026-09-13 — Live API Log Inspector & Interactive API Studio
 
 ### Added

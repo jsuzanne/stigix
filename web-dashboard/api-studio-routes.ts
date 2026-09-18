@@ -172,7 +172,7 @@ export function createApiStudioRouter(appConfigDir: string, projectRoot: string,
     });
 
     // ─── 5. Interactive API Playground Execution Proxy ─────────────────────
-    router.post('/playground/execute', async (req: Request, res: Response) => {
+    router.post(['/execute', '/playground/execute'], async (req: Request, res: Response) => {
         const {
             method = 'GET',
             url,

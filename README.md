@@ -6,7 +6,7 @@
 
 A modern web-based SD-WAN traffic generator with real-time monitoring, customizable traffic patterns, and comprehensive security testing. Perfect for testing SD-WAN deployments, network QoS policies, and application performance.
 
-![Stigix](docs/hero-banner.png)
+![Stigix](docs/stigix-banner.gif)
 
 ---
 
@@ -171,110 +171,144 @@ Real-time monitoring, traffic control, and system health overview.
 
 <img src="docs/screenshots/00-Main-Dashboard/01.png" alt="Main Dashboard" width="800">
 
-**[View all Main Dashboard screenshots →](docs/screenshots/00-Main-Dashboard)** (2 images)
+**[View all Main Dashboard screenshots →](docs/screenshots/00-Main-Dashboard)** (6 images)
 
 ---
 
-### ⚙️ Configuration
-Network interfaces, traffic distribution, synthetic probes, and application management.
+### ⚙️ Configuration & Control Center
+Application distribution weights, synthetic probe definitions, Central Global Provisioning (Leader/Peer mesh sync), targets repository, and state persistence across reboots.
 
-<img src="docs/screenshots/01-Configuration/01-synthetic-probes-settings.png" alt="Configuration Management" width="800">
+<img src="docs/screenshots/01-Configuration/01-settings-traffic-distribution.png" alt="Configuration Management - Traffic Distribution" width="800">
 
-**[View all Configuration screenshots →](docs/screenshots/01-Configuration)** (5 images)
+<img src="docs/screenshots/01-Configuration/02-settings-synthetic-probes-catalog.png" alt="Configuration Management - Synthetic Probes Catalog" width="800">
 
+**[View all Configuration screenshots →](docs/screenshots/01-Configuration)** (15 images)
 
 ---
 
 ### 📊 Convergence Lab & Failover Monitoring
 High-precision UDP failover probing (up to 1000 PPS), historical outage curves, interactive time scrubber, SCM multi-path sequence tracking, and 1-click PoC Card HD PNG export.
 
-<img src="docs/screenshots/07-Convergence/06-failover-poc-curves-outage-analysis.png" alt="Failover PoC Curves & Outage Analysis" width="800">
+<img src="docs/screenshots/07-Convergence/04-failover-poc-test-analysis-curves.png" alt="Failover PoC Curves & Outage Analysis" width="800">
 
-<img src="docs/screenshots/07-Convergence/01-convergence-lab-overview.png" alt="Convergence Lab Overview & Search" width="800">
+<img src="docs/screenshots/07-Convergence/01-failover-lab-targets-overview.png" alt="Failover Lab Overview & Targets" width="800">
 
-**[View Convergence Lab Guide & Theory →](docs/CONVERGENCE_LAB.md)**
-
+**[View Convergence Lab Guide & Theory →](docs/CONVERGENCE_LAB.md)** | **[View all Convergence screenshots →](docs/screenshots/07-Convergence)** (10 images)
 
 ---
 
 ### 🛡️ Security Testing
-URL filtering, DNS security, threat prevention, C2 attack simulations, AI Security (AISA) tests, and security posture scoring.
+URL filtering validation across 70 categories, 24 DNS security tests, threat prevention (EICAR), C2 attack simulations, AI Security (AISA) prompts, EDL threat feeds, and security posture scoring.
 
-<img src="docs/screenshots/03-security/06.png" alt="Security Testing" width="800">
+<img src="docs/screenshots/03-security/01-security-testing-overview-posture-score.png" alt="Security Testing Overview & Posture Score" width="800">
 
-<img src="docs/screenshots/03-security/14-c2-attack-scenarios.png" alt="C2 Attack Scenarios" width="800">
+<img src="docs/screenshots/03-security/06-security-c2-attack-scenarios.png" alt="C2 Attack Scenarios" width="800">
 
-<img src="docs/screenshots/03-security/13-ai-security-panel.png" alt="AI Security Tests" width="800">
+<img src="docs/screenshots/03-security/07-security-ai-security-tests.png" alt="AI Security Tests" width="800">
 
-**[View all Security screenshots →](docs/screenshots/03-security)** (11 images)
+**[View all Security screenshots →](docs/screenshots/03-security)** (26 images)
 
 ---
 
-### 🎯 Performance Monitoring
-Connectivity performance, synthetic probes, and endpoint health tracking.
+### 🎯 Performance Monitoring (Digital Experience / DEM)
+Synthetic connectivity probes (HTTP, HTTPS, ICMP, TCP, UDP, DNS) with weighted SD-WAN path quality scores, timing breakdown graphs (DNS, TCP, TLS, TTFB), and live history.
 
-<img src="docs/screenshots/04-Performance/01-digital-experience-dashboard.png" alt="Performance Monitoring" width="800">
+<img src="docs/screenshots/04-Performance/01-digital-experience-overview-dashboard.png" alt="Digital Experience DEM Dashboard" width="800">
 
-**[View all Performance screenshots →](docs/screenshots/04-Performance)** (11 images)
+<img src="docs/screenshots/04-Performance/05-digital-experience-probe-latency-chart-breakdown.png" alt="DEM Probe Latency & Timing Breakdown" width="800">
 
+**[View Digital Experience Guide →](docs/DIGITAL_EXPERIENCE_TESTING.md)** | **[View all Performance screenshots →](docs/screenshots/04-Performance)** (20 images)
 
 ---
 
 ### 🔌 IoT Simulation
-Layer-2/3 device simulation with DHCP and ARP support.
+Real-on-the-wire Layer-2/3 device simulation with DHCP/ARP presence, custom MAC profiles, real-time log monitoring, and security attack simulations (DNS flood, C2 beacon, port scan).
 
-<img src="docs/screenshots/05-IOT/18.png" alt="IoT Simulation" width="800">
+<img src="docs/screenshots/05-IOT/01-iot-simulation-dashboard-devices-active.png" alt="IoT Simulation Dashboard" width="800">
 
-**[View all IoT screenshots →](docs/screenshots/05-IOT)** (10 images)
+<img src="docs/screenshots/05-IOT/02-iot-simulation-device-fleet-overview.png" alt="IoT Device Fleet Overview" width="800">
 
+**[View IoT Simulation Guide →](docs/IOT_SIMULATION.md)** | **[View all IoT screenshots →](docs/screenshots/05-IOT)** (20 images)
 
 ---
 
 ### 🎙️ Voice Simulation
-RTP packet generation, QoS analytics, and MOS scoring.
+Scapy-based RTP packet generation for G.711/G.729 voice simulation. Live MOS score estimation, jitter, RTT latency, and per-target QoS breakdown for voice path validation.
 
-<img src="docs/screenshots/06-Voice/22.png" alt="Voice Simulation" width="800">
+<img src="docs/screenshots/06-Voice/01-voip-simulation-dashboard.png" alt="Voice Simulation Dashboard" width="800">
 
-**[View all VoIP screenshots →](docs/screenshots/06-Voice)** (7 images)
+<img src="docs/screenshots/06-Voice/02-voip-per-target-qos-statistics.png" alt="VoIP Per-Target QoS Statistics" width="800">
 
+**[View Voice Simulation Guide →](docs/VOICE_SIMULATION.md)** | **[View all VoIP screenshots →](docs/screenshots/06-Voice)** (9 images)
 
 ---
 
-### 🔄 Failover Lab
-High-precision UDP failover monitoring and convergence testing.
+### ⚡ Bandwidth Test (XFR)
+Multi-stream TCP bandwidth testing with real-time throughput metrics, TCP window analysis, retransmit diagnostics, and latency measurement against Stigix targets.
 
-<img src="docs/screenshots/07-Failover/24.png" alt="Failover Lab" width="800">
+<img src="docs/screenshots/09-XFR/01-xfr-bandwidth-test-dashboard.png" alt="Bandwidth Test Dashboard" width="800">
 
-**[View all Failover screenshots →](docs/screenshots/07-Failover)** (3 images)
+<img src="docs/screenshots/09-XFR/03-xfr-bandwidth-test-results-throughput-latency.png" alt="XFR Throughput and Latency Results" width="800">
+
+**[View XFR Testing Guide →](docs/XFR_TESTING.md)** | **[View all Bandwidth Test screenshots →](docs/screenshots/09-XFR)** (10 images)
 
 ---
 
 ### 🌐 VyOS Control
-Network impairment orchestration (latency, loss, rate-limiting) on VyOS routers.
+Network impairment orchestration (latency, loss, rate-limiting) on VyOS routers via API with sequence timelines and execution history audits.
 
-<img src="docs/screenshots/08-Vyos-Control/27.png" alt="VyOS Control" width="800">
+<img src="docs/screenshots/08-Vyos-Control/01-vyos-control-routers-dashboard.png" alt="VyOS Control Routers Dashboard" width="800">
 
-**[View all VyOS Control screenshots →](docs/screenshots/08-Vyos-Control)** (5 images)
+**[View VyOS Control Guide →](docs/VYOS_CONTROL.md)** | **[View all VyOS Control screenshots →](docs/screenshots/08-Vyos-Control)** (6 images)
 
 ---
 
-### 🌐 VPN Topology
-Real-time visualization of SD-WAN overlay paths with intelligent peer device mapping and HUB filtering.
+### 🗺️ Site & Underlay/Overlay Topology
+Interactive visualization of SD-WAN logical overlay paths alongside physical underlay topology featuring VyOS router chassis, 1:1 direct port cabling, live link status, and netem impairment injection.
 
-<img src="docs/screenshots/10-Topology/Overlay view.png" alt="VPN Topology Overlay" width="800">
+<img src="docs/screenshots/10-Topology/01-topology-site-map-underlay-overlay-view.png" alt="Underlay and Overlay Topology View" width="800">
 
-**[View all Topology screenshots →](docs/screenshots/10-Topology)** (3 images)
+<img src="docs/screenshots/10-Topology/02-topology-logical-overlay-mesh-view.png" alt="Logical Overlay Mesh View" width="800">
+
+**[View Underlay Topology Guide →](docs/UNDERLAY_TOPOLOGY.md)** | **[View all Topology screenshots →](docs/screenshots/10-Topology)** (12 images)
 
 ---
 
 ### 🔄 Custom TCP Applications
-Multi-application East-West workload simulation with dual host TCP listeners, outbound client workload generators, 8 server simulation modes (fixed delay, jitter, looping degradation, drop response, errors), 5 client workload modes, rolling RTT percentiles ($p50/p95/\text{avg}$), and interactive 4-step wizard.
+Multi-application East-West workload simulation with dual host TCP listeners, outbound client workload generators, 8 server simulation modes (fixed delay, jitter, looping degradation, drop response, errors), 5 client workload modes, rolling RTT percentiles ($p50/p95/\text{avg}$), and 1-click Prisma SD-WAN AppDef sync.
 
-<img src="docs/screenshots/11-Custom-Apps/01-custom-apps-dashboard-overview.png" alt="Custom Apps Dashboard Overview" width="800">
+<img src="docs/screenshots/11-Custom-Apps/01-custom-apps-main-dashboard.png" alt="Custom Apps Dashboard Overview" width="800">
 
-<img src="docs/screenshots/11-Custom-Apps/02-custom-app-server-client-sessions.png" alt="Custom App Server Client Sessions" width="800">
+<img src="docs/screenshots/11-Custom-Apps/03-custom-apps-outgoing-session-latency-breakdown.png" alt="Custom App Outgoing Session Latency Breakdown" width="800">
 
-**[View Custom TCP Apps Guide →](docs/CUSTOM_TCP_APPS.md)** | **[View User Guide & Recipes →](docs/CUSTOM_TCP_APPS_USER_GUIDE.md)** | **[View all Custom Apps screenshots →](docs/screenshots/11-Custom-Apps)** (4 images)
+**[View Custom TCP Apps Guide →](docs/CUSTOM_TCP_APPS.md)** | **[View User Guide & Recipes →](docs/CUSTOM_TCP_APPS_USER_GUIDE.md)** | **[View all Custom Apps screenshots →](docs/screenshots/11-Custom-Apps)** (11 images)
+
+---
+
+### 🔍 API Studio & Observability
+Unified real-time observability across Node.js & Python engines. Live API call inspector with status filtering (2xx/4xx/5xx), payload inspection, and interactive request composer with preconfigured presets.
+
+<img src="docs/screenshots/12-Api-Studio/01-api-studio-live-telemetry-inspector.png" alt="API Studio Live Telemetry Inspector" width="800">
+
+**[View API Studio Guide →](docs/API_STUDIO_GUIDE.md)** | **[View all API Studio screenshots →](docs/screenshots/12-Api-Studio)** (1 image)
+
+---
+
+### 🤖 Model Context Protocol (MCP) Server
+Natural language AI orchestration service supporting SSE transport. Enables AI assistants (Claude Desktop, etc.) to trigger tests, inspect topologies, query metrics, and automate network validation.
+
+<img src="docs/screenshots/13-MCP-Server/01-mcp-server-service-status-sse-config.png" alt="MCP Server Configuration & Status" width="800">
+
+**[View MCP Server Documentation →](docs/MCP_SERVER.md)** | **[View all MCP screenshots →](docs/screenshots/13-MCP-Server)** (2 images)
+
+---
+
+### 📜 Live Events Stream
+Real-time WebSocket event streaming capturing all background engine actions, test initiations, probe results, and system diagnostics with instant keyword search.
+
+<img src="docs/screenshots/02-Statistics/01-live-events-system-log-streaming.png" alt="Live Events System Log Streaming" width="800">
+
+**[View all Statistics & Live Events screenshots →](docs/screenshots/02-Statistics)** (2 images)
 
 ---
 

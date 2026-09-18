@@ -185,7 +185,7 @@ def export_ingress_sessions(active_sessions, lock):
         sessions_list.sort(key=lambda x: x['start_time'], reverse=True)
         sessions_list = sessions_list[:100]
         
-        temp_file = INGRESS_FILE + ".tmp"
+        temp_file = f"{INGRESS_FILE}.{os.getpid()}.tmp"
         with open(temp_file, 'w') as f:
             json.dump(sessions_list, f, indent=2)
         os.replace(temp_file, INGRESS_FILE)
@@ -250,10 +250,6 @@ if __name__ == "__main__":
     print(f"🚀 SD-WAN VOICE ECHO SERVER {version}")
     print(f"📡 Multi-port mode: {port_list}")
     print("="*60)
-
-    m_thread = threading.Thread(target=maintenance, args=(active_sessions, lock))
-    m_thread.daemon = True
-    m_thread.start()
 
     for p in port_list:
         t = threading.Thread(target=handle_port, args=(args.ip, p, active_sessions, lock))

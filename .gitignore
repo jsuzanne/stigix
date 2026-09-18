@@ -92,3 +92,5 @@ package-lock.json
 docs/screenshots/Videos/
 *.mov
 *.gif
+!docs/stigix-banner.gif
+
