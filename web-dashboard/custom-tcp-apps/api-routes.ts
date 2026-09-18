@@ -453,7 +453,9 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
                 return res.status(400).json({ success: false, error: 'Missing targetHost in request body' });
             }
 
-            const targetPort = Number(reqPort) || app.listener?.port || 8083;
+            const peer = app.peers?.find(p => p.host === String(targetHost).trim() || p.id === String(targetHost).trim());
+            const authToken = peer?.token || app.listener?.auth?.token;
+            const targetPort = Number(reqPort) || peer?.port || app.listener?.port || 8083;
             const identity = tcpAppManager.getIdentity();
 
             const probeResult = await runPathProbe({
@@ -461,7 +463,7 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
                 appName: app.name,
                 targetHost: String(targetHost).trim(),
                 targetPort,
-                authToken: app.listener?.auth?.token,
+                authToken,
                 identity,
                 preferredSourcePort: preferredSourcePort ? Number(preferredSourcePort) : undefined,
                 runPrismaCorrelation: Boolean(runPrismaCorrelation),
