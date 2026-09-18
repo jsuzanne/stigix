@@ -19,6 +19,14 @@ All notable changes made specifically on the `v2` branch are documented in this 
   - Added `stigix-cli custom-app diagnose <appId> [host]` command with formatted terminal tables.
   - Registered `diagnose_tcp_app_path` MCP tool for Claude Desktop natural language diagnostics.
 
+### Fixed
+- **Path MTU Probe Client/Server Framing & Timeouts (`path-probe.ts`, `tcp-server-runtime.ts`)** 🛡️:
+  - Fixed `FrameParser` integration in client probe runner to listen on `message` EventEmitter rather than expecting a return value from `.push()`.
+  - Added missing `buildRequest` import for legacy destination fallback probing.
+  - Fixed server-side `PATH_PROBE` response handler referencing undefined `raw` variable.
+  - Resolved dead variable reference `boundPort` with dynamic `socket.localPort`.
+  - Relaxed handshake and probe step timeouts (5000ms handshake, 3000ms step) for resilient WAN discovery and clear fallback diagnostics on un-upgraded remote peers.
+
 ---
 
 ## [v2-dev] - 2026-09-16 — Voice Echo Server Ingress Export Race Condition Fix

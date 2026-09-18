@@ -19,7 +19,8 @@ import {
     encodeFrame,
     buildClientHello,
     buildPathProbe,
-    buildClientClose
+    buildClientClose,
+    buildRequest
 } from './protocol.js';
 
 export interface PathProbeOptions {
@@ -49,7 +50,8 @@ const PROBE_PORT_END = 49199;
 export async function runPathProbe(options: PathProbeOptions): Promise<PathProbeResult> {
     const probeId = `PRB-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
     const startTime = Date.now();
-    const timeoutMs = options.stepTimeoutMs || 1800;
+    const handshakeTimeoutMs = 5000;
+    const stepTimeoutMs = options.stepTimeoutMs || 3000;
 
     const result: PathProbeResult = {
         probeId,
@@ -142,23 +144,25 @@ export async function runPathProbe(options: PathProbeOptions): Promise<PathProbe
 
     result.connected = true;
     result.sourceIp = socket.localAddress;
-    result.sourcePort = socket.localPort || boundPort;
+    result.sourcePort = socket.localPort;
 
     // Attach data parser
     const pendingFrames: any[] = [];
     let frameWaiter: ((msg: any) => void) | null = null;
 
-    socket.on('data', (chunk: Buffer) => {
-        const frames = parser.push(chunk);
-        for (const frame of frames) {
-            if (frameWaiter) {
-                const fn = frameWaiter;
-                frameWaiter = null;
-                fn(frame);
-            } else {
-                pendingFrames.push(frame);
-            }
+    // FrameParser emits parsed messages via EventEmitter, not return value
+    parser.on('message', (msg: any) => {
+        if (frameWaiter) {
+            const fn = frameWaiter;
+            frameWaiter = null;
+            fn(msg);
+        } else {
+            pendingFrames.push(msg);
         }
+    });
+
+    socket.on('data', (chunk: Buffer) => {
+        parser.push(chunk);
     });
 
     const waitForNextMessage = (timeoutLimitMs: number): Promise<any> => {
@@ -190,9 +194,9 @@ export async function runPathProbe(options: PathProbeOptions): Promise<PathProbe
 
         let helloResp: any = null;
         try {
-            helloResp = await waitForNextMessage(timeoutMs);
+            helloResp = await waitForNextMessage(handshakeTimeoutMs);
         } catch (handshakeErr: any) {
-            result.error = `Destination ${options.targetHost}:${options.targetPort} connected, but did not respond to session handshake within ${timeoutMs}ms. The remote peer is likely running an older version of Stigix or the listener is unresponsive.`;
+            result.error = `Destination ${options.targetHost}:${options.targetPort} connected, but did not respond to session handshake within ${handshakeTimeoutMs}ms. The remote peer is likely running an older version of Stigix or the listener is unresponsive.`;
             result.recommendations = {
                 summary: `Remote peer at ${options.targetHost} is running an older Stigix version without PATH_PROBE support. Upgrade the remote node with: TAG=v2 docker compose pull && TAG=v2 docker compose up -d`,
                 ciscoIos: `# Remote peer did not respond to handshake (upgrade destination to v2)`,
@@ -259,8 +263,8 @@ export async function runPathProbe(options: PathProbeOptions): Promise<PathProbe
                     socket.write(encodeFrame(probeMsg));
 
                     try {
-                        // Short timeout for modern probe acknowledgment
-                        const resp = await waitForNextMessage(Math.min(timeoutMs, 600));
+                        // Timeout for modern probe acknowledgment (WAN-friendly)
+                        const resp = await waitForNextMessage(stepTimeoutMs);
                         const recvTs = Date.now();
                         const rtt = Math.max(1, recvTs - sendTs);
 
@@ -303,7 +307,7 @@ export async function runPathProbe(options: PathProbeOptions): Promise<PathProbe
                     });
                     socket.write(encodeFrame(reqMsg));
 
-                    const resp = await waitForNextMessage(timeoutMs);
+                    const resp = await waitForNextMessage(stepTimeoutMs);
                     const legacyRecvTs = Date.now();
                     const legacyRtt = Math.max(1, legacyRecvTs - legacySendTs);
 

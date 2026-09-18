@@ -553,7 +553,7 @@ export class TcpServerRuntime extends EventEmitter {
                     probeId: probeMsg.probeId,
                     clientSessionId: client.sessionId,
                     seq: probeMsg.seq,
-                    receivedBytes: probeMsg.stepBytes || raw.length,
+                    receivedBytes: probeMsg.stepBytes || 0,
                     clientSentTs: probeMsg.sentTs,
                     serverRecvTs: now
                 }));
