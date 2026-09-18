@@ -77,83 +77,54 @@ export async function runPathProbe(options: PathProbeOptions): Promise<PathProbe
         }
     };
 
-    // Find an available source port in the probe range
-    let boundPort = options.preferredSourcePort || PROBE_PORT_START;
+    const connectTimeoutMs = 5000;
     let socket: net.Socket | null = null;
     let parser = new FrameParser();
     let clientSessionId = `diag-${crypto.randomBytes(6).toString('hex')}`;
-
-    // Attempt connecting with deterministic source port
     let connected = false;
     let connectError: string | null = null;
 
-    for (let port = boundPort; port <= PROBE_PORT_END; port++) {
-        try {
-            socket = new net.Socket();
-            parser = new FrameParser();
+    // Connect to destination using standard TCP socket (matching tcp-client-runtime)
+    try {
+        socket = new net.Socket();
+        socket.setNoDelay(true);
+        parser = new FrameParser();
 
-            await new Promise<void>((resolve, reject) => {
-                const connTimer = setTimeout(() => {
-                    reject(new Error(`Connection timeout (${timeoutMs}ms) to ${options.targetHost}:${options.targetPort}`));
-                }, timeoutMs);
+        await new Promise<void>((resolve, reject) => {
+            const connTimer = setTimeout(() => {
+                reject(new Error(`Connection timeout (${connectTimeoutMs}ms) to ${options.targetHost}:${options.targetPort}`));
+            }, connectTimeoutMs);
 
-                socket!.once('error', err => {
-                    clearTimeout(connTimer);
-                    reject(err);
-                });
+            socket!.once('error', err => {
+                clearTimeout(connTimer);
+                reject(err);
+            });
 
-                // Bind to deterministic source port if specified/possible
+            if (options.preferredSourcePort) {
+                // If explicit preferred source port requested
                 socket!.connect({
                     host: options.targetHost,
                     port: options.targetPort,
-                    localPort: port,
-                    localAddress: options.localIp
+                    localPort: options.preferredSourcePort
                 }, () => {
                     clearTimeout(connTimer);
-                    boundPort = port;
                     resolve();
                 });
-            });
-
-            connected = true;
-            break;
-        } catch (err: any) {
-            connectError = err.message || String(err);
-            if (socket) {
-                try { socket.destroy(); } catch {}
-                socket = null;
+            } else {
+                // Standard direct connect (reliable across all network interfaces & SD-WAN tunnels)
+                socket!.connect(options.targetPort, options.targetHost, () => {
+                    clearTimeout(connTimer);
+                    resolve();
+                });
             }
-        }
-    }
+        });
 
-    // Fallback: connect without explicit localPort binding if all probe ports are busy
-    if (!connected) {
-        try {
-            socket = new net.Socket();
-            parser = new FrameParser();
-            await new Promise<void>((resolve, reject) => {
-                const connTimer = setTimeout(() => {
-                    reject(new Error(`Connection timeout (${timeoutMs}ms) to ${options.targetHost}:${options.targetPort}`));
-                }, timeoutMs);
-
-                socket!.once('error', err => {
-                    clearTimeout(connTimer);
-                    reject(err);
-                });
-
-                socket!.connect({
-                    host: options.targetHost,
-                    port: options.targetPort,
-                    localAddress: options.localIp
-                }, () => {
-                    clearTimeout(connTimer);
-                    boundPort = socket!.localPort || boundPort;
-                    resolve();
-                });
-            });
-            connected = true;
-        } catch (err: any) {
-            connectError = err.message || String(err);
+        connected = true;
+    } catch (err: any) {
+        connectError = err.message || String(err);
+        if (socket) {
+            try { socket.destroy(); } catch {}
+            socket = null;
         }
     }
 
