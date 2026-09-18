@@ -2,33 +2,6 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2-dev] - 2026-09-18 — On-Demand Path MTU Discovery, WAN Asymmetry & Prisma SD-WAN Flow Correlation
-
-### Added
-- **On-Demand Path MTU Discovery (PMTUD) & WAN Asymmetry Diagnostics** 🔍:
-  - **Tiered MTU Stepping**: Injected probe frames with Don't Fragment (`DF`) bit across standard MTU tiers (`1500B` to `1200B`) to detect tunnel MTU bottlenecks and drop points.
-  - **Recommended TCP MSS Clamping Calculation**: Formulated instant MSS recommendations (`MTU - 40B`) with 1-click CLI generators for VyOS, Cisco IOS-XE, and Linux iptables.
-  - **One-Way Latency & Asymmetry Calculation**: Measured forward delay ($T_{\text{spoke} \to \text{DC}}$) vs reverse delay ($T_{\text{DC} \to \text{spoke}}$) and delta classification (`SYMMETRIC` vs `ASYMMETRIC`).
-  - **Deterministic 5-Tuple Binding**: Client socket bound to dedicated probe port range (`49190..49199`) for clean, noise-free Flow Browser correlation.
-- **Prisma SD-WAN Flow Browser Correlation** 🌐:
-  - Real-time querying of Prisma SD-WAN Flow Browser API for exact TCP 5-tuple matching to retrieve active WAN circuit, circuit ID, ION interface, path policy, and backup circuit status.
-- **Interactive UI & Table Integration** 🎛️:
-  - **PathProbeModal (`PathProbeModal.tsx`)**: High-density diagnostic modal with MTU/MSS cards, Flow Browser correlation, latency breakdown, step ladder, and CLI copy buttons.
-  - **Custom Apps Toolbar & Rows (`CustomApps.tsx`)**: Added `[🔍 Path MTU Probe]` primary action button, row-level quick probe buttons, and cached `MTU 1420 🟢` badges.
-- **CLI & MCP Server Tools** 🛠️:
-  - Added `stigix-cli custom-app diagnose <appId> [host]` command with formatted terminal tables.
-  - Registered `diagnose_tcp_app_path` MCP tool for Claude Desktop natural language diagnostics.
-
-### Fixed
-- **Path MTU Probe Client/Server Framing & Anti-Crash Resilience (`path-probe.ts`, `server.ts`, `tcp-server-runtime.ts`)** 🛡️:
-  - Added full error event listeners (`parser.on('error')`, `socket.on('error')`, `socket.on('close')`) to prevent uncaught EventEmitter exceptions from crashing the Express backend (resolves HTTP 502 Bad Gateway under reverse proxies).
-  - Gracefully handles non-Stigix HTTP responses (`HTTP/1.1 200 OK`) and malformed frames without throwing unhandled exceptions.
-  - Implemented short-circuit logic: disconnects or drops immediately stop subsequent stepping without wasting timeouts.
-  - Optimized probe timeouts (2.5s connect/handshake, 1.2s step, 10s overarching limit) ensuring instant, responsive UI diagnostics.
-  - Added global process `uncaughtException` and `unhandledRejection` safety hooks in `server.ts`.
-
----
-
 ## [v2-dev] - 2026-09-16 — Voice Echo Server Ingress Export Race Condition Fix
 
 ### Fixed

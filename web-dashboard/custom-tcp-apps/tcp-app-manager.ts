@@ -79,18 +79,6 @@ export class TcpAppManager extends EventEmitter {
         return cached;
     }
 
-    public getIdentity(): InstanceIdentityConfig {
-        try {
-            const config = this.getConfig();
-            if (config?.instance) return config.instance;
-        } catch {}
-        return {
-            instanceId: 'node-local',
-            siteName: process.env.STIGIX_SITE_NAME || 'LOCAL',
-            hostname: process.env.HOSTNAME || 'localhost'
-        };
-    }
-
     public getSanitizedConfig(): any {
         const config = this.getConfig();
         return this.configStore.sanitizeForClient(config);

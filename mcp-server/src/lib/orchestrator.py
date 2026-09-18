@@ -2308,25 +2308,6 @@ class TestOrchestrator:
             except Exception as e:
                 return self._handle_exception(f"Test TCP app {app_id} on {agent_id}", e)
 
-    async def diagnose_tcp_app_path(self, agent_id: str, app_id: str, target_host: str, run_prisma_correlation: bool = True) -> Dict[str, Any]:
-        """Run an on-demand Path MTU discovery, One-Way Delay calculation, and Prisma SD-WAN flow correlation."""
-        agent = await self.registry.get_endpoint(agent_id)
-        if not agent:
-            return {"error": f"Agent {agent_id} not found."}
-
-        headers = {"Authorization": f"Bearer {self._generate_token()}"}
-        body = {
-            "targetHost": target_host,
-            "runPrismaCorrelation": run_prisma_correlation
-        }
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/diagnose-path", json=body, headers=headers)
-                r.raise_for_status()
-                return r.json()
-            except Exception as e:
-                return self._handle_exception(f"Diagnose TCP path for {app_id} -> {target_host} on {agent_id}", e)
-
     async def get_tcp_app_sessions(self, agent_id: str, app_id: str) -> Dict[str, Any]:
         """List active incoming and outgoing TCP sessions for an application."""
         agent = await self.registry.get_endpoint(agent_id)
