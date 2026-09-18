@@ -158,7 +158,13 @@ export async function runPathProbe(options: PathProbeOptions): Promise<PathProbe
     }
 
     if (!connected || !socket) {
-        result.error = `Could not connect to target ${options.targetHost}:${options.targetPort} (${connectError})`;
+        result.error = `Could not reach target ${options.targetHost}:${options.targetPort} (${connectError || 'Connection refused / timeout'}). Destination peer appears offline or port is closed.`;
+        result.recommendations = {
+            summary: `Target peer at ${options.targetHost}:${options.targetPort} is unreachable. Verify that the destination container is running and that TCP port ${options.targetPort} is open in firewall policies.`,
+            ciscoIos: `# Destination ${options.targetHost}:${options.targetPort} unreachable`,
+            vyos: `# Destination ${options.targetHost}:${options.targetPort} unreachable`,
+            linux: `# Destination ${options.targetHost}:${options.targetPort} unreachable`
+        };
         result.durationMs = Date.now() - startTime;
         return result;
     }
@@ -211,10 +217,31 @@ export async function runPathProbe(options: PathProbeOptions): Promise<PathProbe
         }));
         socket.write(helloBuf);
 
-        const helloResp = await waitForNextMessage(timeoutMs);
+        let helloResp: any = null;
+        try {
+            helloResp = await waitForNextMessage(timeoutMs);
+        } catch (handshakeErr: any) {
+            result.error = `Destination ${options.targetHost}:${options.targetPort} connected, but did not respond to session handshake within ${timeoutMs}ms. The remote peer is likely running an older version of Stigix or the listener is unresponsive.`;
+            result.recommendations = {
+                summary: `Remote peer at ${options.targetHost} is running an older Stigix version without PATH_PROBE support. Upgrade the remote node with: TAG=v2 docker compose pull && TAG=v2 docker compose up -d`,
+                ciscoIos: `# Remote peer did not respond to handshake (upgrade destination to v2)`,
+                vyos: `# Remote peer did not respond to handshake (upgrade destination to v2)`,
+                linux: `# Remote peer did not respond to handshake (upgrade destination to v2)`
+            };
+            try { socket.destroy(); } catch {}
+            result.durationMs = Date.now() - startTime;
+            return result;
+        }
+
         if (helloResp.type === 'REJECT') {
             const rejectMsg = helloResp as RejectMessage;
             result.error = `Peer rejected diagnostic session: ${rejectMsg.code} - ${rejectMsg.reason}`;
+            result.recommendations = {
+                summary: `Session rejected by destination (${rejectMsg.code}). Verify authentication token and allowed CIDRs for application ${options.appName}.`,
+                ciscoIos: `# Session rejected: ${rejectMsg.code}`,
+                vyos: `# Session rejected: ${rejectMsg.code}`,
+                linux: `# Session rejected: ${rejectMsg.code}`
+            };
             try { socket.destroy(); } catch {}
             result.durationMs = Date.now() - startTime;
             return result;

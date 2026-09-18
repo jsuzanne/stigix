@@ -260,6 +260,25 @@ Linux: ${result.recommendations.linux}
                     {/* Result View */}
                     {!running && result && (
                         <div className="space-y-6 animate-fade-in">
+
+                            {/* Warning Banner if remote peer timed out or failed */}
+                            {result.error && (
+                                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 space-y-2.5">
+                                    <div className="flex items-center space-x-2 font-bold text-xs">
+                                        <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                                        <span>Destination Inactive or Running Older Version ({result.targetHost})</span>
+                                    </div>
+                                    <p className="text-xs text-amber-200/90 leading-relaxed font-mono">
+                                        {result.error}
+                                    </p>
+                                    <div className="pt-2 border-t border-amber-500/20 text-[11px] text-slate-300 flex flex-wrap items-center justify-between gap-2">
+                                        <span>Command to upgrade destination node:</span>
+                                        <code className="px-2.5 py-1 rounded bg-slate-950 font-mono text-teal-400 border border-slate-800 text-[10px]">
+                                            TAG=v2 docker compose pull stigix && TAG=v2 docker compose up -d stigix
+                                        </code>
+                                    </div>
+                                </div>
+                            )}
                             
                             {/* Key Diagnostic Metric Cards */}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
