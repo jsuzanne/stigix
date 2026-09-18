@@ -256,6 +256,7 @@ export async function runPathProbe(options: PathProbeOptions): Promise<PathProbe
         const rttList: number[] = [];
         const forwardDelays: number[] = [];
         const reverseDelays: number[] = [];
+        let isLegacyServer = false;
 
         let seq = 1;
         for (const stepBytes of STANDARD_MTU_TIERS) {
@@ -263,21 +264,11 @@ export async function runPathProbe(options: PathProbeOptions): Promise<PathProbe
             const targetL4Size = Math.max(100, stepBytes - 40);
             
             // Generate padding to match exact target L4 size
-            // Note: Frame length header is 4B, JSON structure is ~140B
-            const approxJsonOverhead = 140;
+            const approxJsonOverhead = 160;
             const paddingLength = Math.max(0, targetL4Size - approxJsonOverhead);
             const padding = 'X'.repeat(paddingLength);
 
             const sendTs = Date.now();
-            const probeMsg = buildPathProbe({
-                probeId,
-                clientSessionId,
-                seq: seq++,
-                stepBytes,
-                padding
-            });
-            const probeBuf = encodeFrame(probeMsg);
-
             const stepResult: PathProbeStepResult = {
                 stepBytes,
                 success: false,
@@ -285,34 +276,73 @@ export async function runPathProbe(options: PathProbeOptions): Promise<PathProbe
             };
 
             try {
-                socket.write(probeBuf);
-                const resp = await waitForNextMessage(timeoutMs);
-                const recvTs = Date.now();
-                const rtt = Math.max(1, recvTs - sendTs);
+                if (!isLegacyServer) {
+                    // Try modern PATH_PROBE frame first
+                    const probeMsg = buildPathProbe({
+                        probeId,
+                        clientSessionId,
+                        seq: seq++,
+                        stepBytes,
+                        padding
+                    });
+                    socket.write(encodeFrame(probeMsg));
 
-                if (resp.type === 'PATH_PROBE_ACK') {
-                    const ack = resp as PathProbeAckMessage;
-                    stepResult.success = true;
-                    stepResult.rttMs = rtt;
-                    result.peerCapabilities.supportsOneWay = true;
+                    try {
+                        // Short timeout for modern probe acknowledgment
+                        const resp = await waitForNextMessage(Math.min(timeoutMs, 600));
+                        const recvTs = Date.now();
+                        const rtt = Math.max(1, recvTs - sendTs);
 
-                    // Calculate forward and reverse delay if server timestamp is present
-                    if (ack.serverRecvTs && ack.clientSentTs) {
-                        const fwd = Math.max(0, ack.serverRecvTs - ack.clientSentTs);
-                        const rev = Math.max(0, recvTs - ack.serverRecvTs);
-                        stepResult.forwardDelayMs = fwd;
-                        stepResult.reverseDelayMs = rev;
-                        forwardDelays.push(fwd);
-                        reverseDelays.push(rev);
+                        if (resp.type === 'PATH_PROBE_ACK') {
+                            const ack = resp as PathProbeAckMessage;
+                            stepResult.success = true;
+                            stepResult.rttMs = rtt;
+                            result.peerCapabilities.supportsOneWay = true;
+
+                            if (ack.serverRecvTs && ack.clientSentTs) {
+                                const fwd = Math.max(0, ack.serverRecvTs - ack.clientSentTs);
+                                const rev = Math.max(0, recvTs - ack.serverRecvTs);
+                                stepResult.forwardDelayMs = fwd;
+                                stepResult.reverseDelayMs = rev;
+                                forwardDelays.push(fwd);
+                                reverseDelays.push(rev);
+                            }
+                            rttList.push(rtt);
+                        } else if (resp.type === 'RESPONSE' || resp.type === 'PONG') {
+                            isLegacyServer = true;
+                            stepResult.success = true;
+                            stepResult.rttMs = rtt;
+                            rttList.push(rtt);
+                        }
+                    } catch (probeTimeout) {
+                        // Remote server didn't understand PATH_PROBE -> fallback to universal REQUEST frame
+                        isLegacyServer = true;
                     }
-                    rttList.push(rtt);
-                } else if (resp.type === 'RESPONSE' || resp.type === 'PONG') {
-                    // Graceful fallback for older peer versions
-                    stepResult.success = true;
-                    stepResult.rttMs = rtt;
-                    rttList.push(rtt);
-                } else {
-                    stepResult.error = `Unexpected response type: ${resp.type}`;
+                }
+
+                // If legacy server (or PATH_PROBE timed out on step 1), use standard REQUEST frame
+                if (isLegacyServer && !stepResult.success) {
+                    const legacySendTs = Date.now();
+                    const reqMsg = buildRequest({
+                        requestId: `pmtu-${seq}-${stepBytes}`,
+                        clientSessionId,
+                        seq: seq++,
+                        payloadSize: paddingLength,
+                        data: padding
+                    });
+                    socket.write(encodeFrame(reqMsg));
+
+                    const resp = await waitForNextMessage(timeoutMs);
+                    const legacyRecvTs = Date.now();
+                    const legacyRtt = Math.max(1, legacyRecvTs - legacySendTs);
+
+                    if (resp.type === 'RESPONSE' || resp.type === 'PONG' || resp.type === 'PATH_PROBE_ACK') {
+                        stepResult.success = true;
+                        stepResult.rttMs = legacyRtt;
+                        rttList.push(legacyRtt);
+                    } else {
+                        stepResult.error = `Unexpected response: ${resp.type}`;
+                    }
                 }
             } catch (err: any) {
                 stepResult.error = err.message || 'Frame drop / timeout';
