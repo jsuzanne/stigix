@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.58] - 2026-09-19
+
+### Added / Changed
+- **Documentation & Architecture Standards** 📖:
+  - Added dedicated Digital Experience (DEM) & Synthetic Monitoring Probes section to `README.md`.
+  - Refined Underlay Topology terminology to accurately reflect virtual VyOS router topology and port-level wiring.
+  - Published comprehensive Architecture & Protocol PRD for On-Demand Path MTU Discovery and WAN Diagnostics (`docs/PRD_PATH_MTU_AND_WAN_DIAGNOSTICS.md`).
+- **Voice Echo Ingress Session Export Fix (`engines/echo_server.py`)** 🛡️:
+  - Eliminated duplicate maintenance background thread colliding with periodic file rotation.
+  - Switched temporary export file to PID-unique path (`/tmp/ingress-voice-sessions.json.<pid>.tmp`) to prevent race conditions during high-concurrency bursts.
+
+---
+
 ## [2.0.57] - 2026-09-15
 
 ### Added / Changed
