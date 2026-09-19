@@ -46,10 +46,17 @@ This project is my way to turn all that lab and demo experience into an open-sou
 
 ## ✨ Features
 
+### 🎯 Digital Experience (DEM) & Synthetic Monitoring Probes
+- **Multi-Protocol Synthetic Probes** ⚡ — Continuous synthetic path monitoring across **HTTP, HTTPS, ICMP (Ping), TCP Connect, UDP, and DNS Resolution** to benchmark SD-WAN and SASE transport quality. [Read more](docs/DIGITAL_EXPERIENCE_TESTING.md)
+- **Multi-WAN Path Quality Scoring** 📊 — Weighted 0–100 MOS-style performance score per path combining latency, jitter, and packet loss with configurable SLA thresholds.
+- **Multi-Interface / Multi-Circuit Binding** 🔌 — Bind probes to specific WAN underlay/overlay network interfaces (`eth0`, `eth1`, `ppp0`) to validate individual ISP/MPLS links.
+- **1-Click DEM Promotion** 🎯 — Promote any active business application directly from the traffic catalogue into a continuous 1-minute synthetic probe with instant SLA alerting.
+- **Cloud Synthetic Probes (POP Diagnostics)** ☁️ — Multi-region synthetic tests powered by Cloudflare Workers and global POPs to measure Internet egress performance from branch sites.
+- **Target Site Mode & Mesh Probes** 🎯 — Standalone container mode acting as a branch/hub target with automatic end-to-end SLA tracking (HTTP SLA, Voice Echo, XFR Speedtest). [Read more](docs/TARGET_CAPABILITIES.md)
+
 ### 🚀 Traffic Generation
 - **67 Pre-configured Applications** - Popular SaaS apps (Google, Microsoft 365, Salesforce, Zoom, etc.).
 - **Real-Time Application Telemetry & RUM** ⚡ - Extracts live client timing metrics (`DNS resolution`, `TCP connect`, `TLS negotiation`, `Server TTFB`, and `Total RTT`) natively from `curl` during background load generation with zero network overhead. Includes interactive glassmorphism hover cards and rolling EMA statistics.
-- **1-Click DEM Promotion** 🎯 - One-click promotion of any active business application directly into continuous 1-minute synthetic monitoring probes with custom SLA thresholds.
 - **Realistic Traffic Patterns** - Authentic HTTP requests with proper headers, User-Agents, and Referers
 - **Real-time Dashboard** - Live traffic visualization, metrics, and status monitoring
 - **Weighted Distribution** - Configure application traffic ratios using a visual Group/App percentage system
@@ -72,7 +79,6 @@ This project is my way to turn all that lab and demo experience into an open-sou
 - **Central Global Provisioning** - Publish 9 core configuration bundles (`Applications Catalogue`, `Connectivity Probes`, `Convergence SLA`, `Prisma SASE`, `Security Policy`, `Voice Settings`, `IoT Simulation`, `Custom TCP Apps`, and `Cloud Probes Credentials`) centrally from the Leader to connected branch peers with pull-mode distribution (`30s` cycle), revisioning, field-level local site overrides, auto-save broadcast, and zero-touch hot reload. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🌐
 - **Direct Controller Peer Onboarding** - Single-command onboarding (`curl -sSL http://<LEADER_IP>:8080/onboard.sh | bash`) to instantly join remote Linux nodes to a Stigix Leader with zero-touch configuration. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🚀
 - **Smart Identity** - Automatic instance identification using system hostname. Simplifies deployment by reducing environment variables. 🆔
-- **Target Site Mode** - Standalone container acting as a branch/hub target with HTTP, Voice, Failover tests and Bandwidth services (IPerf AND XFR speedtest). [Read more](docs/TARGET_CAPABILITIES.md)
 
 ### 🛡️ Security
 - **URL Filtering Tests** - Validate 66 different URL categories (malware, phishing, gambling, adult content, etc.)
@@ -97,7 +103,7 @@ This project is my way to turn all that lab and demo experience into an open-sou
 - **Real-time Logs** - Live log streaming with WebSocket updates
 - **Statistics Dashboard** - Success/failure rates, latency metrics, bandwidth tracking
 - **Security Score Dashboard** - Multi-module security posture scoring with 24h trend charts, min/max tracking, and run markers
-- **Live VPN Topology & Physical Underlay** - Real-time visualization of SD-WAN logical tunnels (Active/Backup/Down) alongside physical VyOS backbone chassis with direct 1:1 port-to-port cable wiring, spatial anti-crossing alignment, and live Link Trace diagnostics. [Read more](docs/UNDERLAY_TOPOLOGY.md)
+- **Live VPN Topology & Underlay Mapping** - Real-time visualization of SD-WAN logical tunnels (Active/Backup/Down) alongside VyOS backbone router topology with direct 1:1 port-to-port cable wiring and live Link Trace diagnostics. [Read more](docs/UNDERLAY_TOPOLOGY.md)
 - **Persistent Logging** - JSONL storage with 10,000 lines retention and auto-rotation
 - **Search & Filter** - Find specific tests quickly with powerful search
 - **Export Capabilities** - Download results in JSON, CSV, or JSONL format
@@ -112,7 +118,6 @@ This project is my way to turn all that lab and demo experience into an open-sou
 - **One-Click Upgrade (Beta)** - Built-in maintenance UI to pull latest images and restart services with a single click.
 - **State Persistence** - Per-service toggle (Settings → State Persistence) to preserve the running state of Traffic, Probes, Custom TCP Apps, IoT, and Voice across reboots and upgrades. Each service resumes exactly its pre-reboot state — only services that were running before the restart will come back up.
 
-  
 ### 🔒 Production Ready
 - **JWT Authentication** - Secure login with token-based auth
 - **Log Rotation** - Automatic cleanup with configurable retention
@@ -141,10 +146,9 @@ The project is evolving rapidly with major features, engines, and UX refinements
 - **Central Global Provisioning 8th Bundle** 🌐 — Automated distribution of custom application profiles across all branch peers with zero-downtime hot reload.
 - **Responsive Compact Session Tables** 📊 — Real-time rolling RTT percentiles ($p50/p95/\text{avg}$), jitter, live Kbps bitrate, and zero-overflow layout. [Read docs](docs/CUSTOM_TCP_APPS.md)
 
-### 🖧 Physical Underlay Topology & VyOS Chassis *(v2.0.0)*
-- **Interactive Physical VyOS Chassis** 🖧 — Visual canvas representation of active VyOS backbone routers with top-row DC/Hub uplinks and bottom-row Branch/Spoke downlinks.
-- **Direct 1:1 Port Cable Wiring** 🔌 — Animated amber cables connect directly between Prisma SD-WAN circuit handles and exact physical `ethX` router ports.
-- **Anti-Cable-Crossing Spatial Routing** 📐 — Dynamic horizontal sorting of interfaces matching connected sites' X-coordinates (DC1, DC2, BR1, BR2, BR3) to prevent tangled lines.
+### 🖧 Underlay Router Topology & Port-Level Diagnostics *(v2.0.0)*
+- **Unified Underlay / Overlay Mapping** 🖧 — Visual representation of active VyOS backbone routers mapped directly to Prisma SD-WAN circuits with port-level resolution (`ethX`).
+- **Direct 1:1 Port Cable Wiring** 🔌 — Animated amber connections between Prisma SD-WAN circuit handles and exact `ethX` router ports.
 - **Floating Link Trace Drawer** 🔍 — Real-time comparison drawer showing Prisma ION circuit parameters, transit CIDR subnet, and VyOS next-hop IP.
 - **Direct Topology Chaos Actions** ⚡ — Instant Shut / No-Shut port toggle, Netem latency/loss impairment injection, and persistent canvas badges (`⏱️ +120ms`). [Read docs](docs/UNDERLAY_TOPOLOGY.md)
 
