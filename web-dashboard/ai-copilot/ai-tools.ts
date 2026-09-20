@@ -19,6 +19,8 @@ export interface ToolExecutionContext {
     discoveryManager?: any;
     getEnvProbes?: () => any[];
     getCustomProbes?: () => any[];
+    saveCustomProbes?: (probes: any[]) => Promise<boolean> | boolean;
+    performConnectivityCheck?: (probe: any) => Promise<any>;
     systemToken?: string;
     serverPort?: number;
     runCommand?: (cmd: string) => Promise<string>;
@@ -475,21 +477,41 @@ export async function executeCopilotTool(
                         // Find latest result for this probe
                         const latest = recentResults.find(r => r.endpointId === probeId || r.endpointName?.toLowerCase() === p.name.toLowerCase());
 
-                        const score = latest?.score ?? (isEnabled ? (latest ? (latest.reachable ? 100 : 0) : 100) : 0);
-                        const latencyMs = latest?.metrics?.total_ms ?? latest?.metrics?.tcp_ms ?? (latest?.reachable ? 2.0 : 0);
-                        const lossPct = latest?.metrics?.loss_pct ?? (latest ? (latest.reachable ? 0 : 100) : 0);
-                        const jitterMs = latest?.metrics?.jitter_ms ?? 0;
-                        const isReachable = latest ? latest.reachable : isEnabled;
+                        let score: number | null = null;
+                        let latencyMs: any = 'Measuring...';
+                        let lossPct: any = '0%';
+                        let jitterMs: any = '0 ms';
+                        let status = 'INITIALIZING';
 
-                        let status = 'OPTIMAL';
                         if (!isEnabled) {
                             status = 'PAUSED';
-                        } else if (!isReachable || score === 0) {
-                            status = 'DOWN';
-                        } else if (score < 70 || lossPct > 5) {
-                            status = 'DEGRADED';
-                        } else if (score < 90) {
-                            status = 'GOOD';
+                            score = 0;
+                            latencyMs = 'Paused';
+                            lossPct = 'N/A';
+                            jitterMs = 'N/A';
+                        } else if (latest) {
+                            score = latest.score ?? (latest.reachable ? 100 : 0);
+                            const lat = latest.metrics?.total_ms ?? latest.metrics?.tcp_ms;
+                            latencyMs = typeof lat === 'number' ? `${Math.round(lat * 10) / 10} ms` : (latest.reachable ? 'OK' : 'Timeout');
+                            lossPct = `${latest.metrics?.loss_pct ?? (latest.reachable ? 0 : 100)}%`;
+                            const jit = latest.metrics?.jitter_ms;
+                            jitterMs = typeof jit === 'number' ? `${Math.round(jit * 10) / 10} ms` : '0 ms';
+
+                            if (!latest.reachable || score === 0) {
+                                status = 'DOWN';
+                            } else if (score < 70 || (latest.metrics?.loss_pct || 0) > 5) {
+                                status = 'DEGRADED';
+                            } else if (score < 90) {
+                                status = 'GOOD';
+                            } else {
+                                status = 'OPTIMAL';
+                            }
+                        } else {
+                            status = 'INITIALIZING';
+                            score = null;
+                            latencyMs = 'Measuring (pending first cycle)...';
+                            lossPct = 'Pending';
+                            jitterMs = 'Pending';
                         }
 
                         return {
@@ -497,9 +519,9 @@ export async function executeCopilotTool(
                             type: pType,
                             target: pTarget,
                             score,
-                            avgLatencyMs: typeof latencyMs === 'number' ? `${Math.round(latencyMs * 10) / 10} ms` : latencyMs,
-                            packetLossPct: `${lossPct}%`,
-                            jitterMs: typeof jitterMs === 'number' ? `${Math.round(jitterMs * 10) / 10} ms` : jitterMs,
+                            avgLatencyMs: latencyMs,
+                            packetLossPct: lossPct,
+                            jitterMs: jitterMs,
                             status,
                             enabled: isEnabled
                         };
@@ -854,28 +876,12 @@ export async function executeCopilotTool(
                     return { error: 'Both name and target are required to add a DEM probe.' };
                 }
 
-                const controllerPort = ctx.serverPort || process.env.PORT || 8080;
-                const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-                if (ctx.systemToken) {
-                    authHeaders['Authorization'] = `Bearer ${ctx.systemToken}`;
-                }
+                // 1. Get current custom & env probes directly
+                const envProbes = typeof ctx.getEnvProbes === 'function' ? ctx.getEnvProbes() : [];
+                const rawCustom = typeof ctx.getCustomProbes === 'function' ? ctx.getCustomProbes() : [];
+                const discovered = typeof ctx.discoveryManager?.getProbes === 'function' ? ctx.discoveryManager.getProbes() : [];
 
-                // Fetch current endpoints from /api/connectivity/custom
-                let existingProbes: any[] = [];
-                try {
-                    const res = await fetch(`http://localhost:${controllerPort}/api/connectivity/custom`, {
-                        headers: authHeaders
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        existingProbes = Array.isArray(data) ? data : (data.targets || []);
-                    }
-                } catch (e: any) {
-                    console.warn('[AI-TOOLS] Could not fetch existing probes via API, checking ctx:', e?.message);
-                    if (ctx.getCustomProbes) {
-                        existingProbes = ctx.getCustomProbes() || [];
-                    }
-                }
+                const allCurrent = [...envProbes, ...rawCustom, ...discovered];
 
                 const newProbe = {
                     name,
@@ -885,38 +891,72 @@ export async function executeCopilotTool(
                     enabled: true
                 };
 
-                // Check if probe already exists (update if so, else append)
-                const existingIndex = existingProbes.findIndex(p => 
+                // Deduplicate or append to custom probes
+                const matchIdx = rawCustom.findIndex((p: any) => 
                     (p.name && p.name.toLowerCase() === name.toLowerCase()) || 
                     (p.target && p.target.toLowerCase() === target.toLowerCase())
                 );
 
-                if (existingIndex >= 0) {
-                    existingProbes[existingIndex] = { ...existingProbes[existingIndex], ...newProbe };
+                let updatedCustom = [...rawCustom];
+                if (matchIdx >= 0) {
+                    updatedCustom[matchIdx] = { ...updatedCustom[matchIdx], ...newProbe };
                 } else {
-                    existingProbes.push(newProbe);
+                    updatedCustom.push(newProbe);
                 }
 
-                try {
-                    const postRes = await fetch(`http://localhost:${controllerPort}/api/connectivity/custom`, {
-                        method: 'POST',
-                        headers: authHeaders,
-                        body: JSON.stringify({ endpoints: existingProbes })
-                    });
-                    if (postRes.ok) {
-                        return {
-                            success: true,
-                            message: `DEM probe '${name}' (${probeType} -> ${target}) successfully registered and triggered.`,
-                            probe: newProbe,
-                            totalProbes: existingProbes.length
-                        };
-                    } else {
-                        const errBody = await postRes.text();
-                        return { error: `Failed to save DEM probe: ${postRes.status} ${errBody}` };
-                    }
-                } catch (e: any) {
-                    return { error: `Failed to add DEM probe: ${e?.message || String(e)}` };
+                // 2. Persist via direct backend handler
+                let saved = false;
+                if (typeof ctx.saveCustomProbes === 'function') {
+                    saved = await ctx.saveCustomProbes(updatedCustom);
                 }
+
+                if (!saved) {
+                    const controllerPort = ctx.serverPort || process.env.PORT || 8080;
+                    const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+                    if (ctx.systemToken) {
+                        authHeaders['Authorization'] = `Bearer ${ctx.systemToken}`;
+                    }
+                    try {
+                        const res = await fetch(`http://127.0.0.1:${controllerPort}/api/connectivity/custom`, {
+                            method: 'POST',
+                            headers: authHeaders,
+                            body: JSON.stringify({ endpoints: updatedCustom })
+                        });
+                        saved = res.ok;
+                    } catch {}
+                }
+
+                if (!saved) {
+                    return { error: `Failed to save DEM probe '${name}' to persistent configuration.` };
+                }
+
+                // 3. Trigger immediate check for real live metrics
+                let initialResult: any = null;
+                if (typeof ctx.performConnectivityCheck === 'function') {
+                    try {
+                        const checkRes = await ctx.performConnectivityCheck(newProbe);
+                        if (ctx.connectivityLogger && checkRes) {
+                            await ctx.connectivityLogger.logResult(checkRes);
+                        }
+                        initialResult = {
+                            reachable: checkRes?.reachable ?? false,
+                            score: checkRes?.score ?? (checkRes?.reachable ? 100 : 0),
+                            rttMs: checkRes?.metrics?.total_ms ?? checkRes?.metrics?.tcp_ms ?? (checkRes?.reachable ? 15 : 0),
+                            lossPct: checkRes?.metrics?.loss_pct ?? 0,
+                            status: checkRes?.reachable ? 'OPTIMAL' : 'UNREACHABLE'
+                        };
+                    } catch (e: any) {
+                        console.error('[AI-TOOLS] Error running initial check on new probe:', e?.message);
+                    }
+                }
+
+                return {
+                    success: true,
+                    message: `DEM probe '${name}' (${probeType} -> ${target}) added and saved successfully.`,
+                    probe: newProbe,
+                    initialCheck: initialResult || { status: 'INITIALIZING', message: 'First background measurement pending' },
+                    totalProbesCount: allCurrent.length + (matchIdx === -1 ? 1 : 0)
+                };
             }
 
             case 'remove_dem_probe': {
@@ -925,54 +965,41 @@ export async function executeCopilotTool(
                     return { error: 'Probe name is required to remove a DEM probe.' };
                 }
 
-                const controllerPort = ctx.serverPort || process.env.PORT || 8080;
-                const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-                if (ctx.systemToken) {
-                    authHeaders['Authorization'] = `Bearer ${ctx.systemToken}`;
-                }
+                const rawCustom = typeof ctx.getCustomProbes === 'function' ? ctx.getCustomProbes() : [];
+                const matchIdx = rawCustom.findIndex((p: any) => p.name && p.name.toLowerCase() === name);
 
-                let existingProbes: any[] = [];
-                try {
-                    const res = await fetch(`http://localhost:${controllerPort}/api/connectivity/custom`, {
-                        headers: authHeaders
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        existingProbes = Array.isArray(data) ? data : (data.targets || []);
-                    }
-                } catch (e: any) {
-                    if (ctx.getCustomProbes) {
-                        existingProbes = ctx.getCustomProbes() || [];
-                    }
-                }
-
-                const matchIdx = existingProbes.findIndex(p => p.name && p.name.toLowerCase() === name);
                 if (matchIdx === -1) {
-                    const available = existingProbes.map(p => p.name).filter(Boolean);
-                    return { error: `Probe '${args.name}' not found. Available probes: ${available.join(', ')}` };
+                    const available = rawCustom.map((p: any) => p.name).filter(Boolean);
+                    return { error: `Probe '${args.name}' not found in custom probes. Available custom probes: ${available.join(', ')}` };
                 }
 
-                const removed = existingProbes.splice(matchIdx, 1)[0];
+                const removed = rawCustom.splice(matchIdx, 1)[0];
+                let saved = false;
+                if (typeof ctx.saveCustomProbes === 'function') {
+                    saved = await ctx.saveCustomProbes(rawCustom);
+                }
 
-                try {
-                    const postRes = await fetch(`http://localhost:${controllerPort}/api/connectivity/custom`, {
-                        method: 'POST',
-                        headers: authHeaders,
-                        body: JSON.stringify({ endpoints: existingProbes })
-                    });
-                    if (postRes.ok) {
-                        return {
-                            success: true,
-                            message: `DEM probe '${removed.name}' (${removed.type} -> ${removed.target}) removed successfully.`,
-                            remainingProbes: existingProbes.length
-                        };
-                    } else {
-                        const errBody = await postRes.text();
-                        return { error: `Failed to remove probe: ${postRes.status} ${errBody}` };
+                if (!saved) {
+                    const controllerPort = ctx.serverPort || process.env.PORT || 8080;
+                    const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+                    if (ctx.systemToken) {
+                        authHeaders['Authorization'] = `Bearer ${ctx.systemToken}`;
                     }
-                } catch (e: any) {
-                    return { error: `Failed to remove DEM probe: ${e?.message || String(e)}` };
+                    try {
+                        const res = await fetch(`http://127.0.0.1:${controllerPort}/api/connectivity/custom`, {
+                            method: 'POST',
+                            headers: authHeaders,
+                            body: JSON.stringify({ endpoints: rawCustom })
+                        });
+                        saved = res.ok;
+                    } catch {}
                 }
+
+                return {
+                    success: true,
+                    message: `DEM probe '${removed.name}' (${removed.type} -> ${removed.target}) removed successfully.`,
+                    remainingCustomProbes: rawCustom.length
+                };
             }
 
             case 'add_fabric_target': {

@@ -4500,10 +4500,8 @@ app.get('/api/connectivity/custom', authenticateToken, (req, res) => {
     res.json([...mergedEnvProbes, ...pureCustom, ...discovered]);
 });
 
-// API: Update Custom Connectivity Endpoints
-app.post('/api/connectivity/custom', authenticateToken, (req, res) => {
-    const { endpoints } = req.body;
-    if (!Array.isArray(endpoints)) return res.status(400).json({ error: 'Invalid format, expected array' });
+const applyCustomConnectivityEndpoints = async (endpoints: any[]): Promise<boolean> => {
+    if (!Array.isArray(endpoints)) return false;
 
     // The UI sends back ALL endpoints (Env, Custom, Discovered).
     // We update Discovery directly, and save everything else to custom (which now acts as state store for Env probes)
@@ -4516,32 +4514,44 @@ app.post('/api/connectivity/custom', authenticateToken, (req, res) => {
     const newProbes = customAndEnvProbes.filter(p => !existingKeys.has(`${p.type}:${p.name}`) && p.enabled !== false);
 
     const customSuccess = saveCustomConnectivityEndpoints(customAndEnvProbes);
-    discoveryManager.updateProbesFromUI(discoveredProbes);
+    if (discoveryManager) {
+        discoveryManager.updateProbesFromUI(discoveredProbes);
+    }
 
     // Save field-level local overrides if global provisioning is active
-    provisioningManager.handleLocalSave('connectivity-probes', customAndEnvProbes);
+    if (provisioningManager) {
+        provisioningManager.handleLocalSave('connectivity-probes', customAndEnvProbes);
+    }
 
-    if (customSuccess) {
-        // Option B: trigger an immediate check for each newly added probe (async, non-blocking)
-        if (newProbes.length > 0) {
-            setImmediate(async () => {
-                for (const probe of newProbes) {
-                    const key = `${probe.type}:${probe.name}`;
-                    if (isRunning.has(key)) continue;
-                    try {
-                        console.log(`[DEM] Immediate trigger for new probe: ${key}`);
-                        isRunning.add(key);
-                        lastRunMap.set(key, Date.now()); // prevent double-run on next tick
-                        const checkResult = await performConnectivityCheck(probe);
-                        await connectivityLogger.logResult(checkResult);
-                    } catch (e) {
-                        console.error(`[DEM] Immediate trigger error for ${key}:`, e);
-                    } finally {
-                        isRunning.delete(key);
-                    }
+    if (customSuccess && newProbes.length > 0) {
+        setImmediate(async () => {
+            for (const probe of newProbes) {
+                const key = `${probe.type}:${probe.name}`;
+                if (isRunning.has(key)) continue;
+                try {
+                    log('DEM', `Immediate trigger for new probe: ${key}`);
+                    isRunning.add(key);
+                    lastRunMap.set(key, Date.now()); // prevent double-run on next tick
+                    const checkResult = await performConnectivityCheck(probe);
+                    await connectivityLogger.logResult(checkResult);
+                } catch (e) {
+                    console.error(`[DEM] Immediate trigger error for ${key}:`, e);
+                } finally {
+                    isRunning.delete(key);
                 }
-            });
-        }
+            }
+        });
+    }
+    return customSuccess;
+};
+
+// API: Update Custom Connectivity Endpoints
+app.post('/api/connectivity/custom', authenticateToken, async (req, res) => {
+    const { endpoints } = req.body;
+    if (!Array.isArray(endpoints)) return res.status(400).json({ error: 'Invalid format, expected array' });
+
+    const success = await applyCustomConnectivityEndpoints(endpoints);
+    if (success) {
         res.json({ success: true, count: endpoints.length });
     } else {
         res.status(500).json({ error: 'Failed to save custom endpoints' });
@@ -11592,6 +11602,8 @@ aiManager.setExecutionContext({
     discoveryManager,
     getEnvProbes: getEnvConnectivityEndpoints,
     getCustomProbes: getCustomConnectivityEndpoints,
+    saveCustomProbes: applyCustomConnectivityEndpoints,
+    performConnectivityCheck,
     runCommand: async (cmd: string) => {
         return new Promise<string>((resolve, reject) => {
             exec(cmd, { timeout: 15000, cwd: PROJECT_ROOT }, (err, stdout, stderr) => {
