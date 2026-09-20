@@ -146,30 +146,75 @@ export async function executeCopilotTool(
     try {
         switch (toolName) {
             case 'list_endpoints': {
-                let peers: any[] = [];
-                if (ctx.registryManager) {
-                    peers = ctx.registryManager.getPeers() || [];
-                }
-                const localSite = (typeof ctx.registryManager?.getSiteName === 'function' ? ctx.registryManager.getSiteName() : ctx.registryManager?.getStatus?.()?.site_name) || 'LOCAL';
-                const localIp = (typeof ctx.registryManager?.getCurrentIp === 'function' ? ctx.registryManager.getCurrentIp() : ctx.registryManager?.getStatus?.()?.detected_ip) || '127.0.0.1';
+                let endpoints: any[] = [];
 
-                const endpoints = [
-                    {
-                        name: `${localSite} (Local)`,
-                        ip: localIp,
-                        origin: 'LOCAL NODE',
-                        status: 'ONLINE',
-                        services: '6/6 (HTTP, Voice, XFR, EICAR, Convergence, Custom TCP)'
-                    },
-                    ...peers.map((p: any) => ({
-                        name: p.instance_id || p.site_name || 'Remote Peer',
-                        ip: p.ip_private || p.ip || 'Unknown',
-                        origin: 'LEARNED',
-                        status: p.is_online !== false ? 'ONLINE' : 'OFFLINE',
-                        capabilities: p.capabilities || ['voice', 'xfr', 'convergence', 'security', 'custom_apps'],
-                        lastHeartbeat: p.last_heartbeat ? new Date(p.last_heartbeat).toISOString() : 'Active'
-                    }))
-                ];
+                // 1. Priority: query merged targets registry (managed + synthesized + learned)
+                if (ctx.targetsManager && typeof ctx.targetsManager.getMergedTargets === 'function') {
+                    try {
+                        const merged = ctx.targetsManager.getMergedTargets() || [];
+                        const localIp = (typeof ctx.registryManager?.getCurrentIp === 'function'
+                            ? ctx.registryManager.getCurrentIp()
+                            : ctx.registryManager?.getStatus?.()?.detected_ip) || '127.0.0.1';
+
+                        if (Array.isArray(merged) && merged.length > 0) {
+                            endpoints = merged.map((t: any) => {
+                                const isLocal = Boolean(t.meta?.self || t.host === localIp || (localIp && t.host === localIp));
+                                const caps = t.capabilities || {};
+                                const activeCapsList = Object.entries(caps)
+                                    .filter(([_, v]) => Boolean(v))
+                                    .map(([k]) => k.toUpperCase());
+                                
+                                const totalCapsCount = activeCapsList.length;
+                                const servicesSummary = isLocal 
+                                    ? 'All Services (6/6)' 
+                                    : (totalCapsCount > 0 ? `${totalCapsCount}/6 (${activeCapsList.join(', ')})` : 'Endpoint');
+
+                                return {
+                                    name: t.name || t.host,
+                                    ip: t.host,
+                                    origin: isLocal ? 'LOCAL NODE' : (t.meta?.registry || t.source === 'synthesized' ? 'LEARNED' : 'MANAGED'),
+                                    status: t.enabled !== false ? 'ONLINE' : 'DISABLED',
+                                    services: servicesSummary,
+                                    capabilities: activeCapsList,
+                                    lastSeen: t.meta?.last_seen || (isLocal ? 'Local Appliance' : 'Active')
+                                };
+                            });
+                        }
+                    } catch (e: any) {
+                        console.error('[AI-TOOLS] Failed to fetch merged targets:', e?.message || e);
+                    }
+                }
+
+                // 2. Fallback if targetsManager returned empty
+                if (endpoints.length === 0) {
+                    let peers: any[] = [];
+                    if (ctx.registryManager) {
+                        peers = ctx.registryManager.getPeers() || [];
+                    }
+                    const localSite = (typeof ctx.registryManager?.getSiteName === 'function' ? ctx.registryManager.getSiteName() : ctx.registryManager?.getStatus?.()?.site_name) || 'LOCAL';
+                    const localIp = (typeof ctx.registryManager?.getCurrentIp === 'function' ? ctx.registryManager.getCurrentIp() : ctx.registryManager?.getStatus?.()?.detected_ip) || '127.0.0.1';
+
+                    endpoints = [
+                        {
+                            name: `${localSite} (Local)`,
+                            ip: localIp,
+                            origin: 'LOCAL NODE',
+                            status: 'ONLINE',
+                            services: 'All Services (6/6)',
+                            capabilities: ['VOICE', 'CONVERGENCE', 'CUSTOM_APP', 'XFR', 'SECURITY', 'CONNECTIVITY'],
+                            lastSeen: 'Local Appliance'
+                        },
+                        ...peers.map((p: any) => ({
+                            name: p.instance_id || p.meta?.site || p.site_name || 'Remote Peer',
+                            ip: p.ip_private || p.ip || 'Unknown',
+                            origin: 'LEARNED',
+                            status: p.is_online !== false ? 'ONLINE' : 'OFFLINE',
+                            services: 'Remote Peer Node',
+                            capabilities: p.capabilities || ['voice', 'xfr', 'convergence', 'security', 'custom_apps'],
+                            lastSeen: p.last_seen || p.last_heartbeat || 'Active'
+                        }))
+                    ];
+                }
 
                 if (args.filter) {
                     const q = String(args.filter).toLowerCase();
@@ -182,6 +227,7 @@ export async function executeCopilotTool(
                 const regStatus = ctx.registryManager?.getStatus?.() || {};
                 const siteName = (typeof ctx.registryManager?.getSiteName === 'function' ? ctx.registryManager.getSiteName() : regStatus.site_name) || 'Unknown';
                 const peerCount = (typeof ctx.registryManager?.getPeers === 'function' ? ctx.registryManager.getPeers()?.length : regStatus.peer_count) || 0;
+                const totalTargetsCount = (typeof ctx.targetsManager?.getMergedTargets === 'function' ? ctx.targetsManager.getMergedTargets()?.length : peerCount + 1) || 1;
                 const detectedIp = (typeof ctx.registryManager?.getCurrentIp === 'function' ? ctx.registryManager.getCurrentIp() : regStatus.detected_ip) || 'Unknown';
 
                 return {
@@ -190,6 +236,7 @@ export async function executeCopilotTool(
                     registered: regStatus.is_registered !== false,
                     detectedIp,
                     connectedPeersCount: peerCount,
+                    totalLearnedTargetsCount: totalTargetsCount,
                     uptimeSeconds: process.uptime()
                 };
             }
