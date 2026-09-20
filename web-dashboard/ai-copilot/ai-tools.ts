@@ -46,6 +46,24 @@ export function resolveNodeContext(
 
     const query = String(nodeNameOrIp).toLowerCase().trim();
 
+    if (query.startsWith('http://') || query.startsWith('https://')) {
+        return {
+            baseUrl: query.replace(/\/+$/, ''),
+            headers: defaultHeaders,
+            siteName: query,
+            isLocal: false
+        };
+    }
+
+    if (/^[0-9.]+:[0-9]+$/.test(query) || /^[a-zA-Z0-9.-]+:[0-9]+$/.test(query)) {
+        return {
+            baseUrl: `http://${query}`,
+            headers: defaultHeaders,
+            siteName: query,
+            isLocal: false
+        };
+    }
+
     // 1. Search in peer registry
     const peers = typeof ctx.registryManager?.getPeers === 'function' ? ctx.registryManager.getPeers() : [];
     const matchedPeer = peers.find((p: any) =>
@@ -2051,7 +2069,9 @@ export async function executeCopilotTool(
                 if (nodeCtx.isLocal && ctx.getSecurityStats) {
                     return ctx.getSecurityStats();
                 }
-                return await fetchApi(nodeCtx, '/api/security/stats');
+                return await fetchApi(nodeCtx, '/api/security/results/stats').catch(async () => {
+                    return await fetchApi(nodeCtx, '/api/security/results');
+                });
             }
 
             case 'get_security_config': {
@@ -2061,7 +2081,16 @@ export async function executeCopilotTool(
 
             case 'get_dem_summary': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/probes/stats');
+                const probes = await fetchApi(nodeCtx, '/api/probes').catch(async () => {
+                    return await fetchApi(nodeCtx, '/api/connectivity/active-probes');
+                });
+                const arr = Array.isArray(probes) ? probes : (probes?.probes || []);
+                return {
+                    node: nodeCtx.siteName,
+                    total_probes: arr.length,
+                    active_probes: arr.filter((p: any) => p.enabled !== false).length,
+                    probes: arr
+                };
             }
 
             case 'get_probe_details': {
@@ -2309,12 +2338,14 @@ export async function executeCopilotTool(
 
             case 'get_health_matrix': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/admin/system/health-matrix');
+                return await fetchApi(nodeCtx, '/api/system/health-matrix').catch(async () => {
+                    return await fetchApi(nodeCtx, '/api/admin/system/dashboard-data');
+                });
             }
 
             case 'run_system_diagnostics': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/admin/system/diagnostics/run', { method: 'POST' });
+                return await fetchApi(nodeCtx, '/api/system/health-matrix/diagnostics', { method: 'POST' });
             }
 
             case 'get_voice_stats': {
