@@ -8077,7 +8077,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
                 ...(mcp_source && { mcp_source })
             };
             const { previousStatus } = await addTestResult('url_filtering', category || url, result, testId);
-            return res.json({ ...result, previousStatus });
+            return res.json({ ...result, testId, previousStatus });
         }
 
         const { ifaceFlag } = getEgressConfig();
@@ -8134,7 +8134,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             const { previousStatus, slsDiagnostic } = await addTestResult('url_filtering', category || url, result, testId, {
                 url, httpCode, srcPort, command: executedCommand, blockPageDetected: isBlockPage, testPageDetected: isTestPage
             });
-            res.json({ ...result, previousStatus, slsDiagnostic });
+            res.json({ ...result, testId, previousStatus, slsDiagnostic });
         } catch (curlError: any) {
             // Parse curl exit code for precise error classification
             const exitCode = parseCurlExitCode(curlError.message);
@@ -8164,7 +8164,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
                 url, error: errInfo.technicalDetail, errorType: errInfo.errorType, curlExitCode: exitCode,
                 likelyFirewallBlock: errInfo.likelyFirewallBlock, command: curlCmd, srcPort
             });
-            res.json({ ...result, previousStatus, slsDiagnostic });
+            res.json({ ...result, testId, previousStatus, slsDiagnostic });
         }
     } catch (e: any) {
         res.status(500).json({ error: 'Test execution failed', message: e.message });
@@ -11576,6 +11576,7 @@ app.post('/api/internal/log-event', (req, res) => {
 log('SYSTEM', `⚡ API Studio & Real-Time Log Inspector mounted at /api/api-studio, /api/logs, /api/playground`);
 
 // --- Stigix In-App AI Copilot API ---
+const aiCopilotSystemToken = jwt.sign({ username: 'stigix-copilot-internal', role: 'admin' }, SECRET_KEY, { expiresIn: '365d' });
 const aiManager = new AiManager(PROJECT_ROOT);
 aiManager.setExecutionContext({
     registryManager,
@@ -11583,6 +11584,10 @@ aiManager.setExecutionContext({
     vyosManager,
     tcpAppManager,
     getSystemSettings,
+    systemToken: aiCopilotSystemToken,
+    serverPort: PORT,
+    getRecentApiLogs: (limit?: number) => apiLogBuffer.getRecentLogs(limit || 20),
+    testLogger,
     runCommand: async (cmd: string) => {
         return new Promise<string>((resolve, reject) => {
             exec(cmd, { timeout: 15000, cwd: PROJECT_ROOT }, (err, stdout, stderr) => {

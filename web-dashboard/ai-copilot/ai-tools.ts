@@ -13,6 +13,10 @@ export interface ToolExecutionContext {
     getSystemSettings?: () => any;
     getTrafficStats?: () => any;
     getSecurityStats?: () => any;
+    getRecentApiLogs?: (limit?: number) => any[];
+    testLogger?: any;
+    systemToken?: string;
+    serverPort?: number;
     runCommand?: (cmd: string) => Promise<string>;
 }
 
@@ -298,6 +302,19 @@ export async function executeCopilotTool(
                 if (ctx.getSecurityStats) {
                     return ctx.getSecurityStats();
                 }
+                if (ctx.testLogger?.getStats) {
+                    try {
+                        const stats = await ctx.testLogger.getStats();
+                        return {
+                            totalTestsTracked: stats.totalTests,
+                            testsByType: stats.testsByType,
+                            testsByStatus: stats.testsByStatus,
+                            oldestTest: stats.oldestTest ? new Date(stats.oldestTest).toISOString() : null,
+                            newestTest: stats.newestTest ? new Date(stats.newestTest).toISOString() : null,
+                            lastAssessment: new Date().toISOString()
+                        };
+                    } catch {}
+                }
                 return {
                     overallScore: 92,
                     modules: {
@@ -395,32 +412,40 @@ export async function executeCopilotTool(
                 const catName = matchedCat ? matchedCat.name : (categoryInput ? categoryInput.toUpperCase() : 'URL Test');
                 const testStartTime = Date.now();
 
-                // 1. Try invoking the controller security test endpoint first to record stats
+                // 1. Invoke the controller security test endpoint with internal auth token to log to Security Test Log
                 try {
-                    const controllerPort = process.env.PORT || 8080;
+                    const controllerPort = ctx.serverPort || process.env.PORT || 8080;
+                    const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+                    if (ctx.systemToken) {
+                        authHeaders['Authorization'] = `Bearer ${ctx.systemToken}`;
+                    }
+
                     const res = await fetch(`http://localhost:${controllerPort}/api/security/url-test`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: authHeaders,
                         body: JSON.stringify({ url: targetUrl, category: catName, mcp_source: true })
                     }).then(r => r.json()).catch(() => null);
 
                     if (res && res.status) {
                         return {
+                            testId: res.testId ? `#${res.testId}` : undefined,
                             category: catName,
                             url: targetUrl,
                             verdict: res.status === 'allowed' ? 'ALLOWED' : 'BLOCKED',
                             status: res.status === 'allowed' ? 'ALLOWED' : 'BLOCKED',
                             httpCode: res.httpCode || 0,
+                            srcPort: res.srcPort,
                             reason: res.reason || (res.status === 'blocked' ? 'Blocked by Security Policy' : 'Allowed'),
                             policyEnforced: res.status === 'blocked',
                             blockPageDetected: res.blockPageDetected || false,
+                            previousStatus: res.previousStatus,
                             durationMs: Date.now() - testStartTime,
                             timestamp: new Date().toISOString()
                         };
                     }
                 } catch {}
 
-                // 2. Direct probe via curl if controller endpoint unavailable
+                // 2. Direct probe fallback via curl if controller endpoint unavailable
                 let output = '';
                 if (ctx.runCommand) {
                     const cmd = `curl -sSL --max-time 8 -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${targetUrl}'`;
@@ -464,22 +489,29 @@ export async function executeCopilotTool(
                 const testStartTime = Date.now();
 
                 try {
-                    const controllerPort = process.env.PORT || 8080;
+                    const controllerPort = ctx.serverPort || process.env.PORT || 8080;
+                    const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+                    if (ctx.systemToken) {
+                        authHeaders['Authorization'] = `Bearer ${ctx.systemToken}`;
+                    }
+
                     const res = await fetch(`http://localhost:${controllerPort}/api/security/dns-test`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ domain, category: testName })
+                        headers: authHeaders,
+                        body: JSON.stringify({ domain, testName, mcp_source: true })
                     }).then(r => r.json()).catch(() => null);
 
                     if (res && res.status) {
                         return {
+                            testId: res.testId ? `#${res.testId}` : (res.id ? `#${res.id}` : undefined),
                             category: testName,
                             domain,
-                            verdict: res.status === 'blocked' ? 'SINKHOLED / BLOCKED' : 'RESOLVED',
-                            status: res.status === 'blocked' ? 'BLOCKED' : 'ALLOWED',
+                            verdict: res.status === 'blocked' ? 'BLOCKED' : (res.status === 'sinkholed' ? 'SINKHOLED' : 'RESOLVED'),
+                            status: res.status === 'blocked' || res.status === 'sinkholed' ? 'BLOCKED' : 'ALLOWED',
                             resolvedIp: res.resolvedIp || 'None',
                             reason: res.reason || 'DNS Security check completed',
-                            policyEnforced: res.status === 'blocked',
+                            policyEnforced: res.status === 'blocked' || res.status === 'sinkholed',
+                            previousStatus: res.previousStatus,
                             durationMs: Date.now() - testStartTime,
                             timestamp: new Date().toISOString()
                         };
@@ -510,6 +542,41 @@ export async function executeCopilotTool(
                 const targetIp = args.target || '127.0.0.1';
                 const testStartTime = Date.now();
                 const testUrl = protocol === 'https' ? 'https://secure.eicar.org/eicar.com.txt' : `http://${targetIp}:8082/eicar.com.txt`;
+
+                try {
+                    const controllerPort = ctx.serverPort || process.env.PORT || 8080;
+                    const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+                    if (ctx.systemToken) {
+                        authHeaders['Authorization'] = `Bearer ${ctx.systemToken}`;
+                    }
+
+                    const res = await fetch(`http://localhost:${controllerPort}/api/security/threat-test`, {
+                        method: 'POST',
+                        headers: authHeaders,
+                        body: JSON.stringify({
+                            endpoint: testUrl,
+                            testName: `EICAR Threat Test (${protocol.toUpperCase()})`,
+                            mcp_source: true
+                        })
+                    }).then(r => r.json()).catch(() => null);
+
+                    if (res && res.results && res.results[0]) {
+                        const r = res.results[0];
+                        return {
+                            testId: res.testId ? `#${res.testId}` : undefined,
+                            test: 'EICAR Anti-Virus / Threat Prevention',
+                            protocol: protocol.toUpperCase(),
+                            targetUrl: testUrl,
+                            verdict: r.status === 'blocked' ? 'BLOCKED / MITIGATED' : (r.status === 'unreachable' ? 'UNREACHABLE' : 'BYPASS (FILE RECEIVED)'),
+                            status: r.status === 'blocked' ? 'BLOCKED' : (r.status === 'allowed' ? 'ALLOWED' : 'ERROR'),
+                            httpCode: r.httpCode || (r.status === 'allowed' ? 200 : 0),
+                            policyEnforced: r.status === 'blocked',
+                            reason: r.message || r.reason || (r.status === 'blocked' ? 'EICAR test blocked by Threat Prevention' : 'EICAR file retrieved'),
+                            durationMs: Date.now() - testStartTime,
+                            timestamp: new Date().toISOString()
+                        };
+                    }
+                } catch {}
 
                 let output = '';
                 if (ctx.runCommand) {
@@ -555,6 +622,16 @@ export async function executeCopilotTool(
 
             case 'get_recent_logs': {
                 const limit = Math.min(100, Math.max(5, Number(args.limit) || 20));
+                if (ctx.getRecentApiLogs) {
+                    const realLogs = ctx.getRecentApiLogs(limit);
+                    if (realLogs && realLogs.length > 0) {
+                        return {
+                            total: realLogs.length,
+                            limit,
+                            logs: realLogs.map((l: any) => `[${l.timestamp || new Date().toISOString()}] [${l.method || 'API'}] ${l.url || l.path || ''} -> ${l.status || 200} (${l.duration_ms || 0}ms)`)
+                        };
+                    }
+                }
                 return {
                     limit,
                     logs: [
