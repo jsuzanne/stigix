@@ -66,7 +66,7 @@ export default function App() {
   const [features, setFeatures] = useState<{ xfr_enabled: boolean }>({ xfr_enabled: false });
   const [initialSettingsTab, setInitialSettingsTab] = useState<any>(null);
   const [copilotDrawerOpen, setCopilotDrawerOpen] = useState(false);
-  const [copilotConfig, setCopilotConfig] = useState<{ enabled: boolean; hasKey: boolean } | null>(null);
+  const [copilotConfig, setCopilotConfig] = useState<{ enabled: boolean; featureEnabled?: boolean; hasKey: boolean } | null>(null);
 
   const fetchCopilotConfig = async () => {
     if (!token) return;
@@ -83,7 +83,7 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
-        if (!copilotConfig?.hasKey) return; // Only toggle if key is configured
+        if (!copilotConfig?.featureEnabled || !copilotConfig?.hasKey) return; // Only toggle if feature is enabled and key is configured
         e.preventDefault();
         setCopilotDrawerOpen(prev => !prev);
       } else if (e.key === 'Escape' && copilotDrawerOpen) {
@@ -92,7 +92,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [copilotDrawerOpen, copilotConfig?.hasKey]);
+  }, [copilotDrawerOpen, copilotConfig?.featureEnabled, copilotConfig?.hasKey]);
 
   // --- Theme Management ---
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -785,8 +785,8 @@ export default function App() {
 
 
         <div className="flex gap-3 items-center">
-          {/* Quick Copilot Trigger Button (only visible if Anthropic API key is configured) */}
-          {copilotConfig?.hasKey && (
+          {/* Quick Copilot Trigger Button (only visible if feature enabled and Anthropic API key is configured) */}
+          {copilotConfig?.featureEnabled && copilotConfig?.hasKey && (
             <button
               onClick={() => setCopilotDrawerOpen(prev => !prev)}
               title="Toggle Stigix AI Copilot (⌘J)"
@@ -1075,7 +1075,7 @@ export default function App() {
           <Terminal size={18} /> Live Events
           <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Stream live real-time network and security events</span>
         </button>
-        {copilotConfig?.hasKey && (
+        {copilotConfig?.featureEnabled && copilotConfig?.hasKey && (
           <button
             onClick={() => setView('copilot')}
             className={cn(
@@ -1657,10 +1657,10 @@ export default function App() {
       {view === 'custom_apps' && <CustomApps token={token!} />}
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
-      {copilotConfig?.hasKey && view === 'copilot' && <Copilot token={token!} onOpenSettings={() => { setInitialSettingsTab('mcp'); setView('settings'); }} />}
+      {copilotConfig?.featureEnabled && copilotConfig?.hasKey && view === 'copilot' && <Copilot token={token!} onOpenSettings={() => { setInitialSettingsTab('mcp'); setView('settings'); }} />}
 
-      {/* ── Global Floating Copilot Trigger Button (Visible on all tabs only when API key configured) ── */}
-      {copilotConfig?.hasKey && view !== 'copilot' && !copilotDrawerOpen && (
+      {/* ── Global Floating Copilot Trigger Button (Visible on all tabs only when feature enabled & API key configured) ── */}
+      {copilotConfig?.featureEnabled && copilotConfig?.hasKey && view !== 'copilot' && !copilotDrawerOpen && (
         <button
           onClick={() => setCopilotDrawerOpen(true)}
           title="Open Stigix AI Copilot Assistant (⌘J)"
@@ -1677,7 +1677,7 @@ export default function App() {
       )}
 
       {/* ── Slide-Over AI Copilot Drawer (Side Panel) ── */}
-      {copilotConfig?.hasKey && copilotDrawerOpen && (
+      {copilotConfig?.featureEnabled && copilotConfig?.hasKey && copilotDrawerOpen && (
         <div className="fixed inset-0 z-50 overflow-hidden">
           {/* Semi-transparent Backdrop */}
           <div

@@ -13,6 +13,7 @@ export interface AiConfig {
 
 export interface AiPublicConfig {
     enabled: boolean;
+    featureEnabled?: boolean;
     hasKey: boolean;
     maskedKey?: string;
     keyMasked?: string;

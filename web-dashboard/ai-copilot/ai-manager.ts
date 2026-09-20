@@ -115,8 +115,20 @@ export class AiManager {
             masked = '••••••••••••';
         }
 
+        const envVal = (
+            process.env.ENABLE_AI_COPILOT ||
+            process.env.STIGIX_ENABLE_AI_COPILOT ||
+            process.env.STIGIX_AI_COPILOT_ENABLED ||
+            process.env.ENABLE_COPILOT ||
+            process.env.COPILOT_ENABLED ||
+            ''
+        ).toLowerCase().trim();
+
+        const featureEnabled = envVal === 'true' || envVal === '1' || envVal === 'yes' || envVal === 'on';
+
         return {
             enabled: this.config.enabled !== false,
+            featureEnabled,
             hasKey: Boolean(key && key.length > 5),
             maskedKey: masked,
             keyMasked: masked,

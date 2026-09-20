@@ -1783,7 +1783,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         ...(systemInfo?.beta ? [{ id: 'maintenance', label: 'System Maintenance', beta: true }] : []),
         { id: 'targets', label: 'Stigix Targets' },
         { id: 'registry', label: 'Target Controller' },
-        { id: 'mcp', label: 'AI & Copilot', beta: true },
+        ...(copilotConfig?.featureEnabled ? [{ id: 'mcp', label: 'AI & Copilot', beta: true }] : []),
         { id: 'prisma-api', label: 'Prisma SASE API' },
         { id: 'api-studio', label: 'API Studio', isNew: true },
     ];
