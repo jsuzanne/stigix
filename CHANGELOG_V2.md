@@ -9,9 +9,9 @@ All notable changes made specifically on the `v2` branch are documented in this 
   - **Dedicated AI Copilot Tab & Conversation Drawer**: Multi-session conversational interface with instant session creation, auto-titling, starter prompts, and persistent local storage (`config/ai-sessions.json`).
   - **Zero-Log & Local Secure Key Storage**: User API key stored securely in `config/ai-config.json` (mode `0600`) with in-UI masking (`sk-ant-api••••••••••••xxxx`).
   - **Direct Anthropic Messages API Streaming (SSE)**: Server-Sent Events endpoint (`POST /api/copilot/chat`) streaming incremental responses directly to the frontend.
-  - **Local Tool Execution Engine**: AI Agent capabilities executing local diagnostics without exposing data: `list_endpoints`, `get_mesh_status`, `get_traffic_stats`, `get_security_posture`, `get_dem_scores`, `vyos_chaos`, and `get_recent_logs`.
+  - **Full MCP Parity & Tool Execution Engine**: AI Agent capabilities executing local diagnostics and configuration changes in complete parity with the MCP Server: `list_endpoints`, `get_mesh_status`, `get_traffic_stats`, `get_security_posture`, `get_digital_experience`, `add_dem_probe`, `remove_dem_probe`, `add_fabric_target`, `remove_fabric_target`, `vyos_chaos`, `run_security_url_test`, `run_security_dns_test`, `run_security_threat_test`, and `get_recent_logs`.
   - **Frontier Model Support**: Integrated Anthropic active models catalog with **Claude Sonnet 4.5** (`claude-sonnet-4-5-20250929`), **Claude Haiku 4.5** (`claude-haiku-4-5-20251001`), **Claude Sonnet 4.6**, **Claude Sonnet 5**, and **Claude Opus 4.5**.
-  - **Settings Integration**: Dedicated **AI & Copilot** tab in Settings with 1-click API key validation test against Anthropic `/v1/models` and default model selector.
+  - **Settings Integration & Conditional UI Masking**: Dedicated **AI & Copilot** tab in Settings with 1-click API key validation test against Anthropic `/v1/models` and default model selector. When no key is configured, Copilot tabs, drawer trigger, and floating buttons are cleanly hidden from the UI until a key is added.
 
 ---
 
