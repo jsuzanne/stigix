@@ -2098,12 +2098,50 @@ export async function executeCopilotTool(
 
             case 'list_speedtest_history': {
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
-                return await fetchApi(nodeCtx, `/api/tests/xfr?limit=${args.limit || 20}`);
+                const limit = Number(args.limit) || 20;
+                let jobs = [];
+                if (nodeCtx.isLocal && ctx.xfrManager) {
+                    jobs = ctx.xfrManager.getAllJobs();
+                } else {
+                    jobs = await fetchApi(nodeCtx, `/api/tests/xfr`).catch(() => []);
+                }
+                const arr = Array.isArray(jobs) ? jobs : [];
+                // Sort newest first (reverse chronological)
+                const sorted = [...arr].reverse().slice(0, limit);
+                return {
+                    node: nodeCtx.siteName,
+                    total_records: arr.length,
+                    recent_tests: sorted.map((j: any) => ({
+                        id: j.id,
+                        sequence_id: j.sequence_id,
+                        status: j.status,
+                        started_at: j.started_at,
+                        finished_at: j.finished_at,
+                        target: j.params?.target?.host || j.params?.host,
+                        protocol: j.params?.protocol || 'tcp',
+                        duration: j.params?.duration_sec ? `${j.params.duration_sec}s` : undefined,
+                        throughput_mbps: j.summary?.throughput_mbps ?? j.summary?.avg_bandwidth_mbps ?? j.summary?.received_mbps ?? j.summary?.sent_mbps,
+                        rtt_ms: j.summary?.rtt_ms_avg ?? j.summary?.rtt_ms ?? j.summary?.avg_rtt_ms,
+                        loss_pct: j.summary?.loss_percent ?? j.summary?.loss_pct ?? 0,
+                        retransmits: j.summary?.retransmits ?? j.summary?.retransmissions,
+                        total_bytes: j.summary?.total_bytes ?? j.summary?.bytes_transferred,
+                        summary: j.summary
+                    }))
+                };
             }
 
             case 'get_convergence_history': {
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
-                return await fetchApi(nodeCtx, `/api/convergence/history?limit=${args.limit || 10}`);
+                const limit = Number(args.limit) || 10;
+                const history = await fetchApi(nodeCtx, `/api/convergence/history`).catch(() => []);
+                const arr = Array.isArray(history) ? history : [];
+                // Sort newest first (reverse chronological)
+                const sorted = [...arr].reverse().slice(0, limit);
+                return {
+                    node: nodeCtx.siteName,
+                    total_records: arr.length,
+                    recent_history: sorted
+                };
             }
 
             case 'run_security_url_batch': {
