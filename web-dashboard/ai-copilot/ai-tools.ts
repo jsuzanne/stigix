@@ -10,6 +10,8 @@ export interface ToolExecutionContext {
     targetsManager?: any;
     vyosManager?: any;
     tcpAppManager?: any;
+    xfrManager?: any;
+    provisioningManager?: any;
     getSystemSettings?: () => any;
     getTrafficStats?: () => any;
     getSecurityStats?: () => any;
@@ -25,6 +27,108 @@ export interface ToolExecutionContext {
     systemToken?: string;
     serverPort?: number;
     runCommand?: (cmd: string) => Promise<string>;
+}
+
+export function resolveNodeContext(nodeNameOrIp: string | undefined, ctx: ToolExecutionContext): { baseUrl: string; headers: Record<string, string>; siteName: string; isLocal: boolean } {
+    const defaultPort = ctx.serverPort || process.env.PORT || 8080;
+    const defaultHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (ctx.systemToken) defaultHeaders['Authorization'] = `Bearer ${ctx.systemToken}`;
+
+    const localSite = ctx.registryManager?.getSiteName?.() || 'LOCAL';
+
+    if (!nodeNameOrIp || ['local', 'self', 'current', localSite.toLowerCase()].includes(String(nodeNameOrIp).toLowerCase().trim())) {
+        return { baseUrl: `http://127.0.0.1:${defaultPort}`, headers: defaultHeaders, siteName: localSite, isLocal: true };
+    }
+
+    const query = String(nodeNameOrIp).toLowerCase().trim();
+
+    // 1. Search in peer registry
+    const peers = typeof ctx.registryManager?.getPeers === 'function' ? ctx.registryManager.getPeers() : [];
+    const matchedPeer = peers.find((p: any) =>
+        (p.site_name && p.site_name.toLowerCase() === query) ||
+        (p.site_name && p.site_name.toLowerCase().includes(query)) ||
+        (p.instance_id && p.instance_id.toLowerCase() === query) ||
+        (p.ip_private && p.ip_private === query) ||
+        (p.ip_public && p.ip_public === query)
+    );
+
+    if (matchedPeer) {
+        const ip = matchedPeer.ip_private || matchedPeer.ip_public;
+        const port = matchedPeer.port || 8080;
+        return {
+            baseUrl: `http://${ip}:${port}`,
+            headers: defaultHeaders,
+            siteName: matchedPeer.site_name || matchedPeer.instance_id || ip,
+            isLocal: false
+        };
+    }
+
+    // 2. Search in targets manager
+    const targets = typeof ctx.targetsManager?.getMergedTargets === 'function' ? ctx.targetsManager.getMergedTargets() : [];
+    const matchedTarget = targets.find((t: any) =>
+        (t.name && t.name.toLowerCase() === query) ||
+        (t.name && t.name.toLowerCase().includes(query)) ||
+        (t.id && t.id.toLowerCase() === query) ||
+        (t.host && t.host === query)
+    );
+
+    if (matchedTarget) {
+        const host = matchedTarget.host;
+        const port = matchedTarget.port || 8080;
+        return {
+            baseUrl: `http://${host}:${port}`,
+            headers: defaultHeaders,
+            siteName: matchedTarget.name || host,
+            isLocal: false
+        };
+    }
+
+    // 3. Direct IP or hostname
+    if (/^[0-9.]+$|^[a-zA-Z0-9.-]+$/.test(query)) {
+        return {
+            baseUrl: `http://${query}:8080`,
+            headers: defaultHeaders,
+            siteName: query,
+            isLocal: false
+        };
+    }
+
+    return { baseUrl: `http://127.0.0.1:${defaultPort}`, headers: defaultHeaders, siteName: localSite, isLocal: true };
+}
+
+export function resolveTargetEndpoint(targetQuery: string | undefined, ctx: ToolExecutionContext): { host: string; port: number; name: string } {
+    const raw = String(targetQuery || '').trim();
+    if (!raw) return { host: '127.0.0.1', port: 9000, name: 'Localhost' };
+
+    const query = raw.toLowerCase();
+
+    // Check targets manager
+    const targets = typeof ctx.targetsManager?.getMergedTargets === 'function' ? ctx.targetsManager.getMergedTargets() : [];
+    const target = targets.find((t: any) =>
+        (t.name && t.name.toLowerCase() === query) ||
+        (t.name && t.name.toLowerCase().includes(query)) ||
+        (t.id && t.id.toLowerCase() === query) ||
+        (t.host && t.host === query)
+    );
+
+    if (target) {
+        return { host: target.host, port: 9000, name: target.name || target.host };
+    }
+
+    // Check peer registry
+    const peers = typeof ctx.registryManager?.getPeers === 'function' ? ctx.registryManager.getPeers() : [];
+    const peer = peers.find((p: any) =>
+        (p.site_name && p.site_name.toLowerCase() === query) ||
+        (p.site_name && p.site_name.toLowerCase().includes(query)) ||
+        (p.instance_id && p.instance_id.toLowerCase() === query) ||
+        (p.ip_private && p.ip_private === query)
+    );
+
+    if (peer) {
+        return { host: peer.ip_private || peer.ip_public, port: 9000, name: peer.site_name || peer.instance_id };
+    }
+
+    return { host: raw, port: 9000, name: raw };
 }
 
 export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
@@ -286,6 +390,180 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                 }
             },
             required: ['target']
+        }
+    },
+    {
+        name: 'run_test',
+        description: 'Starts a network test between Stigix endpoints (Speedtest/XFR bandwidth test, Convergence/Failover continuous probe, Voice RTP simulation, or IoT simulation). Can be executed locally or initiated on a remote peer node.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                target: {
+                    type: 'string',
+                    description: 'Target endpoint name, ID, or IP address (e.g. "BR2", "ubuntubr5", "192.168.206.10", "Hetzner", "DC1").'
+                },
+                profile: {
+                    type: 'string',
+                    enum: ['xfr', 'speedtest', 'conv', 'convergence', 'voice', 'iot'],
+                    description: 'Test type profile: "xfr"/"speedtest" (bandwidth transfer), "conv" (continuous failover probe), "voice", "iot" (default: "xfr").'
+                },
+                source_node: {
+                    type: 'string',
+                    description: 'Optional source node initiating the test (e.g. "BR8", "BR5", "DC1"). Defaults to current node.'
+                },
+                duration_sec: {
+                    type: 'number',
+                    description: 'Duration in seconds for XFR speedtest (default: 10).'
+                },
+                protocol: {
+                    type: 'string',
+                    enum: ['tcp', 'udp', 'quic'],
+                    description: 'Protocol for XFR speedtest (default: tcp).'
+                },
+                direction: {
+                    type: 'string',
+                    enum: ['client-to-server', 'server-to-client', 'bidirectional'],
+                    description: 'Transfer direction (default: client-to-server).'
+                },
+                bitrate: {
+                    type: 'string',
+                    description: 'Target bitrate (e.g. "50M", "100M", "0" for unconstrained max).'
+                },
+                pps: {
+                    type: 'number',
+                    description: 'Packet rate for convergence test (e.g. 50, 100).'
+                }
+            },
+            required: ['target']
+        }
+    },
+    {
+        name: 'trigger_bandwidth_test',
+        description: 'Launches an on-demand high-precision bandwidth (XFR / Speedtest) measurement against a target node/peer to measure throughput, latency, and packet loss.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                target: {
+                    type: 'string',
+                    description: 'Target endpoint name or IP (e.g. "BR2", "ubuntubr5", "192.168.206.10").'
+                },
+                source_node: {
+                    type: 'string',
+                    description: 'Optional node initiating the speedtest (default: local node).'
+                },
+                duration_sec: {
+                    type: 'number',
+                    description: 'Duration in seconds (default: 10).'
+                },
+                protocol: {
+                    type: 'string',
+                    enum: ['tcp', 'udp', 'quic'],
+                    description: 'Transport protocol (default: tcp).'
+                },
+                direction: {
+                    type: 'string',
+                    enum: ['client-to-server', 'server-to-client', 'bidirectional'],
+                    description: 'Direction of traffic (default: client-to-server).'
+                }
+            },
+            required: ['target']
+        }
+    },
+    {
+        name: 'stop_test',
+        description: 'Stops a currently running active test (such as a convergence continuous probe or voice test).',
+        input_schema: {
+            type: 'object',
+            properties: {
+                test_id: {
+                    type: 'string',
+                    description: 'Optional test ID or sequence identifier.'
+                },
+                node: {
+                    type: 'string',
+                    description: 'Optional node executing the test (default: local node).'
+                }
+            }
+        }
+    },
+    {
+        name: 'get_bandwidth_results',
+        description: 'Retrieves recent Bandwidth / XFR speedtest results, throughput (Mbps), latency, and transfer summaries.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                limit: {
+                    type: 'number',
+                    description: 'Number of recent speedtest records to fetch (default: 10).'
+                },
+                node: {
+                    type: 'string',
+                    description: 'Optional node to query (default: local node).'
+                }
+            }
+        }
+    },
+    {
+        name: 'set_traffic_rate',
+        description: 'Sets or adjusts the background SaaS traffic generation rate (requests per second / throughput).',
+        input_schema: {
+            type: 'object',
+            properties: {
+                rate: {
+                    type: 'number',
+                    description: 'Desired requests per second (e.g. 10, 50, 100).'
+                },
+                node: {
+                    type: 'string',
+                    description: 'Optional node to configure (default: local node).'
+                }
+            },
+            required: ['rate']
+        }
+    },
+    {
+        name: 'control_traffic',
+        description: 'Starts, stops, pauses, or resumes the background SaaS multi-vector traffic generator.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                action: {
+                    type: 'string',
+                    enum: ['start', 'stop', 'pause', 'resume'],
+                    description: 'Action to perform.'
+                },
+                node: {
+                    type: 'string',
+                    description: 'Optional node to target (default: local node).'
+                }
+            },
+            required: ['action']
+        }
+    },
+    {
+        name: 'get_convergence_results',
+        description: 'Retrieves failover convergence monitoring history, packet drop counts during path failovers, and restoration timings.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                node: {
+                    type: 'string',
+                    description: 'Optional node to query (default: local node).'
+                }
+            }
+        }
+    },
+    {
+        name: 'get_voice_metrics',
+        description: 'Retrieves VoIP RTP simulation metrics including MOS score (1.0 - 4.5), jitter, packet loss, and call path quality.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                node: {
+                    type: 'string',
+                    description: 'Optional node to query (default: local node).'
+                }
+            }
         }
     }
 ];
@@ -882,6 +1160,53 @@ export async function executeCopilotTool(
                     return { error: 'Both name and target are required to add a DEM probe.' };
                 }
 
+                const newProbe = {
+                    name,
+                    type: probeType,
+                    target,
+                    timeout: timeoutMs,
+                    enabled: true
+                };
+
+                // Multi-node support: if target_node/node is specified and is remote
+                const targetNodeCtx = resolveNodeContext(args.node || args.target_node, ctx);
+                if (!targetNodeCtx.isLocal) {
+                    try {
+                        const getRes = await fetch(`${targetNodeCtx.baseUrl}/api/connectivity/custom`, { headers: targetNodeCtx.headers });
+                        const existing: any[] = getRes.ok ? await getRes.json() : [];
+                        const matchIdx = existing.findIndex((p: any) => 
+                            (p.name && p.name.toLowerCase() === name.toLowerCase()) || 
+                            (p.target && p.target.toLowerCase() === target.toLowerCase())
+                        );
+                        let updated = [...existing];
+                        if (matchIdx >= 0) {
+                            updated[matchIdx] = { ...updated[matchIdx], ...newProbe };
+                        } else {
+                            updated.push(newProbe);
+                        }
+
+                        const postRes = await fetch(`${targetNodeCtx.baseUrl}/api/connectivity/custom`, {
+                            method: 'POST',
+                            headers: targetNodeCtx.headers,
+                            body: JSON.stringify({ endpoints: updated })
+                        });
+
+                        if (postRes.ok) {
+                            return {
+                                success: true,
+                                message: `DEM probe '${name}' (${probeType} -> ${target}) added and saved on node ${targetNodeCtx.siteName}.`,
+                                node: targetNodeCtx.siteName,
+                                probe: newProbe,
+                                totalProbesCount: updated.length
+                            };
+                        } else {
+                            return { error: `Failed to save probe on node ${targetNodeCtx.siteName}: HTTP ${postRes.status}` };
+                        }
+                    } catch (e: any) {
+                        return { error: `Failed to communicate with node ${targetNodeCtx.siteName}: ${e?.message || e}` };
+                    }
+                }
+
                 // 1. Get current full probe list (including global/provisioned/env/custom)
                 const allCurrent = typeof ctx.getAllProbes === 'function'
                     ? ctx.getAllProbes()
@@ -890,14 +1215,6 @@ export async function executeCopilotTool(
                         ...(typeof ctx.getCustomProbes === 'function' ? ctx.getCustomProbes() : []),
                         ...(typeof ctx.discoveryManager?.getProbes === 'function' ? ctx.discoveryManager.getProbes() : [])
                     ];
-
-                const newProbe = {
-                    name,
-                    type: probeType,
-                    target,
-                    timeout: timeoutMs,
-                    enabled: true
-                };
 
                 // Deduplicate or append to full probes list
                 const matchIdx = allCurrent.findIndex((p: any) => 
@@ -971,6 +1288,38 @@ export async function executeCopilotTool(
                 const name = String(args.name || args.probe_name || '').toLowerCase().trim();
                 if (!name) {
                     return { error: 'Probe name is required to remove a DEM probe.' };
+                }
+
+                // Multi-node support: if target_node/node is specified and is remote
+                const targetNodeCtx = resolveNodeContext(args.node || args.target_node, ctx);
+                if (!targetNodeCtx.isLocal) {
+                    try {
+                        const getRes = await fetch(`${targetNodeCtx.baseUrl}/api/connectivity/custom`, { headers: targetNodeCtx.headers });
+                        const existing: any[] = getRes.ok ? await getRes.json() : [];
+                        const matchIdx = existing.findIndex((p: any) => p.name && (p.name.toLowerCase() === name || p.name.toLowerCase().includes(name)));
+                        if (matchIdx === -1) {
+                            return { error: `Probe '${args.name}' not found on node ${targetNodeCtx.siteName}.` };
+                        }
+                        const removed = existing[matchIdx];
+                        const updated = existing.filter((_, i) => i !== matchIdx);
+                        const postRes = await fetch(`${targetNodeCtx.baseUrl}/api/connectivity/custom`, {
+                            method: 'POST',
+                            headers: targetNodeCtx.headers,
+                            body: JSON.stringify({ endpoints: updated })
+                        });
+                        if (postRes.ok) {
+                            return {
+                                success: true,
+                                message: `DEM probe '${removed.name}' removed from node ${targetNodeCtx.siteName}.`,
+                                node: targetNodeCtx.siteName,
+                                remainingProbesCount: updated.length
+                            };
+                        } else {
+                            return { error: `Failed to remove probe on node ${targetNodeCtx.siteName}: HTTP ${postRes.status}` };
+                        }
+                    } catch (e: any) {
+                        return { error: `Failed to reach node ${targetNodeCtx.siteName}: ${e?.message || e}` };
+                    }
                 }
 
                 const allCurrent = typeof ctx.getAllProbes === 'function'
@@ -1078,6 +1427,301 @@ export async function executeCopilotTool(
                     }
                 } catch (e: any) {
                     return { error: `Failed to add fabric target: ${e?.message || String(e)}` };
+                }
+            }
+
+            case 'run_test':
+            case 'trigger_bandwidth_test': {
+                const targetQuery = String(args.target || args.target_id || '').trim();
+                if (!targetQuery) {
+                    return { error: 'Target endpoint or IP is required to run a test.' };
+                }
+
+                const profile = String(args.profile || (toolName === 'trigger_bandwidth_test' ? 'xfr' : 'xfr')).toLowerCase();
+                const sourceNodeContext = resolveNodeContext(args.source_node || args.node, ctx);
+                const targetEndpoint = resolveTargetEndpoint(targetQuery, ctx);
+
+                if (profile === 'xfr' || profile === 'speedtest') {
+                    const durationSec = Number(args.duration_sec) || 10;
+                    const protocol = String(args.protocol || 'tcp').toLowerCase();
+                    const direction = String(args.direction || 'client-to-server').toLowerCase();
+                    const bitrate = String(args.bitrate || '0');
+                    const parallelStreams = Number(args.parallel_streams) || 4;
+
+                    // If source is local and xfrManager is available
+                    if (sourceNodeContext.isLocal && ctx.xfrManager) {
+                        try {
+                            const { id, sequence_id } = ctx.xfrManager.createJob({
+                                mode: 'custom',
+                                host: targetEndpoint.host,
+                                port: 9000,
+                                protocol,
+                                direction,
+                                duration_sec: durationSec,
+                                bitrate,
+                                parallel_streams: parallelStreams
+                            });
+                            ctx.xfrManager.startJob(id);
+                            return {
+                                success: true,
+                                message: `Speedtest / XFR test started from ${sourceNodeContext.siteName} to ${targetEndpoint.name} (${targetEndpoint.host}:9000) [${sequence_id}].`,
+                                test_id: id,
+                                sequence_id,
+                                source: sourceNodeContext.siteName,
+                                target: targetEndpoint.name,
+                                host: targetEndpoint.host,
+                                duration: `${durationSec}s`,
+                                protocol,
+                                direction
+                            };
+                        } catch (e: any) {
+                            return { error: `Failed to launch XFR job: ${e?.message || e}` };
+                        }
+                    }
+
+                    // Otherwise trigger via HTTP REST API
+                    try {
+                        const res = await fetch(`${sourceNodeContext.baseUrl}/api/tests/xfr`, {
+                            method: 'POST',
+                            headers: sourceNodeContext.headers,
+                            body: JSON.stringify({
+                                mode: 'custom',
+                                target: { host: targetEndpoint.host, port: 9000 },
+                                protocol,
+                                direction,
+                                duration_sec: durationSec,
+                                bitrate,
+                                parallel_streams: parallelStreams
+                            })
+                        });
+
+                        if (res.ok) {
+                            const data = await res.json();
+                            return {
+                                success: true,
+                                message: `Speedtest / XFR test started on ${sourceNodeContext.siteName} towards ${targetEndpoint.name} (${targetEndpoint.host}:9000).`,
+                                test_id: data.id,
+                                sequence_id: data.sequence_id,
+                                source: sourceNodeContext.siteName,
+                                target: targetEndpoint.name,
+                                duration: `${durationSec}s`
+                            };
+                        } else {
+                            const errTxt = await res.text();
+                            return { error: `HTTP ${res.status} from ${sourceNodeContext.siteName}: ${errTxt}` };
+                        }
+                    } catch (e: any) {
+                        return { error: `Connection failed to node ${sourceNodeContext.siteName}: ${e?.message || e}` };
+                    }
+                } else if (profile === 'conv' || profile === 'convergence') {
+                    const pps = Number(args.pps) || (args.bitrate && String(args.bitrate).includes('M') ? parseInt(String(args.bitrate).replace('M', ''), 10) : 50);
+                    try {
+                        const res = await fetch(`${sourceNodeContext.baseUrl}/api/convergence/start`, {
+                            method: 'POST',
+                            headers: sourceNodeContext.headers,
+                            body: JSON.stringify({
+                                target: targetEndpoint.host,
+                                port: 6100,
+                                rate: pps,
+                                label: targetEndpoint.name
+                            })
+                        });
+
+                        if (res.ok) {
+                            const data = await res.json();
+                            return {
+                                success: true,
+                                message: `Continuous Convergence Failover Probe started from ${sourceNodeContext.siteName} towards ${targetEndpoint.name} (${targetEndpoint.host}:6100) at ${pps} pps. Note: Test runs continuously until stopped via stop_test.`,
+                                test: data,
+                                source: sourceNodeContext.siteName,
+                                target: targetEndpoint.name
+                            };
+                        } else {
+                            const errTxt = await res.text();
+                            return { error: `HTTP ${res.status} from ${sourceNodeContext.siteName}: ${errTxt}` };
+                        }
+                    } catch (e: any) {
+                        return { error: `Failed to start convergence test on ${sourceNodeContext.siteName}: ${e?.message || e}` };
+                    }
+                } else if (profile === 'voice') {
+                    try {
+                        const res = await fetch(`${sourceNodeContext.baseUrl}/api/voice/control`, {
+                            method: 'POST',
+                            headers: sourceNodeContext.headers,
+                            body: JSON.stringify({
+                                action: 'start',
+                                target: targetEndpoint.host
+                            })
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        return {
+                            success: true,
+                            message: `Voice simulation started on ${sourceNodeContext.siteName} towards ${targetEndpoint.name}.`,
+                            result: data
+                        };
+                    } catch (e: any) {
+                        return { error: `Failed to trigger voice test on ${sourceNodeContext.siteName}: ${e?.message || e}` };
+                    }
+                }
+
+                return { error: `Unsupported test profile: '${profile}'. Supported: 'xfr', 'conv', 'voice'.` };
+            }
+
+            case 'stop_test': {
+                const nodeCtx = resolveNodeContext(args.node, ctx);
+                try {
+                    await fetch(`${nodeCtx.baseUrl}/api/convergence/stop`, {
+                        method: 'POST',
+                        headers: nodeCtx.headers
+                    }).catch(() => null);
+
+                    await fetch(`${nodeCtx.baseUrl}/api/voice/control`, {
+                        method: 'POST',
+                        headers: nodeCtx.headers,
+                        body: JSON.stringify({ action: 'stop' })
+                    }).catch(() => null);
+
+                    return {
+                        success: true,
+                        message: `Active test(s) stopped on ${nodeCtx.siteName}.`,
+                        node: nodeCtx.siteName
+                    };
+                } catch (e: any) {
+                    return { error: `Failed to stop test on ${nodeCtx.siteName}: ${e?.message || e}` };
+                }
+            }
+
+            case 'get_bandwidth_results': {
+                const nodeCtx = resolveNodeContext(args.node, ctx);
+                const limit = Number(args.limit) || 10;
+
+                if (nodeCtx.isLocal && ctx.xfrManager) {
+                    const allJobs = ctx.xfrManager.getAllJobs() || [];
+                    const formatted = allJobs.slice(-limit).reverse().map((j: any) => ({
+                        id: j.id,
+                        sequence_id: j.sequence_id,
+                        status: j.status,
+                        target: j.params?.host,
+                        protocol: j.params?.protocol,
+                        direction: j.params?.direction,
+                        duration: j.params?.duration_sec ? `${j.params.duration_sec}s` : undefined,
+                        throughput_mbps: j.summary?.throughput_mbps ?? j.summary?.avg_bandwidth_mbps ?? null,
+                        loss_pct: j.summary?.loss_pct ?? null,
+                        rtt_ms: j.summary?.rtt_ms ?? null,
+                        finished_at: j.finished_at,
+                        error: j.error
+                    }));
+                    return {
+                        node: nodeCtx.siteName,
+                        count: formatted.length,
+                        results: formatted
+                    };
+                }
+
+                try {
+                    const res = await fetch(`${nodeCtx.baseUrl}/api/tests/xfr`, {
+                        headers: nodeCtx.headers
+                    });
+                    if (res.ok) {
+                        const raw = await res.json();
+                        const arr = Array.isArray(raw) ? raw.slice(-limit).reverse() : [];
+                        return {
+                            node: nodeCtx.siteName,
+                            count: arr.length,
+                            results: arr
+                        };
+                    } else {
+                        return { error: `HTTP ${res.status} from ${nodeCtx.siteName}` };
+                    }
+                } catch (e: any) {
+                    return { error: `Failed to fetch bandwidth results from ${nodeCtx.siteName}: ${e?.message || e}` };
+                }
+            }
+
+            case 'set_traffic_rate': {
+                const nodeCtx = resolveNodeContext(args.node, ctx);
+                const rate = Number(args.rate);
+                if (isNaN(rate) || rate < 0) {
+                    return { error: 'A valid positive number for rate is required.' };
+                }
+
+                try {
+                    const res = await fetch(`${nodeCtx.baseUrl}/api/traffic/rate`, {
+                        method: 'POST',
+                        headers: nodeCtx.headers,
+                        body: JSON.stringify({ rate })
+                    });
+                    if (res.ok) {
+                        return {
+                            success: true,
+                            message: `Traffic rate set to ${rate} req/s on ${nodeCtx.siteName}.`,
+                            node: nodeCtx.siteName,
+                            rate
+                        };
+                    } else {
+                        const err = await res.text();
+                        return { error: `Failed to set rate: ${res.status} ${err}` };
+                    }
+                } catch (e: any) {
+                    return { error: `Failed to reach ${nodeCtx.siteName}: ${e?.message || e}` };
+                }
+            }
+
+            case 'control_traffic': {
+                const nodeCtx = resolveNodeContext(args.node, ctx);
+                const action = String(args.action || 'start').toLowerCase().trim();
+                const endpoint = (action === 'stop' || action === 'pause') ? 'stop' : 'start';
+
+                try {
+                    const res = await fetch(`${nodeCtx.baseUrl}/api/traffic/${endpoint}`, {
+                        method: 'POST',
+                        headers: nodeCtx.headers
+                    });
+                    if (res.ok) {
+                        return {
+                            success: true,
+                            message: `Traffic generator ${action.toUpperCase()} signal sent to ${nodeCtx.siteName}.`,
+                            node: nodeCtx.siteName,
+                            action
+                        };
+                    } else {
+                        const err = await res.text();
+                        return { error: `HTTP ${res.status} from ${nodeCtx.siteName}: ${err}` };
+                    }
+                } catch (e: any) {
+                    return { error: `Failed to reach ${nodeCtx.siteName}: ${e?.message || e}` };
+                }
+            }
+
+            case 'get_convergence_results': {
+                const nodeCtx = resolveNodeContext(args.node, ctx);
+                try {
+                    const [statusRes, histRes] = await Promise.all([
+                        fetch(`${nodeCtx.baseUrl}/api/convergence/status`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => null),
+                        fetch(`${nodeCtx.baseUrl}/api/convergence/history`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => [])
+                    ]);
+
+                    return {
+                        node: nodeCtx.siteName,
+                        live_status: statusRes,
+                        recent_history: Array.isArray(histRes) ? histRes.slice(-10).reverse() : histRes
+                    };
+                } catch (e: any) {
+                    return { error: `Failed to fetch convergence results from ${nodeCtx.siteName}: ${e?.message || e}` };
+                }
+            }
+
+            case 'get_voice_metrics': {
+                const nodeCtx = resolveNodeContext(args.node, ctx);
+                try {
+                    const res = await fetch(`${nodeCtx.baseUrl}/api/voice/ingress`, { headers: nodeCtx.headers });
+                    const data = await res.json().catch(() => ({}));
+                    return {
+                        node: nodeCtx.siteName,
+                        metrics: data
+                    };
+                } catch (e: any) {
+                    return { error: `Failed to fetch voice metrics from ${nodeCtx.siteName}: ${e?.message || e}` };
                 }
             }
 

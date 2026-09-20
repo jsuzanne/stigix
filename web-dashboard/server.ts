@@ -11597,6 +11597,8 @@ aiManager.setExecutionContext({
     targetsManager,
     vyosManager,
     tcpAppManager,
+    xfrManager,
+    provisioningManager,
     getSystemSettings,
     systemToken: aiCopilotSystemToken,
     serverPort: PORT,
