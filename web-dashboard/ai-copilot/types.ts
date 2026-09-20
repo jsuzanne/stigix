@@ -14,9 +14,11 @@ export interface AiConfig {
 export interface AiPublicConfig {
     enabled: boolean;
     hasKey: boolean;
-    maskedKey: string;
+    maskedKey?: string;
+    keyMasked?: string;
     defaultModel: string;
     requireConfirmation: boolean;
+    models?: Array<{ id: string; name: string; description: string }>;
 }
 
 export interface CopilotMessage {

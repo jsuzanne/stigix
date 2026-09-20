@@ -90,6 +90,7 @@ export class AiManager {
             enabled: this.config.enabled !== false,
             hasKey: Boolean(this.config.apiKey && this.config.apiKey.startsWith('sk-ant-')),
             maskedKey: masked,
+            keyMasked: masked,
             defaultModel: this.config.defaultModel || 'claude-3-5-sonnet-20241022',
             requireConfirmation: this.config.requireConfirmation !== false
         };

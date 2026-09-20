@@ -142,10 +142,11 @@ export default function Copilot({ token, onOpenSettings }: CopilotProps) {
         try {
             const res = await fetch('/api/copilot/config', { headers: authHeaders });
             if (res.ok) {
-                const data: AiPublicConfig = await res.json();
-                setConfig(data);
-                if (data.defaultModel) {
-                    setSelectedModel(data.defaultModel);
+                const data = await res.json();
+                const cfg: AiPublicConfig = data.config || data;
+                setConfig(cfg);
+                if (cfg.defaultModel) {
+                    setSelectedModel(cfg.defaultModel);
                 }
             }
         } catch (e: any) {
@@ -157,12 +158,13 @@ export default function Copilot({ token, onOpenSettings }: CopilotProps) {
         try {
             const res = await fetch('/api/copilot/sessions', { headers: authHeaders });
             if (res.ok) {
-                const data: CopilotSession[] = await res.json();
-                setSessions(data);
-                if (data.length > 0 && !currentSessionId) {
+                const data = await res.json();
+                const list: CopilotSession[] = Array.isArray(data) ? data : (Array.isArray(data.sessions) ? data.sessions : []);
+                setSessions(list);
+                if (list.length > 0 && !currentSessionId) {
                     // Pick the most recent session
-                    selectSession(data[0].id);
-                } else if (data.length === 0) {
+                    selectSession(list[0].id);
+                } else if (list.length === 0) {
                     // Create an initial empty session
                     createNewSession();
                 }
@@ -177,7 +179,8 @@ export default function Copilot({ token, onOpenSettings }: CopilotProps) {
         try {
             const res = await fetch(`/api/copilot/sessions/${sessionId}`, { headers: authHeaders });
             if (res.ok) {
-                const session: CopilotSession = await res.json();
+                const data = await res.json();
+                const session: CopilotSession = data.session || data;
                 setMessages(session.messages || []);
                 if (session.model) setSelectedModel(session.model);
             }
@@ -197,10 +200,13 @@ export default function Copilot({ token, onOpenSettings }: CopilotProps) {
                 })
             });
             if (res.ok) {
-                const newSession: CopilotSession = await res.json();
-                setSessions(prev => [newSession, ...prev]);
-                setCurrentSessionId(newSession.id);
-                setMessages([]);
+                const data = await res.json();
+                const newSession: CopilotSession = data.session || data;
+                if (newSession && newSession.id) {
+                    setSessions(prev => [newSession, ...prev.filter(s => s.id !== newSession.id)]);
+                    setCurrentSessionId(newSession.id);
+                    setMessages([]);
+                }
             }
         } catch (e: any) {
             toast.error('Failed to create new session');
@@ -241,7 +247,8 @@ export default function Copilot({ token, onOpenSettings }: CopilotProps) {
                 body: JSON.stringify({ apiKey: newApiKey.trim() })
             });
             if (res.ok) {
-                const updated = await res.json();
+                const data = await res.json();
+                const updated: AiPublicConfig = data.config || data;
                 setConfig(updated);
                 setShowKeyModal(false);
                 setNewApiKey('');
