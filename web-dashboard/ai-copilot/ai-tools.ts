@@ -1722,19 +1722,74 @@ export async function executeCopilotTool(
 
             case 'stop_test': {
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
+                const testId = String(args.test_id || '').trim();
+
                 try {
-                    const convRes = await fetch(`${nodeCtx.baseUrl}/api/convergence/stop`, {
+                    // 1. Send stop command
+                    const stopRes = await fetch(`${nodeCtx.baseUrl}/api/convergence/stop`, {
                         method: 'POST',
                         headers: nodeCtx.headers,
-                        body: JSON.stringify({ testId: args.test_id || '' })
-                    }).then(r => r.json()).catch(() => ({}));
+                        body: JSON.stringify({ testId: testId || undefined })
+                    });
+                    const stopData = await stopRes.json().catch(() => ({}));
+
+                    // Also stop voice if running
+                    await fetch(`${nodeCtx.baseUrl}/api/voice/control`, {
+                        method: 'POST',
+                        headers: nodeCtx.headers,
+                        body: JSON.stringify({ enabled: false })
+                    }).catch(() => {});
+
+                    // 2. Wait up to 3 seconds for backend to flush and write the final stats to history
+                    let finalMetrics: any = null;
+                    for (let attempt = 0; attempt < 6; attempt++) {
+                        await new Promise(r => setTimeout(r, 500));
+                        try {
+                            const historyRes = await fetch(`${nodeCtx.baseUrl}/api/convergence/history?limit=5`, {
+                                headers: nodeCtx.headers
+                            });
+                            if (historyRes.ok) {
+                                const history = await historyRes.json();
+                                if (Array.isArray(history) && history.length > 0) {
+                                    const match = testId
+                                        ? history.find((h: any) => String(h.testId || '').toLowerCase().includes(testId.toLowerCase()) || testId.toLowerCase().includes(String(h.testId || '').toLowerCase()))
+                                        : history[0];
+                                    if (match) {
+                                        finalMetrics = match;
+                                        break;
+                                    }
+                                }
+                            }
+                        } catch {}
+                    }
+
+                    if (finalMetrics) {
+                        return {
+                            success: true,
+                            node: nodeCtx.siteName,
+                            test_id: finalMetrics.testId || testId,
+                            label: finalMetrics.label || finalMetrics.target,
+                            status: 'STOPPED',
+                            duration_s: finalMetrics.duration_s || finalMetrics.duration || finalMetrics.duration_seconds,
+                            packets_sent: finalMetrics.sent || finalMetrics.packets_sent || finalMetrics.tx_count,
+                            packets_received: finalMetrics.received || finalMetrics.packets_received || finalMetrics.rx_count,
+                            packets_lost: finalMetrics.lost || finalMetrics.loss_count || 0,
+                            loss_percent: `${finalMetrics.loss_pct ?? finalMetrics.loss_percent ?? 0}%`,
+                            avg_rtt_ms: finalMetrics.avg_rtt_ms ?? finalMetrics.latency_ms ?? finalMetrics.rtt_ms,
+                            jitter_ms: finalMetrics.jitter_ms ?? 0,
+                            max_blackout_ms: finalMetrics.max_blackout_ms ?? finalMetrics.blackout_ms ?? 0,
+                            verdict: finalMetrics.verdict || (finalMetrics.loss_pct > 1 ? 'DEGRADED' : 'PERFECT'),
+                            raw_metrics: finalMetrics
+                        };
+                    }
 
                     return {
                         success: true,
                         node: nodeCtx.siteName,
-                        test_id: args.test_id,
-                        message: 'Test stopped successfully',
-                        details: convRes
+                        test_id: testId,
+                        status: 'STOPPED',
+                        message: 'Convergence test stop signal processed successfully.',
+                        details: stopData
                     };
                 } catch (e: any) {
                     return { error: `Failed to stop test on ${nodeCtx.siteName}: ${e?.message || e}` };

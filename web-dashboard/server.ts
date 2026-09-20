@@ -5290,25 +5290,52 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
 app.post('/api/convergence/stop', authenticateToken, (req, res) => {
     const { testId } = req.body;
     if (testId) {
-        const proc = convergenceProcesses.get(testId);
-        if (proc) {
-            proc.kill(); // Default is SIGTERM, which is usually fine. SIGINT is also an option.
-            convergenceProcesses.delete(testId);
-            convergencePPS.delete(testId);
-            const now = new Date().toLocaleTimeString('en-GB', { hour12: false });
-            console.log(`[${testId}] [${now}] 🛑 Stopped specific test`);
-            return res.json({ success: true });
+        const query = String(testId).trim().toLowerCase();
+        let foundKey: string | null = null;
+        for (const k of convergenceProcesses.keys()) {
+            const kLower = k.toLowerCase();
+            if (kLower === query || kLower.includes(query) || query.includes(kLower)) {
+                foundKey = k;
+                break;
+            }
         }
-        return res.status(404).json({ error: 'Test not found' });
+        if (foundKey) {
+            const proc = convergenceProcesses.get(foundKey);
+            if (proc) {
+                proc.kill();
+                convergenceProcesses.delete(foundKey);
+                convergencePPS.delete(foundKey);
+                const now = new Date().toLocaleTimeString('en-GB', { hour12: false });
+                console.log(`[${foundKey}] [${now}] 🛑 Stopped specific test`);
+            }
+            return res.json({ success: true, stopped_test: foundKey });
+        }
+        // Fallback: if only 1 test is currently running, stop that one
+        if (convergenceProcesses.size === 1) {
+            const singleKey = convergenceProcesses.keys().next().value;
+            if (singleKey) {
+                const proc = convergenceProcesses.get(singleKey);
+                if (proc) {
+                    proc.kill();
+                    convergenceProcesses.delete(singleKey);
+                    convergencePPS.delete(singleKey);
+                    console.log(`[${singleKey}] 🛑 Stopped single running test for query "${testId}"`);
+                }
+                return res.json({ success: true, stopped_test: singleKey, note: `Stopped running test ${singleKey}` });
+            }
+        }
+        return res.status(404).json({ error: `Test ${testId} not found among running tests (${Array.from(convergenceProcesses.keys()).join(', ')})` });
     } else {
         // Stop all
+        const stopped: string[] = [];
         for (const [id, proc] of convergenceProcesses.entries()) {
             proc.kill();
             convergencePPS.delete(id);
+            stopped.push(id);
         }
         convergenceProcesses.clear();
         console.log('[CONVERGENCE] Stopped all tests');
-        res.json({ success: true, count: convergenceProcesses.size });
+        res.json({ success: true, count: stopped.length, stopped_tests: stopped });
     }
 });
 
