@@ -203,6 +203,10 @@ export class RegistryManager {
         return process.env.STIGIX_SITE_NAME || os.hostname();
     }
 
+    public getCurrentIp(): string {
+        return this.currentIp || '127.0.0.1';
+    }
+
     private loadStats() {
         try {
             if (fs.existsSync(this.statsFile)) {

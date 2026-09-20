@@ -150,8 +150,8 @@ export async function executeCopilotTool(
                 if (ctx.registryManager) {
                     peers = ctx.registryManager.getPeers() || [];
                 }
-                const localSite = ctx.registryManager?.getSiteName() || 'LOCAL';
-                const localIp = ctx.registryManager?.getCurrentIp() || '127.0.0.1';
+                const localSite = (typeof ctx.registryManager?.getSiteName === 'function' ? ctx.registryManager.getSiteName() : ctx.registryManager?.getStatus?.()?.site_name) || 'LOCAL';
+                const localIp = (typeof ctx.registryManager?.getCurrentIp === 'function' ? ctx.registryManager.getCurrentIp() : ctx.registryManager?.getStatus?.()?.detected_ip) || '127.0.0.1';
 
                 const endpoints = [
                     {
@@ -179,15 +179,16 @@ export async function executeCopilotTool(
             }
 
             case 'get_mesh_status': {
-                const regStatus = ctx.registryManager?.getStatus() || {};
-                const siteName = ctx.registryManager?.getSiteName() || 'Unknown';
-                const peerCount = ctx.registryManager?.getPeers()?.length || 0;
+                const regStatus = ctx.registryManager?.getStatus?.() || {};
+                const siteName = (typeof ctx.registryManager?.getSiteName === 'function' ? ctx.registryManager.getSiteName() : regStatus.site_name) || 'Unknown';
+                const peerCount = (typeof ctx.registryManager?.getPeers === 'function' ? ctx.registryManager.getPeers()?.length : regStatus.peer_count) || 0;
+                const detectedIp = (typeof ctx.registryManager?.getCurrentIp === 'function' ? ctx.registryManager.getCurrentIp() : regStatus.detected_ip) || 'Unknown';
 
                 return {
                     siteName,
-                    controllerMode: regStatus.mode || 'peer',
+                    controllerMode: regStatus.mode || regStatus.current_mode || 'peer',
                     registered: regStatus.is_registered !== false,
-                    detectedIp: ctx.registryManager?.getCurrentIp() || 'Unknown',
+                    detectedIp,
                     connectedPeersCount: peerCount,
                     uptimeSeconds: process.uptime()
                 };
