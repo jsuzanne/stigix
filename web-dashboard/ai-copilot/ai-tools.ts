@@ -3,6 +3,7 @@
  */
 
 import { AnthropicToolDefinition } from './types.js';
+import { URL_CATEGORIES, DNS_TEST_DOMAINS } from '../shared/security-categories.js';
 
 export interface ToolExecutionContext {
     registryManager?: any;
@@ -104,6 +105,58 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                 }
             },
             required: ['router_ip', 'interface_name', 'action']
+        }
+    },
+    {
+        name: 'run_security_url_test',
+        description: 'Launches a real-time live URL Filtering test for a specific category (e.g., "dating", "gambling", "adult", "phishing", "malware", "hacking") or URL to verify if the SASE firewall blocks or allows traffic.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                category: {
+                    type: 'string',
+                    description: 'The security URL category to test (e.g. "dating", "gambling", "adult", "phishing", "malware", "c2").'
+                },
+                url: {
+                    type: 'string',
+                    description: 'Optional custom URL to test directly.'
+                }
+            }
+        }
+    },
+    {
+        name: 'run_security_dns_test',
+        description: 'Launches a live DNS Security probe against a test domain (e.g., "malware", "dns-tunneling", "phishing", "fastflux", "ransomware") to verify DNS sinkholing and threat prevention.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                category: {
+                    type: 'string',
+                    description: 'The DNS threat category to test (e.g. "malware", "dns-tunneling", "phishing", "fastflux").'
+                },
+                domain: {
+                    type: 'string',
+                    description: 'Optional custom domain to query directly via DNS.'
+                }
+            }
+        }
+    },
+    {
+        name: 'run_security_threat_test',
+        description: 'Launches an on-demand Antivirus / Threat Prevention test by attempting to download the EICAR test string over HTTP/HTTPS.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                protocol: {
+                    type: 'string',
+                    enum: ['http', 'https'],
+                    description: 'Protocol for EICAR download (default: http).'
+                },
+                target: {
+                    type: 'string',
+                    description: 'Optional target host or IP.'
+                }
+            }
         }
     },
     {
@@ -316,6 +369,169 @@ export async function executeCopilotTool(
                     appliedAction: action,
                     target: `${interface_name}@${router_ip}`,
                     details: action === 'set_latency' ? `Added ${latency_ms}ms latency` : `Action ${action} executed.`
+                };
+            }
+
+            case 'run_security_url_test': {
+                const categoryInput = String(args.category || '').toLowerCase().trim();
+                let targetUrl = args.url ? String(args.url).trim() : '';
+
+                let matchedCat = URL_CATEGORIES.find(c => 
+                    c.id.toLowerCase() === categoryInput || 
+                    c.name.toLowerCase() === categoryInput ||
+                    c.id.toLowerCase().includes(categoryInput)
+                );
+
+                if (!targetUrl) {
+                    if (matchedCat) {
+                        targetUrl = matchedCat.url;
+                    } else if (categoryInput) {
+                        targetUrl = `http://urlfiltering.paloaltonetworks.com/test-${categoryInput.replace(/\s+/g, '-')}`;
+                    } else {
+                        targetUrl = 'http://urlfiltering.paloaltonetworks.com/test-dating';
+                    }
+                }
+
+                const catName = matchedCat ? matchedCat.name : (categoryInput ? categoryInput.toUpperCase() : 'URL Test');
+                const testStartTime = Date.now();
+
+                // 1. Try invoking the controller security test endpoint first to record stats
+                try {
+                    const controllerPort = process.env.PORT || 8080;
+                    const res = await fetch(`http://localhost:${controllerPort}/api/security/url-test`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: targetUrl, category: catName, mcp_source: true })
+                    }).then(r => r.json()).catch(() => null);
+
+                    if (res && res.status) {
+                        return {
+                            category: catName,
+                            url: targetUrl,
+                            verdict: res.status === 'allowed' ? 'ALLOWED' : 'BLOCKED',
+                            status: res.status === 'allowed' ? 'ALLOWED' : 'BLOCKED',
+                            httpCode: res.httpCode || 0,
+                            reason: res.reason || (res.status === 'blocked' ? 'Blocked by Security Policy' : 'Allowed'),
+                            policyEnforced: res.status === 'blocked',
+                            blockPageDetected: res.blockPageDetected || false,
+                            durationMs: Date.now() - testStartTime,
+                            timestamp: new Date().toISOString()
+                        };
+                    }
+                } catch {}
+
+                // 2. Direct probe via curl if controller endpoint unavailable
+                let output = '';
+                if (ctx.runCommand) {
+                    const cmd = `curl -sSL --max-time 8 -w '\n__HTTP__:%{http_code}\n__PORT__:%{local_port}' '${targetUrl}'`;
+                    output = await ctx.runCommand(cmd).catch(e => e.message || '');
+                }
+
+                const httpMatch = output.match(/__HTTP__:(\d+)/);
+                const httpCode = httpMatch ? parseInt(httpMatch[1], 10) : 0;
+                const lower = output.toLowerCase();
+
+                const isTestPage = lower.includes('pandb test page') || lower.includes('categorized as') || lower.includes('palo alto networks url filtering');
+                const isBlockPage = !isTestPage && (lower.includes('access denied') || lower.includes('web-block-page') || lower.includes('palo alto networks'));
+
+                const isBlocked = isBlockPage || (httpCode >= 400 && httpCode !== 404) || httpCode === 0;
+                const blockReason = isBlockPage ? 'Firewall Web Block Page detected' : (httpCode === 0 ? 'Connection dropped / reset by firewall' : (isBlocked ? `HTTP ${httpCode} Forbidden` : (isTestPage ? 'Palo Alto Test Page retrieved' : `HTTP ${httpCode} OK`)));
+
+                return {
+                    category: catName,
+                    url: targetUrl,
+                    verdict: isBlocked ? 'BLOCKED' : 'ALLOWED',
+                    status: isBlocked ? 'BLOCKED' : 'ALLOWED',
+                    httpCode: httpCode || (isBlocked ? 403 : 200),
+                    reason: blockReason,
+                    policyEnforced: isBlocked,
+                    blockPageDetected: isBlockPage,
+                    durationMs: Date.now() - testStartTime,
+                    timestamp: new Date().toISOString()
+                };
+            }
+
+            case 'run_security_dns_test': {
+                const queryInput = String(args.category || args.domain || 'malware').toLowerCase().trim();
+                let matchedDomain = DNS_TEST_DOMAINS.find(d => 
+                    d.id.toLowerCase() === queryInput || 
+                    d.name.toLowerCase() === queryInput ||
+                    d.domain.toLowerCase().includes(queryInput)
+                );
+
+                const domain = args.domain ? String(args.domain).trim() : (matchedDomain ? matchedDomain.domain : 'test-malware.testpanw.com');
+                const testName = matchedDomain ? matchedDomain.name : domain;
+                const testStartTime = Date.now();
+
+                try {
+                    const controllerPort = process.env.PORT || 8080;
+                    const res = await fetch(`http://localhost:${controllerPort}/api/security/dns-test`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ domain, category: testName })
+                    }).then(r => r.json()).catch(() => null);
+
+                    if (res && res.status) {
+                        return {
+                            category: testName,
+                            domain,
+                            verdict: res.status === 'blocked' ? 'SINKHOLED / BLOCKED' : 'RESOLVED',
+                            status: res.status === 'blocked' ? 'BLOCKED' : 'ALLOWED',
+                            resolvedIp: res.resolvedIp || 'None',
+                            reason: res.reason || 'DNS Security check completed',
+                            policyEnforced: res.status === 'blocked',
+                            durationMs: Date.now() - testStartTime,
+                            timestamp: new Date().toISOString()
+                        };
+                    }
+                } catch {}
+
+                let output = '';
+                if (ctx.runCommand) {
+                    output = await ctx.runCommand(`nslookup -timeout=4 ${domain} 8.8.8.8`).catch(e => e.message || '');
+                }
+
+                const isSinkholed = output.includes('sinkhole') || output.includes('0.0.0.0') || output.includes('NXDOMAIN') || output.includes('SERVFAIL') || output.includes('connection timed out');
+
+                return {
+                    category: testName,
+                    domain,
+                    verdict: isSinkholed ? 'SINKHOLED / BLOCKED' : 'RESOLVED (ALLOWED)',
+                    status: isSinkholed ? 'BLOCKED' : 'ALLOWED',
+                    policyEnforced: isSinkholed,
+                    reason: isSinkholed ? 'DNS Query sinkholed by Palo Alto DNS Security' : 'Domain resolved successfully',
+                    durationMs: Date.now() - testStartTime,
+                    timestamp: new Date().toISOString()
+                };
+            }
+
+            case 'run_security_threat_test': {
+                const protocol = String(args.protocol || 'http').toLowerCase();
+                const targetIp = args.target || '127.0.0.1';
+                const testStartTime = Date.now();
+                const testUrl = protocol === 'https' ? 'https://secure.eicar.org/eicar.com.txt' : `http://${targetIp}:8082/eicar.com.txt`;
+
+                let output = '';
+                if (ctx.runCommand) {
+                    output = await ctx.runCommand(`curl -sSL --max-time 6 -w '\n__HTTP__:%{http_code}' '${testUrl}'`).catch(e => e.message || '');
+                }
+
+                const httpMatch = output.match(/__HTTP__:(\d+)/);
+                const httpCode = httpMatch ? parseInt(httpMatch[1], 10) : 0;
+                const hasEicarString = output.includes('EICAR-STANDARD-ANTIVIRUS-TEST-FILE');
+                const isBlocked = !hasEicarString || httpCode === 0 || (httpCode >= 400 && httpCode !== 404);
+
+                return {
+                    test: 'EICAR Anti-Virus / Threat Prevention',
+                    protocol: protocol.toUpperCase(),
+                    targetUrl,
+                    verdict: isBlocked ? 'BLOCKED / MITIGATED' : 'BYPASS (FILE RECEIVED)',
+                    status: isBlocked ? 'BLOCKED' : 'ALLOWED',
+                    httpCode,
+                    policyEnforced: isBlocked,
+                    reason: isBlocked ? 'EICAR test signature blocked by Threat Prevention / AV' : 'EICAR file retrieved successfully',
+                    durationMs: Date.now() - testStartTime,
+                    timestamp: new Date().toISOString()
                 };
             }
 
