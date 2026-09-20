@@ -191,6 +191,99 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                 }
             }
         }
+    },
+    {
+        name: 'add_dem_probe',
+        description: 'Adds a new Digital Experience Monitoring (DEM) probe to the node (e.g., Slack, GitHub, Office 365, internal portals, DNS servers). The probe is dynamically registered, saved to persistent configuration, and an immediate health check is triggered.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                name: {
+                    type: 'string',
+                    description: 'Display name for the probe (e.g. "Slack", "GitHub CDN", "Google DNS").'
+                },
+                target: {
+                    type: 'string',
+                    description: 'Target URL, IP address, or hostname (e.g. "https://slack.com", "8.8.8.8", "https://github.com").'
+                },
+                probe_type: {
+                    type: 'string',
+                    enum: ['HTTP', 'HTTPS', 'PING', 'DNS', 'TCP', 'UDP', 'CLOUD'],
+                    description: 'Type of probe protocol (default: "HTTPS").'
+                },
+                timeout_ms: {
+                    type: 'number',
+                    description: 'Probe timeout in milliseconds (default: 5000).'
+                }
+            },
+            required: ['name', 'target']
+        }
+    },
+    {
+        name: 'remove_dem_probe',
+        description: 'Removes a Digital Experience Monitoring (DEM) synthetic probe by name (case-insensitive) from persistent monitoring.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                name: {
+                    type: 'string',
+                    description: 'Exact or partial name of the probe to remove (case-insensitive).'
+                }
+            },
+            required: ['name']
+        }
+    },
+    {
+        name: 'add_fabric_target',
+        description: 'Adds a new remote SD-WAN fabric peer or branch node to the Stigix mesh with desired capabilities (Voice, Convergence, XFR, Security, Connectivity).',
+        input_schema: {
+            type: 'object',
+            properties: {
+                name: {
+                    type: 'string',
+                    description: 'Friendly name of the remote node or site (e.g., "Branch-Paris", "AWS-Hub").'
+                },
+                host: {
+                    type: 'string',
+                    description: 'IP address or FQDN of the remote node.'
+                },
+                voice: {
+                    type: 'boolean',
+                    description: 'Enable voice simulation capability (default: true).'
+                },
+                convergence: {
+                    type: 'boolean',
+                    description: 'Enable failover convergence testing (default: true).'
+                },
+                xfr: {
+                    type: 'boolean',
+                    description: 'Enable speedtest / XFR capability (default: true).'
+                },
+                security: {
+                    type: 'boolean',
+                    description: 'Enable security testing capability (default: true).'
+                },
+                connectivity: {
+                    type: 'boolean',
+                    description: 'Enable connectivity probes capability (default: true).'
+                }
+            },
+            required: ['name', 'host']
+        }
+    },
+    {
+        name: 'remove_fabric_target',
+        description: 'Removes a Stigix fabric peer/target by name, ID or IP address from the managed targets registry.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                target: {
+                    type: 'string',
+                    description: 'Name, ID, or IP address of the target to remove.'
+                }
+            },
+            required: ['target']
+        }
     }
 ];
 
@@ -748,6 +841,225 @@ export async function executeCopilotTool(
                         `[${new Date().toISOString()}] [REGISTRY] 8 active peers synchronized.`
                     ]
                 };
+            }
+
+            case 'add_dem_probe': {
+                const name = String(args.name || '').trim();
+                const target = String(args.target || '').trim();
+                let probeType = String(args.probe_type || (target.startsWith('http://') ? 'HTTP' : (target.startsWith('https://') ? 'HTTPS' : 'HTTPS'))).toUpperCase().trim();
+                if (probeType === 'ICMP') probeType = 'PING';
+                const timeoutMs = Number(args.timeout_ms) || 5000;
+
+                if (!name || !target) {
+                    return { error: 'Both name and target are required to add a DEM probe.' };
+                }
+
+                const controllerPort = ctx.serverPort || process.env.PORT || 8080;
+                const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+                if (ctx.systemToken) {
+                    authHeaders['Authorization'] = `Bearer ${ctx.systemToken}`;
+                }
+
+                // Fetch current endpoints from /api/connectivity/custom
+                let existingProbes: any[] = [];
+                try {
+                    const res = await fetch(`http://localhost:${controllerPort}/api/connectivity/custom`, {
+                        headers: authHeaders
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        existingProbes = Array.isArray(data) ? data : (data.targets || []);
+                    }
+                } catch (e: any) {
+                    console.warn('[AI-TOOLS] Could not fetch existing probes via API, checking ctx:', e?.message);
+                    if (ctx.getCustomProbes) {
+                        existingProbes = ctx.getCustomProbes() || [];
+                    }
+                }
+
+                const newProbe = {
+                    name,
+                    type: probeType,
+                    target,
+                    timeout: timeoutMs,
+                    enabled: true
+                };
+
+                // Check if probe already exists (update if so, else append)
+                const existingIndex = existingProbes.findIndex(p => 
+                    (p.name && p.name.toLowerCase() === name.toLowerCase()) || 
+                    (p.target && p.target.toLowerCase() === target.toLowerCase())
+                );
+
+                if (existingIndex >= 0) {
+                    existingProbes[existingIndex] = { ...existingProbes[existingIndex], ...newProbe };
+                } else {
+                    existingProbes.push(newProbe);
+                }
+
+                try {
+                    const postRes = await fetch(`http://localhost:${controllerPort}/api/connectivity/custom`, {
+                        method: 'POST',
+                        headers: authHeaders,
+                        body: JSON.stringify({ endpoints: existingProbes })
+                    });
+                    if (postRes.ok) {
+                        return {
+                            success: true,
+                            message: `DEM probe '${name}' (${probeType} -> ${target}) successfully registered and triggered.`,
+                            probe: newProbe,
+                            totalProbes: existingProbes.length
+                        };
+                    } else {
+                        const errBody = await postRes.text();
+                        return { error: `Failed to save DEM probe: ${postRes.status} ${errBody}` };
+                    }
+                } catch (e: any) {
+                    return { error: `Failed to add DEM probe: ${e?.message || String(e)}` };
+                }
+            }
+
+            case 'remove_dem_probe': {
+                const name = String(args.name || args.probe_name || '').toLowerCase().trim();
+                if (!name) {
+                    return { error: 'Probe name is required to remove a DEM probe.' };
+                }
+
+                const controllerPort = ctx.serverPort || process.env.PORT || 8080;
+                const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+                if (ctx.systemToken) {
+                    authHeaders['Authorization'] = `Bearer ${ctx.systemToken}`;
+                }
+
+                let existingProbes: any[] = [];
+                try {
+                    const res = await fetch(`http://localhost:${controllerPort}/api/connectivity/custom`, {
+                        headers: authHeaders
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        existingProbes = Array.isArray(data) ? data : (data.targets || []);
+                    }
+                } catch (e: any) {
+                    if (ctx.getCustomProbes) {
+                        existingProbes = ctx.getCustomProbes() || [];
+                    }
+                }
+
+                const matchIdx = existingProbes.findIndex(p => p.name && p.name.toLowerCase() === name);
+                if (matchIdx === -1) {
+                    const available = existingProbes.map(p => p.name).filter(Boolean);
+                    return { error: `Probe '${args.name}' not found. Available probes: ${available.join(', ')}` };
+                }
+
+                const removed = existingProbes.splice(matchIdx, 1)[0];
+
+                try {
+                    const postRes = await fetch(`http://localhost:${controllerPort}/api/connectivity/custom`, {
+                        method: 'POST',
+                        headers: authHeaders,
+                        body: JSON.stringify({ endpoints: existingProbes })
+                    });
+                    if (postRes.ok) {
+                        return {
+                            success: true,
+                            message: `DEM probe '${removed.name}' (${removed.type} -> ${removed.target}) removed successfully.`,
+                            remainingProbes: existingProbes.length
+                        };
+                    } else {
+                        const errBody = await postRes.text();
+                        return { error: `Failed to remove probe: ${postRes.status} ${errBody}` };
+                    }
+                } catch (e: any) {
+                    return { error: `Failed to remove DEM probe: ${e?.message || String(e)}` };
+                }
+            }
+
+            case 'add_fabric_target': {
+                const name = String(args.name || '').trim();
+                const host = String(args.host || '').trim();
+                if (!name || !host) {
+                    return { error: 'Both name and host IP/FQDN are required to add a fabric target.' };
+                }
+
+                const capabilities = {
+                    voice: args.voice !== false,
+                    convergence: args.convergence !== false,
+                    xfr: args.xfr !== false,
+                    security: args.security !== false,
+                    connectivity: args.connectivity !== false
+                };
+
+                if (ctx.targetsManager && typeof ctx.targetsManager.createTarget === 'function') {
+                    const newTarget = ctx.targetsManager.createTarget({
+                        name,
+                        host,
+                        enabled: true,
+                        capabilities
+                    });
+                    return {
+                        success: true,
+                        message: `Fabric target '${name}' (${host}) added successfully.`,
+                        target: newTarget
+                    };
+                }
+
+                const controllerPort = ctx.serverPort || process.env.PORT || 8080;
+                const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+                if (ctx.systemToken) {
+                    authHeaders['Authorization'] = `Bearer ${ctx.systemToken}`;
+                }
+
+                try {
+                    const res = await fetch(`http://localhost:${controllerPort}/api/targets`, {
+                        method: 'POST',
+                        headers: authHeaders,
+                        body: JSON.stringify({ name, host, enabled: true, capabilities })
+                    });
+                    if (res.ok) {
+                        const target = await res.json();
+                        return {
+                            success: true,
+                            message: `Fabric target '${name}' (${host}) added successfully.`,
+                            target
+                        };
+                    } else {
+                        const err = await res.text();
+                        return { error: `Failed to add target: ${res.status} ${err}` };
+                    }
+                } catch (e: any) {
+                    return { error: `Failed to add fabric target: ${e?.message || String(e)}` };
+                }
+            }
+
+            case 'remove_fabric_target': {
+                const targetQuery = String(args.target || args.name || '').toLowerCase().trim();
+                if (!targetQuery) {
+                    return { error: 'Target name, ID or IP is required.' };
+                }
+
+                if (ctx.targetsManager) {
+                    const managed = ctx.targetsManager.loadTargets ? ctx.targetsManager.loadTargets() : [];
+                    const match = managed.find((t: any) => 
+                        (t.id && t.id.toLowerCase() === targetQuery) ||
+                        (t.name && t.name.toLowerCase() === targetQuery) ||
+                        (t.host && t.host.toLowerCase() === targetQuery)
+                    );
+
+                    if (!match) {
+                        return { error: `Managed target '${targetQuery}' not found. Note: synthesized and auto-discovered targets are managed by their respective discovery sources.` };
+                    }
+
+                    const deleted = ctx.targetsManager.deleteTarget(match.id);
+                    if (deleted) {
+                        return {
+                            success: true,
+                            message: `Fabric target '${match.name}' (${match.host}) removed successfully.`
+                        };
+                    }
+                }
+
+                return { error: `Failed to remove target '${targetQuery}'.` };
             }
 
             default:
