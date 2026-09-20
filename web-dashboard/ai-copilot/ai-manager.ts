@@ -163,29 +163,49 @@ export class AiManager {
             return { valid: false, error: 'Invalid API key format. Key must start with "sk-ant-"' };
         }
 
-        try {
-            const res = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: {
-                    'x-api-key': apiKey,
-                    'anthropic-version': '2023-06-01',
-                    'content-type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: 'claude-3-5-sonnet-20241022',
-                    max_tokens: 10,
-                    messages: [{ role: 'user', content: 'Ping' }]
-                })
-            });
+        const modelsToTry = [
+            'claude-3-5-haiku-20241022',
+            'claude-3-5-sonnet-20241022',
+            'claude-3-haiku-20240307',
+            'claude-3-7-sonnet-20250219'
+        ];
 
-            if (res.ok) {
-                return { valid: true };
+        let lastError = '';
+
+        for (const model of modelsToTry) {
+            try {
+                const res = await fetch('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    headers: {
+                        'x-api-key': apiKey,
+                        'anthropic-version': '2023-06-01',
+                        'content-type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model,
+                        max_tokens: 10,
+                        messages: [{ role: 'user', content: 'Ping' }]
+                    })
+                });
+
+                if (res.ok) {
+                    return { valid: true };
+                }
+
+                const errData = await res.json().catch(() => ({}));
+                console.log(`[COPILOT_TEST_KEY] model=${model} status=${res.status}:`, errData);
+                lastError = errData?.error?.message || `HTTP ${res.status}: Invalid key`;
+                
+                // If authentication error (invalid x-api-key), don't retry other models
+                if (res.status === 401 || res.status === 403) {
+                    return { valid: false, error: lastError };
+                }
+            } catch (e: any) {
+                lastError = e?.message || String(e);
             }
-            const errData = await res.json().catch(() => ({}));
-            return { valid: false, error: errData?.error?.message || `HTTP ${res.status}: Invalid key` };
-        } catch (e: any) {
-            return { valid: false, error: `Connection failed: ${e?.message || e}` };
         }
+
+        return { valid: false, error: lastError };
     }
 
     /**

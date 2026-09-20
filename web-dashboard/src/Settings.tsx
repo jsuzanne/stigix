@@ -5227,7 +5227,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                         body: JSON.stringify({ apiKey: copilotApiKey.trim() })
                                                     });
                                                     const d = await res.json();
-                                                    if (d.success) toast.success('API Key validated successfully!');
+                                                    if (d.success || d.valid) toast.success('API Key validated successfully!');
                                                     else toast.error(`Validation failed: ${d.error}`);
                                                 } catch (e: any) {
                                                     toast.error(e.message || 'Test failed');

@@ -273,7 +273,7 @@ export default function Copilot({ token, onOpenSettings }: CopilotProps) {
                 body: JSON.stringify({ apiKey: newApiKey.trim() })
             });
             const data = await res.json();
-            if (data.success) {
+            if (data.success || data.valid) {
                 toast.success('API Key validated successfully with Anthropic!');
             } else {
                 toast.error(`Validation failed: ${data.error}`);

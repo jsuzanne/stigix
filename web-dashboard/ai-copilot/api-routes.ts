@@ -40,9 +40,9 @@ export function createAiCopilotRouter(aiManager: AiManager): Router {
         try {
             const { apiKey } = req.body;
             const result = await aiManager.testApiKey(String(apiKey || '').trim());
-            res.json(result);
+            res.json({ success: result.valid, valid: result.valid, error: result.error });
         } catch (e: any) {
-            res.status(500).json({ valid: false, error: e.message });
+            res.status(500).json({ success: false, valid: false, error: e.message });
         }
     });
 
