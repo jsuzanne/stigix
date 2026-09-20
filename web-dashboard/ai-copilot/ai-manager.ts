@@ -102,7 +102,7 @@ export class AiManager {
     }
 
     public getPublicConfig(): AiPublicConfig {
-        const key = this.config.apiKey || '';
+        const key = (this.config.apiKey || '').trim();
         let masked = '';
         if (key.length > 10) {
             masked = `${key.substring(0, 10)}••••••••••••${key.substring(key.length - 4)}`;
@@ -112,7 +112,7 @@ export class AiManager {
 
         return {
             enabled: this.config.enabled !== false,
-            hasKey: Boolean(this.config.apiKey && this.config.apiKey.startsWith('sk-ant-')),
+            hasKey: Boolean(key && key.length > 5),
             maskedKey: masked,
             keyMasked: masked,
             defaultModel: normalizeModelId(this.config.defaultModel),
