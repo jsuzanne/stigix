@@ -358,38 +358,46 @@ export default function Copilot({ token, onOpenSettings }: CopilotProps) {
                     try {
                         const event = JSON.parse(jsonStr);
 
-                        if (event.type === 'chunk') {
+                        if (event.type === 'chunk' || event.type === 'text_delta') {
+                            const chunkText = event.text || event.delta || '';
                             setMessages(prev => prev.map(m => {
                                 if (m.id === assistantMsgId) {
-                                    return { ...m, content: m.content + event.text };
+                                    return { ...m, content: m.content + chunkText };
                                 }
                                 return m;
                             }));
-                        } else if (event.type === 'tool_call') {
+                        } else if (event.type === 'tool_call' || event.type === 'tool_start' || event.type === 'tool_complete') {
+                            const tc: CopilotToolCall = event.toolCall || {
+                                id: event.toolCallId || `tc-${Date.now()}`,
+                                name: event.tool,
+                                input: event.input || {},
+                                output: event.result,
+                                status: event.type === 'tool_start' ? 'running' : (event.result?.error ? 'error' : 'completed')
+                            };
                             setMessages(prev => prev.map(m => {
                                 if (m.id === assistantMsgId) {
                                     const existingTools = m.toolCalls || [];
-                                    const matchIdx = existingTools.findIndex(t => t.id === event.toolCall.id);
+                                    const matchIdx = existingTools.findIndex(t => t.id === tc.id);
                                     let nextTools = [...existingTools];
                                     if (matchIdx >= 0) {
-                                        nextTools[matchIdx] = event.toolCall;
+                                        nextTools[matchIdx] = tc;
                                     } else {
-                                        nextTools.push(event.toolCall);
+                                        nextTools.push(tc);
                                     }
                                     return { ...m, toolCalls: nextTools };
                                 }
                                 return m;
                             }));
                         } else if (event.type === 'error') {
-                            toast.error(`Copilot error: ${event.error}`);
+                            const errMsg = event.error || event.message || 'Unknown error';
+                            toast.error(`Copilot error: ${errMsg}`);
                             setMessages(prev => prev.map(m => {
                                 if (m.id === assistantMsgId) {
-                                    return { ...m, content: m.content + `\n\n> ⚠️ **Error:** ${event.error}` };
+                                    return { ...m, content: m.content + `\n\n> ⚠️ **Error:** ${errMsg}` };
                                 }
                                 return m;
                             }));
                         } else if (event.type === 'done') {
-                            // Update sessions list to reflect new title/timestamps
                             fetchSessions();
                         }
                     } catch (err) {
@@ -810,7 +818,7 @@ function ToolCallCard({ tool, onCopy }: { tool: CopilotToolCall; onCopy: (text: 
     const [expanded, setExpanded] = useState(false);
 
     const isRunning = tool.status === 'running';
-    const isError = tool.status === 'error';
+    const isError = tool.status === 'error' || (tool as any).status === 'failed';
 
     return (
         <div className={`rounded-xl border transition-all text-xs ${
@@ -829,7 +837,7 @@ function ToolCallCard({ tool, onCopy }: { tool: CopilotToolCall; onCopy: (text: 
                         {isRunning ? <Loader2 size={13} /> : isError ? <XCircle size={13} /> : <Wrench size={13} />}
                     </div>
                     <span className="font-mono font-bold text-text-primary text-[11px]">
-                        tool: <span className="text-blue-400">{tool.name}</span>
+                        tool: <span className="text-blue-400">{tool.name || (tool as any).tool}</span>
                     </span>
                 </div>
 

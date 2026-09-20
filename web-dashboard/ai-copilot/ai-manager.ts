@@ -339,20 +339,20 @@ YOUR ROLE & BEHAVIOR:
                 for (const block of contentBlocks) {
                     if (block.type === 'text') {
                         assistantMsg.content += block.text;
-                        sendEvent('text_delta', { delta: block.text });
+                        sendEvent('chunk', { type: 'chunk', text: block.text, delta: block.text });
                     } else if (block.type === 'tool_use') {
                         const toolCall: CopilotToolCall = {
                             id: block.id,
                             tool: block.name,
+                            name: block.name,
                             input: block.input || {},
                             status: 'running'
                         };
                         assistantMsg.toolCalls?.push(toolCall);
 
-                        sendEvent('tool_start', {
-                            toolCallId: block.id,
-                            tool: block.name,
-                            input: block.input
+                        sendEvent('tool_call', {
+                            type: 'tool_call',
+                            toolCall
                         });
 
                         // Execute tool locally
@@ -363,12 +363,11 @@ YOUR ROLE & BEHAVIOR:
                         toolCall.output = result;
                         toolCall.durationMs = dur;
                         toolCall.status = result?.error ? 'failed' : 'completed';
+                        toolCall.error = result?.error;
 
-                        sendEvent('tool_complete', {
-                            toolCallId: block.id,
-                            tool: block.name,
-                            result,
-                            durationMs: dur
+                        sendEvent('tool_call', {
+                            type: 'tool_call',
+                            toolCall
                         });
 
                         toolResults.push({
@@ -393,7 +392,7 @@ YOUR ROLE & BEHAVIOR:
                 }
 
             } catch (streamErr: any) {
-                sendEvent('error', { message: `Stream failure: ${streamErr?.message || streamErr}` });
+                sendEvent('error', { type: 'error', error: `Stream failure: ${streamErr?.message || streamErr}` });
                 break;
             }
         }
@@ -403,6 +402,7 @@ YOUR ROLE & BEHAVIOR:
         this.persistSessions();
 
         sendEvent('done', {
+            type: 'done',
             messageId: assistantMsg.id,
             sessionId: session.id,
             totalMessages: session.messages.length

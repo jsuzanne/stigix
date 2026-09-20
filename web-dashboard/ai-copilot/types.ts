@@ -33,9 +33,10 @@ export interface CopilotMessage {
 export interface CopilotToolCall {
     id: string;
     tool: string;
+    name?: string;
     input: Record<string, any>;
     output?: any;
-    status: 'pending' | 'running' | 'confirm_required' | 'completed' | 'failed' | 'cancelled';
+    status: 'pending' | 'running' | 'confirm_required' | 'completed' | 'failed' | 'error' | 'cancelled';
     error?: string;
     durationMs?: number;
 }
