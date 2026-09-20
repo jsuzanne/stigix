@@ -156,56 +156,68 @@ export class AiManager {
     }
 
     /**
-     * Validates an Anthropic API Key.
+     * Validates an Anthropic API Key using the official /v1/models endpoint.
      */
-    public async testApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
+    public async testApiKey(apiKey: string): Promise<{ valid: boolean; error?: string; models?: string[] }> {
         if (!apiKey || !apiKey.startsWith('sk-ant-')) {
             return { valid: false, error: 'Invalid API key format. Key must start with "sk-ant-"' };
         }
 
-        const modelsToTry = [
-            'claude-3-5-haiku-20241022',
-            'claude-3-5-sonnet-20241022',
-            'claude-3-haiku-20240307',
-            'claude-3-7-sonnet-20250219'
-        ];
-
-        let lastError = '';
-
-        for (const model of modelsToTry) {
-            try {
-                const res = await fetch('https://api.anthropic.com/v1/messages', {
-                    method: 'POST',
-                    headers: {
-                        'x-api-key': apiKey,
-                        'anthropic-version': '2023-06-01',
-                        'content-type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model,
-                        max_tokens: 10,
-                        messages: [{ role: 'user', content: 'Ping' }]
-                    })
-                });
-
-                if (res.ok) {
-                    return { valid: true };
+        try {
+            // 1. First test authentication and retrieve available models
+            const modelsRes = await fetch('https://api.anthropic.com/v1/models', {
+                method: 'GET',
+                headers: {
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01'
                 }
+            });
 
-                const errData = await res.json().catch(() => ({}));
-                console.log(`[COPILOT_TEST_KEY] model=${model} status=${res.status}:`, errData);
-                lastError = errData?.error?.message || `HTTP ${res.status}: Invalid key`;
-                
-                // If authentication error (invalid x-api-key), don't retry other models
-                if (res.status === 401 || res.status === 403) {
-                    return { valid: false, error: lastError };
-                }
-            } catch (e: any) {
-                lastError = e?.message || String(e);
+            if (modelsRes.ok) {
+                const modelsData: any = await modelsRes.json().catch(() => ({}));
+                const availableModels = (modelsData?.data || []).map((m: any) => m.id);
+                console.log(`[COPILOT_TEST_KEY] Key is valid! Available models:`, availableModels);
+                return { valid: true, models: availableModels };
             }
+
+            const errData: any = await modelsRes.json().catch(() => ({}));
+            console.log(`[COPILOT_TEST_KEY] /v1/models status=${modelsRes.status}:`, errData);
+
+            if (modelsRes.status === 401) {
+                return { valid: false, error: 'Authentication failed: Invalid API key.' };
+            }
+            if (modelsRes.status === 403) {
+                return { valid: false, error: errData?.error?.message || 'Access forbidden: Check workspace permissions in Anthropic Console.' };
+            }
+        } catch (e: any) {
+            console.log(`[COPILOT_TEST_KEY] /v1/models fetch failed:`, e);
         }
 
-        return { valid: false, error: lastError };
+        // 2. Fallback: try pinging messages API with claude-3-5-haiku
+        try {
+            const res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'content-type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: 'claude-3-5-haiku-20241022',
+                    max_tokens: 10,
+                    messages: [{ role: 'user', content: 'Ping' }]
+                })
+            });
+
+            if (res.ok) {
+                return { valid: true };
+            }
+
+            const errData = await res.json().catch(() => ({}));
+            return { valid: false, error: errData?.error?.message || `HTTP ${res.status}: Validation error` };
+        } catch (e: any) {
+            return { valid: false, error: `Connection failed: ${e?.message || e}` };
+        }
     }
 
     /**
