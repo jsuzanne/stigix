@@ -78,7 +78,6 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     {
         name: 'vyos_chaos',
         description: 'Injects network perturbations (latency, jitter, packet loss) or changes interface state on a VyOS router interface.',
-        isDestructive: true,
         input_schema: {
             type: 'object',
             properties: {

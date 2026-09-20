@@ -15,6 +15,28 @@ import {
 } from './types.js';
 import { COPILOT_TOOLS, executeCopilotTool, ToolExecutionContext } from './ai-tools.js';
 
+export const AVAILABLE_MODELS = [
+    { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5 (Recommended)', description: 'Best balance of intelligence, speed, and tool calling precision' },
+    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Fast)', description: 'Ultra-fast response time for rapid diagnostics' },
+    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', description: 'Next-gen Sonnet reasoning engine' },
+    { id: 'claude-sonnet-5', name: 'Claude Sonnet 5 (Latest)', description: 'Flagship frontier intelligence for complex network orchestration' },
+    { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5', description: 'High-capability model for complex multi-step diagnostics' }
+];
+
+export function normalizeModelId(modelId?: string): string {
+    if (!modelId) return 'claude-sonnet-4-5-20250929';
+    if (modelId.includes('3-5-sonnet') || modelId.includes('3-7-sonnet')) {
+        return 'claude-sonnet-4-5-20250929';
+    }
+    if (modelId.includes('3-5-haiku')) {
+        return 'claude-haiku-4-5-20251001';
+    }
+    if (modelId.includes('3-opus')) {
+        return 'claude-opus-4-5-20251101';
+    }
+    return modelId;
+}
+
 export class AiManager {
     private configPath: string;
     private sessionsPath: string;
@@ -45,7 +67,7 @@ export class AiManager {
         const defaultCfg: AiConfig = {
             enabled: true,
             apiKey: envKey,
-            defaultModel: 'claude-3-5-sonnet-20241022',
+            defaultModel: 'claude-sonnet-4-5-20250929',
             requireConfirmation: true,
             maxTokensPerRequest: 4096
         };
@@ -56,7 +78,8 @@ export class AiManager {
                 return {
                     ...defaultCfg,
                     ...saved,
-                    apiKey: saved.apiKey || envKey
+                    apiKey: saved.apiKey || envKey,
+                    defaultModel: normalizeModelId(saved.defaultModel)
                 };
             } catch {}
         }
@@ -66,7 +89,8 @@ export class AiManager {
     public saveConfig(patch: Partial<AiConfig>): AiPublicConfig {
         this.config = {
             ...this.config,
-            ...patch
+            ...patch,
+            defaultModel: normalizeModelId(patch.defaultModel || this.config.defaultModel)
         };
         try {
             fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2), 'utf8');
@@ -91,8 +115,9 @@ export class AiManager {
             hasKey: Boolean(this.config.apiKey && this.config.apiKey.startsWith('sk-ant-')),
             maskedKey: masked,
             keyMasked: masked,
-            defaultModel: this.config.defaultModel || 'claude-3-5-sonnet-20241022',
-            requireConfirmation: this.config.requireConfirmation !== false
+            defaultModel: normalizeModelId(this.config.defaultModel),
+            requireConfirmation: this.config.requireConfirmation !== false,
+            models: AVAILABLE_MODELS
         };
     }
 
@@ -136,7 +161,7 @@ export class AiManager {
             title: 'New Conversation',
             createdAt: Date.now(),
             updatedAt: Date.now(),
-            model: model || this.config.defaultModel || 'claude-3-5-sonnet-20241022',
+            model: normalizeModelId(model || this.config.defaultModel),
             messages: []
         };
         this.sessions.set(session.id, session);
@@ -193,7 +218,7 @@ export class AiManager {
             console.log(`[COPILOT_TEST_KEY] /v1/models fetch failed:`, e);
         }
 
-        // 2. Fallback: try pinging messages API with claude-3-5-haiku
+        // 2. Fallback: try pinging messages API with claude-haiku-4-5
         try {
             const res = await fetch('https://api.anthropic.com/v1/messages', {
                 method: 'POST',
@@ -203,7 +228,7 @@ export class AiManager {
                     'content-type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: 'claude-3-5-haiku-20241022',
+                    model: 'claude-haiku-4-5-20251001',
                     max_tokens: 10,
                     messages: [{ role: 'user', content: 'Ping' }]
                 })
@@ -253,7 +278,7 @@ YOUR ROLE & BEHAVIOR:
         sendEvent: (event: string, data: any) => void
     ): Promise<void> {
         if (!this.config.apiKey) {
-            sendEvent('error', { message: 'No Anthropic API key configured. Please configure your key in Settings ➔ AI & Copilot.' });
+            sendEvent('error', { type: 'error', error: 'No Anthropic API key configured. Please configure your key in Settings ➔ AI & Copilot.', message: 'No Anthropic API key configured. Please configure your key in Settings ➔ AI & Copilot.' });
             return;
         }
 
@@ -262,7 +287,8 @@ YOUR ROLE & BEHAVIOR:
             session = this.createSession(modelOverride);
         }
 
-        const model = modelOverride || session.model || this.config.defaultModel || 'claude-3-5-sonnet-20241022';
+        const rawModel = modelOverride || session.model || this.config.defaultModel;
+        const model = normalizeModelId(rawModel);
         session.model = model;
         session.updatedAt = Date.now();
 
@@ -318,14 +344,18 @@ YOUR ROLE & BEHAVIOR:
                         max_tokens: this.config.maxTokensPerRequest || 4096,
                         system: systemPrompt,
                         messages: anthropicMessages,
-                        tools: COPILOT_TOOLS
+                        tools: COPILOT_TOOLS.map(t => ({
+                            name: t.name,
+                            description: t.description,
+                            input_schema: t.input_schema
+                        }))
                     })
                 });
 
                 if (!response.ok) {
                     const errBody = await response.json().catch(() => ({}));
                     const errMsg = errBody?.error?.message || `Anthropic API error (HTTP ${response.status})`;
-                    sendEvent('error', { message: errMsg });
+                    sendEvent('error', { type: 'error', error: errMsg, message: errMsg });
                     assistantMsg.content += `\n\n⚠️ **Error:** ${errMsg}`;
                     break;
                 }
@@ -392,7 +422,7 @@ YOUR ROLE & BEHAVIOR:
                 }
 
             } catch (streamErr: any) {
-                sendEvent('error', { type: 'error', error: `Stream failure: ${streamErr?.message || streamErr}` });
+                sendEvent('error', { type: 'error', error: `Stream failure: ${streamErr?.message || streamErr}`, message: `Stream failure: ${streamErr?.message || streamErr}` });
                 break;
             }
         }

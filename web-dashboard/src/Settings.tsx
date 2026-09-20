@@ -5282,7 +5282,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                             Default Claude Model
                                         </label>
                                         <select
-                                            value={copilotConfig?.defaultModel || 'claude-3-5-sonnet-20241022'}
+                                            value={copilotConfig?.defaultModel || 'claude-sonnet-4-5-20250929'}
                                             onChange={async (e) => {
                                                 const model = e.target.value;
                                                 try {
@@ -5293,17 +5293,18 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                     });
                                                     if (res.ok) {
                                                         const d = await res.json();
-                                                        setCopilotConfig(d);
+                                                        setCopilotConfig(d.config || d);
                                                         toast.success(`Default model set to ${model}`);
                                                     }
                                                 } catch {}
                                             }}
                                             className="w-full bg-card border border-border focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-text-primary focus:outline-none"
                                         >
-                                            <option value="claude-3-7-sonnet-20250219">Claude 3.7 Sonnet (Latest & Smartest)</option>
-                                            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (Recommended)</option>
-                                            <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku (Fast)</option>
-                                            <option value="claude-3-opus-20240229">Claude 3 Opus</option>
+                                            <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 (Recommended)</option>
+                                            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fast)</option>
+                                            <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+                                            <option value="claude-sonnet-5">Claude Sonnet 5 (Latest)</option>
+                                            <option value="claude-opus-4-5-20251101">Claude Opus 4.5</option>
                                         </select>
                                     </div>
 

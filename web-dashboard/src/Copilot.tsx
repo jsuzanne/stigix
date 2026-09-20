@@ -103,7 +103,7 @@ export default function Copilot({ token, onOpenSettings }: CopilotProps) {
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
     const [messages, setMessages] = useState<CopilotMessage[]>([]);
     const [inputPrompt, setInputPrompt] = useState('');
-    const [selectedModel, setSelectedModel] = useState('claude-3-5-sonnet-20241022');
+    const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-5-20250929');
     const [isStreaming, setIsStreaming] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [showKeyModal, setShowKeyModal] = useState(false);
@@ -544,10 +544,21 @@ export default function Copilot({ token, onOpenSettings }: CopilotProps) {
                                 onChange={(e) => setSelectedModel(e.target.value)}
                                 className="bg-transparent text-xs font-bold text-text-primary focus:outline-none cursor-pointer"
                             >
-                                <option value="claude-3-7-sonnet-20250219" className="bg-card text-text-primary">Claude 3.7 Sonnet (Latest & Smartest)</option>
-                                <option value="claude-3-5-sonnet-20241022" className="bg-card text-text-primary">Claude 3.5 Sonnet (Recommended)</option>
-                                <option value="claude-3-5-haiku-20241022" className="bg-card text-text-primary">Claude 3.5 Haiku (Fast)</option>
-                                <option value="claude-3-opus-20240229" className="bg-card text-text-primary">Claude 3 Opus (Complex reasoning)</option>
+                                {config?.models && config.models.length > 0 ? (
+                                    config.models.map(m => (
+                                        <option key={m.id} value={m.id} className="bg-card text-text-primary">
+                                            {m.name}
+                                        </option>
+                                    ))
+                                ) : (
+                                    <>
+                                        <option value="claude-sonnet-4-5-20250929" className="bg-card text-text-primary">Claude Sonnet 4.5 (Recommended)</option>
+                                        <option value="claude-haiku-4-5-20251001" className="bg-card text-text-primary">Claude Haiku 4.5 (Fast)</option>
+                                        <option value="claude-sonnet-4-6" className="bg-card text-text-primary">Claude Sonnet 4.6</option>
+                                        <option value="claude-sonnet-5" className="bg-card text-text-primary">Claude Sonnet 5 (Latest)</option>
+                                        <option value="claude-opus-4-5-20251101" className="bg-card text-text-primary">Claude Opus 4.5</option>
+                                    </>
+                                )}
                             </select>
                         </div>
                     </div>
