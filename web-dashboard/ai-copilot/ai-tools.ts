@@ -66,13 +66,14 @@ export function resolveNodeContext(
 
     // 1. Search in peer registry
     const peers = typeof ctx.registryManager?.getPeers === 'function' ? ctx.registryManager.getPeers() : [];
-    const matchedPeer = peers.find((p: any) =>
-        (p.site_name && p.site_name.toLowerCase() === query) ||
-        (p.site_name && p.site_name.toLowerCase().includes(query)) ||
-        (p.instance_id && p.instance_id.toLowerCase() === query) ||
-        (p.ip_private && p.ip_private === query) ||
-        (p.ip_public && p.ip_public === query)
-    );
+    const matchedPeer = peers.find((p: any) => {
+        const sName = (p.site_name || '').toLowerCase();
+        const instId = (p.instance_id || '').toLowerCase();
+        return (sName && (sName === query || sName.includes(query) || query.includes(sName))) ||
+            (instId && (instId === query || instId.includes(query) || query.includes(instId))) ||
+            (p.ip_private && (p.ip_private === query || query.includes(p.ip_private))) ||
+            (p.ip_public && (p.ip_public === query || query.includes(p.ip_public)));
+    });
 
     if (matchedPeer) {
         const ip = matchedPeer.ip_private || matchedPeer.ip_public;
@@ -87,12 +88,13 @@ export function resolveNodeContext(
 
     // 2. Search in targets manager
     const targets = typeof ctx.targetsManager?.getMergedTargets === 'function' ? ctx.targetsManager.getMergedTargets() : [];
-    const matchedTarget = targets.find((t: any) =>
-        (t.name && t.name.toLowerCase() === query) ||
-        (t.name && t.name.toLowerCase().includes(query)) ||
-        (t.id && t.id.toLowerCase() === query) ||
-        (t.host && t.host === query)
-    );
+    const matchedTarget = targets.find((t: any) => {
+        const tName = (t.name || '').toLowerCase();
+        const tId = (t.id || '').toLowerCase();
+        return (tName && (tName === query || tName.includes(query) || query.includes(tName))) ||
+            (tId && (tId === query || tId.includes(query) || query.includes(tId))) ||
+            (t.host && (t.host === query || query.includes(t.host)));
+    });
 
     if (matchedTarget) {
         const host = matchedTarget.host;
@@ -126,28 +128,37 @@ export function resolveTargetEndpoint(targetQuery: string | undefined, ctx: Tool
 
     // Check targets manager
     const targets = typeof ctx.targetsManager?.getMergedTargets === 'function' ? ctx.targetsManager.getMergedTargets() : [];
-    const target = targets.find((t: any) =>
-        (t.name && t.name.toLowerCase() === query) ||
-        (t.name && t.name.toLowerCase().includes(query)) ||
-        (t.id && t.id.toLowerCase() === query) ||
-        (t.host && t.host === query)
-    );
+    const target = targets.find((t: any) => {
+        const tName = (t.name || '').toLowerCase();
+        const tId = (t.id || '').toLowerCase();
+        return (tName && (tName === query || tName.includes(query) || query.includes(tName))) ||
+            (tId && (tId === query || tId.includes(query) || query.includes(tId))) ||
+            (t.host && (t.host === query || query.includes(t.host)));
+    });
 
     if (target) {
-        return { host: target.host, port: 9000, name: target.name || target.host };
+        return { host: target.host, port: target.port || 9000, name: target.name || target.host };
     }
 
     // Check peer registry
     const peers = typeof ctx.registryManager?.getPeers === 'function' ? ctx.registryManager.getPeers() : [];
-    const peer = peers.find((p: any) =>
-        (p.site_name && p.site_name.toLowerCase() === query) ||
-        (p.site_name && p.site_name.toLowerCase().includes(query)) ||
-        (p.instance_id && p.instance_id.toLowerCase() === query) ||
-        (p.ip_private && p.ip_private === query)
-    );
+    const peer = peers.find((p: any) => {
+        const sName = (p.site_name || '').toLowerCase();
+        const instId = (p.instance_id || '').toLowerCase();
+        return (sName && (sName === query || sName.includes(query) || query.includes(sName))) ||
+            (instId && (instId === query || instId.includes(query) || query.includes(instId))) ||
+            (p.ip_private && (p.ip_private === query || query.includes(p.ip_private))) ||
+            (p.ip_public && (p.ip_public === query || query.includes(p.ip_public)));
+    });
 
     if (peer) {
         return { host: peer.ip_private || peer.ip_public, port: 9000, name: peer.site_name || peer.instance_id };
+    }
+
+    // Check if raw contains host:port
+    if (raw.includes(':') && !raw.startsWith('http')) {
+        const [h, p] = raw.split(':');
+        return { host: h, port: parseInt(p) || 9000, name: raw };
     }
 
     return { host: raw, port: 9000, name: raw };
@@ -1571,12 +1582,23 @@ export async function executeCopilotTool(
                         };
 
                         if (sourceNodeContext.isLocal && ctx.xfrManager) {
-                            const job = await ctx.xfrManager.startJob(payload);
+                            const { id, sequence_id } = ctx.xfrManager.createJob({
+                                mode: payload.mode,
+                                host: targetEndpoint.host,
+                                port: targetEndpoint.port || 9000,
+                                protocol: payload.protocol,
+                                direction: payload.direction,
+                                duration_sec: payload.duration_sec,
+                                bitrate: payload.bitrate,
+                                parallel_streams: payload.parallel_streams
+                            });
+                            ctx.xfrManager.startJob(id);
+                            const job = ctx.xfrManager.getJob(id);
                             results.push({
-                                test_id: job.id,
-                                sequence_id: job.sequence_id,
+                                test_id: id,
+                                sequence_id: sequence_id,
                                 profile: 'xfr',
-                                status: job.status,
+                                status: job?.status || 'running',
                                 source: sourceNodeContext.siteName,
                                 target: targetEndpoint.name,
                                 host: targetEndpoint.host,
@@ -1588,17 +1610,26 @@ export async function executeCopilotTool(
                                 headers: sourceNodeContext.headers,
                                 body: JSON.stringify(payload)
                             });
-                            const data = await res.json();
-                            results.push({
-                                test_id: data.id || data.jobId,
-                                sequence_id: data.sequence_id,
-                                profile: 'xfr',
-                                status: data.status || 'running',
-                                source: sourceNodeContext.siteName,
-                                target: targetEndpoint.name,
-                                host: targetEndpoint.host,
-                                duration: `${durationSec}s`
-                            });
+                            const data = await res.json().catch(() => ({}));
+                            if (!res.ok) {
+                                results.push({
+                                    error: data?.error || `HTTP ${res.status}`,
+                                    source: sourceNodeContext.siteName,
+                                    target: targetEndpoint.name,
+                                    host: targetEndpoint.host
+                                });
+                            } else {
+                                results.push({
+                                    test_id: data.id || data.jobId,
+                                    sequence_id: data.sequence_id,
+                                    profile: 'xfr',
+                                    status: data.status || 'running',
+                                    source: sourceNodeContext.siteName,
+                                    target: targetEndpoint.name,
+                                    host: targetEndpoint.host,
+                                    duration: `${durationSec}s`
+                                });
+                            }
                         }
                     } else if (isConvergence) {
                         const pps = typeof args.pps === 'number' ? args.pps : 50;
