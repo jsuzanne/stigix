@@ -34,6 +34,8 @@ import { TcpAppManager } from './custom-tcp-apps/tcp-app-manager.js';
 import { createCustomTcpApiRouter } from './custom-tcp-apps/api-routes.js';
 import { createApiStudioRouter } from './api-studio-routes.js';
 import { apiLogBuffer } from './api-logger.js';
+import { AiManager } from './ai-copilot/ai-manager.js';
+import { createAiCopilotRouter } from './ai-copilot/api-routes.js';
 
 import { Server } from 'socket.io';
 import multer from 'multer';
@@ -11572,6 +11574,26 @@ app.post('/api/internal/log-event', (req, res) => {
     }
 });
 log('SYSTEM', `⚡ API Studio & Real-Time Log Inspector mounted at /api/api-studio, /api/logs, /api/playground`);
+
+// --- Stigix In-App AI Copilot API ---
+const aiManager = new AiManager(PROJECT_ROOT);
+aiManager.setExecutionContext({
+    registryManager,
+    targetsManager,
+    vyosManager,
+    tcpAppManager,
+    getSystemSettings,
+    runCommand: async (cmd: string) => {
+        return new Promise<string>((resolve, reject) => {
+            exec(cmd, { timeout: 15000, cwd: PROJECT_ROOT }, (err, stdout, stderr) => {
+                if (err) return reject(new Error(stderr || err.message));
+                resolve(stdout);
+            });
+        });
+    }
+});
+app.use('/api/copilot', authenticateToken, createAiCopilotRouter(aiManager));
+log('COPILOT', `🤖 Stigix In-App AI Copilot mounted at /api/copilot`);
 
 // Hook Global Provisioning sync to hot-reload Custom TCP App runtimes on peers
 provisioningManager.onBundleApplied((type, payload) => {
