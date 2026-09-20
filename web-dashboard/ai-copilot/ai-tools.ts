@@ -19,6 +19,7 @@ export interface ToolExecutionContext {
     discoveryManager?: any;
     getEnvProbes?: () => any[];
     getCustomProbes?: () => any[];
+    getAllProbes?: () => any[];
     saveCustomProbes?: (probes: any[]) => Promise<boolean> | boolean;
     performConnectivityCheck?: (probe: any) => Promise<any>;
     systemToken?: string;
@@ -441,17 +442,22 @@ export async function executeCopilotTool(
 
             case 'get_digital_experience': {
                 try {
-                    const envProbes = typeof ctx.getEnvProbes === 'function' ? ctx.getEnvProbes() : [];
-                    const customProbes = typeof ctx.getCustomProbes === 'function' ? ctx.getCustomProbes() : [];
-                    const discoveredProbes = typeof ctx.discoveryManager?.getProbes === 'function' ? ctx.discoveryManager.getProbes() : [];
+                    let allProbes: any[] = [];
+                    if (typeof ctx.getAllProbes === 'function') {
+                        allProbes = ctx.getAllProbes();
+                    } else {
+                        const envProbes = typeof ctx.getEnvProbes === 'function' ? ctx.getEnvProbes() : [];
+                        const customProbes = typeof ctx.getCustomProbes === 'function' ? ctx.getCustomProbes() : [];
+                        const discoveredProbes = typeof ctx.discoveryManager?.getProbes === 'function' ? ctx.discoveryManager.getProbes() : [];
 
-                    // Merge env probes with custom enable/disable overrides
-                    const mergedEnvProbes = envProbes.map((p: any) => {
-                        const override = customProbes.find((cp: any) => cp.name === p.name);
-                        return override ? { ...p, enabled: override.enabled !== false } : { ...p, enabled: true };
-                    });
-                    const pureCustom = customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-                    const allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes];
+                        // Merge env probes with custom enable/disable overrides
+                        const mergedEnvProbes = envProbes.map((p: any) => {
+                            const override = customProbes.find((cp: any) => cp.name === p.name);
+                            return override ? { ...p, enabled: override.enabled !== false } : { ...p, enabled: true };
+                        });
+                        const pureCustom = customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+                        allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes];
+                    }
 
                     const activeProbeIds = allProbes
                         .filter((p: any) => p.enabled !== false)
@@ -876,12 +882,14 @@ export async function executeCopilotTool(
                     return { error: 'Both name and target are required to add a DEM probe.' };
                 }
 
-                // 1. Get current custom & env probes directly
-                const envProbes = typeof ctx.getEnvProbes === 'function' ? ctx.getEnvProbes() : [];
-                const rawCustom = typeof ctx.getCustomProbes === 'function' ? ctx.getCustomProbes() : [];
-                const discovered = typeof ctx.discoveryManager?.getProbes === 'function' ? ctx.discoveryManager.getProbes() : [];
-
-                const allCurrent = [...envProbes, ...rawCustom, ...discovered];
+                // 1. Get current full probe list (including global/provisioned/env/custom)
+                const allCurrent = typeof ctx.getAllProbes === 'function'
+                    ? ctx.getAllProbes()
+                    : [
+                        ...(typeof ctx.getEnvProbes === 'function' ? ctx.getEnvProbes() : []),
+                        ...(typeof ctx.getCustomProbes === 'function' ? ctx.getCustomProbes() : []),
+                        ...(typeof ctx.discoveryManager?.getProbes === 'function' ? ctx.discoveryManager.getProbes() : [])
+                    ];
 
                 const newProbe = {
                     name,
@@ -891,23 +899,23 @@ export async function executeCopilotTool(
                     enabled: true
                 };
 
-                // Deduplicate or append to custom probes
-                const matchIdx = rawCustom.findIndex((p: any) => 
+                // Deduplicate or append to full probes list
+                const matchIdx = allCurrent.findIndex((p: any) => 
                     (p.name && p.name.toLowerCase() === name.toLowerCase()) || 
                     (p.target && p.target.toLowerCase() === target.toLowerCase())
                 );
 
-                let updatedCustom = [...rawCustom];
+                let updatedAllProbes = [...allCurrent];
                 if (matchIdx >= 0) {
-                    updatedCustom[matchIdx] = { ...updatedCustom[matchIdx], ...newProbe };
+                    updatedAllProbes[matchIdx] = { ...updatedAllProbes[matchIdx], ...newProbe };
                 } else {
-                    updatedCustom.push(newProbe);
+                    updatedAllProbes.push(newProbe);
                 }
 
-                // 2. Persist via direct backend handler
+                // 2. Persist via applyCustomConnectivityEndpoints (handles Global Provisioning local overrides correctly when given the full list)
                 let saved = false;
                 if (typeof ctx.saveCustomProbes === 'function') {
-                    saved = await ctx.saveCustomProbes(updatedCustom);
+                    saved = await ctx.saveCustomProbes(updatedAllProbes);
                 }
 
                 if (!saved) {
@@ -920,7 +928,7 @@ export async function executeCopilotTool(
                         const res = await fetch(`http://127.0.0.1:${controllerPort}/api/connectivity/custom`, {
                             method: 'POST',
                             headers: authHeaders,
-                            body: JSON.stringify({ endpoints: updatedCustom })
+                            body: JSON.stringify({ endpoints: updatedAllProbes })
                         });
                         saved = res.ok;
                     } catch {}
@@ -955,7 +963,7 @@ export async function executeCopilotTool(
                     message: `DEM probe '${name}' (${probeType} -> ${target}) added and saved successfully.`,
                     probe: newProbe,
                     initialCheck: initialResult || { status: 'INITIALIZING', message: 'First background measurement pending' },
-                    totalProbesCount: allCurrent.length + (matchIdx === -1 ? 1 : 0)
+                    totalProbesCount: updatedAllProbes.length
                 };
             }
 
@@ -965,18 +973,28 @@ export async function executeCopilotTool(
                     return { error: 'Probe name is required to remove a DEM probe.' };
                 }
 
-                const rawCustom = typeof ctx.getCustomProbes === 'function' ? ctx.getCustomProbes() : [];
-                const matchIdx = rawCustom.findIndex((p: any) => p.name && p.name.toLowerCase() === name);
+                const allCurrent = typeof ctx.getAllProbes === 'function'
+                    ? ctx.getAllProbes()
+                    : [
+                        ...(typeof ctx.getEnvProbes === 'function' ? ctx.getEnvProbes() : []),
+                        ...(typeof ctx.getCustomProbes === 'function' ? ctx.getCustomProbes() : []),
+                        ...(typeof ctx.discoveryManager?.getProbes === 'function' ? ctx.discoveryManager.getProbes() : [])
+                    ];
+
+                const matchIdx = allCurrent.findIndex((p: any) => 
+                    p.name && (p.name.toLowerCase() === name || p.name.toLowerCase().includes(name))
+                );
 
                 if (matchIdx === -1) {
-                    const available = rawCustom.map((p: any) => p.name).filter(Boolean);
-                    return { error: `Probe '${args.name}' not found in custom probes. Available custom probes: ${available.join(', ')}` };
+                    const available = allCurrent.map((p: any) => p.name).filter(Boolean);
+                    return { error: `Probe '${args.name}' not found. Available probes: ${available.slice(0, 15).join(', ')}${available.length > 15 ? '...' : ''}` };
                 }
 
-                const removed = rawCustom.splice(matchIdx, 1)[0];
+                const removed = allCurrent[matchIdx];
+                const updatedAllProbes = allCurrent.filter((_, i) => i !== matchIdx);
                 let saved = false;
                 if (typeof ctx.saveCustomProbes === 'function') {
-                    saved = await ctx.saveCustomProbes(rawCustom);
+                    saved = await ctx.saveCustomProbes(updatedAllProbes);
                 }
 
                 if (!saved) {
@@ -989,16 +1007,20 @@ export async function executeCopilotTool(
                         const res = await fetch(`http://127.0.0.1:${controllerPort}/api/connectivity/custom`, {
                             method: 'POST',
                             headers: authHeaders,
-                            body: JSON.stringify({ endpoints: rawCustom })
+                            body: JSON.stringify({ endpoints: updatedAllProbes })
                         });
                         saved = res.ok;
                     } catch {}
                 }
 
+                if (!saved) {
+                    return { error: `Failed to remove DEM probe '${args.name}' from persistent configuration.` };
+                }
+
                 return {
                     success: true,
                     message: `DEM probe '${removed.name}' (${removed.type} -> ${removed.target}) removed successfully.`,
-                    remainingCustomProbes: rawCustom.length
+                    remainingProbesCount: updatedAllProbes.length
                 };
             }
 

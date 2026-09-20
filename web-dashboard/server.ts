@@ -4482,12 +4482,11 @@ app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
     }
 });
 
-// API: Get Custom Connectivity Endpoints
-app.get('/api/connectivity/custom', authenticateToken, (req, res) => {
+const getFullEffectiveConnectivityProbes = () => {
     const envProbes = getEnvConnectivityEndpoints();
     const rawCustom = getCustomConnectivityEndpoints();
-    const custom = provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom);
-    const discovered = discoveryManager.getProbes();
+    const custom = provisioningManager ? provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom) : rawCustom;
+    const discovered = discoveryManager ? discoveryManager.getProbes() : [];
 
     // Merge custom state into env probes and serve them all
     const mergedEnvProbes = envProbes.map((p: any) => {
@@ -4497,7 +4496,12 @@ app.get('/api/connectivity/custom', authenticateToken, (req, res) => {
 
     const pureCustom = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
 
-    res.json([...mergedEnvProbes, ...pureCustom, ...discovered]);
+    return [...mergedEnvProbes, ...pureCustom, ...discovered];
+};
+
+// API: Get Custom Connectivity Endpoints
+app.get('/api/connectivity/custom', authenticateToken, (req, res) => {
+    res.json(getFullEffectiveConnectivityProbes());
 });
 
 const applyCustomConnectivityEndpoints = async (endpoints: any[]): Promise<boolean> => {
@@ -11602,6 +11606,7 @@ aiManager.setExecutionContext({
     discoveryManager,
     getEnvProbes: getEnvConnectivityEndpoints,
     getCustomProbes: getCustomConnectivityEndpoints,
+    getAllProbes: getFullEffectiveConnectivityProbes,
     saveCustomProbes: applyCustomConnectivityEndpoints,
     performConnectivityCheck,
     runCommand: async (cmd: string) => {
