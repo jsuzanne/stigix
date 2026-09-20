@@ -66,11 +66,24 @@ export default function App() {
   const [features, setFeatures] = useState<{ xfr_enabled: boolean }>({ xfr_enabled: false });
   const [initialSettingsTab, setInitialSettingsTab] = useState<any>(null);
   const [copilotDrawerOpen, setCopilotDrawerOpen] = useState(false);
+  const [copilotConfig, setCopilotConfig] = useState<{ enabled: boolean; hasKey: boolean } | null>(null);
+
+  const fetchCopilotConfig = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/copilot/config', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setCopilotConfig(data);
+      }
+    } catch (e) { }
+  };
 
   // Global shortcut to toggle AI Copilot drawer (Cmd+J / Ctrl+J or Escape to close)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
+        if (!copilotConfig?.hasKey) return; // Only toggle if key is configured
         e.preventDefault();
         setCopilotDrawerOpen(prev => !prev);
       } else if (e.key === 'Escape' && copilotDrawerOpen) {
@@ -79,7 +92,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [copilotDrawerOpen]);
+  }, [copilotDrawerOpen, copilotConfig?.hasKey]);
 
   // --- Theme Management ---
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -655,6 +668,7 @@ export default function App() {
     fetchHistory();
     fetchFeatures();
     fetchHealthMatrix();
+    fetchCopilotConfig();
 
     // Core 3s polling — always on, not restarted on tab changes
     const interval = setInterval(() => {
@@ -771,21 +785,23 @@ export default function App() {
 
 
         <div className="flex gap-3 items-center">
-          {/* Quick Copilot Trigger Button */}
-          <button
-            onClick={() => setCopilotDrawerOpen(prev => !prev)}
-            title="Toggle Stigix AI Copilot (⌘J)"
-            className={cn(
-              "px-3 py-1.5 rounded-xl border flex items-center gap-2 text-xs font-black transition-all shadow-sm",
-              copilotDrawerOpen
-                ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-transparent shadow-blue-500/20"
-                : "bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border-border"
-            )}
-          >
-            <Bot size={15} className={copilotDrawerOpen ? "text-white" : "text-indigo-400"} />
-            <span className="hidden md:inline">AI Copilot</span>
-            <span className="px-1 py-0.2 rounded text-[8px] font-mono bg-black/20 text-text-muted border border-white/10">⌘J</span>
-          </button>
+          {/* Quick Copilot Trigger Button (only visible if Anthropic API key is configured) */}
+          {copilotConfig?.hasKey && (
+            <button
+              onClick={() => setCopilotDrawerOpen(prev => !prev)}
+              title="Toggle Stigix AI Copilot (⌘J)"
+              className={cn(
+                "px-3 py-1.5 rounded-xl border flex items-center gap-2 text-xs font-black transition-all shadow-sm",
+                copilotDrawerOpen
+                  ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-transparent shadow-blue-500/20"
+                  : "bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border-border"
+              )}
+            >
+              <Bot size={15} className={copilotDrawerOpen ? "text-white" : "text-indigo-400"} />
+              <span className="hidden md:inline">AI Copilot</span>
+              <span className="px-1 py-0.2 rounded text-[8px] font-mono bg-black/20 text-text-muted border border-white/10">⌘J</span>
+            </button>
+          )}
 
           <SystemHealthBadge
             healthData={healthData}
@@ -1059,16 +1075,18 @@ export default function App() {
           <Terminal size={18} /> Live Events
           <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Stream live real-time network and security events</span>
         </button>
-        <button
-          onClick={() => setView('copilot')}
-          className={cn(
-            "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
-            view === 'copilot' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
-          )}
-        >
-          <Bot size={18} /> AI Copilot <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">AI</span>
-          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Interactive Conversational Assistant (BYOK Claude) with multi-tool orchestration</span>
-        </button>
+        {copilotConfig?.hasKey && (
+          <button
+            onClick={() => setView('copilot')}
+            className={cn(
+              "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
+              view === 'copilot' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
+            )}
+          >
+            <Bot size={18} /> AI Copilot <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">AI</span>
+            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Interactive Conversational Assistant (BYOK Claude) with multi-tool orchestration</span>
+          </button>
+        )}
         {/* SRT Tab hidden in v1.1.2-patch.28 */}
         {username === 'admin' && (
           <button
@@ -1635,14 +1653,14 @@ export default function App() {
       {view === 'iot' && <Iot token={token!} />}
       {view === 'voice' && <Voice token={token!} externalStatus={globalVoiceStatus} />}
       {(view === 'failover' || view === 'convergence') && <Failover token={token!} externalStatus={globalConvStatus} />}
-      {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} initialTab={initialSettingsTab} />}
+      {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} onUpdateCopilotConfig={fetchCopilotConfig} initialTab={initialSettingsTab} />}
       {view === 'custom_apps' && <CustomApps token={token!} />}
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
-      {view === 'copilot' && <Copilot token={token!} onOpenSettings={() => { setInitialSettingsTab('mcp'); setView('settings'); }} />}
+      {copilotConfig?.hasKey && view === 'copilot' && <Copilot token={token!} onOpenSettings={() => { setInitialSettingsTab('mcp'); setView('settings'); }} />}
 
-      {/* ── Global Floating Copilot Trigger Button (Visible on all tabs except full Copilot view) ── */}
-      {view !== 'copilot' && !copilotDrawerOpen && (
+      {/* ── Global Floating Copilot Trigger Button (Visible on all tabs only when API key configured) ── */}
+      {copilotConfig?.hasKey && view !== 'copilot' && !copilotDrawerOpen && (
         <button
           onClick={() => setCopilotDrawerOpen(true)}
           title="Open Stigix AI Copilot Assistant (⌘J)"
@@ -1659,7 +1677,7 @@ export default function App() {
       )}
 
       {/* ── Slide-Over AI Copilot Drawer (Side Panel) ── */}
-      {copilotDrawerOpen && (
+      {copilotConfig?.hasKey && copilotDrawerOpen && (
         <div className="fixed inset-0 z-50 overflow-hidden">
           {/* Semi-transparent Backdrop */}
           <div

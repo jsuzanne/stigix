@@ -408,10 +408,11 @@ function IoTDebugMonitor({ token }: { token: string }) {
     );
 }
 
-export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab }: { 
+export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCopilotConfig, initialTab }: { 
     token: string, 
     uiConfig?: { maxCaptures: number; globalScoreTypes?: string[] },
     onUpdateUIConfig?: () => void,
+    onUpdateCopilotConfig?: () => void,
     initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'
 }) {
     const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'>(initialTab || 'distribution');
@@ -5256,6 +5257,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                                         setCopilotConfig(d);
                                                         setCopilotApiKey('');
                                                         toast.success('Anthropic API key saved!');
+                                                        onUpdateCopilotConfig?.();
                                                     } else {
                                                         toast.error('Failed to save API key');
                                                     }
@@ -5270,6 +5272,30 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
                                         >
                                             {isSavingCopilot ? 'Saving...' : 'Save Key'}
                                         </button>
+                                        {copilotConfig?.hasKey && (
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    if (!confirm('Are you sure you want to remove your Anthropic API key?')) return;
+                                                    try {
+                                                        const res = await fetch('/api/copilot/config', {
+                                                            method: 'POST',
+                                                            headers: authHeaders,
+                                                            body: JSON.stringify({ apiKey: '' })
+                                                        });
+                                                        if (res.ok) {
+                                                            const d = await res.json();
+                                                            setCopilotConfig(d);
+                                                            toast.success('API key removed');
+                                                            onUpdateCopilotConfig?.();
+                                                        }
+                                                    } catch {}
+                                                }}
+                                                className="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold rounded-xl transition-all"
+                                            >
+                                                Remove Key
+                                            </button>
+                                        )}
                                     </div>
                                     <p className="text-[11px] text-text-muted leading-relaxed">
                                         Saved securely in <code className="font-mono text-text-primary">config/ai-config.json</code> (chmod 600). Direct proxy to Anthropic API — zero log sharing or retention.
