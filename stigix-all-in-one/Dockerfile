@@ -93,6 +93,7 @@ COPY web-dashboard/local-registry-server.ts ./
 COPY web-dashboard/provisioning-manager.ts ./
 COPY web-dashboard/underlay-topology-manager.ts ./
 COPY web-dashboard/custom-tcp-apps ./custom-tcp-apps
+COPY web-dashboard/ai-copilot ./ai-copilot
 COPY web-dashboard/shared ./shared
 COPY web-dashboard/utils ./utils
 COPY web-dashboard/src/types ./src/types
