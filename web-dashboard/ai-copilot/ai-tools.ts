@@ -554,6 +554,23 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
         }
     },
     {
+        name: 'get_test_status',
+        description: 'Checks the real-time execution status of running or recent tests (XFR Speedtest, continuous Convergence failover probes, Voice simulations). Returns whether tests are actively running, elapsed time, current throughput, packet loss, or completion state.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                test_id: {
+                    type: 'string',
+                    description: 'Optional test ID or sequence identifier (e.g. "XFR-0001", "CONV-0001"). If omitted, returns all currently active tests.'
+                },
+                node: {
+                    type: 'string',
+                    description: 'Optional node to query (default: local node).'
+                }
+            }
+        }
+    },
+    {
         name: 'get_voice_metrics',
         description: 'Retrieves VoIP RTP simulation metrics including MOS score (1.0 - 4.5), jitter, packet loss, and call path quality.',
         input_schema: {
@@ -706,16 +723,33 @@ export async function executeCopilotTool(
             }
 
             case 'get_traffic_status': {
-                if (ctx.getTrafficStats) {
-                    return ctx.getTrafficStats();
+                const nodeCtx = resolveNodeContext(args.node, ctx);
+                if (nodeCtx.isLocal && typeof ctx.getTrafficStats === 'function') {
+                    const stats = await ctx.getTrafficStats();
+                    return {
+                        node: nodeCtx.siteName,
+                        ...stats
+                    };
                 }
-                return {
-                    status: 'active',
-                    activeApplicationsCount: 67,
-                    trafficRateDelaySec: 1.0,
-                    parallelClients: 1,
-                    summary: 'SaaS background traffic active across configured WAN paths.'
-                };
+                try {
+                    const [statusRes, histRes] = await Promise.all([
+                        fetch(`${nodeCtx.baseUrl}/api/traffic/status`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => ({})),
+                        fetch(`${nodeCtx.baseUrl}/api/traffic/history?range=1h`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => null)
+                    ]);
+                    const isRunning = Boolean(statusRes.running);
+                    return {
+                        node: nodeCtx.siteName,
+                        running: isRunning,
+                        status: isRunning ? 'RUNNING' : 'STOPPED',
+                        rateRequestsPerSec: statusRes.sleep_interval > 0 ? Math.round((statusRes.client_count || 1) / statusRes.sleep_interval) : 1,
+                        client_count: statusRes.client_count || 1,
+                        totalRequests: histRes?.summary?.total || 0,
+                        totalErrors: histRes?.summary?.errors || 0,
+                        successRate: histRes?.summary?.passRate ? `${histRes.summary.passRate}%` : '100%'
+                    };
+                } catch (e: any) {
+                    return { error: `Failed to fetch traffic status from ${nodeCtx.siteName}: ${e?.message || e}` };
+                }
             }
 
             case 'get_digital_experience': {
@@ -1515,13 +1549,14 @@ export async function executeCopilotTool(
                     }
                 } else if (profile === 'conv' || profile === 'convergence') {
                     const pps = Number(args.pps) || (args.bitrate && String(args.bitrate).includes('M') ? parseInt(String(args.bitrate).replace('M', ''), 10) : 50);
+                    const convergencePort = 6200;
                     try {
                         const res = await fetch(`${sourceNodeContext.baseUrl}/api/convergence/start`, {
                             method: 'POST',
                             headers: sourceNodeContext.headers,
                             body: JSON.stringify({
                                 target: targetEndpoint.host,
-                                port: 6100,
+                                port: convergencePort,
                                 rate: pps,
                                 label: targetEndpoint.name
                             })
@@ -1531,10 +1566,14 @@ export async function executeCopilotTool(
                             const data = await res.json();
                             return {
                                 success: true,
-                                message: `Continuous Convergence Failover Probe started from ${sourceNodeContext.siteName} towards ${targetEndpoint.name} (${targetEndpoint.host}:6100) at ${pps} pps. Note: Test runs continuously until stopped via stop_test.`,
-                                test: data,
+                                message: `Continuous Convergence Failover Probe started from ${sourceNodeContext.siteName} towards ${targetEndpoint.name} (${targetEndpoint.host}:${convergencePort}) at ${pps} pps. Note: Test runs continuously until stopped via stop_test.`,
+                                testId: data.testId || 'CONV-LIVE',
+                                running: true,
                                 source: sourceNodeContext.siteName,
-                                target: targetEndpoint.name
+                                target: targetEndpoint.name,
+                                host: targetEndpoint.host,
+                                port: convergencePort,
+                                rate_pps: pps
                             };
                         } else {
                             const errTxt = await res.text();
@@ -1565,6 +1604,96 @@ export async function executeCopilotTool(
                 }
 
                 return { error: `Unsupported test profile: '${profile}'. Supported: 'xfr', 'conv', 'voice'.` };
+            }
+
+            case 'get_test_status': {
+                const nodeCtx = resolveNodeContext(args.node, ctx);
+                const testIdFilter = String(args.test_id || '').toLowerCase().trim();
+
+                try {
+                    const [xfrData, convData] = await Promise.all([
+                        (nodeCtx.isLocal && ctx.xfrManager)
+                            ? ctx.xfrManager.getAllJobs()
+                            : fetch(`${nodeCtx.baseUrl}/api/tests/xfr`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => []),
+                        fetch(`${nodeCtx.baseUrl}/api/convergence/status`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => [])
+                    ]);
+
+                    const xfrJobs = Array.isArray(xfrData) ? xfrData : [];
+                    const convProbes = Array.isArray(convData) ? convData : [];
+
+                    const runningXfr = xfrJobs.filter((j: any) => j.status === 'running' || j.status === 'queued');
+                    const runningConv = convProbes.filter((c: any) => c.running !== false);
+
+                    if (testIdFilter) {
+                        const matchedXfr = xfrJobs.find((j: any) => 
+                            (j.id && j.id.toLowerCase().includes(testIdFilter)) ||
+                            (j.sequence_id && j.sequence_id.toLowerCase().includes(testIdFilter))
+                        );
+                        if (matchedXfr) {
+                            return {
+                                node: nodeCtx.siteName,
+                                test_type: 'xfr_speedtest',
+                                test_id: matchedXfr.id,
+                                sequence_id: matchedXfr.sequence_id,
+                                status: matchedXfr.status,
+                                target: matchedXfr.params?.host,
+                                duration: matchedXfr.params?.duration_sec ? `${matchedXfr.params.duration_sec}s` : undefined,
+                                started_at: matchedXfr.started_at,
+                                finished_at: matchedXfr.finished_at,
+                                summary: matchedXfr.summary,
+                                error: matchedXfr.error
+                            };
+                        }
+
+                        const matchedConv = convProbes.find((c: any) =>
+                            (c.testId && c.testId.toLowerCase().includes(testIdFilter)) ||
+                            (c.label && c.label.toLowerCase().includes(testIdFilter))
+                        );
+                        if (matchedConv) {
+                            return {
+                                node: nodeCtx.siteName,
+                                test_type: 'convergence_probe',
+                                test_id: matchedConv.testId,
+                                label: matchedConv.label,
+                                running: Boolean(matchedConv.running),
+                                status: matchedConv.running ? 'RUNNING' : 'COMPLETED',
+                                target: matchedConv.target,
+                                current_rtt_ms: matchedConv.current_rtt_ms,
+                                live_loss_pct: matchedConv.live_loss_pct,
+                                duration_s: matchedConv.duration_s
+                            };
+                        }
+                    }
+
+                    return {
+                        node: nodeCtx.siteName,
+                        is_any_test_running: (runningXfr.length + runningConv.length) > 0,
+                        active_tests_count: runningXfr.length + runningConv.length,
+                        running_xfr_speedtests: runningXfr.map((j: any) => ({
+                            id: j.id,
+                            sequence_id: j.sequence_id,
+                            status: j.status,
+                            target: j.params?.host,
+                            duration: `${j.params?.duration_sec || 10}s`
+                        })),
+                        running_convergence_probes: runningConv.map((c: any) => ({
+                            testId: c.testId,
+                            label: c.label,
+                            target: c.target,
+                            rtt_ms: c.current_rtt_ms,
+                            loss_pct: c.live_loss_pct
+                        })),
+                        latest_completed_xfr: xfrJobs.length > 0 ? {
+                            sequence_id: xfrJobs[xfrJobs.length - 1].sequence_id,
+                            status: xfrJobs[xfrJobs.length - 1].status,
+                            throughput_mbps: xfrJobs[xfrJobs.length - 1].summary?.throughput_mbps ?? xfrJobs[xfrJobs.length - 1].summary?.avg_bandwidth_mbps,
+                            rtt_ms: xfrJobs[xfrJobs.length - 1].summary?.rtt_ms,
+                            loss_pct: xfrJobs[xfrJobs.length - 1].summary?.loss_pct
+                        } : null
+                    };
+                } catch (e: any) {
+                    return { error: `Failed to check test status on ${nodeCtx.siteName}: ${e?.message || e}` };
+                }
             }
 
             case 'stop_test': {

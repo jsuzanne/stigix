@@ -11606,6 +11606,34 @@ aiManager.setExecutionContext({
     testLogger,
     connectivityLogger,
     discoveryManager,
+    getTrafficStats: async () => {
+        let running = false;
+        let sleepInterval = 1.0;
+        let clientCount = 1;
+        let appsCount = 0;
+        if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+            try {
+                const config = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
+                const control = config.control || {};
+                running = Boolean(control.enabled);
+                sleepInterval = control.sleep_interval || 1.0;
+                clientCount = control.client_count || 1;
+                appsCount = Array.isArray(config.applications) ? config.applications.length : 0;
+            } catch {}
+        }
+        const logStats = await testLogger.getStats().catch(() => null);
+        return {
+            running,
+            status: running ? 'RUNNING' : 'STOPPED',
+            activeApplicationsCount: appsCount,
+            rateRequestsPerSec: sleepInterval > 0 ? Math.round((clientCount / sleepInterval) * 10) / 10 : clientCount,
+            clientCount,
+            totalRequests: logStats?.totalTests || 0,
+            successRate: logStats?.passRate !== undefined ? `${logStats.passRate}%` : '100%',
+            totalErrors: logStats?.failedTests || 0,
+            recentResults: logStats?.recentActivity || []
+        };
+    },
     getEnvProbes: getEnvConnectivityEndpoints,
     getCustomProbes: getCustomConnectivityEndpoints,
     getAllProbes: getFullEffectiveConnectivityProbes,
