@@ -905,115 +905,192 @@ function ToolCallCard({ tool, onCopy }: { tool: CopilotToolCall; onCopy: (text: 
     );
 }
 
-// ── Lightweight Markdown Renderer ──
+// ── Enhanced Markdown Renderer with Real Tables & Formatting ──
 function MarkdownRenderer({ content, onCopy }: { content: string; onCopy: (text: string) => void }) {
     const lines = content.split('\n');
     const elements: React.ReactNode[] = [];
-    let inCodeBlock = false;
-    let codeLanguage = '';
-    let codeBuffer: string[] = [];
+    let i = 0;
 
-    lines.forEach((line, index) => {
-        // Code Block Delimiters
+    while (i < lines.length) {
+        const line = lines[i];
+
+        // 1. Code Block Delimiters
         if (line.startsWith('```')) {
-            if (inCodeBlock) {
-                // Close block
-                const fullCode = codeBuffer.join('\n');
-                elements.push(
-                    <div key={`code-${index}`} className="my-3 rounded-xl overflow-hidden border border-border bg-black/50 shadow-inner">
-                        <div className="bg-card-secondary/80 px-3 py-1.5 flex items-center justify-between border-b border-border text-[10px] font-mono text-text-muted">
-                            <span>{codeLanguage || 'text'}</span>
-                            <button
-                                onClick={() => onCopy(fullCode)}
-                                className="flex items-center gap-1 text-text-secondary hover:text-white transition-all"
-                            >
-                                <Copy size={11} /> Copy
-                            </button>
-                        </div>
-                        <pre className="p-3 text-[11px] font-mono text-blue-300 overflow-x-auto custom-scrollbar">
-                            <code>{fullCode}</code>
-                        </pre>
-                    </div>
-                );
-                codeBuffer = [];
-                inCodeBlock = false;
-                codeLanguage = '';
-            } else {
-                inCodeBlock = true;
-                codeLanguage = line.substring(3).trim();
+            const codeLanguage = line.substring(3).trim();
+            const codeBuffer: string[] = [];
+            i++;
+            while (i < lines.length && !lines[i].startsWith('```')) {
+                codeBuffer.push(lines[i]);
+                i++;
             }
-            return;
-        }
-
-        if (inCodeBlock) {
-            codeBuffer.push(line);
-            return;
-        }
-
-        // Headers
-        if (line.startsWith('### ')) {
-            elements.push(<h4 key={index} className="text-xs font-black text-text-primary mt-3 mb-1 uppercase tracking-wider">{line.substring(4)}</h4>);
-            return;
-        }
-        if (line.startsWith('## ')) {
-            elements.push(<h3 key={index} className="text-sm font-black text-text-primary mt-4 mb-2 tracking-tight">{line.substring(3)}</h3>);
-            return;
-        }
-        if (line.startsWith('# ')) {
-            elements.push(<h2 key={index} className="text-base font-black text-text-primary mt-4 mb-2 tracking-tight">{line.substring(2)}</h2>);
-            return;
-        }
-
-        // Bullet lists
-        if (line.startsWith('- ') || line.startsWith('* ')) {
+            if (i < lines.length && lines[i].startsWith('```')) {
+                i++; // consume closing backticks
+            }
+            const fullCode = codeBuffer.join('\n');
             elements.push(
-                <div key={index} className="flex items-start gap-2 ml-2 my-1 text-xs">
-                    <span className="text-blue-500 font-bold shrink-0">•</span>
-                    <span className="text-text-secondary">{parseInlineFormatting(line.substring(2))}</span>
+                <div key={`code-${i}`} className="my-3 rounded-xl overflow-hidden border border-border bg-black/60 shadow-inner">
+                    <div className="bg-card-secondary/80 px-3 py-1.5 flex items-center justify-between border-b border-border text-[10px] font-mono text-text-muted">
+                        <span className="font-bold text-indigo-400">{codeLanguage || 'code'}</span>
+                        <button
+                            onClick={() => onCopy(fullCode)}
+                            className="flex items-center gap-1 text-text-secondary hover:text-white transition-all text-[11px]"
+                        >
+                            <Copy size={12} /> Copy
+                        </button>
+                    </div>
+                    <pre className="p-3 text-[11px] font-mono text-blue-300 overflow-x-auto custom-scrollbar leading-relaxed">
+                        <code>{fullCode}</code>
+                    </pre>
                 </div>
             );
-            return;
+            continue;
         }
 
-        // Blockquotes
+        // 2. Table Block (Consecutive lines starting and ending with |)
+        if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+            const tableLines: string[] = [];
+            const tableStartIndex = i;
+            while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+                tableLines.push(lines[i].trim());
+                i++;
+            }
+            elements.push(renderTableBlock(tableLines, `table-${tableStartIndex}`));
+            continue;
+        }
+
+        // 3. Horizontal Rules
+        if (/^(\*{3,}|-{3,}|_{3,})$/.test(line.trim())) {
+            elements.push(<hr key={`hr-${i}`} className="my-3 border-border/80" />);
+            i++;
+            continue;
+        }
+
+        // 4. Headers
+        if (line.startsWith('#### ')) {
+            elements.push(<h5 key={`h4-${i}`} className="text-xs font-black text-text-primary mt-3 mb-1 uppercase tracking-wider">{parseInlineFormatting(line.substring(5))}</h5>);
+            i++;
+            continue;
+        }
+        if (line.startsWith('### ')) {
+            elements.push(<h4 key={`h3-${i}`} className="text-xs font-black text-blue-400 mt-3.5 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">{parseInlineFormatting(line.substring(4))}</h4>);
+            i++;
+            continue;
+        }
+        if (line.startsWith('## ')) {
+            elements.push(<h3 key={`h2-${i}`} className="text-sm font-black text-text-primary mt-4 mb-2 tracking-tight border-b border-border/50 pb-1">{parseInlineFormatting(line.substring(3))}</h3>);
+            i++;
+            continue;
+        }
+        if (line.startsWith('# ')) {
+            elements.push(<h2 key={`h1-${i}`} className="text-base font-black text-text-primary mt-4 mb-2 tracking-tight border-b border-border pb-1.5">{parseInlineFormatting(line.substring(2))}</h2>);
+            i++;
+            continue;
+        }
+
+        // 5. Numbered Lists (1. Item)
+        const numMatch = line.match(/^(\d+)\.\s+(.*)$/);
+        if (numMatch) {
+            elements.push(
+                <div key={`num-${i}`} className="flex items-start gap-2.5 ml-1 my-1 text-xs leading-relaxed">
+                    <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-black rounded-md w-4 h-4 flex items-center justify-center shrink-0 mt-0.5">
+                        {numMatch[1]}
+                    </span>
+                    <span className="text-text-secondary flex-1">{parseInlineFormatting(numMatch[2])}</span>
+                </div>
+            );
+            i++;
+            continue;
+        }
+
+        // 6. Bullet Lists (- Item or * Item or • Item)
+        if (line.startsWith('- ') || line.startsWith('* ') || line.startsWith('• ')) {
+            const rawItem = line.startsWith('• ') ? line.substring(2) : line.substring(2);
+            elements.push(
+                <div key={`bullet-${i}`} className="flex items-start gap-2 ml-1.5 my-1 text-xs leading-relaxed">
+                    <span className="text-blue-500 font-bold shrink-0 mt-0.5">•</span>
+                    <span className="text-text-secondary flex-1">{parseInlineFormatting(rawItem)}</span>
+                </div>
+            );
+            i++;
+            continue;
+        }
+
+        // 7. Blockquotes / Callouts
         if (line.startsWith('> ')) {
             elements.push(
-                <div key={index} className="border-l-2 border-blue-500 pl-3 my-2 text-xs italic text-text-secondary/90 bg-blue-500/5 py-1 rounded-r-lg">
+                <div key={`quote-${i}`} className="border-l-2 border-blue-500 pl-3.5 my-2 text-xs text-text-secondary/90 bg-blue-500/5 py-1.5 rounded-r-xl">
                     {parseInlineFormatting(line.substring(2))}
                 </div>
             );
-            return;
+            i++;
+            continue;
         }
 
-        // Tables (simple line detection)
-        if (line.startsWith('|') && line.endsWith('|')) {
-            elements.push(
-                <div key={index} className="font-mono text-[11px] overflow-x-auto py-0.5 text-text-secondary">
-                    {line}
-                </div>
-            );
-            return;
-        }
-
-        // Standard Paragraph
+        // 8. Standard Paragraph or Empty Line
         if (line.trim() === '') {
-            elements.push(<div key={index} className="h-2" />);
+            elements.push(<div key={`empty-${i}`} className="h-2" />);
         } else {
             elements.push(
-                <p key={index} className="my-1 text-xs leading-relaxed text-text-secondary">
+                <p key={`p-${i}`} className="my-1.5 text-xs leading-relaxed text-text-secondary">
                     {parseInlineFormatting(line)}
                 </p>
             );
         }
-    });
+        i++;
+    }
 
-    return <div className="space-y-0.5">{elements}</div>;
+    return <div className="space-y-0.5 text-xs">{elements}</div>;
 }
 
-// ── Inline Markdown Formatter (**bold**, `code`, links) ──
+function renderTableBlock(tableLines: string[], keyPrefix: string): React.ReactNode {
+    if (tableLines.length === 0) return null;
+
+    const parseRow = (line: string) => {
+        const trimmed = line.trim();
+        const content = trimmed.startsWith('|') && trimmed.endsWith('|')
+            ? trimmed.slice(1, -1)
+            : trimmed;
+        return content.split('|').map(cell => cell.trim());
+    };
+
+    const headerCells = parseRow(tableLines[0]);
+    // Check if second line is markdown table divider (e.g. |---|---|)
+    const hasDivider = tableLines.length > 1 && /^[\s|:-]+$/.test(tableLines[1]);
+    const rowStartIdx = hasDivider ? 2 : 1;
+    const bodyRows = tableLines.slice(rowStartIdx).map(parseRow);
+
+    return (
+        <div key={keyPrefix} className="my-3 overflow-x-auto rounded-xl border border-border bg-card/60 shadow-sm">
+            <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr className="bg-card-secondary/90 border-b border-border text-[10px] font-black uppercase tracking-wider text-text-primary">
+                        {headerCells.map((h, i) => (
+                            <th key={i} className="px-3.5 py-2.5 font-bold whitespace-nowrap">
+                                {parseInlineFormatting(h)}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                    {bodyRows.map((row, rIdx) => (
+                        <tr key={rIdx} className="hover:bg-blue-500/5 transition-colors odd:bg-transparent even:bg-card-secondary/20">
+                            {row.map((cell, cIdx) => (
+                                <td key={cIdx} className="px-3.5 py-2 text-text-secondary leading-relaxed align-middle">
+                                    {parseInlineFormatting(cell)}
+                                </td>
+                            ))}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+// ── Inline Markdown Formatter (**bold**, `code`, links, pills) ──
 function parseInlineFormatting(text: string): React.ReactNode {
     const parts: React.ReactNode[] = [];
-    const regex = /(\*\*.*?\*\*|`.*?`|\*.*?\*)/g;
+    const regex = /(\*\*.*?\*\*|`.*?`|\[.*?\]\(.*?\)|\*.*?\*)/g;
     let lastIndex = 0;
     let match;
 
@@ -1024,9 +1101,27 @@ function parseInlineFormatting(text: string): React.ReactNode {
 
         const raw = match[0];
         if (raw.startsWith('**') && raw.endsWith('**')) {
-            parts.push(<strong key={match.index} className="font-black text-text-primary">{raw.slice(2, -2)}</strong>);
+            const inner = raw.slice(2, -2);
+            parts.push(<strong key={match.index} className="font-black text-text-primary">{inner}</strong>);
         } else if (raw.startsWith('`') && raw.endsWith('`')) {
             parts.push(<code key={match.index} className="bg-card-secondary px-1.5 py-0.5 rounded text-[11px] font-mono text-indigo-400 border border-border/40">{raw.slice(1, -1)}</code>);
+        } else if (raw.startsWith('[') && raw.includes('](') && raw.endsWith(')')) {
+            const linkMatch = raw.match(/^\[(.*?)\]\((.*?)\)$/);
+            if (linkMatch) {
+                parts.push(
+                    <a
+                        key={match.index}
+                        href={linkMatch[2]}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-400 hover:text-blue-300 underline font-medium inline-flex items-center gap-0.5"
+                    >
+                        {linkMatch[1]}
+                    </a>
+                );
+            } else {
+                parts.push(raw);
+            }
         } else if (raw.startsWith('*') && raw.endsWith('*')) {
             parts.push(<em key={match.index} className="italic text-text-secondary">{raw.slice(1, -1)}</em>);
         }
