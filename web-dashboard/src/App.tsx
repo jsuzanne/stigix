@@ -65,6 +65,21 @@ export default function App() {
 
   const [features, setFeatures] = useState<{ xfr_enabled: boolean }>({ xfr_enabled: false });
   const [initialSettingsTab, setInitialSettingsTab] = useState<any>(null);
+  const [copilotDrawerOpen, setCopilotDrawerOpen] = useState(false);
+
+  // Global shortcut to toggle AI Copilot drawer (Cmd+J / Ctrl+J or Escape to close)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
+        e.preventDefault();
+        setCopilotDrawerOpen(prev => !prev);
+      } else if (e.key === 'Escape' && copilotDrawerOpen) {
+        setCopilotDrawerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [copilotDrawerOpen]);
 
   // --- Theme Management ---
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -755,7 +770,23 @@ export default function App() {
 
 
 
-        <div className="flex gap-4 items-center">
+        <div className="flex gap-3 items-center">
+          {/* Quick Copilot Trigger Button */}
+          <button
+            onClick={() => setCopilotDrawerOpen(prev => !prev)}
+            title="Toggle Stigix AI Copilot (⌘J)"
+            className={cn(
+              "px-3 py-1.5 rounded-xl border flex items-center gap-2 text-xs font-black transition-all shadow-sm",
+              copilotDrawerOpen
+                ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-transparent shadow-blue-500/20"
+                : "bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border-border"
+            )}
+          >
+            <Bot size={15} className={copilotDrawerOpen ? "text-white" : "text-indigo-400"} />
+            <span className="hidden md:inline">AI Copilot</span>
+            <span className="px-1 py-0.2 rounded text-[8px] font-mono bg-black/20 text-text-muted border border-white/10">⌘J</span>
+          </button>
+
           <SystemHealthBadge
             healthData={healthData}
             isLoading={isHealthLoading}
@@ -1609,6 +1640,53 @@ export default function App() {
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
       {view === 'copilot' && <Copilot token={token!} onOpenSettings={() => { setInitialSettingsTab('mcp'); setView('settings'); }} />}
+
+      {/* ── Global Floating Copilot Trigger Button (Visible on all tabs except full Copilot view) ── */}
+      {view !== 'copilot' && !copilotDrawerOpen && (
+        <button
+          onClick={() => setCopilotDrawerOpen(true)}
+          title="Open Stigix AI Copilot Assistant (⌘J)"
+          className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-2xl shadow-indigo-600/30 border border-white/20 rounded-full px-4 py-2.5 flex items-center gap-2.5 text-xs font-black tracking-wider transition-all duration-300 hover:scale-105 active:scale-95 group backdrop-blur-md"
+        >
+          <div className="relative">
+            <Bot size={18} className="text-white group-hover:rotate-12 transition-transform" />
+            <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
+            <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full" />
+          </div>
+          <span>AI Copilot</span>
+          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/20 text-white/90 border border-white/20">⌘J</span>
+        </button>
+      )}
+
+      {/* ── Slide-Over AI Copilot Drawer (Side Panel) ── */}
+      {copilotDrawerOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden">
+          {/* Semi-transparent Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+            onClick={() => setCopilotDrawerOpen(false)}
+          />
+          {/* Slide-Over Side Panel */}
+          <div className="absolute inset-y-0 right-0 max-w-full flex pl-4 sm:pl-10">
+            <div className="w-screen max-w-2xl bg-card border-l border-border shadow-2xl flex flex-col">
+              <Copilot
+                token={token!}
+                isDrawer={true}
+                onClose={() => setCopilotDrawerOpen(false)}
+                onExpandFullscreen={() => {
+                  setCopilotDrawerOpen(false);
+                  setView('copilot');
+                }}
+                onOpenSettings={() => {
+                  setCopilotDrawerOpen(false);
+                  setInitialSettingsTab('mcp');
+                  setView('settings');
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       <SystemHealthModal
         isOpen={showHealthModal}

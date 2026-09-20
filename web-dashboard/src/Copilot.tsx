@@ -24,7 +24,11 @@ import {
     Activity,
     CheckCircle2,
     XCircle,
-    Loader2
+    Loader2,
+    Maximize2,
+    X,
+    PanelLeft,
+    PanelLeftClose
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -67,6 +71,9 @@ interface AiPublicConfig {
 interface CopilotProps {
     token: string;
     onOpenSettings?: () => void;
+    isDrawer?: boolean;
+    onClose?: () => void;
+    onExpandFullscreen?: () => void;
 }
 
 const STARTER_PROMPTS = [
@@ -97,7 +104,7 @@ const STARTER_PROMPTS = [
     }
 ];
 
-export default function Copilot({ token, onOpenSettings }: CopilotProps) {
+export default function Copilot({ token, onOpenSettings, isDrawer = false, onClose, onExpandFullscreen }: CopilotProps) {
     const [config, setConfig] = useState<AiPublicConfig | null>(null);
     const [sessions, setSessions] = useState<CopilotSession[]>([]);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -105,7 +112,7 @@ export default function Copilot({ token, onOpenSettings }: CopilotProps) {
     const [inputPrompt, setInputPrompt] = useState('');
     const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-5-20250929');
     const [isStreaming, setIsStreaming] = useState(false);
-    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [sidebarOpen, setSidebarOpen] = useState(!isDrawer);
     const [showKeyModal, setShowKeyModal] = useState(false);
     const [newApiKey, setNewApiKey] = useState('');
     const [isTestingKey, setIsTestingKey] = useState(false);
@@ -519,30 +526,39 @@ export default function Copilot({ token, onOpenSettings }: CopilotProps) {
             {/* ── Main Chat Area ── */}
             <div className="flex-1 flex flex-col h-full bg-card overflow-hidden">
                 {/* Top Control Bar */}
-                <div className="px-6 py-3 border-b border-border bg-card/80 backdrop-blur flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
+                <div className="px-4 sm:px-6 py-3 border-b border-border bg-card/80 backdrop-blur flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 sm:gap-3">
+                        {/* Sidebar toggle button (especially useful in drawer mode) */}
+                        <button
+                            onClick={() => setSidebarOpen(prev => !prev)}
+                            className="p-1.5 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors"
+                            title={sidebarOpen ? "Hide session history" : "Show session history"}
+                        >
+                            {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
+                        </button>
+
                         <div className="p-2 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl text-white shadow-md">
-                            <Sparkles size={18} />
+                            <Sparkles size={16} />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
                                 <h1 className="text-sm font-black tracking-tight text-text-primary">Stigix AI Copilot</h1>
-                                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                <span className="hidden sm:inline px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
                                     BYOK Claude
                                 </span>
                             </div>
-                            <p className="text-[10px] text-text-muted font-bold">Local SD-WAN & SASE Orchestrator</p>
+                            <p className="text-[10px] text-text-muted font-bold truncate max-w-[140px] sm:max-w-none">Local SD-WAN & SASE Orchestrator</p>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                         {/* Model Selector */}
-                        <div className="flex items-center gap-2 bg-card-secondary/60 border border-border px-3 py-1.5 rounded-xl">
-                            <Cpu size={14} className="text-indigo-400" />
+                        <div className="flex items-center gap-1.5 bg-card-secondary/60 border border-border px-2.5 py-1.5 rounded-xl">
+                            <Cpu size={13} className="text-indigo-400 shrink-0" />
                             <select
                                 value={selectedModel}
                                 onChange={(e) => setSelectedModel(e.target.value)}
-                                className="bg-transparent text-xs font-bold text-text-primary focus:outline-none cursor-pointer"
+                                className="bg-transparent text-xs font-bold text-text-primary focus:outline-none cursor-pointer max-w-[120px] sm:max-w-none truncate"
                             >
                                 {config?.models && config.models.length > 0 ? (
                                     config.models.map(m => (
@@ -552,15 +568,39 @@ export default function Copilot({ token, onOpenSettings }: CopilotProps) {
                                     ))
                                 ) : (
                                     <>
-                                        <option value="claude-sonnet-4-5-20250929" className="bg-card text-text-primary">Claude Sonnet 4.5 (Recommended)</option>
-                                        <option value="claude-haiku-4-5-20251001" className="bg-card text-text-primary">Claude Haiku 4.5 (Fast)</option>
+                                        <option value="claude-sonnet-4-5-20250929" className="bg-card text-text-primary">Claude Sonnet 4.5</option>
+                                        <option value="claude-haiku-4-5-20251001" className="bg-card text-text-primary">Claude Haiku 4.5</option>
                                         <option value="claude-sonnet-4-6" className="bg-card text-text-primary">Claude Sonnet 4.6</option>
-                                        <option value="claude-sonnet-5" className="bg-card text-text-primary">Claude Sonnet 5 (Latest)</option>
+                                        <option value="claude-sonnet-5" className="bg-card text-text-primary">Claude Sonnet 5</option>
                                         <option value="claude-opus-4-5-20251101" className="bg-card text-text-primary">Claude Opus 4.5</option>
                                     </>
                                 )}
                             </select>
                         </div>
+
+                        {/* Drawer Actions: Expand to Fullscreen & Close */}
+                        {isDrawer && (
+                            <div className="flex items-center gap-1 pl-1 border-l border-border">
+                                {onExpandFullscreen && (
+                                    <button
+                                        onClick={onExpandFullscreen}
+                                        className="p-1.5 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors"
+                                        title="Open full page Copilot"
+                                    >
+                                        <Maximize2 size={16} />
+                                    </button>
+                                )}
+                                {onClose && (
+                                    <button
+                                        onClick={onClose}
+                                        className="p-1.5 hover:bg-rose-500/10 hover:text-rose-400 rounded-lg text-text-muted transition-colors"
+                                        title="Close Copilot drawer (Esc)"
+                                    >
+                                        <X size={18} />
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
