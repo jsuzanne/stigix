@@ -806,7 +806,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         const fetchCopilotConfig = () => {
             fetch('/api/copilot/config', { headers: authHeaders })
                 .then(r => r.ok ? r.json() : null)
-                .then(data => { if (data) setCopilotConfig(data); })
+                .then(data => { if (data) setCopilotConfig(data.config || data); })
                 .catch(() => {});
         };
         fetchCopilotConfig();
@@ -5254,7 +5254,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     });
                                                     if (res.ok) {
                                                         const d = await res.json();
-                                                        setCopilotConfig(d);
+                                                        setCopilotConfig(d.config || d);
                                                         setCopilotApiKey('');
                                                         toast.success('Anthropic API key saved!');
                                                         onUpdateCopilotConfig?.();

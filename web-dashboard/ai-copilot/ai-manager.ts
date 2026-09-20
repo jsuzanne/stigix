@@ -45,9 +45,14 @@ export class AiManager {
     private projectRoot: string;
     private executionContext: ToolExecutionContext = {};
 
-    constructor(projectRoot: string) {
-        this.projectRoot = projectRoot;
-        const configDir = path.join(projectRoot, 'config');
+    constructor(configDirOrProjectRoot: string) {
+        this.projectRoot = configDirOrProjectRoot;
+        // Support both APP_CONFIG.configDir (direct persistent config folder) or project root
+        const isAlreadyConfigDir = path.basename(configDirOrProjectRoot) === 'config' || 
+            fs.existsSync(path.join(configDirOrProjectRoot, 'targets.json')) || 
+            fs.existsSync(path.join(configDirOrProjectRoot, 'ui-config.json'));
+        
+        const configDir = isAlreadyConfigDir ? configDirOrProjectRoot : path.join(configDirOrProjectRoot, 'config');
         if (!fs.existsSync(configDir)) {
             try { fs.mkdirSync(configDir, { recursive: true }); } catch {}
         }

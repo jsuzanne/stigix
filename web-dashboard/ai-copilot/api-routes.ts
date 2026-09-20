@@ -13,7 +13,8 @@ export function createAiCopilotRouter(aiManager: AiManager): Router {
     // GET /api/copilot/config — Get public masked configuration
     router.get('/config', (_req: Request, res: Response) => {
         try {
-            res.json({ success: true, config: aiManager.getPublicConfig() });
+            const pubConfig = aiManager.getPublicConfig();
+            res.json({ success: true, config: pubConfig, ...pubConfig });
         } catch (e: any) {
             res.status(500).json({ success: false, error: e.message });
         }
@@ -24,12 +25,12 @@ export function createAiCopilotRouter(aiManager: AiManager): Router {
         try {
             const { apiKey, defaultModel, requireConfirmation, enabled } = req.body;
             const updated = aiManager.saveConfig({
-                ...(apiKey ? { apiKey: String(apiKey).trim() } : {}),
+                ...(apiKey !== undefined ? { apiKey: String(apiKey).trim() } : {}),
                 ...(defaultModel ? { defaultModel: String(defaultModel).trim() } : {}),
                 ...(requireConfirmation !== undefined ? { requireConfirmation: Boolean(requireConfirmation) } : {}),
                 ...(enabled !== undefined ? { enabled: Boolean(enabled) } : {})
             });
-            res.json({ success: true, config: updated });
+            res.json({ success: true, config: updated, ...updated });
         } catch (e: any) {
             res.status(500).json({ success: false, error: e.message });
         }

@@ -11577,7 +11577,7 @@ log('SYSTEM', `⚡ API Studio & Real-Time Log Inspector mounted at /api/api-stud
 
 // --- Stigix In-App AI Copilot API ---
 const aiCopilotSystemToken = jwt.sign({ username: 'stigix-copilot-internal', role: 'admin' }, SECRET_KEY, { expiresIn: '365d' });
-const aiManager = new AiManager(PROJECT_ROOT);
+const aiManager = new AiManager(APP_CONFIG.configDir);
 aiManager.setExecutionContext({
     registryManager,
     targetsManager,
