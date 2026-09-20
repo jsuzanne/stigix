@@ -332,25 +332,51 @@ YOUR ROLE & BEHAVIOR:
             continueLoop = false;
 
             try {
-                const response = await fetch('https://api.anthropic.com/v1/messages', {
-                    method: 'POST',
-                    headers: {
-                        'x-api-key': this.config.apiKey,
-                        'anthropic-version': '2023-06-01',
-                        'content-type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model,
-                        max_tokens: this.config.maxTokensPerRequest || 4096,
-                        system: systemPrompt,
-                        messages: anthropicMessages,
-                        tools: COPILOT_TOOLS.map(t => ({
-                            name: t.name,
-                            description: t.description,
-                            input_schema: t.input_schema
-                        }))
-                    })
-                });
+                let response: Response | null = null;
+                let lastFetchErr: any = null;
+
+                for (let attempt = 1; attempt <= 3; attempt++) {
+                    try {
+                        response = await fetch('https://api.anthropic.com/v1/messages', {
+                            method: 'POST',
+                            headers: {
+                                'x-api-key': this.config.apiKey,
+                                'anthropic-version': '2023-06-01',
+                                'content-type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                model,
+                                max_tokens: this.config.maxTokensPerRequest || 4096,
+                                system: systemPrompt,
+                                messages: anthropicMessages,
+                                tools: COPILOT_TOOLS.map(t => ({
+                                    name: t.name,
+                                    description: t.description,
+                                    input_schema: t.input_schema
+                                }))
+                            })
+                        });
+
+                        if (response.ok) break;
+
+                        // If transient server error (500, 502, 503, 504, 529), retry after backoff
+                        if ([500, 502, 503, 504, 529].includes(response.status) && attempt < 3) {
+                            await new Promise(r => setTimeout(r, attempt * 1000));
+                            continue;
+                        }
+                        break;
+                    } catch (netErr: any) {
+                        lastFetchErr = netErr;
+                        if (attempt < 3) {
+                            await new Promise(r => setTimeout(r, attempt * 1000));
+                            continue;
+                        }
+                    }
+                }
+
+                if (!response) {
+                    throw lastFetchErr || new Error('Failed to reach Anthropic API after 3 attempts');
+                }
 
                 if (!response.ok) {
                     const errBody = await response.json().catch(() => ({}));

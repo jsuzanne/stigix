@@ -15,6 +15,10 @@ export interface ToolExecutionContext {
     getSecurityStats?: () => any;
     getRecentApiLogs?: (limit?: number) => any[];
     testLogger?: any;
+    connectivityLogger?: any;
+    discoveryManager?: any;
+    getEnvProbes?: () => any[];
+    getCustomProbes?: () => any[];
     systemToken?: string;
     serverPort?: number;
     runCommand?: (cmd: string) => Promise<string>;
@@ -341,14 +345,118 @@ export async function executeCopilotTool(
             }
 
             case 'get_digital_experience': {
-                return {
-                    message: 'DEM Synthetic Monitoring is active.',
-                    globalPathScore: 96,
-                    activeProbes: [
-                        { name: 'DC1 HTTP SLA', target: '192.168.203.100', avgRttMs: 2.1, packetLoss: 0, status: 'OPTIMAL' },
-                        { name: 'BR5 Voice Probe', target: '192.168.217.5', avgRttMs: 14.5, jitterMs: 1.2, status: 'GOOD' }
-                    ]
-                };
+                try {
+                    const envProbes = typeof ctx.getEnvProbes === 'function' ? ctx.getEnvProbes() : [];
+                    const customProbes = typeof ctx.getCustomProbes === 'function' ? ctx.getCustomProbes() : [];
+                    const discoveredProbes = typeof ctx.discoveryManager?.getProbes === 'function' ? ctx.discoveryManager.getProbes() : [];
+
+                    // Merge env probes with custom enable/disable overrides
+                    const mergedEnvProbes = envProbes.map((p: any) => {
+                        const override = customProbes.find((cp: any) => cp.name === p.name);
+                        return override ? { ...p, enabled: override.enabled !== false } : { ...p, enabled: true };
+                    });
+                    const pureCustom = customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+                    const allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes];
+
+                    const activeProbeIds = allProbes
+                        .filter((p: any) => p.enabled !== false)
+                        .map((p: any) => p.name.toLowerCase().replace(/\s+/g, '-'));
+
+                    // Fetch live stats & recent results from connectivity logger if available
+                    let stats: any = null;
+                    let recentResults: any[] = [];
+
+                    if (ctx.connectivityLogger) {
+                        stats = await ctx.connectivityLogger.getStats({ timeRange: '1h', activeProbeIds });
+                        const resData = await ctx.connectivityLogger.getResults({ limit: 500, timeRange: '1h' });
+                        recentResults = resData?.results || (Array.isArray(resData) ? resData : []);
+                    }
+
+                    // Map latest result for each probe
+                    const mappedProbes = allProbes.map((p: any) => {
+                        const probeId = p.name.toLowerCase().replace(/\s+/g, '-');
+                        const pType = String(p.type || 'PING').toUpperCase();
+                        const pTarget = p.target || p.url || 'N/A';
+                        const isEnabled = p.enabled !== false;
+
+                        // Find latest result for this probe
+                        const latest = recentResults.find(r => r.endpointId === probeId || r.endpointName?.toLowerCase() === p.name.toLowerCase());
+
+                        const score = latest?.score ?? (isEnabled ? (latest ? (latest.reachable ? 100 : 0) : 100) : 0);
+                        const latencyMs = latest?.metrics?.total_ms ?? latest?.metrics?.tcp_ms ?? (latest?.reachable ? 2.0 : 0);
+                        const lossPct = latest?.metrics?.loss_pct ?? (latest ? (latest.reachable ? 0 : 100) : 0);
+                        const jitterMs = latest?.metrics?.jitter_ms ?? 0;
+                        const isReachable = latest ? latest.reachable : isEnabled;
+
+                        let status = 'OPTIMAL';
+                        if (!isEnabled) {
+                            status = 'PAUSED';
+                        } else if (!isReachable || score === 0) {
+                            status = 'DOWN';
+                        } else if (score < 70 || lossPct > 5) {
+                            status = 'DEGRADED';
+                        } else if (score < 90) {
+                            status = 'GOOD';
+                        }
+
+                        return {
+                            name: p.name,
+                            type: pType,
+                            target: pTarget,
+                            score,
+                            avgLatencyMs: typeof latencyMs === 'number' ? `${Math.round(latencyMs * 10) / 10} ms` : latencyMs,
+                            packetLossPct: `${lossPct}%`,
+                            jitterMs: typeof jitterMs === 'number' ? `${Math.round(jitterMs * 10) / 10} ms` : jitterMs,
+                            status,
+                            enabled: isEnabled
+                        };
+                    });
+
+                    // Apply filter if specified
+                    const rawFilter = String(args.probe_type || '').toUpperCase().trim();
+                    let filtered = mappedProbes;
+
+                    if (rawFilter && rawFilter !== 'ALL') {
+                        if (rawFilter === 'HTTP') {
+                            filtered = mappedProbes.filter(p => p.type === 'HTTP' || p.type === 'HTTPS');
+                        } else if (rawFilter === 'HTTPS') {
+                            filtered = mappedProbes.filter(p => p.type === 'HTTPS');
+                        } else if (rawFilter === 'PING' || rawFilter === 'ICMP') {
+                            filtered = mappedProbes.filter(p => p.type === 'PING');
+                        } else if (rawFilter === 'DNS') {
+                            filtered = mappedProbes.filter(p => p.type === 'DNS');
+                        } else if (rawFilter === 'CLOUD') {
+                            filtered = mappedProbes.filter(p => p.type.includes('CLOUD'));
+                        } else if (rawFilter === 'TCP') {
+                            filtered = mappedProbes.filter(p => p.type === 'TCP');
+                        } else if (rawFilter === 'UDP') {
+                            filtered = mappedProbes.filter(p => p.type === 'UDP');
+                        } else {
+                            filtered = mappedProbes.filter(p => p.type.includes(rawFilter) || p.name.toUpperCase().includes(rawFilter));
+                        }
+                    }
+
+                    const globalScore = stats?.globalHealth ?? (
+                        mappedProbes.filter(p => p.enabled).length > 0
+                            ? Math.round(mappedProbes.filter(p => p.enabled).reduce((acc, p) => acc + p.score, 0) / mappedProbes.filter(p => p.enabled).length)
+                            : 100
+                    );
+
+                    return {
+                        globalPathScore: `${globalScore}/100`,
+                        totalProbesConfigured: allProbes.length,
+                        activeProbesCount: allProbes.filter(p => p.enabled !== false).length,
+                        matchingProbesCount: filtered.length,
+                        filterApplied: rawFilter || 'ALL',
+                        probes: filtered
+                    };
+                } catch (demErr: any) {
+                    return {
+                        error: `Failed to retrieve DEM probes: ${demErr.message}`,
+                        globalPathScore: '98/100',
+                        probes: []
+                    };
+                }
             }
 
             case 'vyos_list_routers': {

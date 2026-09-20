@@ -11588,6 +11588,10 @@ aiManager.setExecutionContext({
     serverPort: PORT,
     getRecentApiLogs: (limit?: number) => apiLogBuffer.getRecentLogs(limit || 20),
     testLogger,
+    connectivityLogger,
+    discoveryManager,
+    getEnvProbes: getEnvConnectivityEndpoints,
+    getCustomProbes: getCustomConnectivityEndpoints,
     runCommand: async (cmd: string) => {
         return new Promise<string>((resolve, reject) => {
             exec(cmd, { timeout: 15000, cwd: PROJECT_ROOT }, (err, stdout, stderr) => {
