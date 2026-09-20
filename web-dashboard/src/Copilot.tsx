@@ -440,7 +440,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
     return (
         <div className="flex flex-col lg:flex-row h-[calc(100vh-140px)] min-h-[600px] bg-card border border-border rounded-2xl overflow-hidden shadow-2xl relative">
             {/* ── Sessions Sidebar ── */}
-            <div className={`w-full lg:w-72 bg-card-secondary/40 border-r border-border flex flex-col transition-all duration-300 ${sidebarOpen ? 'flex' : 'hidden lg:flex'}`}>
+            <div className={`w-full lg:w-72 shrink-0 bg-card-secondary/40 border-r border-border flex flex-col transition-all duration-300 ${sidebarOpen ? 'flex' : 'hidden'}`}>
                 {/* Header */}
                 <div className="p-4 border-b border-border flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -685,7 +685,7 @@ export default function Copilot({ token, onOpenSettings, isDrawer = false, onClo
                                 </div>
                             )}
 
-                            <div className={`flex flex-col max-w-[85%] sm:max-w-[80%] ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                            <div className={`flex flex-col ${m.role === 'user' ? 'max-w-[85%] sm:max-w-[75%] items-end' : 'w-full max-w-full items-start'}`}>
                                 <div
                                     className={`rounded-2xl p-4 sm:p-5 text-xs leading-relaxed shadow-sm ${
                                         m.role === 'user'

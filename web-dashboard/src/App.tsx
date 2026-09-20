@@ -1686,7 +1686,7 @@ export default function App() {
           />
           {/* Slide-Over Side Panel */}
           <div className="absolute inset-y-0 right-0 max-w-full flex pl-4 sm:pl-10">
-            <div className="w-screen max-w-2xl bg-card border-l border-border shadow-2xl flex flex-col">
+            <div className="w-screen max-w-3xl md:max-w-4xl lg:max-w-5xl bg-card border-l border-border shadow-2xl flex flex-col">
               <Copilot
                 token={token!}
                 isDrawer={true}
