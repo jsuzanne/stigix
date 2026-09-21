@@ -181,13 +181,14 @@ async def run_test(
     - 'voice': Target MUST be a Stigix Fabric node (voice echo server required).
     - 'iot': Target MUST be a Stigix Fabric node.
 
-    PROFILES:
-    - 'xfr' (speedtest): Data transfer test. Fixed duration, stops automatically.
-    - 'conv' (convergence): CONTINUOUS failover/probe test. DOES NOT STOP AUTOMATICALLY.
-    - 'voice' / 'iot': Application-specific simulations.
+    PROFILES & PORT RESOLUTION:
+    - 'conv' (or 'failover'): UDP Port 6200 (Continuous SLA probe echo daemon). CONTINUOUS, stops only on stop_test.
+    - 'xfr' (or 'speedtest'): TCP/UDP Port 9000 (Multi-stream custom XFR daemon) or 5201 (iPerf3). Fixed duration.
+    - 'voice': UDP Port 6100 (VoIP RTP call simulation & MOS calculation).
+    - 'iot': TCP/UDP Port 8082 / IoT telemetry fleet simulation.
 
     ⚠️  CONVERGENCE WORKFLOW (profile='conv') — MANDATORY BEHAVIOR:
-    1. Call run_test once to START the test.
+    1. Call run_test once to START the test (initiates UDP 6200 probe stream).
     2. Immediately inform the user of the test ID (e.g., "Test CONV-0129 started, dis-moi quand arrêter").
     3. STOP IMMEDIATELY — do NOT call get_test_status, do NOT poll.
     4. Wait for the user to explicitly say "stop" / "arrête" / "stop test".
@@ -196,10 +197,10 @@ async def run_test(
     Args:
         source_id: Node ID (initiator).
         target_id: Node ID(S) (receivers). Use comma-separated list for multi-target: 'T1,T2'.
-        profile: Test type ('xfr', 'speedtest', 'conv', 'voice', 'iot').
+        profile: Test type ('conv' on UDP 6200, 'xfr' on 9000/5201, 'voice' on UDP 6100, 'iot').
         duration: [XFR ONLY] Duration (e.g. '30s'). Ignored for 'conv'.
         bitrate: [XFR ONLY] (e.g. '200M').
-        pps: [CONV ONLY] Probe rate (e.g. 100).
+        pps: [CONV ONLY] Probe rate in packets/sec (e.g. 100, default: 50).
         protocol: [XFR ONLY] ('tcp', 'udp', 'quic').
         direction: [XFR ONLY] ('client-to-server', 'server-to-client', 'bidirectional').
         label: [CONV ONLY] Custom label for correlation.

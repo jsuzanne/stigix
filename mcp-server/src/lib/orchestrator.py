@@ -79,10 +79,18 @@ class TestOrchestrator:
         if source.kind != "fabric":
             raise ValueError(f"Direct source must be 'fabric'. {source.id} is {source.kind}.")
         
-        # Determine test type
+        # Determine test type and port routing
         is_convergence_profile = any(k in profile.lower() for k in ["conv", "failover", "path", "probe"])
         is_xfr_profile = any(k in profile.lower() for k in ["xfr", "speedtest", "throughput"])
         is_voice_profile = "voice" in profile.lower()
+        is_iot_profile = "iot" in profile.lower()
+
+        if not (is_convergence_profile or is_xfr_profile or is_voice_profile or is_iot_profile):
+            raise ValueError(
+                f"Unknown test profile '{profile}'. Supported profiles are: "
+                f"'conv' / 'failover' (UDP port 6200), 'xfr' / 'speedtest' (Port 9000/5201), "
+                f"'voice' (UDP port 6100), 'iot' (Fleet simulation)."
+            )
 
         # Validate capabilities for ALL targets before starting any test
         for target in targets:
@@ -109,7 +117,7 @@ class TestOrchestrator:
                     api_url = f"{source.api_base_url}/api/tests/xfr"
                     payload = {
                         "mode": "custom",
-                        "target": { "host": target_ip, "port": 9000 }, # XFR default port
+                        "target": { "host": target_ip, "port": 9000 }, # XFR multi-stream daemon port (9000)
                         "protocol": protocol.lower() if protocol else "tcp",
                         "direction": direction.lower() if direction else "client-to-server",
                         "duration_sec": duration_sec,
@@ -121,20 +129,29 @@ class TestOrchestrator:
                     # Auto-build a label from the target's registry name when the caller
                     # did not provide one — avoids "Unknown" in the Failover dashboard.
                     effective_label = label or target.meta.get("site_name") or target.id
+                    # Convergence probe daemon listens strictly on UDP 6200
+                    conv_port = 6200
                     payload = {
                         "target": target_ip,
-                        "port": 6100, # Convergence probe port
+                        "port": conv_port, # Convergence SLA probe port (UDP 6200)
                         # Use pps directly if provided, else fallback to bitrate or 50
                         "rate": pps if pps is not None else (int(bitrate.replace('M', '')) if bitrate and 'M' in bitrate else 50),
                         "label": effective_label
                     }
-                else:
-                    # Fallback for voice or other tests
-                    api_url = f"{source.api_base_url}/api/tests/xfr"
+                elif is_voice_profile:
+                    api_url = f"{source.api_base_url}/api/voice/control"
                     payload = {
-                        "mode": "default",
-                        "target": { "host": target_ip, "port": 9000 }
+                        "enabled": True,
+                        "target": target_ip,
+                        "port": 6100 # VoIP RTP voice echo port (UDP 6100)
                     }
+                elif is_iot_profile:
+                    api_url = f"{source.api_base_url}/api/iot/control"
+                    payload = {
+                        "enabled": True
+                    }
+                else:
+                    raise ValueError(f"Unresolved port routing for profile '{profile}'.")
 
                 # Generate local global ID for tracking
                 global_id = f"G-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"

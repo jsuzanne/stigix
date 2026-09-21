@@ -1729,6 +1729,24 @@ export async function executeCopilotTool(
                             profile: 'voice',
                             status: 'running',
                             source: sourceNodeContext.siteName,
+                            target: targetEndpoint.name,
+                            port: 6100
+                        });
+                    } else if (isIot) {
+                        await fetch(`${sourceNodeContext.baseUrl}/api/iot/control`, {
+                            method: 'POST',
+                            headers: sourceNodeContext.headers,
+                            body: JSON.stringify({ enabled: true })
+                        });
+                        results.push({
+                            profile: 'iot',
+                            status: 'running',
+                            source: sourceNodeContext.siteName,
+                            target: targetEndpoint.name
+                        });
+                    } else {
+                        results.push({
+                            error: `Unknown profile "${profile}". Supported: "xfr" (port 9000/5201), "conv" (port 6200), "voice" (port 6100), "iot".`,
                             target: targetEndpoint.name
                         });
                     }

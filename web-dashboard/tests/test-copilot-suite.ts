@@ -311,6 +311,47 @@ export class CopilotTestSuite {
             return res;
         });
 
+        // 16b. Tool: run_test (Profile Convergence on UDP 6200)
+        await this.runTest('16b. Tool "run_test" (Profile Convergence on Port 6200)', async () => {
+            const res = await executeCopilotTool('run_test', {
+                source_id: this.host,
+                target: '192.168.123.100',
+                profile: 'conv',
+                pps: 50
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            const convTest = res.tests?.[0];
+            if (!convTest) throw new Error('No convergence test returned');
+            if (convTest.port !== 6200) {
+                throw new Error(`Expected convergence port 6200, received ${convTest.port}`);
+            }
+            // Cleanup: stop the active convergence test
+            try {
+                await this.request('/api/convergence/stop', 'POST', { testId: convTest.test_id });
+            } catch {}
+            return { profile: convTest.profile, port: convTest.port, test_id: convTest.test_id };
+        });
+
+        // 16c. Tool: run_test (Profile Voice on UDP 6100)
+        await this.runTest('16c. Tool "run_test" (Profile Voice on Port 6100)', async () => {
+            const res = await executeCopilotTool('run_test', {
+                source_id: this.host,
+                target: '192.168.123.100',
+                profile: 'voice'
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            const voiceTest = res.tests?.[0];
+            if (!voiceTest) throw new Error('No voice test returned');
+            if (voiceTest.port !== 6100) {
+                throw new Error(`Expected voice port 6100, received ${voiceTest.port}`);
+            }
+            // Cleanup: stop voice
+            try {
+                await this.request('/api/voice/control', 'POST', { enabled: false });
+            } catch {}
+            return { profile: voiceTest.profile, port: voiceTest.port };
+        });
+
         // 17. Tool: add_dem_probe (Netflix probe)
         await this.runTest('17. Tool "add_dem_probe" (Add Netflix Probe)', async () => {
             const res = await executeCopilotTool('add_dem_probe', {
