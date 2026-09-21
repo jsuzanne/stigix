@@ -1491,6 +1491,7 @@ async def create_custom_tcp_app(
     payload_bytes: int = 1024,
     interval_ms: int = 1000,
     connections_per_peer: int = 2,
+    target_peers: str = "all",
     auto_start_listener: bool = True,
     auto_start_workload: bool = False
 ) -> dict:
@@ -1500,7 +1501,7 @@ async def create_custom_tcp_app(
     SQL replication, backup bulk flows, IoT telemetry).
 
     Args:
-        agent_id: ID of the Stigix node (e.g. 'BR8').
+        agent_id: ID of the Stigix node (e.g. 'DC1', 'BR8').
         name: Name of the application (e.g. 'app-pos', 'app-erp', 'app-backup').
         port: TCP port to bind and listen on (1024-65535).
         description: Description of the application's purpose.
@@ -1510,13 +1511,41 @@ async def create_custom_tcp_app(
         payload_bytes: Payload size in bytes per transaction (default: 1024).
         interval_ms: Request interval in milliseconds (default: 1000).
         connections_per_peer: Number of concurrent sessions per peer (default: 2).
+        target_peers: Comma-separated target peer names/IDs or 'all' to attach all mesh peers (default: 'all').
         auto_start_listener: Automatically start the TCP server listener immediately (default: True).
         auto_start_workload: Automatically start the outbound client generator (default: False).
     """
     return await orchestrator.create_custom_tcp_app(
         agent_id, name, port, description, protocol,
         server_behavior, client_mode, payload_bytes, interval_ms,
-        connections_per_peer, None, auto_start_listener, auto_start_workload
+        connections_per_peer, None, target_peers, auto_start_listener, auto_start_workload
+    )
+
+
+@mcp.tool()
+async def add_tcp_app_peer(
+    agent_id: str,
+    app_id: str,
+    peer_name_or_host: str,
+    port: Optional[int] = None,
+    site_name: Optional[str] = None,
+    role: str = "branch",
+    enabled: bool = True
+) -> dict:
+    """
+    Add or attach a peer target to an existing Custom TCP Application.
+
+    Args:
+        agent_id: ID of the Stigix node hosting the app (e.g. 'DC1', 'BR8').
+        app_id: Identifier or name of the application (e.g. 'app-erp', 'app-pos').
+        peer_name_or_host: Node ID, site name, or IP address of the target peer (e.g. 'DC1', '192.168.123.100').
+        port: Optional target TCP port (defaults to the application listener port).
+        site_name: Optional friendly display name for the peer.
+        role: Peer network role ('branch', 'hub', 'cloud').
+        enabled: Whether the peer is active (default: True).
+    """
+    return await orchestrator.add_tcp_app_peer(
+        agent_id, app_id, peer_name_or_host, port, site_name, role, enabled
     )
 
 

@@ -1255,10 +1255,27 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                 payload_bytes: { type: 'integer', description: 'Payload size in bytes per transaction (default: 1024).' },
                 interval_ms: { type: 'integer', description: 'Request interval in ms (default: 1000).' },
                 connections_per_peer: { type: 'integer', description: 'Concurrent sessions per peer (default: 2).' },
+                target_peers: { type: 'string', description: 'Comma-separated target node IDs or "all" to automatically attach all mesh peers (default: "all").' },
                 auto_start_listener: { type: 'boolean', description: 'Automatically start TCP listener immediately (default: true).' },
                 auto_start_workload: { type: 'boolean', description: 'Automatically start client workload (default: false).' }
             },
             required: ['agent_id', 'name', 'port']
+        }
+    },
+    {
+        name: 'add_tcp_app_peer',
+        description: 'Add or attach a peer target endpoint to an existing Custom TCP Application.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: { type: 'string', description: 'ID of the Stigix node (e.g. "DC1", "BR8").' },
+                app_id: { type: 'string', description: 'Application ID or name (e.g. "app-erp", "app-pos").' },
+                peer_name_or_host: { type: 'string', description: 'Peer node ID, site name, or IP address (e.g. "DC1", "192.168.123.100").' },
+                port: { type: 'integer', description: 'Optional target port (defaults to application listener port).' },
+                site_name: { type: 'string', description: 'Optional display site name for the peer.' },
+                role: { type: 'string', description: 'Peer network role ("branch", "hub", "cloud").' }
+            },
+            required: ['agent_id', 'app_id', 'peer_name_or_host']
         }
     },
     {
@@ -2527,6 +2544,34 @@ export async function executeCopilotTool(
 
             case 'create_custom_tcp_app': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const port = Number(args.port);
+                
+                let resolvedPeers = Array.isArray(args.peers) ? args.peers : [];
+                if (resolvedPeers.length === 0 && args.target_peers !== 'none') {
+                    const endpoints = (ctx.fabricEndpoints && ctx.fabricEndpoints.length > 0) ? ctx.fabricEndpoints : (ctx.targets || []);
+                    const targetFilter = (args.target_peers && args.target_peers !== 'all' && args.target_peers !== '*')
+                        ? args.target_peers.split(',').map((s: string) => s.trim().toLowerCase())
+                        : null;
+
+                    for (const ep of endpoints) {
+                        const host = ep.test_ip || ep.host || (ep.api_base_url ? ep.api_base_url.replace(/https?:\/\//, '').split(':')[0] : null);
+                        if (!host) continue;
+                        const siteName = ep.meta?.site_name || ep.name || ep.id;
+                        if (targetFilter && !targetFilter.includes(ep.id?.toLowerCase()) && !targetFilter.includes(siteName?.toLowerCase()) && !targetFilter.includes(host?.toLowerCase())) {
+                            continue;
+                        }
+                        resolvedPeers.push({
+                            id: `peer-${ep.id || host}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
+                            name: siteName,
+                            siteName: siteName,
+                            host: host,
+                            port: port,
+                            enabled: true,
+                            role: ep.role || 'branch'
+                        });
+                    }
+                }
+
                 const appPayload = {
                     name: args.name,
                     description: args.description || `Custom TCP App ${args.name}`,
@@ -2534,7 +2579,7 @@ export async function executeCopilotTool(
                     protocol: args.protocol || 'stigix_tcp',
                     listener: {
                         bindAddress: '0.0.0.0',
-                        port: Number(args.port),
+                        port: port,
                         maxConnections: 100,
                         idleTimeoutMs: 60000,
                         maxPayloadBytes: 1048576,
@@ -2566,7 +2611,7 @@ export async function executeCopilotTool(
                         tcpKeepalive: true,
                         sourceInterface: 'auto'
                     },
-                    peers: args.peers || [],
+                    peers: resolvedPeers,
                     startup: {
                         startListener: args.auto_start_listener !== false,
                         startClientWorkload: Boolean(args.auto_start_workload)
@@ -2579,6 +2624,12 @@ export async function executeCopilotTool(
                         try {
                             const appId = appPayload.name;
                             await ctx.tcpAppManager.startListener(appId);
+                        } catch {}
+                    }
+                    if (args.auto_start_workload) {
+                        try {
+                            const appId = appPayload.name;
+                            await ctx.tcpAppManager.startClient(appId);
                         } catch {}
                     }
                     return { success: true, application: appPayload, message: `Custom TCP App "${args.name}" created on ${nodeCtx.siteName}.` };
@@ -2594,7 +2645,57 @@ export async function executeCopilotTool(
                         await fetchApi(nodeCtx, `/api/custom-tcp-apps/${appId}/listener/start`, { method: 'POST' });
                     } catch {}
                 }
+                if (args.auto_start_workload && appId) {
+                    try {
+                        await fetchApi(nodeCtx, `/api/custom-tcp-apps/${appId}/client/start`, { method: 'POST' });
+                    } catch {}
+                }
                 return { success: true, application: res?.application || appPayload, message: `Custom TCP App "${args.name}" created on ${nodeCtx.siteName}.` };
+            }
+
+            case 'add_tcp_app_peer': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const appId = String(args.app_id || '').trim();
+                const peerTarget = String(args.peer_name_or_host || '').trim();
+
+                const endpoints = (ctx.fabricEndpoints && ctx.fabricEndpoints.length > 0) ? ctx.fabricEndpoints : (ctx.targets || []);
+                const matchedEp = endpoints.find((ep: any) =>
+                    ep.id?.toLowerCase() === peerTarget.toLowerCase() ||
+                    ep.name?.toLowerCase() === peerTarget.toLowerCase() ||
+                    ep.meta?.site_name?.toLowerCase() === peerTarget.toLowerCase() ||
+                    ep.test_ip === peerTarget || ep.host === peerTarget
+                );
+
+                const host = matchedEp ? (matchedEp.test_ip || matchedEp.host || (matchedEp.api_base_url ? matchedEp.api_base_url.replace(/https?:\/\//, '').split(':')[0] : peerTarget)) : peerTarget;
+                const siteName = args.site_name || matchedEp?.meta?.site_name || matchedEp?.name || peerTarget;
+
+                const peerPayload = {
+                    name: siteName,
+                    siteName: siteName,
+                    host: host,
+                    port: args.port ? Number(args.port) : undefined,
+                    role: args.role || 'branch',
+                    enabled: true
+                };
+
+                if (nodeCtx.isLocal && ctx.tcpAppManager) {
+                    const file = ctx.tcpAppManager.getConfig();
+                    const app = file.applications.find((a: any) => a.id === appId || a.name?.toLowerCase() === appId.toLowerCase());
+                    if (!app) return { success: false, error: `Application "${appId}" not found.` };
+                    if (!app.peers) app.peers = [];
+                    const pId = `peer-${siteName}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+                    const fullPeer = { id: pId, port: app.listener?.port || 8100, ...peerPayload };
+                    const idx = app.peers.findIndex((p: any) => p.id === pId || p.host === host);
+                    if (idx >= 0) app.peers[idx] = { ...app.peers[idx], ...fullPeer };
+                    else app.peers.push(fullPeer);
+                    await ctx.tcpAppManager.saveApplication(app);
+                    return { success: true, application: app, peer: fullPeer };
+                }
+
+                return await fetchApi(nodeCtx, `/api/custom-tcp-apps/${appId}/peers`, {
+                    method: 'POST',
+                    body: JSON.stringify(peerPayload)
+                });
             }
 
             case 'delete_custom_tcp_app': {
@@ -2638,19 +2739,20 @@ export async function executeCopilotTool(
 
             case 'start_tcp_app_workload': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, `/api/custom-tcp-apps/${args.app_id}/workload/start`, { method: 'POST' });
+                return await fetchApi(nodeCtx, `/api/custom-tcp-apps/${args.app_id}/client/start`, { method: 'POST' });
             }
 
             case 'stop_tcp_app_workload': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, `/api/custom-tcp-apps/${args.app_id}/workload/stop`, { method: 'POST' });
+                return await fetchApi(nodeCtx, `/api/custom-tcp-apps/${args.app_id}/client/stop`, { method: 'POST' });
             }
 
             case 'test_tcp_app_handshake': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, `/api/custom-tcp-apps/${args.app_id}/handshake-test`, {
+                const url = args.peer_id ? `/api/custom-tcp-apps/${args.app_id}/peers/${args.peer_id}/test` : `/api/custom-tcp-apps/${args.app_id}/test`;
+                return await fetchApi(nodeCtx, url, {
                     method: 'POST',
-                    body: JSON.stringify({ peer_id: args.peer_id })
+                    body: JSON.stringify({ peerId: args.peer_id })
                 });
             }
 

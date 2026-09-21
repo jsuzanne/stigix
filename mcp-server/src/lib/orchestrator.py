@@ -2270,6 +2270,20 @@ class TestOrchestrator:
     # Custom TCP Applications (Phase 2)
     # -------------------------------------------------------------------------
 
+    async def _resolve_tcp_app_id(self, client: httpx.AsyncClient, base_url: str, headers: dict, app_id: str) -> str:
+        """Resolve a friendly app name (e.g. 'app-erp-tx') to its internal UUID."""
+        try:
+            r_list = await client.get(f"{base_url}/api/custom-tcp-apps", headers=headers)
+            if r_list.status_code == 200:
+                config = r_list.json()
+                apps = config.get("applications", []) if isinstance(config, dict) else (config if isinstance(config, list) else [])
+                matched = next((a for a in apps if a.get("id") == app_id or a.get("name", "").lower() == app_id.lower()), None)
+                if matched:
+                    return matched.get("id", app_id)
+        except Exception:
+            pass
+        return app_id
+
     async def create_custom_tcp_app(
         self, agent_id: str, name: str, port: int,
         description: str = "",
@@ -2280,6 +2294,7 @@ class TestOrchestrator:
         interval_ms: int = 1000,
         connections_per_peer: int = 2,
         peers: Optional[List[Dict[str, Any]]] = None,
+        target_peers: Optional[str] = "all",
         auto_start_listener: bool = True,
         auto_start_workload: bool = False
     ) -> Dict[str, Any]:
@@ -2287,6 +2302,56 @@ class TestOrchestrator:
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"error": f"Agent {agent_id} not found."}
+
+        # Automatically populate peers if not explicitly provided
+        resolved_peers = list(peers) if peers else []
+        if not resolved_peers and target_peers and target_peers.lower() != "none":
+            try:
+                endpoints = await self.registry.list_endpoints()
+                if target_peers.lower() in ("all", "auto", "*"):
+                    for ep in endpoints:
+                        host = ep.test_ip or (ep.api_base_url.split("://")[1].split(":")[0] if "://" in ep.api_base_url else ep.api_base_url)
+                        if not host:
+                            continue
+                        site_name = ep.meta.get("site_name") or ep.id
+                        p_id = f"peer-{ep.id}".lower().replace(" ", "-")
+                        resolved_peers.append({
+                            "id": p_id,
+                            "name": site_name,
+                            "siteName": site_name,
+                            "host": host,
+                            "port": port,
+                            "enabled": True,
+                            "role": ep.role or "branch"
+                        })
+                else:
+                    targets = [t.strip().lower() for t in target_peers.split(",") if t.strip()]
+                    for t in targets:
+                        matched = next((ep for ep in endpoints if ep.id.lower() == t or (ep.meta.get("site_name") or "").lower() == t or ep.test_ip == t), None)
+                        if matched:
+                            host = matched.test_ip or (matched.api_base_url.split("://")[1].split(":")[0] if "://" in matched.api_base_url else matched.api_base_url)
+                            site_name = matched.meta.get("site_name") or matched.id
+                            resolved_peers.append({
+                                "id": f"peer-{matched.id}".lower().replace(" ", "-"),
+                                "name": site_name,
+                                "siteName": site_name,
+                                "host": host,
+                                "port": port,
+                                "enabled": True,
+                                "role": matched.role or "branch"
+                            })
+                        else:
+                            resolved_peers.append({
+                                "id": f"peer-{t}".replace(" ", "-"),
+                                "name": t,
+                                "siteName": t,
+                                "host": t,
+                                "port": port,
+                                "enabled": True,
+                                "role": "branch"
+                            })
+            except Exception as e:
+                logger.warning(f"Could not auto-populate peers for TCP app '{name}': {e}")
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         app_payload = {
@@ -2328,7 +2393,7 @@ class TestOrchestrator:
                 "tcpKeepalive": True,
                 "sourceInterface": "auto"
             },
-            "peers": peers or [],
+            "peers": resolved_peers,
             "startup": {
                 "startListener": auto_start_listener,
                 "startClientWorkload": auto_start_workload
@@ -2346,9 +2411,67 @@ class TestOrchestrator:
                         await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/listener/start", headers=headers)
                     except Exception:
                         pass
+                if auto_start_workload and app_id:
+                    try:
+                        await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/client/start", headers=headers)
+                    except Exception:
+                        pass
                 return data
             except Exception as e:
                 return self._handle_exception(f"Create Custom TCP App '{name}' on {agent_id}", e)
+
+    async def add_tcp_app_peer(
+        self, agent_id: str, app_id: str,
+        peer_name_or_host: str,
+        port: Optional[int] = None,
+        site_name: Optional[str] = None,
+        role: str = "branch",
+        enabled: bool = True
+    ) -> Dict[str, Any]:
+        """Add or attach a peer target to an existing Custom TCP Application."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        target_host = peer_name_or_host
+        target_name = site_name or peer_name_or_host
+        try:
+            endpoints = await self.registry.list_endpoints()
+            matched_ep = next((ep for ep in endpoints if ep.id.lower() == peer_name_or_host.lower() or (ep.meta.get("site_name") or "").lower() == peer_name_or_host.lower() or ep.test_ip == peer_name_or_host), None)
+            if matched_ep:
+                target_host = matched_ep.test_ip or (matched_ep.api_base_url.split("://")[1].split(":")[0] if "://" in matched_ep.api_base_url else matched_ep.api_base_url)
+                target_name = matched_ep.meta.get("site_name") or matched_ep.id
+        except Exception:
+            pass
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                target_port = port
+                if not target_port:
+                    try:
+                        r_app = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}", headers=headers)
+                        if r_app.status_code == 200:
+                            app_data = r_app.json().get("application", {})
+                            target_port = app_data.get("listener", {}).get("port") or 8100
+                    except Exception:
+                        target_port = 8100
+
+                peer_payload = {
+                    "name": target_name,
+                    "siteName": target_name,
+                    "host": target_host,
+                    "port": target_port or 8100,
+                    "enabled": enabled,
+                    "role": role
+                }
+
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/peers", json=peer_payload, headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Add TCP peer '{peer_name_or_host}' to '{app_id}' on {agent_id}", e)
 
     async def delete_custom_tcp_app(self, agent_id: str, app_id: str) -> Dict[str, Any]:
         """Delete a custom TCP application from a node."""
@@ -2359,15 +2482,7 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r_list = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps", headers=headers)
-                real_id = app_id
-                if r_list.status_code == 200:
-                    config = r_list.json()
-                    apps = config.get("applications", []) if isinstance(config, dict) else (config if isinstance(config, list) else [])
-                    matched = next((a for a in apps if a.get("id") == app_id or a.get("name", "").lower() == app_id.lower()), None)
-                    if matched:
-                        real_id = matched.get("id", app_id)
-
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
                 r = await client.delete(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}", headers=headers)
                 r.raise_for_status()
                 return r.json()
@@ -2398,7 +2513,8 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/start-listener", headers=headers)
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/listener/start", headers=headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
@@ -2413,7 +2529,8 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/stop-listener", headers=headers)
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/listener/stop", headers=headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
@@ -2428,7 +2545,8 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/start-client", headers=headers)
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/client/start", headers=headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
@@ -2443,7 +2561,8 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/stop-client", headers=headers)
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/client/stop", headers=headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
@@ -2459,7 +2578,9 @@ class TestOrchestrator:
         body = {"peerId": peer_id} if peer_id else {}
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/test", json=body, headers=headers)
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                endpoint_url = f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/peers/{peer_id}/test" if peer_id else f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/test"
+                r = await client.post(endpoint_url, json=body, headers=headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
@@ -2474,7 +2595,8 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/sessions", headers=headers)
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                r = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/sessions", headers=headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
@@ -2489,7 +2611,8 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/reset", headers=headers)
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/metrics/reset", headers=headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:

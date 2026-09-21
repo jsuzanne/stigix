@@ -408,6 +408,19 @@ export class CopilotTestSuite {
             return { foundApp: found.name, port: found.listener?.port };
         });
 
+        // 23b. Tool: add_tcp_app_peer (Attach test peer DC1 to app-pos-test)
+        await this.runTest('23b. Tool "add_tcp_app_peer" (Attach DC1 peer)', async () => {
+            const res = await executeCopilotTool('add_tcp_app_peer', {
+                agent_id: this.host,
+                app_id: 'app-pos-test',
+                peer_name_or_host: '192.168.123.100',
+                site_name: 'DataCenter-DC1',
+                port: 18443
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return res;
+        });
+
         // 24. Tool: delete_custom_tcp_app (Cleanup app-pos-test)
         await this.runTest('24. Tool "delete_custom_tcp_app" (Cleanup app-pos-test)', async () => {
             const res = await executeCopilotTool('delete_custom_tcp_app', {
