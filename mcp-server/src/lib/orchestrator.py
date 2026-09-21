@@ -2610,11 +2610,29 @@ class TestOrchestrator:
             return {"error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        valid_types = [
+            'applications', 'connectivity-probes', 'convergence-sla',
+            'prisma-sase', 'security-config', 'voice-config', 'iot-config',
+            'custom-tcp-apps', 'cloud-config'
+        ]
+
+        types_to_publish = valid_types if bundle_type.lower() in ["all", "*"] else [bundle_type]
+
+        results = []
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/provisioning/publish", json={"type": bundle_type}, headers=headers)
-                r.raise_for_status()
-                return r.json()
+                for b_type in types_to_publish:
+                    url = f"{agent.api_base_url}/api/provisioning/publish/{b_type}"
+                    r = await client.post(url, headers=headers)
+                    if r.status_code in [200, 201]:
+                        results.append(r.json())
+                    elif r.status_code == 404:
+                        fallback_r = await client.post(f"{agent.api_base_url}/api/provisioning/publish", json={"type": b_type, "bundle_type": b_type}, headers=headers)
+                        fallback_r.raise_for_status()
+                        results.append(fallback_r.json())
+                    else:
+                        r.raise_for_status()
+                return results[0] if len(results) == 1 else {"success": True, "published_bundles": results}
             except Exception as e:
                 return self._handle_exception(f"Publish bundle {bundle_type} on {agent_id}", e)
 
@@ -2627,9 +2645,17 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/provisioning/rollback", json={"type": bundle_type, "revision": revision}, headers=headers)
-                r.raise_for_status()
-                return r.json()
+                url = f"{agent.api_base_url}/api/provisioning/rollback/{bundle_type}/{revision}"
+                r = await client.post(url, headers=headers)
+                if r.status_code in [200, 201]:
+                    return r.json()
+                elif r.status_code == 404:
+                    fallback_r = await client.post(f"{agent.api_base_url}/api/provisioning/rollback", json={"type": bundle_type, "revision": revision}, headers=headers)
+                    fallback_r.raise_for_status()
+                    return fallback_r.json()
+                else:
+                    r.raise_for_status()
+                    return r.json()
             except Exception as e:
                 return self._handle_exception(f"Rollback bundle {bundle_type} to rev {revision} on {agent_id}", e)
 

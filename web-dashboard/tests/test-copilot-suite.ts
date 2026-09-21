@@ -450,6 +450,29 @@ export class CopilotTestSuite {
             };
         });
 
+        // 27. Tool: get_provisioning_status
+        await this.runTest('27. Tool "get_provisioning_status"', async () => {
+            const res = await executeCopilotTool('get_provisioning_status', { agent_id: this.host }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return {
+                pullMode: res.pull_mode_enabled ?? res.enabled,
+                manifest: res.manifest ? Object.keys(res.manifest) : []
+            };
+        });
+
+        // 28. Tool: publish_configuration_bundle (Connectivity Probes)
+        await this.runTest('28. Tool "publish_configuration_bundle" (Probes Bundle)', async () => {
+            const res = await executeCopilotTool('publish_configuration_bundle', {
+                agent_id: this.host,
+                bundle_type: 'connectivity-probes'
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return {
+                published: res.published?.type || 'connectivity-probes',
+                revision: res.published?.revision
+            };
+        });
+
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;
         const totalCount = this.results.length;

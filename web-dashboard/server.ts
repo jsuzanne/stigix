@@ -11807,9 +11807,89 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     res.json({ success: true, published: pub, manifest: provisioningManager.getManifest() });
 });
 
+app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
+    const type = (req.body?.type || req.body?.bundle_type || 'all') as string;
+    const validTypes: GlobalBundleType[] = [
+        'applications', 'connectivity-probes', 'convergence-sla',
+        'prisma-sase', 'security-config', 'voice-config', 'iot-config',
+        'custom-tcp-apps', 'cloud-config'
+    ];
+
+    if (type === 'all') {
+        const publishedList: any[] = [];
+        for (const t of validTypes) {
+            let payload: any = null;
+            if (t === 'applications') {
+                if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+                    try { payload = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8')).applications || []; } catch {}
+                }
+            } else if (t === 'connectivity-probes') {
+                const envProbes = getEnvConnectivityEndpoints();
+                const rawCustom = getCustomConnectivityEndpoints();
+                const merged = envProbes.map((p: any) => {
+                    const override = rawCustom.find((cp: any) => cp.name === p.name);
+                    return override ? { ...p, ...override } : p;
+                });
+                const pure = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+                payload = [...merged, ...pure];
+            } else {
+                const file = provisioningManager.getActiveConfigFile(t);
+                if (fs.existsSync(file)) {
+                    try { payload = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+                }
+            }
+            if (!payload) payload = (t === 'applications' || t === 'connectivity-probes') ? [] : {};
+            publishedList.push(provisioningManager.publishBundle(t, payload));
+        }
+        return res.json({ success: true, published_bundles: publishedList, manifest: provisioningManager.getManifest() });
+    }
+
+    if (!validTypes.includes(type as GlobalBundleType)) {
+        return res.status(400).json({ error: 'invalid_bundle_type' });
+    }
+
+    let payload: any = null;
+    if (type === 'applications') {
+        if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+            try { payload = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8')).applications || []; } catch {}
+        }
+        if (!payload) payload = [];
+    } else if (type === 'connectivity-probes') {
+        const envProbes = getEnvConnectivityEndpoints();
+        const rawCustom = getCustomConnectivityEndpoints();
+        const merged = envProbes.map((p: any) => {
+            const override = rawCustom.find((cp: any) => cp.name === p.name);
+            return override ? { ...p, ...override } : p;
+        });
+        const pure = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+        payload = [...merged, ...pure];
+    } else {
+        const file = provisioningManager.getActiveConfigFile(type as GlobalBundleType);
+        if (fs.existsSync(file)) {
+            try { payload = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+        }
+        if (!payload) payload = {};
+    }
+
+    const pub = provisioningManager.publishBundle(type as GlobalBundleType, payload);
+    res.json({ success: true, published: pub, manifest: provisioningManager.getManifest() });
+});
+
 app.post('/api/provisioning/rollback/:type/:revision', authenticateToken, (req, res) => {
     const type = req.params.type as 'applications' | 'connectivity-probes';
     const revision = parseInt(req.params.revision, 10);
+    if (isNaN(revision)) return res.status(400).json({ error: 'invalid_revision' });
+
+    const bundle = provisioningManager.getPublishedBundle(type, revision);
+    if (!bundle) return res.status(404).json({ error: 'revision_not_found' });
+
+    const pub = provisioningManager.publishBundle(type, bundle);
+    res.json({ success: true, rolledBackTo: revision, newPublished: pub, manifest: provisioningManager.getManifest() });
+});
+
+app.post('/api/provisioning/rollback', authenticateToken, (req, res) => {
+    const type = (req.body?.type || req.body?.bundle_type) as 'applications' | 'connectivity-probes';
+    const revision = parseInt(req.body?.revision, 10);
     if (isNaN(revision)) return res.status(400).json({ error: 'invalid_revision' });
 
     const bundle = provisioningManager.getPublishedBundle(type, revision);

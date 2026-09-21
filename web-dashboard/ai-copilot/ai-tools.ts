@@ -2702,17 +2702,30 @@ export async function executeCopilotTool(
 
             case 'publish_configuration_bundle': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/provisioning/publish', {
-                    method: 'POST',
-                    body: JSON.stringify({ bundle_type: args.bundle_type || 'all' })
-                });
+                const bType = args.bundle_type || 'all';
+                if (bType !== 'all') {
+                    return await fetchApi(nodeCtx, `/api/provisioning/publish/${bType}`, {
+                        method: 'POST'
+                    });
+                } else {
+                    const validTypes = [
+                        'applications', 'connectivity-probes', 'convergence-sla',
+                        'prisma-sase', 'security-config', 'voice-config', 'iot-config',
+                        'custom-tcp-apps', 'cloud-config'
+                    ];
+                    const results: any[] = [];
+                    for (const t of validTypes) {
+                        const res = await fetchApi(nodeCtx, `/api/provisioning/publish/${t}`, { method: 'POST' }).catch(() => null);
+                        if (res) results.push(res);
+                    }
+                    return { success: true, published_bundles: results };
+                }
             }
 
             case 'rollback_configuration_bundle': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/provisioning/rollback', {
-                    method: 'POST',
-                    body: JSON.stringify({ bundle_type: args.bundle_type, revision: args.revision })
+                return await fetchApi(nodeCtx, `/api/provisioning/rollback/${args.bundle_type}/${args.revision}`, {
+                    method: 'POST'
                 });
             }
 
