@@ -1773,10 +1773,44 @@ def main():
                 sys.exit(1)
 
         else:
-            target_site = sites[0]
-            target_site_id = target_site.get('id')
-            target_site_name = target_site.get('name', 'Unknown')
-            log_output(f"\n⚠️ No site specified, using first site: {target_site_name}", json_mode)
+            # Check PRISMA_SDWAN_SITE_NAME environment override first
+            env_site_name = os.getenv("PRISMA_SDWAN_SITE_NAME")
+            if env_site_name:
+                for site in sites:
+                    if site.get('name') == env_site_name:
+                        target_site_id = site.get('id')
+                        target_site_name = site.get('name')
+                        log_output(f"\n✓ Using PRISMA_SDWAN_SITE_NAME override: {target_site_name}", json_mode)
+                        break
+
+            # Fallback to local IP auto-detection if no env override
+            if not target_site_id:
+                local_ip = get_local_ip()
+                if local_ip:
+                    try:
+                        site_lan_map = get_all_lan_interfaces(sdk, sites, debug=args.debug)
+                        site_dc_lan_map = get_all_dc_lan_interfaces(sdk, sites, debug=args.debug)
+                        for sid, info in site_dc_lan_map.items():
+                            if sid not in site_lan_map:
+                                site_lan_map[sid] = info
+                            else:
+                                site_lan_map[sid]['networks'].extend(info.get('networks', []))
+                        if site_lan_map:
+                            t_name, t_id, _, _, _ = find_site_by_ip(local_ip, site_lan_map, debug=args.debug)
+                            if t_id:
+                                target_site_id = t_id
+                                target_site_name = t_name
+                                log_output(f"\n✓ Auto-detected site from local IP ({local_ip}): {target_site_name}", json_mode)
+                    except Exception as e:
+                        if args.debug:
+                            log_output(f"Auto-detection error: {e}", json_mode)
+
+            # Last resort fallback if auto-detection completely failed
+            if not target_site_id:
+                target_site = sites[0]
+                target_site_id = target_site.get('id')
+                target_site_name = target_site.get('name', 'Unknown')
+                log_output(f"\n⚠️ No site specified and auto-detect failed, using first site: {target_site_name}", json_mode)
 
     site_map = {site.get('id'): site.get('name') for site in sites}
     topology = {}

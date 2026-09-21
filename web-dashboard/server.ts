@@ -3083,8 +3083,17 @@ app.post('/api/prisma/flows', authenticateToken, async (req, res) => {
 
         const args = [scriptPath, '--json'];
 
-        if (site_name) { args.push('--site-name', String(site_name)); }
-        if (site_id) { args.push('--site-id', String(site_id)); }
+        let effectiveSiteName = site_name;
+        let effectiveSiteId = site_id;
+        if (!effectiveSiteName && !effectiveSiteId) {
+            const detectedSite = siteManager.getSiteInfo()?.detected_site_name;
+            if (detectedSite) {
+                effectiveSiteName = detectedSite;
+            }
+        }
+
+        if (effectiveSiteName) { args.push('--site-name', String(effectiveSiteName)); }
+        else if (effectiveSiteId) { args.push('--site-id', String(effectiveSiteId)); }
         if (protocol) { args.push('--protocol', String(protocol)); }
         if (udp_src_port) { args.push('--udp-src-port', String(udp_src_port)); }
         if (udp_dst_port) { args.push('--udp-dst-port', String(udp_dst_port)); }
