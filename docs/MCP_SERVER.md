@@ -15,6 +15,7 @@ The Stigix MCP Server provides a **natural language interface** to orchestrate y
 ✅ **Distributed Control** - The MCP server runs on every Stigix instance, providing total redundancy.  
 ✅ **Full Toolset** - 53 tools covering 100% of stigix-cli capabilities: traffic, security, DEM probes, fabric targets, VyOS, config clone, and analytics.  
 ✅ **SSE Transport** - Native support for Server-Sent Events (SSE) for easy remote access.  
+✅ **Interactive Enterprise Demo Script** - See [MCP Demo Scenario](file:///Users/jsuzanne/Github/stigix/docs/MCP_DEMO_SCENARIO.md) for a step-by-step 360° validation walkthrough.  
 
 ---
 
