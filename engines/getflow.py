@@ -850,6 +850,26 @@ def format_path_name(flow, topology, wan_if_lookup, debug=False):
     return f"{path_type} (Path ID: {path_id})"
 
 
+def resolve_path_label(path_id, topology, wan_if_lookup, waninterface_id=None, path_type=None):
+    """Resolve any path_id or waninterface_id into a friendly human-readable label."""
+    if not path_id and not waninterface_id:
+        return None
+    if path_type == 'DirectInternet' and waninterface_id and waninterface_id in wan_if_lookup:
+        return wan_if_lookup[waninterface_id].get('circuit_name', 'Direct Internet')
+    if path_type == 'ServiceLink' and waninterface_id and waninterface_id in wan_if_lookup:
+        return f"{wan_if_lookup[waninterface_id].get('circuit_name', 'WAN')} to Standard VPN"
+    if path_id and topology and str(path_id) in topology:
+        path_info = topology.get(str(path_id), {})
+        source_info = wan_if_lookup.get(path_info.get('source_wan_if_id'), {})
+        target_info = wan_if_lookup.get(path_info.get('target_wan_if_id'), {})
+        src_name = source_info.get('full_name') or source_info.get('name') or 'Unknown'
+        tgt_name = target_info.get('full_name') or target_info.get('name') or 'Unknown'
+        return f"{src_name} to {tgt_name}"
+    if path_id:
+        return f"Path ID: {path_id}"
+    return "Unknown"
+
+
 def get_bulk_topology(sdk, all_site_ids, debug=False, debug_topo=False):
     """
     Fetch VPN topology for all sites using individual calls (the API rejects multi-node).
@@ -1779,12 +1799,16 @@ def main():
 
     end_time = datetime.now(timezone.utc)
 
+    # Determine time window: if --minutes was explicitly passed, use minutes; otherwise use --hours (default 1)
     if args.minutes:
         start_time = end_time - timedelta(minutes=args.minutes)
         time_desc = f"Last {args.minutes} minute(s)"
-    else:
+    elif args.hours:
         start_time = end_time - timedelta(hours=args.hours)
         time_desc = f"Last {args.hours} hour(s)"
+    else:
+        start_time = end_time - timedelta(minutes=15)
+        time_desc = "Last 15 minute(s)"
 
     log_output(f"\n🔍 Querying flows for site: {target_site_name} ({target_site_id})", json_mode)
     log_output(" Filters:", json_mode)
@@ -1857,8 +1881,6 @@ def main():
     if args.dst_ip:
         query_payload["filter"]["flow"]["destination_ip"] = [args.dst_ip]
 
-
-
     if args.debug:
         log_output(f"\n Query payload: {json.dumps(query_payload, indent=4)}", json_mode)
 
@@ -1893,6 +1915,11 @@ def main():
                 "site_name": target_site_name,
                 "site_id": target_site_id,
                 "query_time": datetime.now(timezone.utc).isoformat() + "Z",
+                "query_window": {
+                    "start_time": start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "end_time": end_time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "duration_queried": time_desc
+                },
                 "flows": []
             }
 
@@ -1919,7 +1946,7 @@ def main():
                             path_type = flow.get('path_type')
                             egress_path = f"{path_type} (Path ID: {path_id})"
 
-                        # Extract chronological path changes from flow_decision_metadata_list
+                        # Extract rich chronological path changes from flow_decision_metadata_list
                         path_history = []
                         decisions = flow.get('flow_decision_metadata_list', [])
                         if isinstance(decisions, list) and len(decisions) > 0:
@@ -1929,28 +1956,35 @@ def main():
                             )
                             prev_path = None
                             for d in sorted_decisions:
-                                chosen_path_id = d.get('chosen_wan_path')
+                                chosen_path_id = d.get('chosen_wan_path') or d.get('chosen_path')
+                                pref_path_id = d.get('preferred_wan_path') or d.get('preferred_path')
+                                allowed_policy_ids = d.get('allowed_wan_paths_by_policy') or d.get('allowed_paths_by_policy') or []
+                                allowed_reach_ids = d.get('allowed_wan_paths_by_reachability') or d.get('allowed_paths_by_reachability') or []
                                 dec_time_ms = d.get('flow_decision_time')
 
-                                p_name = None
-                                if chosen_path_id and topology and chosen_path_id in topology:
-                                    p_info = topology.get(chosen_path_id, {})
-                                    src_i = wan_if_lookup.get(p_info.get('source_wan_if_id'), {})
-                                    tgt_i = wan_if_lookup.get(p_info.get('target_wan_if_id'), {})
-                                    src_name = src_i.get('full_name', 'Unknown')
-                                    tgt_name = tgt_i.get('full_name', 'Unknown')
-                                    p_name = f"{src_name} to {tgt_name}"
-                                elif chosen_path_id:
-                                    p_name = f"Path ID: {chosen_path_id}"
+                                chosen_name = resolve_path_label(chosen_path_id, topology, wan_if_lookup)
+                                pref_name = resolve_path_label(pref_path_id, topology, wan_if_lookup)
+                                allowed_policy_names = [resolve_path_label(pid, topology, wan_if_lookup) for pid in allowed_policy_ids] if isinstance(allowed_policy_ids, list) else []
+                                allowed_reach_names = [resolve_path_label(pid, topology, wan_if_lookup) for pid in allowed_reach_ids] if isinstance(allowed_reach_ids, list) else []
 
-                                if p_name and p_name != prev_path:
-                                    path_history.append({
-                                        "time_ms": dec_time_ms,
-                                        "time_iso": datetime.fromtimestamp(dec_time_ms / 1000.0, timezone.utc).isoformat() if dec_time_ms else None,
-                                        "path": p_name,
-                                        "path_id": chosen_path_id
-                                    })
-                                    prev_path = p_name
+                                entry = {
+                                    "time_ms": dec_time_ms,
+                                    "time_iso": datetime.fromtimestamp(dec_time_ms / 1000.0, timezone.utc).isoformat() if dec_time_ms else None,
+                                    "path": chosen_name,
+                                    "path_id": chosen_path_id,
+                                    "chosen_path": chosen_name,
+                                    "preferred_path": pref_name,
+                                    "allowed_paths_by_policy": allowed_policy_names,
+                                    "allowed_paths_by_reachability": allowed_reach_names,
+                                    "available_wan_networks": d.get('available_wan_networks') or [],
+                                    "device_id": d.get('device_id'),
+                                    "device_model_name": d.get('device_model_name'),
+                                    "device_role": d.get('device_role')
+                                }
+
+                                if chosen_name and chosen_name != prev_path:
+                                    path_history.append(entry)
+                                    prev_path = chosen_name
 
                         flow_info = {
                             "source_ip": flow.get('source_ip'),
@@ -1965,6 +1999,8 @@ def main():
                             "path_type": flow.get('path_type'),
                             "egress_path": egress_path,
                             "path_history": path_history,
+                            "path_history_complete": True,
+                            "total_decisions_count": len(decisions) if isinstance(decisions, list) else 0,
                             "app_id": flow.get('app_id'),
                             "flow_id": flow.get('flow_id'),
                             "flow_start_time_ms": flow.get('flow_start_time_ms'),
@@ -1993,17 +2029,19 @@ def main():
 
                 else:
                     result["flows"] = []
+                    result["message"] = f"No flows matched the filter within {time_desc}."
                     if json_mode:
                         print(json.dumps(result, indent=2))
                     else:
-                        log_output(" No flows found matching the criteria", json_mode)
+                        log_output(f" No flows found matching the criteria within {time_desc}", json_mode)
 
             else:
                 result["flows"] = []
+                result["message"] = f"No flows matched the filter within {time_desc}."
                 if json_mode:
                     print(json.dumps(result, indent=2))
                 else:
-                    log_output(" No flows found matching the criteria", json_mode)
+                    log_output(f" No flows found matching the criteria within {time_desc}", json_mode)
 
         else:
             error_msg = {"error": "No flows found or unexpected response format"}

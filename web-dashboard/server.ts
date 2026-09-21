@@ -3091,9 +3091,11 @@ app.post('/api/prisma/flows', authenticateToken, async (req, res) => {
         if (tcp_src_port) { args.push('--tcp-src-port', String(tcp_src_port)); }
         if (tcp_dst_port) { args.push('--tcp-dst-port', String(tcp_dst_port)); }
         if (src_ip) { args.push('--src-ip', String(src_ip)); }
-        if (dst_ip) { args.push('--dst-ip', String(dst_ip)); }
-        if (minutes) { args.push('--minutes', String(minutes)); }
-        if (hours) { args.push('--hours', String(hours)); }
+        if (hours) {
+            args.push('--hours', String(hours));
+        } else if (minutes) {
+            args.push('--minutes', String(minutes));
+        }
         if (fast) { args.push('--fast'); }
         if (page_size) { args.push('--page-size', String(page_size)); }
 

@@ -527,6 +527,23 @@ export class CopilotTestSuite {
             };
         });
 
+        // 29. Tool: get_prisma_flows (Query Flow Browser & verify query_window metadata)
+        await this.runTest('29. Tool "get_prisma_flows" (Flow Browser & Window Metadata)', async () => {
+            const res = await executeCopilotTool('get_prisma_flows', {
+                agent_id: this.host,
+                site_name: 'BR8',
+                hours: 1,
+                fast: true,
+                page_size: 5
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return {
+                site_name: res.site_name,
+                query_window: res.query_window,
+                flowsCount: Array.isArray(res.flows) ? res.flows.length : 0
+            };
+        });
+
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;
         const totalCount = this.results.length;

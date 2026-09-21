@@ -1363,7 +1363,7 @@ async def get_prisma_flows(
     tcp_dst_port: Optional[int] = None,
     src_ip: Optional[str] = None,
     dst_ip: Optional[str] = None,
-    minutes: Optional[int] = 15,
+    minutes: Optional[int] = None,
     hours: Optional[int] = None,
     fast: Optional[bool] = False,
     page_size: Optional[int] = 10
@@ -1372,10 +1372,16 @@ async def get_prisma_flows(
     Query the Prisma SD-WAN Flow Browser to retrieve paths, stats, and chronological path transitions for specific flows.
     Fetches the flows from the target site with filtering options.
 
+    RETENTION & TIME WINDOW:
+    - Default time window: Last 15 minutes (or specify `hours=1` up to `hours=48` for older sessions).
+    - If `hours` is specified, it queries back N hours without truncation.
+
     RETURNS:
     - egress_path: The active/latest SD-WAN path (e.g. 'Branch-MPLS to DC-MPLS').
-    - path_history: Chronological list of all path changes/failovers for that flow with exact timestamps (ISO) and resolved link names.
-    - metrics: Total bytes, packets client-to-server and server-to-client, App-ID classification, and flow timestamps.
+    - path_history: Chronological list of all path changes/failovers for that flow with exact timestamps (ISO),
+      chosen paths, preferred paths, allowed policy paths, and reachability.
+    - path_history_complete: True if full decision sequence is returned.
+    - query_window: Exact start and end UTC timestamps of the query.
 
     Args:
         agent_id: ID of the Stigix node executing the query (local backend).
@@ -1388,8 +1394,8 @@ async def get_prisma_flows(
         tcp_dst_port: Filter by TCP destination port.
         src_ip: Filter by source IP.
         dst_ip: Filter by destination IP.
-        minutes: Number of minutes to look back (default: 15).
-        hours: Number of hours to look back (overrides minutes).
+        minutes: Number of minutes to look back (default: 15 if hours is omitted).
+        hours: Number of hours to look back (e.g. 1, 24, 48).
         fast: Skip detailed VPN path name resolution to speed up execution.
         page_size: Maximum number of flow records to return.
     """
@@ -1403,11 +1409,13 @@ async def get_prisma_flows(
         "tcp_dst_port": tcp_dst_port,
         "src_ip": src_ip,
         "dst_ip": dst_ip,
-        "minutes": minutes,
+        "minutes": minutes if (minutes is not None or hours is None) else None,
         "hours": hours,
         "fast": fast,
         "page_size": page_size
     }
+    if body.get("minutes") is None and body.get("hours") is None:
+        body["minutes"] = 15
     # Clean None values
     body = {k: v for k, v in body.items() if v is not None}
     return await orchestrator.query_prisma_flows(agent_id, body)
