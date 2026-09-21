@@ -335,13 +335,26 @@ export class CopilotTestSuite {
         });
 
         // 19. Tool: remove_dem_probe (Cleanup Netflix probe)
-        await this.runTest('19. Tool "remove_dem_probe" (Cleanup Netflix Test)', async () => {
+        await this.runTest('19. Tool "remove_dem_probe" (Delete Netflix Test Probe)', async () => {
             const res = await executeCopilotTool('remove_dem_probe', {
                 agent_id: this.host,
                 probe_name: 'Netflix Test'
             }, remoteCtx);
             if (res.error) throw new Error(res.error);
             return res;
+        });
+
+        // 20. Tool: get_probe_details (Confirm Probe is Absent)
+        await this.runTest('20. Confirm Probe Deletion (Verify Not Found)', async () => {
+            const res = await executeCopilotTool('get_probe_details', {
+                agent_id: this.host,
+                probe_name: 'Netflix Test'
+            }, remoteCtx);
+            // Should return error or not found
+            if (res && !res.error && res.name === 'Netflix Test') {
+                throw new Error('Probe still exists after deletion');
+            }
+            return { confirmedDeleted: true };
         });
 
         // Summary
