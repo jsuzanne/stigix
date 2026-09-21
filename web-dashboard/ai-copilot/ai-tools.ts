@@ -1240,6 +1240,40 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
         }
     },
     {
+        name: 'create_custom_tcp_app',
+        description: 'Create and deploy a new Custom TCP Application on a Stigix node for realistic SD-WAN traffic simulation (POS, ERP, SQL, Backup, Telemetry).',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: { type: 'string', description: 'ID of the Stigix node (e.g. "BR8").' },
+                name: { type: 'string', description: 'Name of the application (e.g. "app-pos", "app-erp", "app-backup").' },
+                port: { type: 'integer', description: 'TCP port to bind and listen on (1024-65535).' },
+                description: { type: 'string', description: 'Description of the application purpose.' },
+                protocol: { type: 'string', enum: ['stigix_tcp', 'http_1_1'], description: 'Wire protocol ("stigix_tcp" or "http_1_1").' },
+                server_behavior: { type: 'string', enum: ['echo', 'acknowledge', 'fixed_delay', 'random_delay', 'drop_response', 'error_response'], description: 'Server responder behavior.' },
+                client_mode: { type: 'string', enum: ['heartbeat', 'transactional', 'persistent_request_reply', 'bulk_burst', 'continuous_stream'], description: 'Client traffic generation mode.' },
+                payload_bytes: { type: 'integer', description: 'Payload size in bytes per transaction (default: 1024).' },
+                interval_ms: { type: 'integer', description: 'Request interval in ms (default: 1000).' },
+                connections_per_peer: { type: 'integer', description: 'Concurrent sessions per peer (default: 2).' },
+                auto_start_listener: { type: 'boolean', description: 'Automatically start TCP listener immediately (default: true).' },
+                auto_start_workload: { type: 'boolean', description: 'Automatically start client workload (default: false).' }
+            },
+            required: ['agent_id', 'name', 'port']
+        }
+    },
+    {
+        name: 'delete_custom_tcp_app',
+        description: 'Delete a Custom TCP Application and stop its listener and workloads.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: { type: 'string', description: 'ID of the Stigix node.' },
+                app_id: { type: 'string', description: 'Identifier or name of the application to delete (e.g. "app-pos").' }
+            },
+            required: ['agent_id', 'app_id']
+        }
+    },
+    {
         name: 'list_custom_tcp_apps',
         description: 'List all configured Custom TCP Applications on a node and their live operational status (listeners, workloads, latencies).',
         input_schema: {
@@ -2489,6 +2523,99 @@ export async function executeCopilotTool(
             case 'get_voice_ingress_calls': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
                 return await fetchApi(nodeCtx, '/api/voice/ingress');
+            }
+
+            case 'create_custom_tcp_app': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const appPayload = {
+                    name: args.name,
+                    description: args.description || `Custom TCP App ${args.name}`,
+                    enabled: true,
+                    protocol: args.protocol || 'stigix_tcp',
+                    listener: {
+                        bindAddress: '0.0.0.0',
+                        port: Number(args.port),
+                        maxConnections: 100,
+                        idleTimeoutMs: 60000,
+                        maxPayloadBytes: 1048576,
+                        tcpKeepalive: true,
+                        allowCidrs: [],
+                        auth: { enabled: false }
+                    },
+                    serverBehavior: {
+                        mode: args.server_behavior || 'echo',
+                        fixedDelayMs: 0,
+                        randomDelayMinMs: 0,
+                        randomDelayMaxMs: 0,
+                        loopingNormalSec: 10,
+                        loopingSlowSec: 5,
+                        loopingSlowDelayMs: 200,
+                        dropProbability: 0,
+                        errorProbability: 0
+                    },
+                    clientDefaults: {
+                        mode: args.client_mode || 'transactional',
+                        connectionsPerPeer: args.connections_per_peer || 2,
+                        intervalMs: args.interval_ms || 1000,
+                        payloadBytes: args.payload_bytes || 1024,
+                        requestTimeoutMs: 5000,
+                        connectTimeoutMs: 5000,
+                        autoReconnect: true,
+                        reconnectInitialMs: 1000,
+                        reconnectMaxMs: 30000,
+                        tcpKeepalive: true,
+                        sourceInterface: 'auto'
+                    },
+                    peers: args.peers || [],
+                    startup: {
+                        startListener: args.auto_start_listener !== false,
+                        startClientWorkload: Boolean(args.auto_start_workload)
+                    }
+                };
+
+                if (nodeCtx.isLocal && ctx.tcpAppManager) {
+                    await ctx.tcpAppManager.saveApplication(appPayload);
+                    if (args.auto_start_listener !== false) {
+                        try {
+                            const appId = appPayload.name;
+                            await ctx.tcpAppManager.startListener(appId);
+                        } catch {}
+                    }
+                    return { success: true, application: appPayload, message: `Custom TCP App "${args.name}" created on ${nodeCtx.siteName}.` };
+                }
+
+                const res = await fetchApi(nodeCtx, '/api/custom-tcp-apps', {
+                    method: 'POST',
+                    body: JSON.stringify(appPayload)
+                });
+                const appId = res?.application?.id || args.name;
+                if (args.auto_start_listener !== false && appId) {
+                    try {
+                        await fetchApi(nodeCtx, `/api/custom-tcp-apps/${appId}/listener/start`, { method: 'POST' });
+                    } catch {}
+                }
+                return { success: true, application: res?.application || appPayload, message: `Custom TCP App "${args.name}" created on ${nodeCtx.siteName}.` };
+            }
+
+            case 'delete_custom_tcp_app': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const appId = String(args.app_id || '').trim();
+
+                if (nodeCtx.isLocal && ctx.tcpAppManager) {
+                    await ctx.tcpAppManager.deleteApplication(appId);
+                    return { success: true, message: `Custom TCP App "${appId}" deleted on ${nodeCtx.siteName}.` };
+                }
+
+                // Retrieve real ID if app name passed
+                let realId = appId;
+                try {
+                    const listData = await fetchApi(nodeCtx, '/api/custom-tcp-apps');
+                    const apps = listData?.applications || (Array.isArray(listData) ? listData : []);
+                    const matched = apps.find((a: any) => a.id === appId || a.name?.toLowerCase() === appId.toLowerCase());
+                    if (matched) realId = matched.id;
+                } catch {}
+
+                return await fetchApi(nodeCtx, `/api/custom-tcp-apps/${realId}`, { method: 'DELETE' });
             }
 
             case 'list_custom_tcp_apps': {

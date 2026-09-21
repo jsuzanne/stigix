@@ -1480,6 +1480,59 @@ async def get_voice_ingress_calls(agent_id: str) -> dict:
 # -----------------------------------------------------------------------------
 
 @mcp.tool()
+async def create_custom_tcp_app(
+    agent_id: str,
+    name: str,
+    port: int,
+    description: str = "",
+    protocol: str = "stigix_tcp",
+    server_behavior: str = "echo",
+    client_mode: str = "transactional",
+    payload_bytes: int = 1024,
+    interval_ms: int = 1000,
+    connections_per_peer: int = 2,
+    auto_start_listener: bool = True,
+    auto_start_workload: bool = False
+) -> dict:
+    """
+    Create and deploy a new Custom TCP Application on a Stigix node.
+    Enables realistic traffic simulation across the SD-WAN mesh (e.g. POS transactions, ERP sessions,
+    SQL replication, backup bulk flows, IoT telemetry).
+
+    Args:
+        agent_id: ID of the Stigix node (e.g. 'BR8').
+        name: Name of the application (e.g. 'app-pos', 'app-erp', 'app-backup').
+        port: TCP port to bind and listen on (1024-65535).
+        description: Description of the application's purpose.
+        protocol: Wire protocol ('stigix_tcp' length-prefixed, or 'http_1_1').
+        server_behavior: Server responder mode ('echo', 'acknowledge', 'fixed_delay', 'random_delay', 'drop_response', 'error_response').
+        client_mode: Client traffic generation mode ('heartbeat', 'transactional', 'persistent_request_reply', 'bulk_burst', 'continuous_stream').
+        payload_bytes: Payload size in bytes per transaction (default: 1024).
+        interval_ms: Request interval in milliseconds (default: 1000).
+        connections_per_peer: Number of concurrent sessions per peer (default: 2).
+        auto_start_listener: Automatically start the TCP server listener immediately (default: True).
+        auto_start_workload: Automatically start the outbound client generator (default: False).
+    """
+    return await orchestrator.create_custom_tcp_app(
+        agent_id, name, port, description, protocol,
+        server_behavior, client_mode, payload_bytes, interval_ms,
+        connections_per_peer, None, auto_start_listener, auto_start_workload
+    )
+
+
+@mcp.tool()
+async def delete_custom_tcp_app(agent_id: str, app_id: str) -> dict:
+    """
+    Delete a Custom TCP Application and stop its listener and workloads.
+
+    Args:
+        agent_id: ID of the Stigix node.
+        app_id: Identifier or name of the application to delete (e.g. 'app-pos', 'app-91234a').
+    """
+    return await orchestrator.delete_custom_tcp_app(agent_id, app_id)
+
+
+@mcp.tool()
 async def list_custom_tcp_apps(agent_id: str) -> dict:
     """
     List all configured Custom TCP Applications on a node and their live operational status.

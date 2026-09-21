@@ -380,6 +380,44 @@ export class CopilotTestSuite {
             };
         });
 
+        // 22. Tool: create_custom_tcp_app (Deploy app-pos-test)
+        await this.runTest('22. Tool "create_custom_tcp_app" (Deploy app-pos-test)', async () => {
+            const res = await executeCopilotTool('create_custom_tcp_app', {
+                agent_id: this.host,
+                name: 'app-pos-test',
+                port: 18443,
+                description: 'Point of Sale Transaction Simulator',
+                client_mode: 'transactional',
+                payload_bytes: 2048,
+                interval_ms: 500,
+                auto_start_listener: true
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return res;
+        });
+
+        // 23. Tool: list_custom_tcp_apps (Verify app-pos-test is listed)
+        await this.runTest('23. Tool "list_custom_tcp_apps" (Verify app-pos-test)', async () => {
+            const res = await executeCopilotTool('list_custom_tcp_apps', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            const apps = res.applications || (Array.isArray(res) ? res : []);
+            const found = apps.find((a: any) => a.name === 'app-pos-test' || a.id === 'app-pos-test');
+            if (!found) throw new Error('app-pos-test not found in custom tcp apps');
+            return { foundApp: found.name, port: found.listener?.port };
+        });
+
+        // 24. Tool: delete_custom_tcp_app (Cleanup app-pos-test)
+        await this.runTest('24. Tool "delete_custom_tcp_app" (Cleanup app-pos-test)', async () => {
+            const res = await executeCopilotTool('delete_custom_tcp_app', {
+                agent_id: this.host,
+                app_id: 'app-pos-test'
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return res;
+        });
+
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;
         const totalCount = this.results.length;

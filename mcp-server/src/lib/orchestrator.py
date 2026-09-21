@@ -2217,6 +2217,110 @@ class TestOrchestrator:
     # Custom TCP Applications (Phase 2)
     # -------------------------------------------------------------------------
 
+    async def create_custom_tcp_app(
+        self, agent_id: str, name: str, port: int,
+        description: str = "",
+        protocol: str = "stigix_tcp",
+        server_behavior: str = "echo",
+        client_mode: str = "transactional",
+        payload_bytes: int = 1024,
+        interval_ms: int = 1000,
+        connections_per_peer: int = 2,
+        peers: Optional[List[Dict[str, Any]]] = None,
+        auto_start_listener: bool = True,
+        auto_start_workload: bool = False
+    ) -> Dict[str, Any]:
+        """Create and configure a new Custom TCP Application on a node."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        app_payload = {
+            "name": name,
+            "description": description or f"Custom TCP App {name}",
+            "enabled": True,
+            "protocol": protocol,
+            "listener": {
+                "bindAddress": "0.0.0.0",
+                "port": port,
+                "maxConnections": 100,
+                "idleTimeoutMs": 60000,
+                "maxPayloadBytes": 1048576,
+                "tcpKeepalive": True,
+                "allowCidrs": [],
+                "auth": {"enabled": False}
+            },
+            "serverBehavior": {
+                "mode": server_behavior,
+                "fixedDelayMs": 0,
+                "randomDelayMinMs": 0,
+                "randomDelayMaxMs": 0,
+                "loopingNormalSec": 10,
+                "loopingSlowSec": 5,
+                "loopingSlowDelayMs": 200,
+                "dropProbability": 0,
+                "errorProbability": 0
+            },
+            "clientDefaults": {
+                "mode": client_mode,
+                "connectionsPerPeer": connections_per_peer,
+                "intervalMs": interval_ms,
+                "payloadBytes": payload_bytes,
+                "requestTimeoutMs": 5000,
+                "connectTimeoutMs": 5000,
+                "autoReconnect": True,
+                "reconnectInitialMs": 1000,
+                "reconnectMaxMs": 30000,
+                "tcpKeepalive": True,
+                "sourceInterface": "auto"
+            },
+            "peers": peers or [],
+            "startup": {
+                "startListener": auto_start_listener,
+                "startClientWorkload": auto_start_workload
+            }
+        }
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps", json=app_payload, headers=headers)
+                r.raise_for_status()
+                data = r.json()
+                app_id = data.get("application", {}).get("id") or name
+                if auto_start_listener and app_id:
+                    try:
+                        await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/listener/start", headers=headers)
+                    except Exception:
+                        pass
+                return data
+            except Exception as e:
+                return self._handle_exception(f"Create Custom TCP App '{name}' on {agent_id}", e)
+
+    async def delete_custom_tcp_app(self, agent_id: str, app_id: str) -> Dict[str, Any]:
+        """Delete a custom TCP application from a node."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r_list = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps", headers=headers)
+                real_id = app_id
+                if r_list.status_code == 200:
+                    config = r_list.json()
+                    apps = config.get("applications", []) if isinstance(config, dict) else (config if isinstance(config, list) else [])
+                    matched = next((a for a in apps if a.get("id") == app_id or a.get("name", "").lower() == app_id.lower()), None)
+                    if matched:
+                        real_id = matched.get("id", app_id)
+
+                r = await client.delete(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Delete Custom TCP App {app_id} on {agent_id}", e)
+
     async def list_custom_tcp_apps(self, agent_id: str) -> Dict[str, Any]:
         """List configured Custom TCP Applications and their operational status."""
         agent = await self.registry.get_endpoint(agent_id)
