@@ -1159,7 +1159,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'get_prisma_flows',
-        description: 'Query the Prisma SD-WAN Flow Browser to retrieve paths and stats for specific active network flows.',
+        description: 'Query the Prisma SD-WAN Flow Browser to retrieve paths, metrics, and chronological path transitions (path_history / failover switches) for network flows.',
         input_schema: {
             type: 'object',
             properties: {

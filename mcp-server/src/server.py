@@ -1369,8 +1369,13 @@ async def get_prisma_flows(
     page_size: Optional[int] = 10
 ) -> dict:
     """
-    Query the Prisma SD-WAN Flow Browser to retrieve paths and stats for specific flows.
+    Query the Prisma SD-WAN Flow Browser to retrieve paths, stats, and chronological path transitions for specific flows.
     Fetches the flows from the target site with filtering options.
+
+    RETURNS:
+    - egress_path: The active/latest SD-WAN path (e.g. 'Branch-MPLS to DC-MPLS').
+    - path_history: Chronological list of all path changes/failovers for that flow with exact timestamps (ISO) and resolved link names.
+    - metrics: Total bytes, packets client-to-server and server-to-client, App-ID classification, and flow timestamps.
 
     Args:
         agent_id: ID of the Stigix node executing the query (local backend).
