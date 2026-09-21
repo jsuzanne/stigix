@@ -758,7 +758,8 @@ class XfrJobManager {
     }
 
     getJob(id: string): XfrJob | undefined {
-        return this.jobs.get(id);
+        if (!id) return undefined;
+        return this.jobs.get(id) || Array.from(this.jobs.values()).find(j => j.sequence_id === id || j.sequence_id.toLowerCase() === id.toLowerCase());
     }
 
     getAllJobs(): XfrJob[] {

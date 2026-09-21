@@ -190,18 +190,70 @@ class TestOrchestrator:
 
     async def get_status(self, test_id: str) -> TestStatus:
         """Fetch live status from the source agent."""
-        if test_id not in self._test_mappings:
+        mapping = None
+        if test_id in self._test_mappings:
+            mapping = self._test_mappings[test_id]
+        else:
+            # Check if test_id is a local_id / sequence_id in active mappings
+            mapping_key = next((k for k, v in self._test_mappings.items() if str(v.get("local_id", "")).lower() == test_id.lower()), None)
+            if mapping_key:
+                mapping = self._test_mappings[mapping_key]
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+
+        # If still not found, search across registered agents
+        if not mapping:
+            try:
+                endpoints = await self.registry.get_endpoints()
+                for ep in endpoints:
+                    async with httpx.AsyncClient(timeout=3.0) as scan_client:
+                        # 1. Try XFR
+                        try:
+                            xfr_res = await scan_client.get(f"{ep.api_base_url}/api/tests/xfr", headers=headers)
+                            if xfr_res.status_code == 200:
+                                xfr_data = xfr_res.json()
+                                jobs = xfr_data if isinstance(xfr_data, list) else xfr_data.get("jobs", [])
+                                matched = next((j for j in jobs if str(j.get("id", "")).lower() == test_id.lower() or str(j.get("sequence_id", "")).lower() == test_id.lower()), None)
+                                if matched:
+                                    mapping = {
+                                        "source_url": ep.api_base_url,
+                                        "local_id": matched.get("sequence_id") or matched.get("id"),
+                                        "source_id": ep.id,
+                                        "target_id": matched.get("params", {}).get("target", {}).get("host") or matched.get("params", {}).get("host", "unknown"),
+                                        "is_convergence": False
+                                    }
+                                    break
+                        except Exception:
+                            pass
+
+                        # 2. Try Convergence Status / History
+                        try:
+                            conv_res = await scan_client.get(f"{ep.api_base_url}/api/convergence/status", headers=headers)
+                            if conv_res.status_code == 200:
+                                conv_data = conv_res.json()
+                                c_jobs = conv_data if isinstance(conv_data, list) else []
+                                c_matched = next((c for c in c_jobs if str(c.get("testId", "")).lower() == test_id.lower() or str(c.get("test_id", "")).lower() == test_id.lower()), None)
+                                if c_matched:
+                                    mapping = {
+                                        "source_url": ep.api_base_url,
+                                        "local_id": c_matched.get("testId") or c_matched.get("test_id"),
+                                        "source_id": ep.id,
+                                        "target_id": c_matched.get("target", "unknown"),
+                                        "is_convergence": True
+                                    }
+                                    break
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.warning(f"Error scanning endpoints for test {test_id}: {e}")
+
+        if not mapping:
             raise ValueError(f"Test {test_id} not found.")
         
-        mapping = self._test_mappings[test_id]
-        
         if mapping.get("is_convergence"):
-            # Convergence stats are often retrieved differently or just from the list
-            api_url = f"{mapping['source_url']}/api/convergence/status" # Or similar
+            api_url = f"{mapping['source_url']}/api/convergence/status"
         else:
             api_url = f"{mapping['source_url']}/api/tests/xfr"
-        
-        headers = {"Authorization": f"Bearer {self._generate_token()}"}
         
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
@@ -224,9 +276,6 @@ class TestOrchestrator:
                                 h_resp = await history_client.get(history_url, headers=headers)
                                 if h_resp.status_code == 200:
                                     history = h_resp.json()
-                                    # Multiple entries might exist for the same test if it was restarted or appended.
-                                    # We want the LAST one in the history array that matches.
-                                    # Note: testId in history might be 'CONV-123 (Label)' so we use startswith
                                     matching_jobs = [j for j in history if str(j.get("testId", "")).startswith(mapping["local_id"]) or str(j.get("test_id", "")).startswith(mapping["local_id"])]
                                     if matching_jobs:
                                         job = matching_jobs[-1]
@@ -264,8 +313,8 @@ class TestOrchestrator:
                 # Standard XFR jobs (from /api/tests/xfr)
                 job = None
                 if isinstance(data, list):
-                    # Match by the unique string ID first
-                    job = next((j for j in data if str(j.get("id")) == str(mapping["local_id"])), None)
+                    # Match by unique string ID or sequence_id
+                    job = next((j for j in data if str(j.get("id")) == str(mapping["local_id"]) or str(j.get("sequence_id")) == str(mapping["local_id"])), None)
                 
                 if not job:
                     return TestStatus(
@@ -282,14 +331,18 @@ class TestOrchestrator:
                 # Map Stigix job metrics to MCP status
                 summary = job.get("summary") or {}
                 
-                # In bidirectional or other modes, we might want to show both, 
-                # but received_mbps is the primary measure in the UI.
-                throughput = summary.get("received_mbps", 0) or summary.get("sent_mbps", 0)
+                throughput = summary.get("received_mbps", 0) or summary.get("sent_mbps", 0) or summary.get("throughput_mbps", 0) or summary.get("avg_bandwidth_mbps", 0)
                 
                 metrics = {
                     "throughput_mbps": float(throughput),
                     "loss_percent": float(summary.get("loss_percent", 0)),
-                    "latency_ms": float(summary.get("rtt_ms_avg", 0)) # Standardize with 'latency_ms'
+                    "latency_ms": float(summary.get("rtt_ms_avg", 0) or summary.get("rtt_ms", 0)),
+                    "sent_mbps": float(summary.get("sent_mbps", 0)),
+                    "received_mbps": float(summary.get("received_mbps", 0)),
+                    "retransmits": int(summary.get("retransmits", 0)),
+                    "bytes_total": int(summary.get("bytes_total", 0)),
+                    "started_at": job.get("started_at"),
+                    "finished_at": job.get("finished_at")
                 }
 
                 # Normalize status

@@ -418,6 +418,38 @@ export class CopilotTestSuite {
             return res;
         });
 
+        // 25. REST GET /api/tests/xfr/:id (Verify Direct Lookup by UUID)
+        await this.runTest('25. Direct UUID Job Lookup (/api/tests/xfr/:id)', async () => {
+            const jobs = await this.request('/api/tests/xfr?limit=1');
+            const jobId = jobs?.[0]?.id;
+            if (!jobId) return { skipped: 'No jobs available' };
+            const job = await this.request(`/api/tests/xfr/${jobId}`);
+            if (!job || job.id !== jobId) {
+                throw new Error(`Expected job id ${jobId}, received ${job?.id}`);
+            }
+            return { id: job.id, sequence_id: job.sequence_id, status: job.status };
+        });
+
+        // 26. Tool: get_test_status by Sequence ID format (e.g. XFR-XXXX)
+        await this.runTest('26. Tool "get_test_status" (Resolution by Sequence ID)', async () => {
+            const jobs = await this.request('/api/tests/xfr?limit=1');
+            const seqId = jobs?.[0]?.sequence_id;
+            if (!seqId) return { skipped: 'No jobs available' };
+            const statusRes = await executeCopilotTool('get_test_status', {
+                agent_id: this.host,
+                test_id: seqId
+            }, remoteCtx);
+            if (statusRes.error) throw new Error(statusRes.error);
+            if (statusRes.sequence_id !== seqId && statusRes.test_id !== seqId) {
+                throw new Error(`Resolution failed: expected ${seqId}`);
+            }
+            return {
+                resolved: statusRes.sequence_id || statusRes.test_id,
+                status: statusRes.status,
+                throughput_mbps: statusRes.throughput_mbps
+            };
+        });
+
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;
         const totalCount = this.results.length;
