@@ -1493,7 +1493,7 @@ async def create_custom_tcp_app(
     connections_per_peer: int = 2,
     target_peers: str = "all",
     auto_start_listener: bool = True,
-    auto_start_workload: bool = False
+    auto_start_workload: bool = True
 ) -> dict:
     """
     Create and deploy a new Custom TCP Application on a Stigix node.
@@ -1513,7 +1513,7 @@ async def create_custom_tcp_app(
         connections_per_peer: Number of concurrent sessions per peer (default: 2).
         target_peers: Comma-separated target peer names/IDs or 'all' to attach all mesh peers (default: 'all').
         auto_start_listener: Automatically start the TCP server listener immediately (default: True).
-        auto_start_workload: Automatically start the outbound client generator (default: False).
+        auto_start_workload: Automatically start the outbound client generator on all peers (default: True).
     """
     return await orchestrator.create_custom_tcp_app(
         agent_id, name, port, description, protocol,

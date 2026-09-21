@@ -2296,7 +2296,7 @@ class TestOrchestrator:
         peers: Optional[List[Dict[str, Any]]] = None,
         target_peers: Optional[str] = "all",
         auto_start_listener: bool = True,
-        auto_start_workload: bool = False
+        auto_start_workload: bool = True
     ) -> Dict[str, Any]:
         """Create and configure a new Custom TCP Application on a node."""
         agent = await self.registry.get_endpoint(agent_id)

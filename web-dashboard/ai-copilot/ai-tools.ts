@@ -1257,7 +1257,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                 connections_per_peer: { type: 'integer', description: 'Concurrent sessions per peer (default: 2).' },
                 target_peers: { type: 'string', description: 'Comma-separated target node IDs or "all" to automatically attach all mesh peers (default: "all").' },
                 auto_start_listener: { type: 'boolean', description: 'Automatically start TCP listener immediately (default: true).' },
-                auto_start_workload: { type: 'boolean', description: 'Automatically start client workload (default: false).' }
+                auto_start_workload: { type: 'boolean', description: 'Automatically start client workload on all peers (default: true).' }
             },
             required: ['agent_id', 'name', 'port']
         }
@@ -2614,7 +2614,7 @@ export async function executeCopilotTool(
                     peers: resolvedPeers,
                     startup: {
                         startListener: args.auto_start_listener !== false,
-                        startClientWorkload: Boolean(args.auto_start_workload)
+                        startClientWorkload: args.auto_start_workload !== false
                     }
                 };
 
@@ -2626,7 +2626,7 @@ export async function executeCopilotTool(
                             await ctx.tcpAppManager.startListener(appId);
                         } catch {}
                     }
-                    if (args.auto_start_workload) {
+                    if (args.auto_start_workload !== false) {
                         try {
                             const appId = appPayload.name;
                             await ctx.tcpAppManager.startClient(appId);
@@ -2645,7 +2645,7 @@ export async function executeCopilotTool(
                         await fetchApi(nodeCtx, `/api/custom-tcp-apps/${appId}/listener/start`, { method: 'POST' });
                     } catch {}
                 }
-                if (args.auto_start_workload && appId) {
+                if (args.auto_start_workload !== false && appId) {
                     try {
                         await fetchApi(nodeCtx, `/api/custom-tcp-apps/${appId}/client/start`, { method: 'POST' });
                     } catch {}
