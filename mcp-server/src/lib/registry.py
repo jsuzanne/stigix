@@ -20,8 +20,8 @@ class RegistryClient:
         # IMPORTANT: default MUST match the docker-compose default (your-secure-secret-here).
         # If JWT_SECRET is not set in the MCP container env, it will mismatch with Stigix nodes
         # that also use the docker-compose default → 403 Forbidden on all remote API calls.
-        self.jwt_secret = os.getenv("JWT_SECRET", "your-secure-secret-here")
-        if self.jwt_secret == "your-secure-secret-here":
+        self.jwt_secret = os.getenv("JWT_SECRET", "super-secret-key-change-this")
+        if self.jwt_secret == "super-secret-key-change-this":
             logger.warning(
                 "JWT_SECRET is using the insecure default value. "
                 "Set JWT_SECRET in the MCP container environment to a strong secret "

@@ -20,7 +20,7 @@ class TestOrchestrator:
     def __init__(self):
         # Store for mapping global_test_id -> {source_base_url, local_id}
         self._test_mappings: Dict[str, Dict] = {}
-        self.jwt_secret = os.getenv("JWT_SECRET", "stigix-default-secret-2026")
+        self.jwt_secret = os.getenv("JWT_SECRET", "super-secret-key-change-this")
         self.registry = RegistryClient()
 
     def _handle_exception(self, context: str, e: Exception) -> Dict[str, str]:
