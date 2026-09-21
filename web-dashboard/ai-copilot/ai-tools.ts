@@ -1710,17 +1710,27 @@ export async function executeCopilotTool(
                             (j.sequence_id && j.sequence_id.toLowerCase().includes(testIdFilter))
                         );
                         if (matchedXfr) {
+                            const sum = matchedXfr.summary;
                             return {
                                 node: nodeCtx.siteName,
                                 test_type: 'xfr_speedtest',
                                 test_id: matchedXfr.id,
                                 sequence_id: matchedXfr.sequence_id,
                                 status: matchedXfr.status,
-                                target: matchedXfr.params?.host,
+                                target: matchedXfr.params?.host || matchedXfr.params?.target?.host,
+                                protocol: matchedXfr.params?.protocol || 'tcp',
+                                direction: matchedXfr.params?.direction || 'bidirectional',
                                 duration: matchedXfr.params?.duration_sec ? `${matchedXfr.params.duration_sec}s` : undefined,
                                 started_at: matchedXfr.started_at,
                                 finished_at: matchedXfr.finished_at,
-                                summary: matchedXfr.summary,
+                                throughput_mbps: sum?.throughput_mbps ?? sum?.avg_bandwidth_mbps ?? sum?.received_mbps ?? sum?.sent_mbps,
+                                upload_mbps: sum?.sent_mbps,
+                                download_mbps: sum?.received_mbps,
+                                rtt_ms: sum?.rtt_ms_avg ?? sum?.rtt_ms,
+                                retransmits: sum?.retransmits,
+                                loss_pct: sum?.loss_percent ?? 0,
+                                total_bytes: sum?.bytes_total,
+                                summary: sum,
                                 error: matchedXfr.error
                             };
                         }
@@ -1748,24 +1758,24 @@ export async function executeCopilotTool(
                     return {
                         node: nodeCtx.siteName,
                         is_any_test_running: (runningXfr.length + runningConv.length) > 0,
-                        active_tests_count: runningXfr.length + runningConv.length,
+                        running_tests_count: runningXfr.length + runningConv.length,
                         running_xfr_speedtests: runningXfr.map((j: any) => ({
-                            id: j.id,
+                            test_id: j.id,
                             sequence_id: j.sequence_id,
-                            status: j.status,
-                            target: j.params?.host,
-                            duration: `${j.params?.duration_sec || 10}s`
+                            target: j.params?.target?.host || j.params?.host,
+                            duration: j.params?.duration_sec ? `${j.params.duration_sec}s` : undefined,
+                            started_at: j.started_at
                         })),
                         running_convergence_probes: runningConv.map((c: any) => ({
-                            testId: c.testId,
+                            test_id: c.testId,
                             label: c.label,
                             target: c.target,
-                            rtt_ms: c.current_rtt_ms,
-                            loss_pct: c.live_loss_pct
+                            pps: c.pps,
+                            started_at: c.started_at
                         }))
                     };
                 } catch (e: any) {
-                    return { error: `Failed to check test status on ${nodeCtx.siteName}: ${e?.message || e}` };
+                    return { error: `Failed to retrieve test status: ${e.message}` };
                 }
             }
 
@@ -1774,17 +1784,18 @@ export async function executeCopilotTool(
                 const testId = String(args.test_id || '').trim();
 
                 try {
-                    // 1. Send stop command
+                    const convStatus = await fetch(`${nodeCtx.baseUrl}/api/convergence/status`, { headers: nodeCtx.headers }).then(r => r.json()).catch(() => []);
+                    const activeConv = Array.isArray(convStatus) ? convStatus : [];
+                    const matched = activeConv.find((c: any) =>
+                        !testId ||
+                        (c.testId && (c.testId === testId || c.testId.includes(testId) || testId.includes(c.testId))) ||
+                        (c.label && c.label.toLowerCase().includes(testId.toLowerCase()))
+                    );
+
+                    const targetId = matched?.testId || testId;
                     const stopRes = await fetch(`${nodeCtx.baseUrl}/api/convergence/stop`, {
                         method: 'POST',
                         headers: nodeCtx.headers,
-                        body: JSON.stringify({ testId: testId || undefined })
-                    });
-                    const stopData = await stopRes.json().catch(() => ({}));
-
-                    // Also stop voice if running
-                    await fetch(`${nodeCtx.baseUrl}/api/voice/control`, {
-                        method: 'POST',
                         headers: nodeCtx.headers,
                         body: JSON.stringify({ enabled: false })
                     }).catch(() => {});
@@ -2295,8 +2306,15 @@ export async function executeCopilotTool(
                     jobs = await fetchApi(nodeCtx, `/api/tests/xfr`).catch(() => []);
                 }
                 const arr = Array.isArray(jobs) ? jobs : [];
-                // Sort newest first (reverse chronological)
-                const sorted = [...arr].reverse().slice(0, limit);
+                // Sort strictly newest first (descending sequence_id or timestamp)
+                const sorted = [...arr].sort((a: any, b: any) => {
+                    const seqA = a.sequence_id || a.id || '';
+                    const seqB = b.sequence_id || b.id || '';
+                    if (seqA && seqB) return seqB.localeCompare(seqA, undefined, { numeric: true });
+                    const dateA = new Date(a.started_at || a.finished_at || a.timestamp || 0).getTime();
+                    const dateB = new Date(b.started_at || b.finished_at || b.timestamp || 0).getTime();
+                    return dateB - dateA;
+                }).slice(0, limit);
                 return {
                     node: nodeCtx.siteName,
                     total_records: arr.length,
@@ -2308,12 +2326,15 @@ export async function executeCopilotTool(
                         finished_at: j.finished_at,
                         target: j.params?.target?.host || j.params?.host,
                         protocol: j.params?.protocol || 'tcp',
+                        direction: j.params?.direction || 'bidirectional',
                         duration: j.params?.duration_sec ? `${j.params.duration_sec}s` : undefined,
                         throughput_mbps: j.summary?.throughput_mbps ?? j.summary?.avg_bandwidth_mbps ?? j.summary?.received_mbps ?? j.summary?.sent_mbps,
+                        upload_mbps: j.summary?.sent_mbps,
+                        download_mbps: j.summary?.received_mbps,
                         rtt_ms: j.summary?.rtt_ms_avg ?? j.summary?.rtt_ms ?? j.summary?.avg_rtt_ms,
                         loss_pct: j.summary?.loss_percent ?? j.summary?.loss_pct ?? 0,
                         retransmits: j.summary?.retransmits ?? j.summary?.retransmissions,
-                        total_bytes: j.summary?.total_bytes ?? j.summary?.bytes_transferred,
+                        total_bytes: j.summary?.bytes_total ?? j.summary?.total_bytes ?? j.summary?.bytes_transferred,
                         summary: j.summary
                     }))
                 };
@@ -2324,8 +2345,15 @@ export async function executeCopilotTool(
                 const limit = Number(args.limit) || 10;
                 const history = await fetchApi(nodeCtx, `/api/convergence/history`).catch(() => []);
                 const arr = Array.isArray(history) ? history : [];
-                // Sort newest first (reverse chronological)
-                const sorted = [...arr].reverse().slice(0, limit);
+                // Sort strictly newest first (descending sequence_id or timestamp)
+                const sorted = [...arr].sort((a: any, b: any) => {
+                    const idA = a.testId || a.id || a.sequence_id || '';
+                    const idB = b.testId || b.id || b.sequence_id || '';
+                    if (idA && idB) return idB.localeCompare(idA, undefined, { numeric: true });
+                    const dateA = new Date(a.timestamp || a.started_at || 0).getTime();
+                    const dateB = new Date(b.timestamp || b.started_at || 0).getTime();
+                    return dateB - dateA;
+                }).slice(0, limit);
                 return {
                     node: nodeCtx.siteName,
                     total_records: arr.length,

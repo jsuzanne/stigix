@@ -357,6 +357,29 @@ export class CopilotTestSuite {
             return { confirmedDeleted: true };
         });
 
+        // 21. Tool: get_test_status (Verify Latest Speedtest Metrics)
+        await this.runTest('21. Verify Latest Speedtest Metrics & Status Retrieval', async () => {
+            const listRes = await executeCopilotTool('list_speedtest_history', {
+                agent_id: this.host,
+                limit: 1
+            }, remoteCtx);
+            if (listRes.error) throw new Error(listRes.error);
+            const latest = listRes.recent_tests?.[0];
+            if (!latest) throw new Error('No speedtest record found');
+
+            const statusRes = await executeCopilotTool('get_test_status', {
+                agent_id: this.host,
+                test_id: latest.sequence_id || latest.id
+            }, remoteCtx);
+            if (statusRes.error) throw new Error(statusRes.error);
+            return {
+                test_id: latest.sequence_id,
+                date: latest.started_at,
+                throughput_mbps: statusRes.throughput_mbps ?? latest.throughput_mbps,
+                rtt_ms: statusRes.rtt_ms ?? latest.rtt_ms
+            };
+        });
+
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;
         const totalCount = this.results.length;
