@@ -37,15 +37,27 @@ npx tsx tests/test-copilot-suite.ts --host=http://localhost:8080 --user=admin --
 npx tsx tests/test-copilot-suite.ts --host=http://192.168.123.102:8080 --token=<JWT_TOKEN>
 ```
 
+## Mandatory Regression Policy: Test On Every Bug (TDD)
+
+> [!IMPORTANT]
+> **Golden Rule**: Every single bug fix, edge case, or user-reported issue related to Copilot tools, FastMCP, or API endpoints **MUST** have a corresponding automated regression test added to `web-dashboard/tests/test-copilot-suite.ts`.
+>
+> 1. **Identify the exact failing scenario** (e.g. invalid parameter parsing, wrong endpoint route, sorting bug, lifecycle crash).
+> 2. **Implement the fix** in `ai-tools.ts` or `server.ts`.
+> 3. **Add a dedicated test case** in `test-copilot-suite.ts` reproducing the exact call sequence.
+> 4. **Execute against live node** (`npx tsx tests/test-copilot-suite.ts ...`) to confirm 100% PASS before committing.
+
 ---
 
 ## When to Use & Update
 
-1. **New Copilot/MCP Tools Added**:
+1. **Every Bug Fix**:
+   - Whenever any tool error, 403/502/HTML response, routing issue, or missing field is fixed, add a targeted regression test.
+2. **New Copilot/MCP Tools Added**:
    - When tools are added to `ai-tools.ts` or `mcp-server/src/server.py`, add a corresponding assertion in Section 2 of `test-copilot-suite.ts`.
-2. **API Endpoint Schema or Route Changes**:
+3. **API Endpoint Schema or Route Changes**:
    - When modifying backend routes in `server.ts` or CLI endpoints, update both `ai-tools.ts` fallback mappings and the relevant suite assertions.
-3. **Pre-Release Validation**:
+4. **Pre-Release Validation**:
    - Run the suite before tagging or merging to ensure 100% PASS across all sections.
 
 ---
