@@ -1373,8 +1373,8 @@ async def get_prisma_flows(
     Fetches the flows from the target site with filtering options.
 
     RETENTION & TIME WINDOW:
-    - Default time window: Last 15 minutes (or specify `hours=1` up to `hours=48` for older sessions).
-    - If `hours` is specified, it queries back N hours without truncation.
+    - Default time window: Last 15 minutes (recommended range: 5 to 60 minutes).
+    - Flow Browser in Prisma SD-WAN is designed for active/recent telemetry sessions (typically < 1 hour).
 
     RETURNS:
     - egress_path: The active/latest SD-WAN path (e.g. 'Branch-MPLS to DC-MPLS').
