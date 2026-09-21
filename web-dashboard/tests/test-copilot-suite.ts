@@ -311,6 +311,39 @@ export class CopilotTestSuite {
             return res;
         });
 
+        // 17. Tool: add_dem_probe (Netflix probe)
+        await this.runTest('17. Tool "add_dem_probe" (Add Netflix Probe)', async () => {
+            const res = await executeCopilotTool('add_dem_probe', {
+                agent_id: this.host,
+                name: 'Netflix Test',
+                target: 'https://www.netflix.com',
+                probe_type: 'HTTPS',
+                timeout_ms: 5000
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return res;
+        });
+
+        // 18. Tool: get_probe_details (Verify Netflix probe exists)
+        await this.runTest('18. Tool "get_probe_details" (Verify Netflix Test)', async () => {
+            const res = await executeCopilotTool('get_probe_details', {
+                agent_id: this.host,
+                probe_name: 'Netflix Test'
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return res;
+        });
+
+        // 19. Tool: remove_dem_probe (Cleanup Netflix probe)
+        await this.runTest('19. Tool "remove_dem_probe" (Cleanup Netflix Test)', async () => {
+            const res = await executeCopilotTool('remove_dem_probe', {
+                agent_id: this.host,
+                probe_name: 'Netflix Test'
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            return res;
+        });
+
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;
         const totalCount = this.results.length;

@@ -2112,10 +2112,15 @@ export async function executeCopilotTool(
 
             case 'get_dem_summary': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                const probes = await fetchApi(nodeCtx, '/api/probes').catch(async () => {
-                    return await fetchApi(nodeCtx, '/api/connectivity/active-probes');
-                });
-                const arr = Array.isArray(probes) ? probes : (probes?.probes || []);
+                let arr: any[] = [];
+                if (nodeCtx.isLocal && ctx.getAllProbes) {
+                    arr = ctx.getAllProbes();
+                } else {
+                    const probes = await fetchApi(nodeCtx, '/api/connectivity/active-probes').catch(async () => {
+                        return await fetchApi(nodeCtx, '/api/connectivity/custom');
+                    });
+                    arr = Array.isArray(probes) ? probes : (probes?.probes || []);
+                }
                 return {
                     node: nodeCtx.siteName,
                     total_probes: arr.length,
@@ -2126,9 +2131,20 @@ export async function executeCopilotTool(
 
             case 'get_probe_details': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                const probes = await fetchApi(nodeCtx, '/api/probes');
+                let probes: any[] = [];
+                if (nodeCtx.isLocal && ctx.getAllProbes) {
+                    probes = ctx.getAllProbes();
+                } else {
+                    const res = await fetchApi(nodeCtx, '/api/connectivity/custom').catch(async () => {
+                        return await fetchApi(nodeCtx, '/api/connectivity/active-probes');
+                    });
+                    probes = Array.isArray(res) ? res : (res?.probes || []);
+                }
                 const pName = String(args.probe_name || '').toLowerCase();
-                const matched = Array.isArray(probes) ? probes.find((p: any) => p.name?.toLowerCase().includes(pName)) : null;
+                const matched = probes.find((p: any) => {
+                    const name = (p.name || '').toLowerCase();
+                    return name === pName || name.includes(pName) || pName.includes(name);
+                });
                 return matched || { error: `Probe "${args.probe_name}" not found.` };
             }
 
@@ -2137,17 +2153,23 @@ export async function executeCopilotTool(
                 if (nodeCtx.isLocal && ctx.getAllProbes) {
                     return ctx.getAllProbes();
                 }
-                return await fetchApi(nodeCtx, '/api/probes');
+                const res = await fetchApi(nodeCtx, '/api/connectivity/custom').catch(async () => {
+                    return await fetchApi(nodeCtx, '/api/connectivity/active-probes');
+                });
+                return Array.isArray(res) ? res : (res?.probes || []);
             }
 
             case 'run_dem_probes_now': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/probes/run-now', { method: 'POST' });
+                return await fetchApi(nodeCtx, '/api/connectivity/test');
             }
 
             case 'get_dem_probe_stats': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/probes/stats');
+                if (nodeCtx.isLocal && ctx.connectivityLogger) {
+                    return await ctx.connectivityLogger.getStats({ timeRange: args.range || '1h' });
+                }
+                return await fetchApi(nodeCtx, `/api/connectivity/stats?range=${args.range || '1h'}`);
             }
 
             case 'add_dem_probe': {
@@ -2156,21 +2178,73 @@ export async function executeCopilotTool(
                     id: `probe-${Date.now()}`,
                     name: args.name,
                     target: args.target,
-                    probe_type: (args.probe_type || 'HTTP').toUpperCase(),
+                    type: (args.probe_type || 'HTTP').toUpperCase(),
                     timeout_ms: args.timeout_ms || 5000,
-                    enabled: true
+                    enabled: true,
+                    interval: args.interval || 60
                 };
-                return await fetchApi(nodeCtx, '/api/probes', {
+
+                let existingProbes: any[] = [];
+                if (nodeCtx.isLocal && ctx.getAllProbes) {
+                    existingProbes = ctx.getAllProbes();
+                } else {
+                    const current = await fetchApi(nodeCtx, '/api/connectivity/custom').catch(async () => {
+                        return await fetchApi(nodeCtx, '/api/connectivity/active-probes');
+                    });
+                    existingProbes = Array.isArray(current) ? current : (current?.probes || []);
+                }
+
+                const existingIndex = existingProbes.findIndex((p: any) =>
+                    p.name?.toLowerCase() === args.name?.toLowerCase()
+                );
+
+                let updatedProbes: any[];
+                if (existingIndex >= 0) {
+                    updatedProbes = [...existingProbes];
+                    updatedProbes[existingIndex] = { ...updatedProbes[existingIndex], ...newProbe };
+                } else {
+                    updatedProbes = [...existingProbes, newProbe];
+                }
+
+                if (nodeCtx.isLocal && ctx.saveCustomProbes) {
+                    await ctx.saveCustomProbes(updatedProbes);
+                    return { success: true, probe: newProbe, message: `Probe "${args.name}" added successfully on ${nodeCtx.siteName}.` };
+                }
+
+                const saveRes = await fetchApi(nodeCtx, '/api/connectivity/custom', {
                     method: 'POST',
-                    body: JSON.stringify(newProbe)
+                    body: JSON.stringify({ endpoints: updatedProbes })
                 });
+                return { success: true, probe: newProbe, result: saveRes, message: `Probe "${args.name}" added successfully on ${nodeCtx.siteName}.` };
             }
 
             case 'remove_dem_probe': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, `/api/probes/${encodeURIComponent(args.probe_name)}`, {
-                    method: 'DELETE'
+                let existingProbes: any[] = [];
+                if (nodeCtx.isLocal && ctx.getAllProbes) {
+                    existingProbes = ctx.getAllProbes();
+                } else {
+                    const current = await fetchApi(nodeCtx, '/api/connectivity/custom').catch(async () => {
+                        return await fetchApi(nodeCtx, '/api/connectivity/active-probes');
+                    });
+                    existingProbes = Array.isArray(current) ? current : (current?.probes || []);
+                }
+
+                const targetName = String(args.probe_name || '').toLowerCase();
+                const filtered = existingProbes.filter((p: any) =>
+                    p.name?.toLowerCase() !== targetName && p.id?.toLowerCase() !== targetName
+                );
+
+                if (nodeCtx.isLocal && ctx.saveCustomProbes) {
+                    await ctx.saveCustomProbes(filtered);
+                    return { success: true, message: `Probe "${args.probe_name}" removed successfully on ${nodeCtx.siteName}.` };
+                }
+
+                const saveRes = await fetchApi(nodeCtx, '/api/connectivity/custom', {
+                    method: 'POST',
+                    body: JSON.stringify({ endpoints: filtered })
                 });
+                return { success: true, result: saveRes, message: `Probe "${args.probe_name}" removed successfully on ${nodeCtx.siteName}.` };
             }
 
             case 'list_fabric_targets': {
