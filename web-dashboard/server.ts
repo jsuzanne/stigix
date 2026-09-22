@@ -348,6 +348,7 @@ async function runGetflow(siteName: string, sourcePort: number, dstIp: string, m
                 resolve(null);
                 return;
             }
+            const region = process.env.PRISMA_SDWAN_REGION || 'de';
             const args = [
                 scriptPath,
                 '--site-name', siteName,
@@ -356,8 +357,19 @@ async function runGetflow(siteName: string, sourcePort: number, dstIp: string, m
                 '--minutes', String(minutes),
                 '--json'
             ];
+            if (region) {
+                args.push('--region', region === 'eu' || region === 'europe' || region === 'Germany' ? 'de' : 'us');
+            }
             dbg('CONV', `Spawning: python3 ${args.join(' ')}`);
-            const proc = spawn(PYTHON_PATH, args, { timeout: 45_000 });
+            const proc = spawn(PYTHON_PATH, args, {
+                cwd: path.join(PROJECT_ROOT, 'engines'),
+                timeout: 45_000,
+                env: {
+                    ...process.env,
+                    PYTHONUNBUFFERED: '1',
+                    PRISMA_SDWAN_TSG_ID: process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID
+                }
+            });
             let stdout = '';
             let stderr = '';
             proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });

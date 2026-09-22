@@ -854,10 +854,10 @@ def resolve_path_label(path_id, topology, wan_if_lookup, waninterface_id=None, p
     """Resolve any path_id or waninterface_id into a friendly human-readable label."""
     if not path_id and not waninterface_id:
         return None
-    if path_type == 'DirectInternet' and waninterface_id and waninterface_id in wan_if_lookup:
-        return wan_if_lookup[waninterface_id].get('circuit_name', 'Direct Internet')
-    if path_type == 'ServiceLink' and waninterface_id and waninterface_id in wan_if_lookup:
-        return f"{wan_if_lookup[waninterface_id].get('circuit_name', 'WAN')} to Standard VPN"
+    if path_type == 'DirectInternet' and waninterface_id and str(waninterface_id) in wan_if_lookup:
+        return wan_if_lookup[str(waninterface_id)].get('circuit_name', 'Direct Internet')
+    if path_type == 'ServiceLink' and waninterface_id and str(waninterface_id) in wan_if_lookup:
+        return f"{wan_if_lookup[str(waninterface_id)].get('circuit_name', 'WAN')} to Standard VPN"
     if path_id and topology and str(path_id) in topology:
         path_info = topology.get(str(path_id), {})
         source_info = wan_if_lookup.get(path_info.get('source_wan_if_id'), {})
@@ -865,6 +865,10 @@ def resolve_path_label(path_id, topology, wan_if_lookup, waninterface_id=None, p
         src_name = source_info.get('full_name') or source_info.get('name') or 'Unknown'
         tgt_name = target_info.get('full_name') or target_info.get('name') or 'Unknown'
         return f"{src_name} to {tgt_name}"
+    if path_id and str(path_id) in wan_if_lookup:
+        return wan_if_lookup[str(path_id)].get('circuit_name') or wan_if_lookup[str(path_id)].get('full_name') or str(path_id)
+    if waninterface_id and str(waninterface_id) in wan_if_lookup:
+        return wan_if_lookup[str(waninterface_id)].get('circuit_name') or wan_if_lookup[str(waninterface_id)].get('full_name') or str(waninterface_id)
     if path_id:
         return f"Path ID: {path_id}"
     return "Unknown"
@@ -1990,8 +1994,8 @@ def main():
                             )
                             prev_path = None
                             for d in sorted_decisions:
-                                chosen_path_id = d.get('chosen_wan_path') or d.get('chosen_path')
-                                pref_path_id = d.get('preferred_wan_path') or d.get('preferred_path')
+                                chosen_path_id = d.get('chosen_wan_path') or d.get('chosen_path') or d.get('path_id') or d.get('wan_path') or d.get('waninterface_id') or d.get('chosen_path_id')
+                                pref_path_id = d.get('preferred_wan_path') or d.get('preferred_path') or d.get('preferred_path_id')
                                 allowed_policy_ids = d.get('allowed_wan_paths_by_policy') or d.get('allowed_paths_by_policy') or []
                                 allowed_reach_ids = d.get('allowed_wan_paths_by_reachability') or d.get('allowed_paths_by_reachability') or []
                                 dec_time_ms = d.get('flow_decision_time')
