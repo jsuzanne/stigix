@@ -23,9 +23,29 @@ class TestOrchestrator:
         self.jwt_secret = os.getenv("JWT_SECRET", "super-secret-key-change-this")
         self.registry = RegistryClient()
 
-    def _handle_exception(self, context: str, e: Exception) -> Dict[str, str]:
+    def _handle_exception(self, context: str, e: Exception) -> Dict[str, Any]:
         logger.error(f"{context} failed: {e}")
-        return {"error": str(e) or f"Operation failed: {type(e).__name__}"}
+        if isinstance(e, httpx.HTTPStatusError):
+            body_preview = e.response.text[:300] if e.response is not None else ""
+            return {
+                "error": f"{context} failed with HTTP {e.response.status_code}: {e}",
+                "status_code": e.response.status_code,
+                "url": str(e.request.url) if e.request else "",
+                "body_preview": body_preview
+            }
+    def _is_json_response(self, r: httpx.Response) -> bool:
+        """Check if an HTTP response is valid JSON and not an HTML SPA fallback."""
+        ct = r.headers.get("content-type", "")
+        if "text/html" in ct:
+            return False
+        text = r.text.strip()
+        if text.startswith("<!doctype") or text.startswith("<!DOCTYPE") or text.startswith("<html"):
+            return False
+        try:
+            r.json()
+            return True
+        except Exception:
+            return False
 
     def _generate_token(self) -> str:
         """Generates a JWT for agent authentication."""
@@ -2614,8 +2634,50 @@ class TestOrchestrator:
             try:
                 real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
                 r = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/sessions", headers=headers)
-                r.raise_for_status()
-                return r.json()
+                if r.status_code == 200:
+                    try:
+                        return r.json()
+                    except Exception:
+                        pass
+
+                # Backward-compatible fallback for older nodes: query incoming and outgoing sub-routes
+                r_inc = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/sessions/incoming", headers=headers)
+                r_out = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/sessions/outgoing", headers=headers)
+
+                incoming = []
+                outgoing = []
+                if r_inc.status_code == 200:
+                    try:
+                        incoming = r_inc.json().get("sessions", [])
+                    except Exception:
+                        pass
+                if r_out.status_code == 200:
+                    try:
+                        outgoing = r_out.json().get("sessions", [])
+                    except Exception:
+                        pass
+
+                if r_inc.status_code == 200 or r_out.status_code == 200:
+                    return {
+                        "success": True,
+                        "app_id": real_id,
+                        "total_incoming": len(incoming),
+                        "total_outgoing": len(outgoing),
+                        "incoming_sessions": incoming,
+                        "outgoing_sessions": outgoing,
+                        "sessions": [
+                            {**s, "direction": "incoming"} for s in incoming
+                        ] + [
+                            {**s, "direction": "outgoing"} for s in outgoing
+                        ]
+                    }
+
+                return {
+                    "error": f"HTTP {r.status_code} calling {r.url}",
+                    "status_code": r.status_code,
+                    "url": str(r.url),
+                    "body_preview": r.text[:300]
+                }
             except Exception as e:
                 return self._handle_exception(f"Get TCP sessions for {app_id} on {agent_id}", e)
 

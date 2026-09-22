@@ -454,6 +454,28 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
         }
     });
 
+    // GET /api/custom-tcp-apps/:id/sessions — All active incoming and outgoing sessions
+    router.get('/:id/sessions', (req: Request, res: Response) => {
+        try {
+            const incoming = tcpAppManager.getIncomingSessions(req.params.id) || [];
+            const outgoing = tcpAppManager.getOutgoingSessions(req.params.id) || [];
+            res.json({
+                success: true,
+                app_id: req.params.id,
+                total_incoming: incoming.length,
+                total_outgoing: outgoing.length,
+                incoming_sessions: incoming,
+                outgoing_sessions: outgoing,
+                sessions: [
+                    ...incoming.map(s => ({ ...s, direction: 'incoming' })),
+                    ...outgoing.map(s => ({ ...s, direction: 'outgoing' }))
+                ]
+            });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
+        }
+    });
+
     // GET /api/custom-tcp-apps/:id/sessions/incoming — Incoming active sessions
     router.get('/:id/sessions/incoming', (req: Request, res: Response) => {
         try {

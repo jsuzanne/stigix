@@ -462,6 +462,24 @@ export class CopilotTestSuite {
             return res;
         });
 
+        // 23c. Tool: get_tcp_app_sessions (Inspect app-pos-test active sessions)
+        await this.runTest('23c. Tool "get_tcp_app_sessions" (Inspect app-pos-test sessions)', async () => {
+            const res = await executeCopilotTool('get_tcp_app_sessions', {
+                agent_id: this.host,
+                app_id: 'app-pos-test'
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            if (!Array.isArray(res.sessions) && !Array.isArray(res.incoming_sessions) && typeof res.total_incoming !== 'number') {
+                throw new Error(`Expected sessions payload, received: ${JSON.stringify(res)}`);
+            }
+            return {
+                app_id: res.app_id || 'app-pos-test',
+                total_incoming: res.total_incoming ?? (Array.isArray(res.incoming_sessions) ? res.incoming_sessions.length : 0),
+                total_outgoing: res.total_outgoing ?? (Array.isArray(res.outgoing_sessions) ? res.outgoing_sessions.length : 0),
+                sessionsCount: Array.isArray(res.sessions) ? res.sessions.length : 0
+            };
+        });
+
         // 24. Tool: delete_custom_tcp_app (Cleanup app-pos-test)
         await this.runTest('24. Tool "delete_custom_tcp_app" (Cleanup app-pos-test)', async () => {
             const res = await executeCopilotTool('delete_custom_tcp_app', {

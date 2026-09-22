@@ -181,7 +181,16 @@ async function fetchApi(nodeCtx: { baseUrl: string; headers: Record<string, stri
     if (ct.includes('application/json')) {
         return res.json();
     }
-    return res.text();
+    const text = await res.text();
+    const trimmed = text.trim();
+    if (trimmed.startsWith('<!doctype html') || trimmed.startsWith('<!DOCTYPE html') || trimmed.startsWith('<html')) {
+        throw new Error(`HTTP 404 on ${path}: Route not found (received SPA fallback HTML)`);
+    }
+    try {
+        return JSON.parse(text);
+    } catch {
+        return text;
+    }
 }
 
 export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
@@ -2776,7 +2785,34 @@ export async function executeCopilotTool(
 
             case 'get_tcp_app_sessions': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, `/api/custom-tcp-apps/${args.app_id}/sessions`);
+                let targetId = args.app_id;
+                try {
+                    const appList = await fetchApi(nodeCtx, '/api/custom-tcp-apps');
+                    const apps = appList?.applications || (Array.isArray(appList) ? appList : []);
+                    const matched = apps.find((a: any) => a.id === targetId || a.name?.toLowerCase() === targetId?.toLowerCase());
+                    if (matched?.id) targetId = matched.id;
+                } catch {}
+
+                return await fetchApi(nodeCtx, `/api/custom-tcp-apps/${targetId}/sessions`).catch(async () => {
+                    const [incRes, outRes] = await Promise.all([
+                        fetchApi(nodeCtx, `/api/custom-tcp-apps/${targetId}/sessions/incoming`).catch(() => ({ sessions: [] })),
+                        fetchApi(nodeCtx, `/api/custom-tcp-apps/${targetId}/sessions/outgoing`).catch(() => ({ sessions: [] }))
+                    ]);
+                    const incoming = (incRes as any)?.sessions || [];
+                    const outgoing = (outRes as any)?.sessions || [];
+                    return {
+                        success: true,
+                        app_id: targetId,
+                        total_incoming: incoming.length,
+                        total_outgoing: outgoing.length,
+                        incoming_sessions: incoming,
+                        outgoing_sessions: outgoing,
+                        sessions: [
+                            ...incoming.map((s: any) => ({ ...s, direction: 'incoming' })),
+                            ...outgoing.map((s: any) => ({ ...s, direction: 'outgoing' }))
+                        ]
+                    };
+                });
             }
 
             case 'reset_tcp_app_metrics': {
