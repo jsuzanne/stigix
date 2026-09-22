@@ -912,6 +912,7 @@ Comprehensive guides organized by your journey with the Stigix.
 
 ### 📖 Technical Reference
 - **[MCP Server](docs/MCP_SERVER.md)** - Model Context Protocol integration
+- **[MCP Demo Scenario](docs/MCP_DEMO_SCENARIO.md)** - End-to-end enterprise 360° validation walkthrough
 - **[Architecture Overview](docs/ARCHITECTURE_OVERVIEW.md)** - System architecture and design
 - **[Technical Diagram](docs/TECHNICAL_DIAGRAM.md)** - Visual architecture diagrams
 
