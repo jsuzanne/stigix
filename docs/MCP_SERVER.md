@@ -13,7 +13,7 @@ The Stigix MCP Server provides a **natural language interface** to orchestrate y
 ✅ **Mesh-Ready Orchestration** - Control any node in the mesh from any other node via distributed discovery.  
 ✅ **Natural Language** - Command your infrastructure in plain English or French.  
 ✅ **Distributed Control** - The MCP server runs on every Stigix instance, providing total redundancy.  
-✅ **Full Toolset** - 53 tools covering 100% of stigix-cli capabilities: traffic, security, DEM probes, fabric targets, VyOS, config clone, and analytics.  
+✅ **Full Toolset** - 77 tools covering 100% of stigix-cli capabilities: traffic, security, DEM probes, custom TCP apps, voice ingress, mesh controller & provisioning, system health matrix, fabric targets, VyOS, config clone, and analytics.  
 ✅ **SSE Transport** - Native support for Server-Sent Events (SSE) for easy remote access.  
 ✅ **Interactive Enterprise Demo Script** - See [MCP Demo Scenario](file:///Users/jsuzanne/Github/stigix/docs/MCP_DEMO_SCENARIO.md) for a step-by-step 360° validation walkthrough.  
 
@@ -262,12 +262,12 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 
 
 
-## 🛠️ Available MCP Tools (53 tools)
+## 🛠️ Available MCP Tools (77 tools)
 
 > [!TIP]
 > All tools that target a specific node accept an `agent_id` parameter — this is the node's name as shown in `list_endpoints` (e.g., `"BR8"`, `"Paris"`, `"Hetzner"`).
 
-### Discovery & Status
+### Discovery & Status (5 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -277,7 +277,7 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `generate_report` | Fabric-wide report across all (or specified) nodes in parallel | *"Give me an overview of all nodes"* |
 | `compare_nodes` | Side-by-side comparison of two nodes | *"Compare BR8 and Hetzner"* |
 
-### Traffic Generation
+### Traffic Generation (9 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -291,7 +291,14 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `export_app_config` | Export app config as JSON (for backup or cloning) | *"Export BR8's app config"* |
 | `import_app_config` | Import app config to a node (overwrites current) | *"Copy Paris app config to BR8"* |
 
-### Test Orchestration
+### Voice Simulation & Ingress Monitoring (2 tools)
+
+| Tool | Description | Example |
+|---|---|---|
+| `get_voice_stats` | Deep voice metrics (MOS, jitter, packet loss, active calls) | *"Voice quality stats on BR8"* |
+| `get_voice_ingress_calls` | Ingress RTP audio streams, NAT-proof tagging, peer breakdown | *"List active incoming voice streams on DC1"* |
+
+### Test Orchestration (3 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -299,19 +306,19 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `get_test_status` | Get metrics for a running or completed test | *"Status of test CONV-1234?"* |
 | `stop_test` | Stop a running test | *"Stop the convergence test"* |
 
-### XFR Speedtest
+### XFR Speedtest (1 tool)
 
 | Tool | Description | Example |
 |---|---|---|
 | `list_speedtest_history` | Past XFR speedtest results with throughput, RTT, status | *"Last speedtests from BR8?"* |
 
-### Convergence / Failover
+### Convergence / Failover (1 tool)
 
 | Tool | Description | Example |
 |---|---|---|
 | `get_convergence_history` | Past failover tests with max blackout (ms) and verdict | *"Convergence history for BR8?"* |
 
-### Security Testing
+### Security Testing (10 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -326,7 +333,7 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `run_eicar_test` | EICAR threat prevention test (cloud URL or custom) | *"EICAR test on BR8"* |
 | `run_full_security_audit` | Complete suite: URL batch + DNS batch + EICAR | *"Full security audit on BR8"* |
 
-### DEM / Experience Probes
+### DEM / Experience Probes (7 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -338,7 +345,63 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `add_dem_probe` | Add a new DEM probe (HTTP/HTTPS/PING/TCP/UDP/DNS) | *"Add a PING probe to 8.8.8.8 on BR8"* |
 | `remove_dem_probe` | Remove a probe by name | *"Remove 'Google DNS' probe from BR8"* |
 
-### Fabric Target Management
+### Custom TCP Applications & Workloads (11 tools)
+
+| Tool | Description | Example |
+|---|---|---|
+| `create_custom_tcp_app` | Create and deploy custom TCP application (POS, CRM, ERP, etc.) with auto-peering | *"Deploy POS app on port 9000"* |
+| `list_custom_tcp_apps` | List all custom TCP apps, listening ports, traffic status, and peer assignments | *"List custom TCP apps on DC1"* |
+| `add_tcp_app_peer` | Attach a target mesh peer to an existing custom TCP app | *"Add BR8 as peer to app-pos"* |
+| `delete_custom_tcp_app` | Delete a custom TCP application and release ports | *"Delete app-pos on DC1"* |
+| `start_tcp_app_listener` | Start TCP server daemon listening on a specific port | *"Start listener for app-pos on DC1"* |
+| `stop_tcp_app_listener` | Stop TCP server daemon on a specific port | *"Stop listener for app-pos on DC1"* |
+| `start_tcp_app_workload` | Start periodic simulated client traffic generator | *"Start workload for app-pos on BR8"* |
+| `stop_tcp_app_workload` | Stop periodic simulated client traffic generator | *"Stop workload for app-pos on BR8"* |
+| `test_tcp_app_handshake` | Execute instant one-shot SYN/ACK 3-way handshake round-trip probe | *"Test TCP handshake to DC1:9000 from BR8"* |
+| `get_tcp_app_sessions` | Retrieve active TCP connections, states, and byte counters | *"Show active sessions for app-pos"* |
+| `reset_tcp_app_metrics` | Reset session, handshake, and throughput counters for an app | *"Reset metrics for app-pos on BR8"* |
+
+### Multi-Instance Controller & Mesh Management (4 tools)
+
+| Tool | Description | Example |
+|---|---|---|
+| `get_controller_status` | Controller operational mode (Leader vs Member), sync state, and active leader IP | *"Is DC1 the mesh leader?"* |
+| `list_controller_peers` | List all connected mesh peers, sync health, and heartbeat latency | *"Show all mesh peers on DC1"* |
+| `set_controller_leader` | Promote or designate node as the active configuration Leader | *"Set DC1 as the Leader"* |
+| `generate_peer_onboard_command` | Generate zero-touch Docker CLI / curl onboarding snippet to attach a new peer | *"Generate onboard command for new branch"* |
+
+### Global Mesh Provisioning & Central Distribution (5 tools)
+
+| Tool | Description | Example |
+|---|---|---|
+| `get_provisioning_status` | Global provisioning status, bundle version (e.g. rev 22), published bundles | *"Provisioning status on DC1"* |
+| `set_provisioning_mode` | Toggle provisioning synchronization mode (`automatic` vs `manual`) | *"Set provisioning to automatic"* |
+| `publish_configuration_bundle` | Publish configuration bundle (`connectivity-probes`, `custom-tcp-apps`, `traffic-profiles`) to mesh | *"Publish custom TCP apps to all peers"* |
+| `rollback_configuration_bundle` | Rollback a configuration bundle to previous revision | *"Rollback custom-tcp-apps to rev 21"* |
+| `get_provisioning_history` | Audit trail of all published revisions, timestamps, and target peers | *"Show provisioning history on DC1"* |
+
+### System Health Matrix & Live Diagnostics (2 tools)
+
+| Tool | Description | Example |
+|---|---|---|
+| `get_health_matrix` | 360° System Health Matrix across all 9 subsystems (operational score 0-100%) | *"Show health matrix for BR8"* |
+| `run_system_diagnostics` | Run deep diagnostic checks across all subsystems on demand | *"Run full system diagnostics on BR8"* |
+
+### Diagnostics & Analytics (3 tools)
+
+| Tool | Description | Example |
+|---|---|---|
+| `get_diagnostics` | Full node dashboard: CPU, bitrate, app stats, voice, peers | *"Health of BR8", "CPU/RAM Paris"* |
+| `get_app_score` | Success rate for a specific application | *"Teams score on BR8?"* |
+| `get_prisma_flows` | Query Prisma SD-WAN Flow Browser for path/session details | *"Query Prisma flows on BR8 for UDP port 30075"* |
+
+### Configuration Synchronization (1 tool)
+
+| Tool | Description | Example |
+|---|---|---|
+| `clone_node_config` | Clone configuration (apps, DEM probes, security profile, VyOS) between nodes | *"Clone DEM probes from BR8 to BR5"* |
+
+### Fabric Target Management (4 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -347,15 +410,7 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `remove_fabric_target` | Remove a peer by name, host, or ID | *"Remove Hetzner target from BR8"* |
 | `set_fabric_target_enabled` | Enable or disable a peer target | *"Disable Paris target on BR8"* |
 
-### Diagnostics & Analytics
-
-| Tool | Description | Example |
-|---|---|---|
-| `get_diagnostics` | Full node dashboard: CPU, bitrate, app stats, voice, peers | *"Health of BR8", "CPU/RAM Paris"* |
-| `get_app_score` | Success rate for a specific application | *"Teams score on BR8?"* |
-| `get_prisma_flows` | Query Prisma SD-WAN Flow Browser for path/session details | *"Query Prisma flows on BR8 for UDP port 30075"* |
-
-### VyOS Router Management
+### VyOS Router Management (9 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -818,7 +873,77 @@ Query the Prisma Flow Browser on BR8 for TCP port 8082 sessions to 192.168.203.1
 
 ---
 
-### 12. Edge Cases & Error Handling
+### 12. Custom TCP Applications & Enterprise Workloads
+
+**Deploy custom enterprise app (e.g. POS on port 9000):**
+```
+Create a custom TCP app "app-pos" on DC1 on port 9000 and attach all mesh peers.
+```
+→ `create_custom_tcp_app(agent_id="DC1", name="app-pos", port=9000, target_peers="all", auto_start_workload=True)`
+
+**Test instant round-trip TCP 3-way handshake:**
+```
+Test TCP 3-way handshake from BR8 to DC1 on port 9000.
+```
+→ `test_tcp_app_handshake(agent_id="BR8", target_host="192.168.203.100", target_port=9000)`
+
+**List all custom TCP applications:**
+```
+List all custom TCP apps on DC1.
+```
+→ `list_custom_tcp_apps(agent_id="DC1")`
+
+---
+
+### 13. Mesh Controller & Global Provisioning
+
+**Check mesh leader and peers:**
+```
+What is the controller status of DC1? Show all connected peers.
+```
+→ `get_controller_status(agent_id="DC1")` / `list_controller_peers(agent_id="DC1")`
+
+**Publish configuration bundle to entire mesh:**
+```
+Publish the custom-tcp-apps configuration bundle to all mesh nodes.
+```
+→ `publish_configuration_bundle(agent_id="DC1", bundle_type="custom-tcp-apps")`
+
+**Generate zero-touch onboarding command:**
+```
+Generate an onboarding command for a new branch node.
+```
+→ `generate_peer_onboard_command(agent_id="DC1", peer_name="BR9-Lyon")`
+
+---
+
+### 14. System Health Matrix & Live Diagnostics
+
+**360° System Health Matrix:**
+```
+Show the 360-degree System Health Matrix for BR8.
+```
+→ `get_health_matrix(agent_id="BR8")` — Returns operational score (0-100%) across all 9 subsystems.
+
+**Deep on-demand diagnostics:**
+```
+Run full system diagnostics on BR8.
+```
+→ `run_system_diagnostics(agent_id="BR8")`
+
+---
+
+### 15. Voice Ingress & RTP Quality
+
+**Inspect live voice streams:**
+```
+Show live voice stats and ingress RTP audio streams on DC1.
+```
+→ `get_voice_stats(agent_id="DC1")` / `get_voice_ingress_calls(agent_id="DC1")`
+
+---
+
+### 16. Edge Cases & Error Handling
 
 **Non-existent node (expected clean error):**
 ```
