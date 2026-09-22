@@ -156,3 +156,12 @@ Generate the official executive commissioning report for the CIO and Architectur
 | **8** | Failover SLA | `run_test(conv)`, `vyos_execute_action` | Switchover time in milliseconds |
 | **9** | Mesh Sync | `publish_configuration_bundle` | Revision hash, Mesh sync state |
 | **10** | C-Level Report | Markdown synthesis | Formal GO/NO-GO approval |
+
+---
+
+## 🔗 Related Documentation & Specialized Prompts
+
+* 📖 **[MCP Server Reference](file:///Users/jsuzanne/Github/stigix/docs/MCP_SERVER.md)**: Full architecture, tool catalog (77 tools), SSE transport, and Claude Desktop configuration.
+* ⚡ **[Live SD-WAN Failover Prompt (BR8 → DC1)](file:///Users/jsuzanne/Github/stigix/docs/MCP_FAILOVER_PROMPT.md)**: Turnkey, single-prompt interactive live failover simulation with real-time narration.
+* 🧪 **[Convergence Lab Guide](file:///Users/jsuzanne/Github/stigix/docs/CONVERGENCE_LAB.md)**: Sub-second high-precision convergence test framework details.
+
