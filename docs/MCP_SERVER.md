@@ -1087,3 +1087,76 @@ This also means:
 *Last Updated: v1.4.0-patch.142 — 2026-06-01*
 
 
+
+---
+
+## Automated Test Harness
+
+The MCP server ships with a self-contained test harness that validates every tool's contract against a lightweight mock Stigix node — no live infrastructure required.
+
+### Architecture
+
+```
+tests/
+├── conftest.py              # pytest fixtures: starts mock server + MCP process
+├── mcp_harness.py           # ToolCallResult wrapper, timeout helpers
+├── mock_stigix_node.py      # FastAPI mock (nominal + canary nodes on random ports)
+├── report_generator.py      # JSON scorecard + per-tool report
+├── tools_manifest.yaml      # Ground truth: args, expected keys, categories, budgets
+├── test_mcp_nominal.py      # Happy-path contract tests (one per tool with nominal_args)
+├── test_mcp_regression.py   # Edge-case & regression tests
+└── test_mcp_invalid_args.py # Injection / boundary / type-error tests
+```
+
+### Running the tests
+
+```bash
+cd mcp-server
+# Install dev dependencies (first time only)
+uv pip install -e ".[dev]"
+
+# Run the full nominal suite
+pytest tests/test_mcp_nominal.py -v
+
+# Run a single tool
+pytest tests/test_mcp_nominal.py -k get_security_results_stats -v
+
+# Run all suites
+pytest tests/ -v --timeout=300
+```
+
+Expected result: **79 passed, 2 skipped** (`get_test_status` and `stop_test` are skipped — they require ephemeral in-memory state created by `run_test`).
+
+### tools_manifest.yaml
+
+Every MCP tool is described in `tests/tools_manifest.yaml`. Key fields per tool:
+
+| Field | Purpose |
+|-------|---------|
+| `category` | `read` / `write` / `action` — gates which test suites run |
+| `scope` | `node` / `vyos` / `security` — groups related tools |
+| `nominal_args` | Arguments for the happy-path call |
+| `expected_keys` | At least one of these must appear in the response |
+| `timeout_class` | `fast` (2 s) / `medium` (10 s) / `slow` (30 s) |
+| `size_budget_kb` | Maximum response size |
+| `skip_nominal` | `true` to skip the nominal test (state-dependent tools) |
+| `skip_reason` | Human-readable explanation for `skip_nominal` |
+| `invalid_args` | List of malformed arg sets for the invalid_args suite |
+
+### Adding a new tool to the harness
+
+1. Add an entry to `tools_manifest.yaml` under `tools:`.
+2. Add a `nominal_args` block that resolves to a real mock endpoint.
+3. Verify that `mock_stigix_node.py` handles the new endpoint path.
+4. Run `pytest tests/test_mcp_nominal.py -k <tool_name> -v` to confirm.
+
+If the tool is state-dependent (requires a prior call to create state), set `skip_nominal: true` and document the reason in `skip_reason`.
+
+### Mock node
+
+The mock starts two FastAPI instances on random ports:
+
+- **mock-primary** — returns nominal responses for all endpoints
+- **mock-canary** — identical, used for multi-node tests
+
+The mock is session-scoped: it starts once per `pytest` run and is shared across all tests.

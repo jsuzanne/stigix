@@ -583,10 +583,17 @@ async def get_vyos_interfaces(agent_id: str, router_id: Optional[str] = None) ->
     """
     results = await orchestrator.get_vyos_interfaces(agent_id, router_id)
 
+    # Handle error early — orchestrator returns {"error": ...} on failure.
+    if not isinstance(results, dict) or "error" in results:
+        return results
+
+    # Orchestrator returns {"routers": [...]}.  Unpack before iterating.
+    router_list = results.get("routers", [])
+
     # Filter: keep only chaos-eligible interfaces (those with a non-empty description).
     # Management interfaces (no description) are silently excluded.
     total_eligible = 0
-    for r in results:
+    for r in router_list:
         if "error" in r:
             continue
         eligible = [
@@ -604,9 +611,11 @@ async def get_vyos_interfaces(agent_id: str, router_id: Optional[str] = None) ->
                 "set interfaces ethernet ethX description 'MPLS-Link-DC1'"
             )
 
-    if total_eligible == 0 and any("error" not in r for r in results):
+    results["total_chaos_eligible_count"] = total_eligible
+
+    if total_eligible == 0 and any("error" not in r for r in router_list):
         # Surface a top-level warning: nothing can be targeted by natural language
-        for r in results:
+        for r in router_list:
             if "error" not in r:
                 r["_global_warning"] = (
                     "No chaos-eligible interfaces found across any router on this node. "

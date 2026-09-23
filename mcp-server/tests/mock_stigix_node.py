@@ -11,6 +11,7 @@ Usage:
 
 import asyncio
 import json
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -23,7 +24,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 # Mock mode enum
 # ---------------------------------------------------------------------------
 VALID_MODES = {
-    "nominal_minimal",  # Always returns 200 + minimal JSON
+    "nominal_minimal",  # Always returns 200 + minimal JSON (alias for nominal)
+    "nominal",          # Returns richer contextual data (used by nominal tests)
     "http_404",         # Always returns 404
     "http_500",         # Always returns 500
     "empty_body",       # Returns 200 with empty body
@@ -31,13 +33,146 @@ VALID_MODES = {
     "spa_html_200",     # Returns 200 with full HTML SPA shell
     "slow",             # Delays response by N seconds, then 200 {}
     "down",             # Returns 503 immediately (simulates connection refused at app level)
+    "old_build",        # Node reports version 1.2.1 — v2 routes return 404
 }
+
+# Characters forbidden in injection-sensitive fields
+_INJECTION_RE = re.compile(r'[;\$`|&<>]')
 
 SPA_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Stigix</title></head>
 <body><div id="root"></div><script src="/assets/index.js"></script></body>
 </html>"""
+
+# ---------------------------------------------------------------------------
+# Shared fixture data (referenced by multiple endpoints)
+# ---------------------------------------------------------------------------
+
+_DEM_PROBES = [
+    {
+        "id": "probe-a705fa0e52",
+        "name": "MS - Azure Portal",
+        "endpointId": "ms---azure-portal",
+        "type": "HTTP",
+        "target": "https://portal.azure.com",
+        "enabled": True,
+    },
+    {
+        "id": "probe-b812fa3c21",
+        "name": "Google DNS",
+        "endpointId": "google---dns",
+        "type": "DNS",
+        "target": "8.8.8.8",
+        "enabled": True,
+    },
+]
+
+_DEM_STATS_RESULTS = [
+    {
+        "endpointId": "ms---azure-portal",
+        "samples_count": 12,
+        "success_rate_pct": 91.7,
+        "avg_latency_ms": 145.2,
+        "probe_name": "MS - Azure Portal",
+    },
+    {
+        "endpointId": "google---dns",
+        "samples_count": 0,
+        "success_rate_pct": None,
+        "avg_latency_ms": None,
+        "probe_name": "Google DNS",
+    },
+]
+
+# VyOS routers — returned as a LIST (not a dict wrapper)
+_VYOS_ROUTERS_LIST = [
+    {
+        "id": "vyosrouter",
+        "name": "VyOS-DC1",
+        "host": "192.168.1.254",
+        "status": "up",
+        "interfaces": [
+            {
+                "name": "eth0",
+                "description": "BR1-INET-197",
+                "address": ["203.0.113.1/29"],
+                "status": "up",
+            },
+            {
+                "name": "eth1",
+                "description": "BR2-MPLS-198",
+                "address": ["10.198.0.1/30"],
+                "status": "up",
+            },
+        ],
+    }
+]
+
+# VyOS sequences — returned as a LIST
+_VYOS_SEQUENCES_LIST = [
+    {
+        "id": "test-scenario",
+        "name": "Test Scenario",
+        "enabled": True,
+        "steps": [
+            {"action": "set-latency", "interface": "eth0", "latency_ms": 50},
+        ],
+    }
+]
+
+# Security config with enabled categories and tests
+_SECURITY_CONFIG = {
+    "url_filtering": {
+        "enabled": True,
+        "enabled_categories": ["cat-gambling-01"],
+    },
+    "dns_security": {
+        "enabled": True,
+        "enabled_tests": ["dns-malware-01"],
+    },
+}
+
+# Security profile with items
+_SECURITY_PROFILE = {
+    "url_filtering": {
+        "items": [
+            {
+                "id": "cat-gambling-01",
+                "name": "Gambling Sites",
+                "url": "http://mock-gambling-test.invalid/test",
+                "category": "gambling",
+            },
+        ],
+    },
+    "dns_security": {
+        "items": [
+            {
+                "id": "dns-malware-01",
+                "name": "Malware C2 Domain",
+                "domain": "malware.test.domain",
+            },
+        ],
+    },
+}
+
+# Dashboard data (used by get_app_score)
+_DASHBOARD_DATA = {
+    "stats": {
+        "requests_by_app": {
+            "teams.microsoft.com": 150,
+            "zoom.us": 80,
+            "webex.com": 45,
+        },
+        "errors_by_app": {
+            "teams.microsoft.com": 3,
+            "zoom.us": 1,
+            "webex.com": 0,
+        },
+    },
+    "version": "2.0.62-test",
+    "uptime": 86400,
+}
 
 
 def create_app(
@@ -95,6 +230,24 @@ def create_app(
     @app.get("/api/targets")
     async def api_targets(request: Request):
         _record(state, request)
+        if state["mode"] == "old_build":
+            return JSONResponse([
+                {
+                    "id": "mock-primary",
+                    "name": "mock-primary",
+                    "host": "127.0.0.1",
+                    "kind": "fabric",
+                    "role": "both",
+                    "source": "managed",
+                    "version": "1.2.1",
+                    "build": "legacy",
+                    "api_base_url": f"http://127.0.0.1:{port}",
+                    "capabilities": {"xfr": True},
+                    "capabilities_list": ["xfr-source"],
+                    "public_ip": "203.0.113.1",
+                    "meta": {"site_name": "mock-primary", "region": "test"},
+                },
+            ])
         return JSONResponse([
             {
                 "id": "mock-primary",
@@ -167,60 +320,229 @@ def create_app(
                 status_code=503,
             )
 
-        # nominal_minimal — return contextual minimal responses
-        return _nominal_response(path, request.method)
+        if mode == "old_build":
+            return _old_build_response(path, request.method)
+
+        # nominal and nominal_minimal — return contextual responses
+        return await _nominal_response(path, request.method, body_bytes)
 
     return app
 
 
 # ---------------------------------------------------------------------------
-# Nominal minimal responses (just enough structure to pass tool parsing)
+# Injection detection helper
 # ---------------------------------------------------------------------------
 
-def _nominal_response(path: str, method: str) -> JSONResponse:
-    """Return a minimal but structurally valid response for common Stigix API paths."""
+def _contains_injection(value: str) -> bool:
+    """Return True if the string contains shell injection characters."""
+    return bool(_INJECTION_RE.search(value))
 
-    # Connectivity / DEM
+
+# ---------------------------------------------------------------------------
+# Old build responses (v1.2.1 — many v2 routes missing)
+# ---------------------------------------------------------------------------
+
+_OLD_BUILD_UNAVAILABLE_PREFIXES = (
+    "vyos",
+    "connectivity/custom",
+    "connectivity/test",
+    "connectivity/results",
+    "security/scores",
+    "security/posture",
+    "provisioning/publish",
+    "provisioning/rollback",
+    "provisioning/purge",
+    "provisioning/history",
+    "network/traceroute",
+    "tcp-apps",
+    "custom-tcp",
+    "controller",
+    "voice/ingress",
+    "health-matrix",
+    "diagnostics/system",
+)
+
+
+def _old_build_response(path: str, method: str) -> JSONResponse:
+    """
+    Simulate a v1.2.1 node:
+    - V2-only routes return 404 with 'node_build' field.
+    - Basic v1 routes return minimal data.
+    """
+    for prefix in _OLD_BUILD_UNAVAILABLE_PREFIXES:
+        if prefix in path:
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": f"Route '{path}' not available on this node version",
+                    "node_build": "1.2.1",
+                    "min_required_version": "2.0.0",
+                    "detail": "Upgrade the Stigix node to access this feature.",
+                },
+                status_code=404,
+            )
+
+    # v1 routes that DO exist
+    if "status" in path:
+        return JSONResponse({"success": True, "status": "ok", "version": "1.2.1"})
+    if "network/public-ip" in path:
+        return JSONResponse({"public_ip": "203.0.113.1"})
+    if "traffic/status" in path or "traffic/stats" in path:
+        return JSONResponse({"success": True, "enabled": False, "stats": {}})
+    if "traffic/logs" in path:
+        return JSONResponse({"success": True, "logs": []})
+    if "apps" in path and method == "GET":
+        return JSONResponse({"success": True, "applications": []})
+
+    # Generic v1 fallback
+    return JSONResponse({"success": True, "data": {}, "version": "1.2.1"})
+
+
+# ---------------------------------------------------------------------------
+# Nominal responses (realistic fixture data)
+# ---------------------------------------------------------------------------
+
+async def _nominal_response(path: str, method: str, body_bytes: bytes = b"") -> JSONResponse:
+    """Return contextual, realistic responses for common Stigix API paths.
+    Used in both 'nominal' and 'nominal_minimal' modes."""
+
+    body_json: Dict[str, Any] = {}
+    if body_bytes:
+        try:
+            body_json = json.loads(body_bytes.decode("utf-8", errors="replace"))
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # -------- Admin / Dashboard --------
+    if "admin/system/dashboard-data" in path:
+        return JSONResponse(_DASHBOARD_DATA)
+
+    # -------- Injection guard on traceroute target --------
+    if "network/traceroute" in path:
+        target = body_json.get("target", "")
+        if target and _contains_injection(str(target)):
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": "Invalid target: contains forbidden characters",
+                    "target": target[:100],
+                },
+                status_code=400,
+            )
+        return JSONResponse({
+            "success": True,
+            "target": target or "1.1.1.1",
+            "hops": [
+                {"hop": 1, "ip": "192.168.1.1", "rtt_ms": 1.2, "status": "ok"},
+                {"hop": 2, "ip": "10.0.0.1", "rtt_ms": 5.8, "status": "ok"},
+                {"hop": 3, "ip": "1.1.1.1", "rtt_ms": 12.3, "status": "ok"},
+            ],
+            "destination_reached": True,
+            "total_hops": 3,
+        })
+
+    # -------- DEM / Connectivity --------
     if "connectivity/stats" in path:
-        return JSONResponse({"globalHealth": 85, "avgResponseTime": 42.0, "probeCount": 3})
+        return JSONResponse({
+            "globalHealth": 87,
+            "avgResponseTime": 38.2,
+            "probeCount": 2,
+            "results": _DEM_STATS_RESULTS,
+            # lastResults is read by get_probe_performance (get_probe_details tool)
+            "lastResults": _DEM_STATS_RESULTS,
+        })
     if "connectivity/custom" in path:
-        return JSONResponse({"targets": [
-            {"name": "Test Probe", "type": "HTTP", "target": "https://example.com", "enabled": True, "id": "test-probe-1"}
-        ]})
+        if method in ("POST", "PUT"):
+            return JSONResponse({"success": True, "targets": _DEM_PROBES})
+        if method == "DELETE":
+            return JSONResponse({"success": True})
+        # GET — list probes
+        return JSONResponse({"targets": _DEM_PROBES})
     if "connectivity/results" in path:
         return JSONResponse({"results": []})
     if "connectivity/test" in path:
         return JSONResponse({"results": [
-            {"name": "Test Probe", "status": "success", "httpCode": 200, "latency_ms": 42.0}
+            {"name": "MS - Azure Portal", "status": "success", "httpCode": 200, "latency_ms": 145.2},
+            {"name": "Google DNS", "status": "success", "httpCode": None, "latency_ms": 8.1},
         ]})
 
-    # Controller
+    # -------- Controller --------
     if "controller/status" in path:
-        return JSONResponse({"is_leader": False, "leader_ip": "192.168.203.100", "local_instances": []})
+        return JSONResponse({
+            "is_leader": False,
+            "leader_ip": "192.168.203.100",
+            "local_instances": [],
+            "site_name": "mock-primary",
+            "mode": "branch",
+            "peer_count": 2,
+        })
     if "controller/peers" in path:
         return JSONResponse([])
+    if "controller/leader" in path:
+        return JSONResponse({"success": True, "leader_url": None})
+    if "controller/onboard" in path:
+        return JSONResponse({
+            "success": True,
+            "command": "curl -sSL http://mock-primary:8080/onboard | bash",
+            "curl_command": "curl -sSL http://mock-primary:8080/onboard | bash",
+        })
 
-    # Provisioning
+    # -------- Provisioning --------
     if "provisioning/status" in path:
-        return JSONResponse({"success": True, "provisioning_enabled": True, "appliedRevisions": {}})
+        return JSONResponse({
+            "success": True,
+            "provisioning_enabled": True,
+            "appliedRevisions": {},
+            "pendingChanges": False,
+        })
     if "provisioning/history" in path:
-        return JSONResponse({"success": True, "history": []})
+        return JSONResponse({
+            "success": True,
+            "history": [
+                {
+                    "revision": 42,
+                    "timestamp": "2026-09-23T21:00:00Z",
+                    "addedCount": 7,
+                    "modifiedCount": 0,
+                    "removedCount": 0,
+                    "bundle_type": "connectivity-probes",
+                    "summary": "Added 7 DEM probes",
+                },
+                {
+                    "revision": 41,
+                    "timestamp": "2026-09-23T20:00:00Z",
+                    "addedCount": 0,
+                    "modifiedCount": 3,
+                    "removedCount": 0,
+                    "bundle_type": "connectivity-probes",
+                    "summary": "Modified 3 probes",
+                },
+            ],
+        })
     if "provisioning/publish" in path:
-        return JSONResponse({"success": True, "published": {"revision": 1}})
+        return JSONResponse({
+            "success": True,
+            "published": {"revision": 43, "bundle_type": "connectivity-probes"},
+        })
     if "provisioning/purge" in path:
-        return JSONResponse({"success": True, "dry_run": True, "message": "Nothing to purge", "result": {}})
+        dry_run = body_json.get("dry_run", True)
+        return JSONResponse({
+            "success": True,
+            "dry_run": dry_run,
+            "to_delete": [],
+            "message": "Nothing to purge" if dry_run else "Purge complete",
+            "result": {},
+        })
     if "provisioning/rollback" in path:
         return JSONResponse({"success": True, "message": "Rollback applied"})
     if "provisioning/mode" in path:
         return JSONResponse({"success": True, "provisioning_enabled": True})
 
-    # Network
-    if "network/traceroute" in path:
-        return JSONResponse({"success": True, "target": "1.1.1.1", "hops": [], "destination_reached": False, "total_hops": 0})
+    # -------- Network --------
     if "network/public-ip" in path:
         return JSONResponse({"public_ip": "203.0.113.1"})
 
-    # Traffic
+    # -------- Traffic --------
     if "traffic/status" in path or "traffic/stats" in path:
         return JSONResponse({"success": True, "enabled": False, "stats": {}})
     if "traffic/rate" in path:
@@ -230,69 +552,132 @@ def _nominal_response(path: str, method: str) -> JSONResponse:
     if "traffic/clients" in path:
         return JSONResponse({"success": True, "client_count": 1})
 
-    # Voice
+    # -------- Voice --------
     if "voice/status" in path or "voice/stats" in path:
         return JSONResponse({"success": True, "enabled": False, "stats": {}})
     if "voice/ingress" in path:
         return JSONResponse({"success": True, "calls": []})
 
-    # Diagnostics
+    # -------- Diagnostics --------
     if "diagnostics" in path:
         return JSONResponse({"success": True, "diagnostics": {}})
 
-    # Status / health
-    if "status" in path:
+    # -------- Node status --------
+    if "status" in path and "traffic" not in path and "voice" not in path:
         return JSONResponse({"success": True, "status": "ok"})
 
-    # Node info
-    if "node/info" in path or "info" in path:
+    # -------- Node info --------
+    if "node/info" in path or path.endswith("/info"):
         return JSONResponse({"success": True, "version": "2.0.62-test"})
 
-    # Apps
-    if "apps" in path and method == "GET":
-        return JSONResponse({"success": True, "applications": []})
-    if "apps/config" in path:
-        return JSONResponse({"success": True, "config": {}})
+    # -------- VyOS — MUST return lists, not dicts --------
+    if "vyos/routers" in path and "/state" not in path:
+        return JSONResponse(_VYOS_ROUTERS_LIST)
+    if "vyos/history" in path:
+        # Must be a list — vyos_execute_adhoc reads history[0].get("cli_equivalent")
+        return JSONResponse([
+            {
+                "id": "hist-001",
+                "timestamp": "2026-09-23T20:00:00Z",
+                "command": "show-denied",
+                "router_id": "vyosrouter",
+                "cli_equivalent": "sudo vyos_sdwan_ctl.py show-denied",
+                "result": "ok",
+            },
+        ])
+    if "vyos/sequences" in path or "vyos/scenarios" in path:
+        if method in ("POST", "PUT"):
+            # run_vyos_sequence calls POST .../run/{seq_id};
+            # vyos_execute_adhoc calls POST .../sequences (create) then POST .../sequences/run/{id}
+            if "/run" in path:
+                return JSONResponse({"success": True, "executed": True, "result": "ok"})
+            # Create / update a sequence
+            return JSONResponse({"success": True, "id": "test-scenario",
+                                 "name": "Test Scenario", "enabled": True})
+        if method == "DELETE":
+            return JSONResponse({"success": True})
+        # GET — return the list of sequences (set_vyos_scenario_status iterates this)
+        return JSONResponse(_VYOS_SEQUENCES_LIST)
+    if "vyos/router" in path and "/state" in path:
+        return JSONResponse({
+            "router_id": "vyosrouter",
+            "interfaces": [
+                {"name": "eth0", "admin_state": "up", "qos": {}, "blackhole_ips": []},
+            ],
+        })
+    if "vyos/action" in path or "vyos/adhoc" in path:
+        return JSONResponse({"success": True, "command": "show-denied", "output": "0 denied entries"})
+    if "vyos" in path:
+        return JSONResponse({"success": True, "routers": _VYOS_ROUTERS_LIST,
+                             "scenarios": _VYOS_SEQUENCES_LIST, "timeline": []})
 
-    # Security
+    # -------- Security --------
+    if "security/config" in path:
+        return JSONResponse(_SECURITY_CONFIG)
+    if "security/profile" in path:
+        return JSONResponse(_SECURITY_PROFILE)
+    if "security/eicar-targets" in path:
+        return JSONResponse({"targets": [
+            {"type": "cloud", "target": "https://mock-eicar.stigix.io", "url": "https://mock-eicar.stigix.io/eicar.com.txt"},
+        ]})
+    if "security/url-test-batch" in path:
+        return JSONResponse({"results": [
+            {"url": "http://mock-gambling-test.invalid/test", "category": "Gambling Sites",
+             "status": "blocked", "response_code": 403},
+        ]})
+    if "security/dns-test-batch" in path:
+        return JSONResponse({"results": [
+            {"domain": "malware.test.domain", "testName": "Malware C2 Domain",
+             "status": "blocked", "resolved_ip": None},
+        ]})
+    if "security/posture" in path or "security/scores" in path:
+        return JSONResponse({
+            "url_filter": 85.0,
+            "dns_security": 92.0,
+            "threat_prevention": 100.0,
+        })
     if "security" in path:
         return JSONResponse({"success": True, "results": []})
 
-    # VyOS
-    if "vyos" in path:
-        return JSONResponse({"success": True, "routers": [], "scenarios": [], "timeline": []})
+    # -------- Apps --------
+    if "apps/config" in path:
+        if method == "GET":
+            return JSONResponse({"success": True, "config": {}, "applications": []})
+        return JSONResponse({"success": True})
+    if "apps" in path and method == "GET":
+        return JSONResponse({"success": True, "applications": []})
+    if "apps" in path:
+        return JSONResponse({"success": True, "applications": []})
 
-    # Speedtest
+    # -------- Speedtest --------
     if "speedtest" in path:
         return JSONResponse({"success": True, "history": []})
 
-    # Convergence
+    # -------- Convergence --------
     if "convergence" in path:
         return JSONResponse({"success": True, "history": []})
 
-    # Fabric targets
-    if "targets" in path and "fabric" in path:
-        return JSONResponse({"success": True, "targets": []})
-    if "targets" in path:
+    # -------- Fabric targets --------
+    if "fabric/targets" in path or ("targets" in path and "fabric" in path):
         return JSONResponse({"success": True, "targets": []})
 
-    # Custom TCP Apps
+    # -------- Custom TCP Apps --------
     if "tcp-apps" in path or "custom-tcp" in path:
         return JSONResponse({"success": True, "apps": []})
 
-    # Prisma flows
+    # -------- Prisma flows --------
     if "prisma" in path or "flows" in path:
         return JSONResponse({"success": True, "flows": []})
 
-    # Health matrix
+    # -------- Health matrix --------
     if "health" in path:
         return JSONResponse({"success": True, "matrix": {}})
 
-    # Impairments
+    # -------- Impairments --------
     if "impairment" in path:
         return JSONResponse({"success": True, "impairments": []})
 
-    # Generic fallback
+    # -------- Generic fallback --------
     return JSONResponse({"success": True, "data": {}})
 
 

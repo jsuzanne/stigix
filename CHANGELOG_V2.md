@@ -2,6 +2,20 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2-dev] - 2026-09-23 — MCP Automated Test Harness (Phase 2)
+
+### Added
+- **mcp-server/tests/**: Full Phase 2 test harness — nominal, regression, and invalid_args suites driven by `tools_manifest.yaml`
+- **tests/tools_manifest.yaml**: Ground-truth YAML describing all 81 MCP tools (args, expected_keys, timeout class, size budget, skip flags)
+- **tests/mock_stigix_node.py**: FastAPI mock Stigix node (nominal + canary) with schema-compliant responses for all endpoints
+- **tests/test_mcp_nominal.py**: Happy-path contract tests — 79 passed, 2 skipped (state-dependent tools)
+- **tests/report_generator.py**: JSON scorecard + per-tool HTML report generated after each run
+- **skip_nominal / skip_reason**: Manifest flags to gracefully skip state-dependent tools (visible as SKIPPED in pytest output)
+- **docs/MCP_SERVER.md**: New 'Automated Test Harness' section documenting architecture, usage, and manifest field reference
+
+### Fixed
+- **server.py get_vyos_interfaces**: Iteration bug — loop was iterating over dict keys of the orchestrator's {'routers': [...]} wrapper instead of the router list, causing AttributeError
+
 ## [v2-dev] - 2026-09-20 — In-App AI Copilot (BYOK Anthropic Claude) & Claude Sonnet 4.5 Integration
 
 ### Added
