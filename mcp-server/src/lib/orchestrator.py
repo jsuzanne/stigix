@@ -4,6 +4,7 @@ import uuid
 import httpx
 import jwt
 import os
+import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from .registry import RegistryClient
@@ -24,7 +25,8 @@ class TestOrchestrator:
         self.registry = RegistryClient()
 
     def _handle_exception(self, context: str, e: Exception) -> Dict[str, Any]:
-        logger.error(f"{context} failed: {e}")
+        err_msg = str(e) or repr(e) or type(e).__name__
+        logger.error(f"{context} failed: {err_msg}")
         if isinstance(e, httpx.HTTPStatusError):
             body_preview = e.response.text[:300] if e.response is not None else ""
             status_code = e.response.status_code if e.response is not None else 500
@@ -32,7 +34,7 @@ class TestOrchestrator:
             return {
                 "success": False,
                 "status": "error",
-                "error": f"{context} failed with HTTP {status_code}: {e}",
+                "error": f"{context} failed with HTTP {status_code}: {err_msg}",
                 "status_code": status_code,
                 "url": url,
                 "body_preview": body_preview
@@ -40,7 +42,7 @@ class TestOrchestrator:
         return {
             "success": False,
             "status": "error",
-            "error": f"{context} failed: {str(e)}",
+            "error": f"{context} failed: {err_msg}",
             "status_code": 500,
             "exception_type": type(e).__name__
         }
@@ -1019,17 +1021,27 @@ class TestOrchestrator:
                 data = response.json()
                 last_results = data.get("lastResults", [])
                 
-                # Try exact match or fuzzy match by name/IP
-                probe_lower = probe_name.lower()
-                match = next((r for r in last_results if probe_lower in r.get("name", "").lower() or probe_lower in r.get("id", "").lower()), None)
+                # Match by endpointName, endpointId, name, or id (NEVER by url or target)
+                probe_lower = probe_name.strip().lower()
+                probe_slug = re.sub(r'\s+', '-', probe_lower)
+                match = next((
+                    r for r in last_results 
+                    if probe_lower == (r.get("endpointName") or r.get("name") or "").strip().lower()
+                    or probe_lower == (r.get("endpointId") or r.get("id") or "").strip().lower()
+                    or probe_slug == (r.get("endpointId") or r.get("id") or "").strip().lower()
+                    or probe_slug == re.sub(r'\s+', '-', (r.get("endpointName") or r.get("name") or "").strip().lower())
+                    or probe_lower in (r.get("endpointName") or r.get("name") or "").strip().lower()
+                ), None)
                 
                 if not match:
-                    return {"error": f"Probe '{probe_name}' not found in recent results. Available: {[r.get('name') for r in last_results[:10]]}"}
+                    available = [r.get("endpointName") or r.get("name") or r.get("endpointId") for r in last_results[:10]]
+                    return {"error": f"Probe '{probe_name}' not found in recent results. Available: {available}"}
                 
                 return match
             except Exception as e:
-                logger.error(f"Failed to fetch probe details for {agent_id}: {e}")
-                return {"error": str(e) or f"Connection failed: {type(e).__name__}"}
+                err_msg = str(e) or repr(e) or type(e).__name__
+                logger.error(f"Failed to fetch probe details for {agent_id}: {err_msg}")
+                return {"error": err_msg or f"Connection failed: {type(e).__name__}"}
 
     # -------------------------------------------------------------------------
     # Phase 1 Additions — Aligned with stigix-cli capabilities
@@ -1280,8 +1292,9 @@ class TestOrchestrator:
                 results = data if isinstance(data, list) else data.get("results", [data])
                 return {"agent_id": agent_id, "probe_count": len(results), "results": results}
             except Exception as e:
-                logger.error(f"Failed to run probes for {agent_id}: {e}")
-                return {"error": str(e)}
+                err_msg = str(e) or repr(e) or type(e).__name__
+                logger.error(f"Failed to run probes for {agent_id}: {err_msg}")
+                return {"error": err_msg}
 
     async def get_dem_probe_stats(
         self,
@@ -1302,8 +1315,8 @@ class TestOrchestrator:
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
                 result: Dict[str, Any] = {"agent_id": agent_id, "time_range": time_range}
-                # Global stats
-                stats_r = await client.get(f"{base}/api/connectivity/stats?range={time_range}", headers=headers)
+                # Global stats: read the exact same source as get_dem_summary
+                stats_r = await client.get(f"{base}/api/connectivity/stats?range=1h", headers=headers)
                 if stats_r.status_code == 200:
                     result["global_stats"] = stats_r.json()
 
@@ -1324,31 +1337,69 @@ class TestOrchestrator:
                     probes_cfg = data if isinstance(data, list) else data.get("targets", [])
 
                 if aggregate:
-                    # Group measurements by probe name/target
+                    def _slug(text: str) -> str:
+                        return re.sub(r'\s+', '-', (text or '').strip().lower())
+
+                    cfg_by_name: Dict[str, Dict[str, Any]] = {}
+                    cfg_by_slug: Dict[str, Dict[str, Any]] = {}
+                    cfg_by_id: Dict[str, Dict[str, Any]] = {}
+
+                    for p in probes_cfg:
+                        if isinstance(p, dict) and p.get("name"):
+                            p_name = p.get("name")
+                            cfg_by_name[p_name] = p
+                            cfg_by_slug[_slug(p_name)] = p
+                            if p.get("id"):
+                                cfg_by_id[p.get("id").strip().lower()] = p
+
+                    # Group samples strictly by probe name / slug / id (NEVER by url or target)
                     grouped: Dict[str, List[Dict[str, Any]]] = {}
                     for item in raw_results:
-                        p_name = item.get("name") or item.get("probe_name") or item.get("target") or "unknown"
-                        grouped.setdefault(p_name, []).append(item)
+                        s_name = (item.get("endpointName") or item.get("name") or item.get("probe_name") or "").strip()
+                        s_id = (item.get("endpointId") or item.get("id") or "").strip().lower()
+                        s_slug = _slug(s_name)
+
+                        matched_cfg = None
+                        if s_name and s_name in cfg_by_name:
+                            matched_cfg = cfg_by_name[s_name]
+                        elif s_id and s_id in cfg_by_id:
+                            matched_cfg = cfg_by_id[s_id]
+                        elif s_id and s_id in cfg_by_slug:
+                            matched_cfg = cfg_by_slug[s_id]
+                        elif s_slug and s_slug in cfg_by_slug:
+                            matched_cfg = cfg_by_slug[s_slug]
+
+                        canonical_name = matched_cfg.get("name") if matched_cfg else (s_name or item.get("endpointId") or "unknown")
+                        grouped.setdefault(canonical_name, []).append(item)
 
                     summary_list = []
-                    # Include configured probes even if they have 0 recent samples
-                    cfg_map = {p.get("name"): p for p in probes_cfg if isinstance(p, dict) and p.get("name")}
-                    all_probe_names = set(grouped.keys()).union(cfg_map.keys())
+                    all_probe_names = set(grouped.keys()).union(cfg_by_name.keys())
 
                     for name in sorted(all_probe_names):
                         if probe_name_filter and probe_name_filter.lower() not in name.lower():
                             continue
 
                         samples = grouped.get(name, [])
-                        cfg = cfg_map.get(name, {})
+                        cfg = cfg_by_name.get(name, {})
                         rtts: List[float] = []
                         success_count = 0
 
+                        expected_codes = cfg.get("expectedStatusCodes") or [200, 201, 202, 204, 301, 302, 304, 307, 308]
+
                         for s in samples:
-                            is_success = s.get("success") is True or s.get("status") == "success" or s.get("statusCode", 0) in [200, 204, 301, 302]
+                            code = s.get("httpCode") or s.get("statusCode")
+                            is_code_ok = (code in expected_codes) if (code is not None and code > 0) else False
+                            is_success = (
+                                is_code_ok
+                                or (s.get("reachable") is True and (s.get("score") is None or s.get("score", 0) > 0))
+                                or s.get("success") is True
+                                or s.get("status") == "success"
+                            )
                             if is_success:
                                 success_count += 1
-                            rtt = s.get("rtt") or s.get("responseTime") or s.get("latency")
+                            
+                            metrics = s.get("metrics")
+                            rtt = metrics.get("total_ms") if isinstance(metrics, dict) else (s.get("latency_ms") or s.get("rtt") or s.get("responseTime"))
                             if rtt is not None:
                                 try:
                                     rtts.append(float(rtt))
@@ -1356,7 +1407,7 @@ class TestOrchestrator:
                                     pass
 
                         sample_count = len(samples)
-                        success_rate = round(100.0 * success_count / max(sample_count, 1), 1) if sample_count > 0 else (100.0 if cfg.get("enabled") is not False else 0.0)
+                        success_rate = round(100.0 * success_count / sample_count, 1) if sample_count > 0 else None
 
                         sorted_rtts = sorted(rtts)
                         p95_val = None
@@ -1372,11 +1423,13 @@ class TestOrchestrator:
                             p95_idx = int(len(sorted_rtts) * 0.95)
                             p95_val = round(sorted_rtts[min(p95_idx, len(sorted_rtts) - 1)], 2)
 
-                        last_sample = samples[-1] if samples else {}
-                        summary_list.append({
+                        last_sample = samples[0] if samples else {}
+                        p_type = (cfg.get("type") or last_sample.get("endpointType") or last_sample.get("type") or "HTTP").upper()
+                        
+                        summary_entry: Dict[str, Any] = {
                             "name": name,
-                            "type": cfg.get("type") or last_sample.get("type", "http"),
-                            "target": cfg.get("target") or cfg.get("url") or last_sample.get("target", ""),
+                            "type": p_type,
+                            "target": cfg.get("target") or cfg.get("url") or last_sample.get("url") or last_sample.get("target", ""),
                             "samples_count": sample_count,
                             "success_count": success_count,
                             "success_rate_pct": success_rate,
@@ -1385,22 +1438,34 @@ class TestOrchestrator:
                             "avg_rtt_ms": avg_val,
                             "median_rtt_ms": median_val,
                             "p95_rtt_ms": p95_val,
-                            "expected_status_codes": cfg.get("expectedStatusCodes") or [200],
-                            "last_status_code": last_sample.get("statusCode"),
-                            "last_error": last_sample.get("error"),
+                            "last_status_code": last_sample.get("httpCode") or last_sample.get("statusCode"),
+                            "last_error": last_sample.get("error") or (last_sample.get("message") if last_sample.get("score") == 0 else None),
                             "last_timestamp": last_sample.get("timestamp")
-                        })
+                        }
+                        if p_type in ["HTTP", "HTTPS"]:
+                            summary_entry["expected_status_codes"] = cfg.get("expectedStatusCodes") or [200]
+
+                        summary_list.append(summary_entry)
 
                     result["total_probes_configured"] = len(probes_cfg)
                     result["probes_matched"] = len(summary_list)
                     result["probes_summary"] = summary_list
 
                 if raw:
-                    result["recent_results"] = raw_results
+                    filtered_raw = raw_results
+                    if probe_name_filter:
+                        flt = probe_name_filter.lower()
+                        filtered_raw = [
+                            r for r in raw_results 
+                            if flt in (r.get("endpointName") or r.get("name") or "").lower()
+                            or flt in (r.get("endpointId") or r.get("id") or "").lower()
+                        ]
+                    result["recent_results"] = filtered_raw
                 return result
             except Exception as e:
-                logger.error(f"Failed to fetch DEM probe stats for {agent_id}: {e}")
-                return {"error": str(e)}
+                err_msg = str(e) or repr(e) or type(e).__name__
+                logger.error(f"Failed to fetch DEM probe stats for {agent_id}: {err_msg}")
+                return {"error": err_msg}
 
     async def update_dem_probe(
         self,
@@ -1463,16 +1528,20 @@ class TestOrchestrator:
                 if save_r.status_code not in [200, 201]:
                     return {"error": f"Failed to save updated probe: HTTP {save_r.status_code} - {save_r.text}"}
 
+                layer = "local_override" if (current.get("_source") == "overridden" or current.get("_wasGlobal") is not None or current.get("_source") == "local") else "global"
+
                 return {
                     "success": True,
                     "agent_id": agent_id,
                     "probe_name": current.get("name"),
+                    "layer": layer,
                     "updated_settings": current,
-                    "message": f"DEM probe '{probe_name}' successfully updated on {agent_id}."
+                    "message": f"DEM probe '{probe_name}' successfully updated in {layer} layer on {agent_id}."
                 }
             except Exception as e:
-                logger.error(f"Failed to update DEM probe {probe_name} on {agent_id}: {e}")
-                return {"error": str(e)}
+                err_msg = str(e) or repr(e) or type(e).__name__
+                logger.error(f"Failed to update DEM probe {probe_name} on {agent_id}: {err_msg}")
+                return {"error": err_msg}
 
 
     async def list_fabric_targets(self, agent_id: str) -> Dict[str, Any]:
@@ -3114,19 +3183,37 @@ class TestOrchestrator:
                 r.raise_for_status()
                 data = r.json()
                 if summary_only and isinstance(data, dict):
+                    all_endpoints = await self.registry.list_endpoints()
                     local_instances = data.get("local_instances", [])
                     if isinstance(local_instances, list):
                         summarized_instances = []
                         for inst in local_instances:
                             if isinstance(inst, dict):
                                 inst_copy = dict(inst)
+                                inst_name = (inst.get("node") or inst.get("node_id") or inst.get("name") or "").strip()
+                                matched_ep = next((
+                                    ep for ep in all_endpoints 
+                                    if ep.id == inst_name 
+                                    or ep.meta.get("site_name") == inst_name 
+                                    or ep.test_ip == inst_name 
+                                    or ep.id.lower() == inst_name.lower()
+                                ), None)
+
+                                ep_version = (matched_ep.version or matched_ep.meta.get("version")) if matched_ep else None
+                                ep_build = (matched_ep.build or matched_ep.meta.get("build")) if matched_ep else None
+
+                                if not inst_copy.get("version") and ep_version:
+                                    inst_copy["version"] = ep_version
+                                if not inst_copy.get("build") and ep_build:
+                                    inst_copy["build"] = ep_build
+
                                 ps = inst.get("provisioning_status")
                                 if isinstance(ps, dict):
                                     inst_copy["provisioning_status"] = {
                                         "appliedRevisions": ps.get("appliedRevisions", {}),
                                         "pending": ps.get("pending", False),
                                         "lastReportedAt": ps.get("lastReportedAt"),
-                                        "version": ps.get("version") or inst.get("version"),
+                                        "version": ps.get("version") or inst_copy.get("version") or ep_version,
                                         "orphansCount": len(ps.get("orphans", {})) if isinstance(ps.get("orphans"), dict) else 0
                                     }
                                 summarized_instances.append(inst_copy)

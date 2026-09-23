@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.62] - 2026-09-23
+
+### Added / Changed
+- **DEM Scoring Engine & Expected Status Codes (`calculateDEMScore`)** 🎯:
+  - Fixed scoring engine bug where HTTP responses $\ge 400$ were hard-clamped to a score of 20 regardless of probe configuration.
+  - Probes with explicitly configured `expectedStatusCodes` (e.g. `[403]` for Azure Portal / Entra ID or auth-gated endpoints) now correctly evaluate as successful and compute full latency-based scores (> 20).
+  - **⚠️ Score Impact Notice**: Added standard HTTP redirect and cache status codes (`301`, `302`, `304`, `307`, `308`) to default success status codes across the fabric. Probes returning valid redirects are now scored as successful based on latency rather than failing, which may positively adjust historical health scores.
+- **DEM Probe Matching & Statistical Aggregation (`get_dem_probe_stats`)** 📊:
+  - Telemetry samples are now grouped strictly by `endpointName`, name slug, or exact probe `id` — **never** by `url` or `target`. This prevents telemetry contamination between distinct probes sharing a common destination URL (e.g., "Microsoft 365 Login" vs "MS - Entra ID").
+  - `success_rate_pct` returns `None` (null) when sample count is 0 instead of defaulting to 0%.
+  - `expected_status_codes` field is omitted from non-HTTP/HTTPS probes (DNS, ICMP, TCP).
+  - Aligned `global_stats` query directly with `get_dem_summary` (`/api/connectivity/stats?range=1h`) to ensure consistent global health reporting.
+- **Leader Provisioning & Local Overrides (`buildConnectivityProbesPayload`)** ⚙️:
+  - Fixed probe customization loss when publishing from Leader: `buildConnectivityProbesPayload` bundles enriched effective probe configurations including local overrides into the global distribution bundle.
+  - `update_dem_probe` tool accurately reports the active storage layer written (`"local_override"` vs `"global"`).
+  - Enhanced provisioning `computeDiff` to detect changes across `expectedStatusCodes`, `content_match`, `interval`, `timeout`, and probe types.
+- **FastMCP Robustness & Diagnostics** 🛡️:
+  - Guaranteed bounded 10-second timeout on MCP connection bridge (`bridge.py`) with clean stack teardown to prevent Claude Desktop hangs.
+  - Error returns across orchestrator tools now guarantee informative non-empty messages.
+  - Added synthesized `version` and `build` metadata to targets and controller status peers.
+  - Fixed `purgeStaleLeaderState` applied revision parsing to correctly classify active leader bundles into `kept_applied`.
+
+---
+
 ## [2.0.58] - 2026-09-19
 
 ### Added / Changed

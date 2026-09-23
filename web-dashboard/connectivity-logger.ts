@@ -113,17 +113,23 @@ export class ConnectivityLogger {
 
     private statsCache: { data: any, timestamp: number, range: string } | null = null;
 
+    private parseTimeRangeCutoff(timeRange?: string): number {
+        if (!timeRange) return 0;
+        const now = Date.now();
+        const match = timeRange.match(/^(\d+)([mhd])$/i);
+        if (match) {
+            const val = parseInt(match[1], 10);
+            const unit = match[2].toLowerCase();
+            if (unit === 'm') return now - val * 60 * 1000;
+            if (unit === 'h') return now - val * 3600 * 1000;
+            if (unit === 'd') return now - val * 24 * 3600 * 1000;
+        }
+        return 0;
+    }
+
     async getResults(options: { limit?: number; offset?: number; type?: string; endpointId?: string; timeRange?: string } = {}): Promise<{ results: ConnectivityResult[]; total: number }> {
         try {
-            const now = Date.now();
-            let cutoff = 0;
-            if (options.timeRange) {
-                if (options.timeRange === '15m') cutoff = now - 15 * 60 * 1000;
-                else if (options.timeRange === '1h') cutoff = now - 3600000;
-                else if (options.timeRange === '6h') cutoff = now - 6 * 3600000;
-                else if (options.timeRange === '24h') cutoff = now - 24 * 3600000;
-                else if (options.timeRange === '7d') cutoff = now - 7 * 24 * 3600000;
-            }
+            const cutoff = this.parseTimeRangeCutoff(options.timeRange);
 
             // If we have a strict limit and no specific time range required for the query results specifically
             // (other than general retention), we can optimize reading.
@@ -159,14 +165,7 @@ export class ConnectivityLogger {
         }
 
         try {
-            let cutoff = 0;
-            if (options.timeRange) {
-                if (options.timeRange === '15m') cutoff = now - 15 * 60 * 1000;
-                else if (options.timeRange === '1h') cutoff = now - 3600000;
-                else if (options.timeRange === '6h') cutoff = now - 6 * 3600000;
-                else if (options.timeRange === '24h') cutoff = now - 24 * 3600000;
-                else if (options.timeRange === '7d') cutoff = now - 7 * 24 * 3600000;
-            }
+            const cutoff = this.parseTimeRangeCutoff(options.timeRange);
 
             const allResults = await this.readAllResults(undefined, cutoff);
             if (allResults.length === 0) return null;

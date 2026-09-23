@@ -25,22 +25,31 @@ class SSEConnectionManager:
             if self.session is not None:
                 return self.session
 
-            print(f"Connecting to Stigix Mesh at {self.sse_url}...", file=sys.stderr)
+            print(f"Connecting to Stigix Mesh at {self.sse_url} (timeout 10s)...", file=sys.stderr)
+            stack = AsyncExitStack()
             try:
-                stack = AsyncExitStack()
-                read_stream, write_stream = await stack.enter_async_context(sse_client(self.sse_url))
-                session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
-                await session.initialize()
-                
+                async def _connect():
+                    read_stream, write_stream = await stack.enter_async_context(sse_client(self.sse_url))
+                    session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
+                    await session.initialize()
+                    return session
+
+                session = await asyncio.wait_for(_connect(), timeout=10.0)
                 self._exit_stack = stack
                 self.session = session
                 print("SSE Connection established. Session initialized successfully.", file=sys.stderr)
                 return self.session
             except Exception as e:
-                print(f"Connection failed to {self.sse_url}: {e}", file=sys.stderr)
+                err_type = type(e).__name__
+                err_msg = str(e) or repr(e) or err_type
+                print(f"Connection failed to {self.sse_url} ({err_type}): {err_msg}", file=sys.stderr)
+                try:
+                    await stack.aclose()
+                except Exception:
+                    pass
                 self.session = None
                 self._exit_stack = None
-                raise
+                raise RuntimeError(f"Cannot connect to Stigix Mesh node at {self.sse_url}: {err_msg}") from e
 
     async def close(self):
         if self._exit_stack:

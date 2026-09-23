@@ -359,7 +359,12 @@ export class TargetManager {
                 }
             }
 
-            if (statusCode >= 400 || statusCode === 0) {
+            const expectedCodes: number[] = Array.isArray(scenario.expectedStatusCodes) && scenario.expectedStatusCodes.length > 0
+                ? scenario.expectedStatusCodes
+                : [200, 201, 202, 204, 301, 302, 304, 307, 308];
+            const isExpectedCode = statusCode > 0 && expectedCodes.includes(statusCode);
+
+            if (!isExpectedCode && (statusCode >= 400 || statusCode === 0)) {
                 const failResp = { success: false, score: 0, latency_ms: latency, message: `HTTP ${statusCode}`, metrics, httpCode: statusCode, remoteIp: r_ip, remotePort: parseInt(r_port) };
                 log('TARGET', `[CLOUD PROBE] Response Error: ${JSON.stringify(failResp, null, 2)}`, 'debug');
                 return failResp;

@@ -44,7 +44,7 @@ async def run_tests():
         if not isinstance(result, dict):
             print(f"❌ [{tool_name}] {scenario}: FAILED - Expected dict, got {type(result)}: {result}")
             return False
-        if "error" not in result and "success" not in result and "status" not in result and "is_leader" not in result and "local_instances" not in result:
+        if "error" not in result and "success" not in result and "status" not in result and "is_leader" not in result and "local_instances" not in result and "agent_id" not in result:
             print(f"❌ [{tool_name}] {scenario}: FAILED - Missing standard status keys in dict: {result}")
             return False
         print(f"✅ [{tool_name}] {scenario}: PASSED ({result.get('status') or 'ok'})")
@@ -285,6 +285,135 @@ async def run_tests():
             tests_run += 1
 
     # -------------------------------------------------------------------------
+    # 12. Test get_dem_probe_stats: Shared Target URLs segregation (NEVER match by URL)
+    # -------------------------------------------------------------------------
+    print("\n--- Testing Scenario 12: Probes Sharing Same URL Must NOT Mix Samples ---")
+    mock_custom_probes = [
+        {"name": "Microsoft 365 Login", "type": "HTTP", "target": "https://login.microsoftonline.com/", "expectedStatusCodes": [200, 302, 403]},
+        {"name": "MS - Entra ID", "type": "HTTP", "target": "https://login.microsoftonline.com/", "expectedStatusCodes": [200, 302]},
+        {"name": "Core DNS", "type": "DNS", "target": "1.1.1.1"}
+    ]
+    mock_results_samples = [
+        {"endpointName": "Microsoft 365 Login", "endpointId": "microsoft-365-login", "url": "https://login.microsoftonline.com/", "httpCode": 403, "metrics": {"total_ms": 42.5}, "success": True},
+        {"endpointName": "Microsoft 365 Login", "endpointId": "microsoft-365-login", "url": "https://login.microsoftonline.com/", "httpCode": 403, "metrics": {"total_ms": 44.1}, "success": True},
+        {"endpointName": "MS - Entra ID", "endpointId": "ms---entra-id", "url": "https://login.microsoftonline.com/", "httpCode": 200, "metrics": {"total_ms": 28.3}, "success": True},
+    ]
+    
+    async def mock_router(url: str, *args, **kwargs):
+        url_str = str(url)
+        if "/api/connectivity/stats" in url_str:
+            return httpx.Response(200, json={"globalHealth": 70, "avgResponseTime": 35.0}, request=httpx.Request("GET", url_str))
+        elif "/api/connectivity/results" in url_str:
+            return httpx.Response(200, json={"results": mock_results_samples}, request=httpx.Request("GET", url_str))
+        elif "/api/connectivity/custom" in url_str:
+            return httpx.Response(200, json={"targets": mock_custom_probes}, request=httpx.Request("GET", url_str))
+        return httpx.Response(404, json={}, request=httpx.Request("GET", url_str))
+
+    with patch("httpx.AsyncClient.get", side_effect=mock_router):
+        res = await orchestrator.get_dem_probe_stats("mock-node", aggregate=True)
+        assert_dict_result("get_dem_probe_stats", "Shared target URL probe separation", res)
+        
+        probes_summary = {p["name"]: p for p in res.get("probes_summary", [])}
+        m365 = probes_summary.get("Microsoft 365 Login")
+        entra = probes_summary.get("MS - Entra ID")
+        dns_probe = probes_summary.get("Core DNS")
+
+        tests_run += 1
+        if m365 and m365.get("samples_count") == 2 and m365.get("success_count") == 2:
+            print(f"   ✅ 'Microsoft 365 Login' samples segregated correctly (count=2, success=2)")
+            tests_passed += 1
+        else:
+            print(f"   ❌ FAILED: 'Microsoft 365 Login' samples mixed: {m365}")
+
+        tests_run += 1
+        if entra and entra.get("samples_count") == 1 and entra.get("success_count") == 1:
+            print(f"   ✅ 'MS - Entra ID' samples segregated correctly (count=1, success=1)")
+            tests_passed += 1
+        else:
+            print(f"   ❌ FAILED: 'MS - Entra ID' samples mixed: {entra}")
+
+        # Test 0 samples returning None for success_rate_pct and non-HTTP omitting expected_status_codes
+        tests_run += 1
+        if dns_probe and dns_probe.get("samples_count") == 0 and dns_probe.get("success_rate_pct") is None and "expected_status_codes" not in dns_probe:
+            print(f"   ✅ 0-sample DNS probe: success_rate_pct is None and expected_status_codes omitted")
+            tests_passed += 1
+        else:
+            print(f"   ❌ FAILED: DNS probe schema validation failed: {dns_probe}")
+
+        # Global stats source alignment
+        tests_run += 1
+        if res.get("global_stats", {}).get("globalHealth") == 70:
+            print(f"   ✅ global_stats aligns with get_dem_summary (globalHealth=70)")
+            tests_passed += 1
+        else:
+            print(f"   ❌ FAILED: global_stats missing or incorrect: {res.get('global_stats')}")
+
+    # -------------------------------------------------------------------------
+    # 13. Test update_dem_probe: layer reporting ('local_override' vs 'global')
+    # -------------------------------------------------------------------------
+    print("\n--- Testing Scenario 13: update_dem_probe Layer Reporting ---")
+    mock_overridden_probe = [
+        {"name": "MS - Azure Portal", "type": "HTTP", "target": "https://portal.azure.com", "expectedStatusCodes": [200], "_source": "overridden", "_wasGlobal": True}
+    ]
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+         patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        
+        mock_get.return_value = httpx.Response(200, json={"targets": mock_overridden_probe}, request=httpx.Request("GET", "http://127.0.0.1:8080/api/connectivity/custom"))
+        mock_post.return_value = httpx.Response(200, json={"success": True}, request=httpx.Request("POST", "http://127.0.0.1:8080/api/connectivity/custom"))
+
+        res = await orchestrator.update_dem_probe("mock-node", "MS - Azure Portal", expected_status_codes=[200, 301, 302, 403])
+        assert_dict_result("update_dem_probe", "Local override layer reporting", res)
+        tests_run += 1
+        if res.get("layer") == "local_override":
+            print(f"   ✅ Correctly reported layer='local_override' for overridden probe")
+            tests_passed += 1
+        else:
+            print(f"   ❌ FAILED: Expected layer='local_override', got '{res.get('layer')}'")
+
+    # -------------------------------------------------------------------------
+    # 14. Test publish_configuration_bundle on Leader with local override probe
+    # -------------------------------------------------------------------------
+    print("\n--- Testing Scenario 14: Leader Publish Bundle with Override ---")
+    mock_publish_resp = httpx.Response(
+        status_code=200,
+        headers={"content-type": "application/json"},
+        json={
+            "success": True,
+            "published": {
+                "type": "connectivity-probes",
+                "revision": 25,
+                "items_count": 1,
+                "payload": [
+                    {
+                        "name": "MS - Azure Portal",
+                        "type": "HTTP",
+                        "target": "https://portal.azure.com",
+                        "expectedStatusCodes": [200, 301, 302, 403]
+                    }
+                ]
+            },
+            "manifest": {"connectivity-probes": {"revision": 25, "checksum": "deadbeef1234"}}
+        },
+        request=httpx.Request("POST", "http://127.0.0.1:8080/api/provisioning/publish/connectivity-probes")
+    )
+    with patch.object(orchestrator, "get_controller_status", new_callable=AsyncMock) as mock_ctrl, \
+         patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        
+        mock_ctrl.return_value = {"is_leader": True}
+        mock_post.return_value = mock_publish_resp
+
+        res = await orchestrator.publish_configuration_bundle("mock-node", "connectivity-probes")
+        assert_dict_result("publish_configuration_bundle", "Leader publish bundle with override", res)
+        tests_run += 1
+        published_payload = res.get("published", {}).get("payload", [])
+        azure_portal_probe = next((p for p in published_payload if p.get("name") == "MS - Azure Portal"), None)
+        if azure_portal_probe and azure_portal_probe.get("expectedStatusCodes") == [200, 301, 302, 403]:
+            print(f"   ✅ Published bundle includes updated expectedStatusCodes on Leader override")
+            tests_passed += 1
+        else:
+            print(f"   ❌ FAILED: Expected expectedStatusCodes in published payload: {azure_portal_probe}")
+
+    # -------------------------------------------------------------------------
     # Summary
     # -------------------------------------------------------------------------
     print("\n=================================================================")
@@ -302,3 +431,4 @@ async def run_tests():
 if __name__ == "__main__":
     exit_code = asyncio.run(run_tests())
     sys.exit(exit_code)
+

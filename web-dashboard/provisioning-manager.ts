@@ -522,7 +522,15 @@ export class ProvisioningManager {
                         if (oldItem.target !== newItem.target) changes.push(`target: ${oldItem.target} ➔ ${newItem.target}`);
                         if (oldItem.timeout !== newItem.timeout) changes.push(`timeout: ${oldItem.timeout}ms ➔ ${newItem.timeout}ms`);
                         if (oldItem.frequency !== newItem.frequency) changes.push(`freq: ${oldItem.frequency}s ➔ ${newItem.frequency}s`);
+                        if (oldItem.interval !== newItem.interval) changes.push(`interval: ${oldItem.interval}s ➔ ${newItem.interval}s`);
                         if (oldItem.enabled !== newItem.enabled) changes.push(`enabled: ${oldItem.enabled} ➔ ${newItem.enabled}`);
+                        if (oldItem.type !== newItem.type) changes.push(`type: ${oldItem.type} ➔ ${newItem.type}`);
+                        if (JSON.stringify(oldItem.expectedStatusCodes || [200]) !== JSON.stringify(newItem.expectedStatusCodes || [200])) {
+                            changes.push(`expectedStatusCodes: [${(oldItem.expectedStatusCodes || [200]).join(',')}] ➔ [${(newItem.expectedStatusCodes || [200]).join(',')}]`);
+                        }
+                        if (JSON.stringify(oldItem.content_match) !== JSON.stringify(newItem.content_match)) {
+                            changes.push(`content_match updated`);
+                        }
                     }
                     if (changes.length > 0) {
                         modified++;
@@ -1003,7 +1011,7 @@ export class ProvisioningManager {
 
                 const checkFields = type === 'applications'
                     ? ['enabled', 'weight', 'endpoint', 'category']
-                    : ['enabled', 'target', 'timeout', 'frequency', 'content_match'];
+                    : ['enabled', 'target', 'timeout', 'frequency', 'interval', 'expectedStatusCodes', 'content_match', 'type'];
 
                 for (const field of checkFields) {
                     if (rawItem[field] !== undefined && JSON.stringify(rawItem[field]) !== JSON.stringify(gItem[field])) {
@@ -1088,7 +1096,8 @@ export class ProvisioningManager {
                                 const relPath = `${bundleName}/${f}`;
                                 const revMatch = f.match(/^rev-(\d+)\.json$/);
                                 const revNum = revMatch ? parseInt(revMatch[1], 10) : 0;
-                                const appliedRev = appliedRevisions[bundleName];
+                                const rawApplied = appliedRevisions[bundleName];
+                                const appliedRev = typeof rawApplied === 'number' ? rawApplied : rawApplied?.revision;
 
                                 // 1. NEVER delete currently applied revision (regardless of origin)
                                 if (appliedRev !== undefined && revNum === appliedRev) {

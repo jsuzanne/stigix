@@ -3969,9 +3969,26 @@ app.get('/api/config/apps', extractUserMiddleware, (req, res) => {
     res.json(categories);
 });
 // Helper for DEM scoring
-const calculateDEMScore = (type: string, reachable: boolean, httpCode: number | undefined, metrics: any): number => {
-    if (!reachable || (httpCode && httpCode >= 500)) return 0;
-    if (httpCode && httpCode >= 400) return 20;
+const calculateDEMScore = (
+    type: string,
+    reachable: boolean,
+    httpCode: number | undefined,
+    metrics: any,
+    expectedStatusCodes?: number[]
+): number => {
+    if (!reachable) return 0;
+
+    if (httpCode !== undefined && httpCode > 0) {
+        const allowed = (Array.isArray(expectedStatusCodes) && expectedStatusCodes.length > 0)
+            ? expectedStatusCodes
+            : [200, 201, 202, 204, 301, 302, 304, 307, 308];
+        const isExpected = allowed.includes(httpCode);
+        if (!isExpected) {
+            if (httpCode >= 500) return 0;
+            if (httpCode >= 400) return 20;
+            return 20;
+        }
+    }
 
     const lat = metrics.total_ms || 0;
 
@@ -4102,7 +4119,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                         speed_bps: parseFloat(curlData.speed_download),
                         ssl_verify: parseInt(curlData.ssl_verify_result)
                     };
-                    const baseScore = calculateDEMScore(result.endpointType, result.reachable, result.httpCode, result.metrics);
+                    const baseScore = calculateDEMScore(result.endpointType, result.reachable, result.httpCode, result.metrics, endpoint.expectedStatusCodes || endpoint.expected_status_codes);
                     result.score = Math.max(0, baseScore - httpRetries * 20);
 
                     // ── Optional content match (separate bounded curl, timings unaffected) ──
@@ -12046,6 +12063,18 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
         return res.status(400).json({ error: 'invalid_bundle_type' });
     }
 
+    const buildConnectivityProbesPayload = () => {
+        const envProbes = getEnvConnectivityEndpoints();
+        const rawCustom = getCustomConnectivityEndpoints();
+        const custom = provisioningManager ? provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom) : rawCustom;
+        const merged = envProbes.map((p: any) => {
+            const override = custom.find((cp: any) => cp.name === p.name);
+            return override ? { ...p, ...override } : p;
+        });
+        const pure = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+        return [...merged, ...pure];
+    };
+
     let payload: any = null;
     if (type === 'applications') {
         if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
@@ -12056,14 +12085,7 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
         }
         if (!payload) payload = [];
     } else if (type === 'connectivity-probes') {
-        const envProbes = getEnvConnectivityEndpoints();
-        const rawCustom = getCustomConnectivityEndpoints();
-        const mergedEnvProbes = envProbes.map((p: any) => {
-            const override = rawCustom.find((cp: any) => cp.name === p.name);
-            return override ? { ...p, ...override } : p;
-        });
-        const pureCustom = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-        payload = [...mergedEnvProbes, ...pureCustom];
+        payload = buildConnectivityProbesPayload();
     } else {
         const file = provisioningManager.getActiveConfigFile(type);
         if (fs.existsSync(file)) {
@@ -12103,14 +12125,7 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
                     try { payload = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8')).applications || []; } catch {}
                 }
             } else if (t === 'connectivity-probes') {
-                const envProbes = getEnvConnectivityEndpoints();
-                const rawCustom = getCustomConnectivityEndpoints();
-                const merged = envProbes.map((p: any) => {
-                    const override = rawCustom.find((cp: any) => cp.name === p.name);
-                    return override ? { ...p, ...override } : p;
-                });
-                const pure = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-                payload = [...merged, ...pure];
+                payload = buildConnectivityProbesPayload();
             } else {
                 const file = provisioningManager.getActiveConfigFile(t);
                 if (fs.existsSync(file)) {
@@ -12134,14 +12149,7 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
         }
         if (!payload) payload = [];
     } else if (type === 'connectivity-probes') {
-        const envProbes = getEnvConnectivityEndpoints();
-        const rawCustom = getCustomConnectivityEndpoints();
-        const merged = envProbes.map((p: any) => {
-            const override = rawCustom.find((cp: any) => cp.name === p.name);
-            return override ? { ...p, ...override } : p;
-        });
-        const pure = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-        payload = [...merged, ...pure];
+        payload = buildConnectivityProbesPayload();
     } else {
         const file = provisioningManager.getActiveConfigFile(type as GlobalBundleType);
         if (fs.existsSync(file)) {
