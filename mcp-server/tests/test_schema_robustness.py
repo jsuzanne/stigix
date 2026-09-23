@@ -44,7 +44,7 @@ async def run_tests():
         if not isinstance(result, dict):
             print(f"❌ [{tool_name}] {scenario}: FAILED - Expected dict, got {type(result)}: {result}")
             return False
-        if "error" not in result and "success" not in result and "status" not in result:
+        if "error" not in result and "success" not in result and "status" not in result and "is_leader" not in result and "local_instances" not in result:
             print(f"❌ [{tool_name}] {scenario}: FAILED - Missing standard status keys in dict: {result}")
             return False
         print(f"✅ [{tool_name}] {scenario}: PASSED ({result.get('status') or 'ok'})")
@@ -158,16 +158,17 @@ async def run_tests():
     # 7. Test Non-Leader Publish Guard
     # -------------------------------------------------------------------------
     print("\n--- Testing Scenario 7: Non-Leader Publish Guard ---")
-    orchestrator.get_controller_status = AsyncMock(return_value={"is_leader": False, "leader_ip": "192.168.203.100"})
-    res = await orchestrator.publish_configuration_bundle("mock-node", "connectivity-probes")
-    assert_dict_result("publish_configuration_bundle", "Non-leader reject guard", res)
-    if res.get("status") == "rejected":
-        print(f"   ✅ Successfully rejected non-leader publish with status='rejected'")
-        tests_passed += 1
-        tests_run += 1
-    else:
-        print(f"   ❌ FAILED: Expected status='rejected', got {res.get('status')}")
-        tests_run += 1
+    with patch.object(orchestrator, "get_controller_status", new_callable=AsyncMock) as mock_ctrl:
+        mock_ctrl.return_value = {"is_leader": False, "leader_ip": "192.168.203.100"}
+        res = await orchestrator.publish_configuration_bundle("mock-node", "connectivity-probes")
+        assert_dict_result("publish_configuration_bundle", "Non-leader reject guard", res)
+        if res.get("status") == "rejected":
+            print(f"   ✅ Successfully rejected non-leader publish with status='rejected'")
+            tests_passed += 1
+            tests_run += 1
+        else:
+            print(f"   ❌ FAILED: Expected status='rejected', got {res.get('status')}")
+            tests_run += 1
 
     # -------------------------------------------------------------------------
     # 8. Test Malicious Traceroute Target Injection Rejection
@@ -211,6 +212,76 @@ async def run_tests():
             tests_run += 1
         else:
             print(f"   ❌ FAILED: Expected dry_run=True, got {res.get('dry_run')}")
+            tests_run += 1
+
+    # -------------------------------------------------------------------------
+    # 10. Test Traceroute Method & Port Parameters
+    # -------------------------------------------------------------------------
+    print("\n--- Testing Scenario 10: Traceroute TCP Method and Custom Port ---")
+    mock_tcp_trace_resp = httpx.Response(
+        status_code=200,
+        headers={"content-type": "application/json"},
+        json={
+            "success": True,
+            "target": "1.1.1.1",
+            "method": "tcp",
+            "port": 443,
+            "destination_reached": True,
+            "total_hops": 3,
+            "hops": [
+                {"hop": 1, "ip": "192.168.219.254", "rtt_ms": 1.2, "status": "reached"},
+                {"hop": 2, "ip": "10.0.0.1", "rtt_ms": 8.4, "status": "reached"},
+                {"hop": 3, "ip": "1.1.1.1", "rtt_ms": 14.1, "status": "reached"}
+            ]
+        },
+        request=httpx.Request("GET", "http://127.0.0.1:8080/api/network/traceroute?target=1.1.1.1&max_hops=15&method=tcp&port=443")
+    )
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_tcp_trace_resp
+
+        res = await orchestrator.run_path_trace("mock-node", "1.1.1.1", method="tcp", port=443)
+        assert_dict_result("run_path_trace", "TCP traceroute method & port", res)
+        if res.get("method") == "tcp" and res.get("port") == 443:
+            print(f"   ✅ TCP method and port 443 verified in output")
+            tests_passed += 1
+            tests_run += 1
+        else:
+            print(f"   ❌ FAILED: method={res.get('method')}, port={res.get('port')}")
+            tests_run += 1
+
+    # -------------------------------------------------------------------------
+    # 11. Test get_controller_status summary_only Payload Pruning
+    # -------------------------------------------------------------------------
+    print("\n--- Testing Scenario 11: Controller Status Summary Only Payload Pruning ---")
+    mock_controller_resp = httpx.Response(
+        status_code=200,
+        headers={"content-type": "application/json"},
+        json={
+            "is_leader": True,
+            "local_instances": [
+                {
+                    "node": "DC1-Ubuntu",
+                    "provisioning_status": {
+                        "appliedRevisions": {"connectivity-probes": 20},
+                        "history": [{"rev": 1, "diff": ["huge", "diff", "array"] * 100}]
+                    }
+                }
+            ]
+        },
+        request=httpx.Request("GET", "http://127.0.0.1:8080/api/controller/status")
+    )
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_controller_resp
+
+        res = await orchestrator.get_controller_status("mock-node", summary_only=True)
+        assert_dict_result("get_controller_status", "summary_only=True payload trimming", res)
+        prov_status = res.get("local_instances", [{}])[0].get("provisioning_status", {})
+        if "history" not in prov_status:
+            print(f"   ✅ Large history successfully stripped in summary_only mode")
+            tests_passed += 1
+            tests_run += 1
+        else:
+            print(f"   ❌ FAILED: history was not pruned in summary_only mode")
             tests_run += 1
 
     # -------------------------------------------------------------------------

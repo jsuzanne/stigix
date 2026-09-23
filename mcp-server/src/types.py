@@ -56,6 +56,8 @@ class StigixEndpoint(BaseModel):
     test_ip: Optional[str] = Field(None, description="Inner fabric IP (for kind=fabric)")
     public_ip: Optional[str] = Field(None, description="Public IP (for kind=internet)")
     api_base_url: Optional[str] = Field(None, description="Agent API base URL")
+    version: Optional[str] = Field(None, description="Node software version (e.g. 2.0.60)")
+    build: Optional[str] = Field(None, description="Node build/commit hash")
     meta: Dict[str, Any] = Field(default_factory=dict, description="Metadata tags/info")
 
 

@@ -1043,34 +1043,85 @@ export class ProvisioningManager {
      * Purges stale local leader state (manifest.json bundles, local published revisions) on a member/branch node.
      * Supports dry_run (default true) and automated backup before deletion.
      */
+    /**
+     * Purges stale leader state on a member node.
+     * Protects all applied revisions from the active Leader while cleaning up local stale manifest and unreferenced stale files.
+     */
     public purgeStaleLeaderState(dryRun: boolean = true): {
         dry_run: boolean;
         cleared_bundles: number;
-        cleared_revisions: number;
-        stale_revisions_list: string[];
+        to_delete_count: number;
+        kept_applied_count: number;
+        kept_other_count: number;
+        to_delete: Array<{ path: string; reason: string }>;
+        kept_applied: Array<{ path: string; reason: string }>;
+        kept_other: Array<{ path: string; reason: string }>;
         backup_file: string | null;
     } {
-        let clearedBundles = 0;
-        let clearedRevisions = 0;
-        const staleRevisionsList: string[] = [];
+        const toDelete: Array<{ path: string; reason: string }> = [];
+        const keptApplied: Array<{ path: string; reason: string }> = [];
+        const keptOther: Array<{ path: string; reason: string }> = [];
         let backupFile: string | null = null;
+        let clearedBundlesCount = 0;
 
         try {
-            // Read existing manifest
+            // Read existing manifest and state
             const currentManifest = this.getManifest();
-            clearedBundles = currentManifest.bundles?.length || 0;
+            const state = this.getState();
+            const appliedRevisions = state.appliedRevisions || {};
+
+            const staleManifestBundles = new Map<string, number>();
+            for (const b of (currentManifest.bundles || [])) {
+                staleManifestBundles.set(b.name, b.revision);
+            }
+            clearedBundlesCount = staleManifestBundles.size;
 
             // Scan files in globalDir
             if (fs.existsSync(this.globalDir)) {
                 const subdirs = fs.readdirSync(this.globalDir);
-                for (const sub of subdirs) {
-                    const subPath = path.join(this.globalDir, sub);
+                for (const bundleName of subdirs) {
+                    const subPath = path.join(this.globalDir, bundleName);
                     if (fs.statSync(subPath).isDirectory()) {
                         const files = fs.readdirSync(subPath);
                         for (const f of files) {
                             if (f.startsWith('rev-') && f.endsWith('.json')) {
-                                staleRevisionsList.push(`${sub}/${f}`);
-                                clearedRevisions++;
+                                const relPath = `${bundleName}/${f}`;
+                                const revMatch = f.match(/^rev-(\d+)\.json$/);
+                                const revNum = revMatch ? parseInt(revMatch[1], 10) : 0;
+                                const appliedRev = appliedRevisions[bundleName];
+
+                                // 1. NEVER delete currently applied revision (regardless of origin)
+                                if (appliedRev !== undefined && revNum === appliedRev) {
+                                    keptApplied.push({
+                                        path: relPath,
+                                        reason: `Active applied revision for '${bundleName}' (applied rev ${appliedRev})`
+                                    });
+                                }
+                                // 2. If revision is higher than applied or not in stale manifest, keep it (from remote leader)
+                                else if (!staleManifestBundles.has(bundleName)) {
+                                    keptOther.push({
+                                        path: relPath,
+                                        reason: `Bundle '${bundleName}' not in local stale manifest (received from remote leader)`
+                                    });
+                                }
+                                else if (staleManifestBundles.has(bundleName) && revNum > (staleManifestBundles.get(bundleName) || 0)) {
+                                    keptOther.push({
+                                        path: relPath,
+                                        reason: `Revision ${revNum} exceeds stale manifest revision ${staleManifestBundles.get(bundleName)} (remote leader revision)`
+                                    });
+                                }
+                                // 3. Revision belongs to the stale local manifest and is NOT currently applied
+                                else if (staleManifestBundles.has(bundleName)) {
+                                    toDelete.push({
+                                        path: relPath,
+                                        reason: `Stale local leader revision for '${bundleName}' (rev ${revNum} <= stale manifest rev ${staleManifestBundles.get(bundleName)}) and not currently applied`
+                                    });
+                                } else {
+                                    keptOther.push({
+                                        path: relPath,
+                                        reason: `Preserved file for safety`
+                                    });
+                                }
                             }
                         }
                     }
@@ -1078,12 +1129,16 @@ export class ProvisioningManager {
             }
 
             if (dryRun) {
-                log('PROVISIONING', `[DRY-RUN] Found ${clearedBundles} stale bundles and ${clearedRevisions} revisions to purge`);
+                log('PROVISIONING', `[DRY-RUN] Purge evaluation: ${toDelete.length} to delete, ${keptApplied.length} kept applied, ${keptOther.length} kept other`);
                 return {
                     dry_run: true,
-                    cleared_bundles: clearedBundles,
-                    cleared_revisions: clearedRevisions,
-                    stale_revisions_list: staleRevisionsList,
+                    cleared_bundles: clearedBundlesCount,
+                    to_delete_count: toDelete.length,
+                    kept_applied_count: keptApplied.length,
+                    kept_other_count: keptOther.length,
+                    to_delete: toDelete,
+                    kept_applied: keptApplied,
+                    kept_other: keptOther,
                     backup_file: null
                 };
             }
@@ -1099,10 +1154,10 @@ export class ProvisioningManager {
             };
 
             // Read revision contents into backup
-            for (const relPath of staleRevisionsList) {
-                const fullP = path.join(this.globalDir, relPath);
+            for (const item of toDelete) {
+                const fullP = path.join(this.globalDir, item.path);
                 try {
-                    backupData.revisions[relPath] = JSON.parse(fs.readFileSync(fullP, 'utf8'));
+                    backupData.revisions[item.path] = JSON.parse(fs.readFileSync(fullP, 'utf8'));
                 } catch {}
             }
             fs.writeFileSync(backupPath, JSON.stringify(backupData, null, 2), 'utf8');
@@ -1116,24 +1171,28 @@ export class ProvisioningManager {
             };
             fs.writeFileSync(this.manifestFile, JSON.stringify(emptyManifest, null, 2), 'utf8');
 
-            // Delete stale revision files
-            for (const relPath of staleRevisionsList) {
-                const fullP = path.join(this.globalDir, relPath);
+            // Delete ONLY verified stale revision files
+            for (const item of toDelete) {
+                const fullP = path.join(this.globalDir, item.path);
                 try {
                     if (fs.existsSync(fullP)) fs.unlinkSync(fullP);
                 } catch {}
             }
 
-            log('PROVISIONING', `Purged stale local leader state (cleared ${clearedRevisions} revisions, backup saved to ${backupFileName})`);
+            log('PROVISIONING', `Purged stale local leader state (cleared ${toDelete.length} revisions, backup saved to ${backupFileName})`);
         } catch (e: any) {
             log('PROVISIONING', `Error purging stale leader state: ${e.message}`, 'error');
         }
 
         return {
             dry_run: false,
-            cleared_bundles: clearedBundles,
-            cleared_revisions: clearedRevisions,
-            stale_revisions_list: staleRevisionsList,
+            cleared_bundles: clearedBundlesCount,
+            to_delete_count: toDelete.length,
+            kept_applied_count: keptApplied.length,
+            kept_other_count: keptOther.length,
+            to_delete: toDelete,
+            kept_applied: keptApplied,
+            kept_other: keptOther,
             backup_file: backupFile
         };
     }

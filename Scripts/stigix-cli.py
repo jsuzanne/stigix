@@ -4903,20 +4903,25 @@ def cmd_system(args):
 def cmd_trace(args):
     """Execute a hop-by-hop path traceroute to a target IP or hostname.
 
-    trace <target> [--max-hops N]
+    trace <target> [--method udp|tcp|icmp] [--port N] [--max-hops N]
     traceroute <target>
     """
     if not require_auth(): return
     if not args or args[0] in ("-h", "--help", "help"):
         _help_section("PATH TRACE / TRACEROUTE", [
-            ("trace <target>",              "Run path trace to target IP or domain"),
-            ("trace <target> --max-hops N", "Set maximum hop limit (default: 15)"),
-            ("traceroute <target>",         "Alias for trace"),
+            ("trace <target>",                              "Run path trace to target IP or domain (UDP)"),
+            ("trace <target> --method tcp [--port 443]",    "Run TCP SYN traceroute (bypasses UDP filtering)"),
+            ("trace <target> --method icmp",                "Run ICMP echo traceroute"),
+            ("trace <target> --max-hops N",                 "Set maximum hop limit (default: 15)"),
+            ("traceroute <target>",                         "Alias for trace"),
         ])
         return
 
     target = args[0].strip()
     max_hops = 15
+    method = "udp"
+    port = 443
+
     if "--max-hops" in args:
         try:
             idx = args.index("--max-hops")
@@ -4924,10 +4929,30 @@ def cmd_trace(args):
         except Exception:
             max_hops = 15
 
-    hdr(f"━━ Hop-by-Hop Path Trace: {target} ━━━━━━━━━━━━━━━━━━")
-    info(f"Tracing route to {target} (max hops: {max_hops})...")
+    if "--method" in args:
+        try:
+            idx = args.index("--method")
+            m = args[idx + 1].lower().strip()
+            if m in ("udp", "tcp", "icmp"):
+                method = m
+        except Exception:
+            method = "udp"
 
-    r = api_get(f"/api/network/traceroute?target={target}&max_hops={max_hops}")
+    if "--port" in args:
+        try:
+            idx = args.index("--port")
+            port = int(args[idx + 1])
+        except Exception:
+            port = 443
+
+    hdr(f"━━ Hop-by-Hop Path Trace: {target} [{method.upper()}] ━━━━━━━━━━━━━━━━━━")
+    info(f"Tracing route to {target} via {method.upper()}" + (f":{port}" if method == "tcp" else "") + f" (max hops: {max_hops})...")
+
+    params = f"target={target}&max_hops={max_hops}&method={method}"
+    if method == "tcp":
+        params += f"&port={port}"
+
+    r = api_get(f"/api/network/traceroute?{params}")
     if not r:
         err("Failed to execute traceroute query on target node.")
         return

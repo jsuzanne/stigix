@@ -107,7 +107,8 @@ async def run_bridge(sse_url: str):
             print(f"Tool '{name}' executed successfully in {elapsed}s.", file=sys.stderr)
             return res
         except asyncio.TimeoutError:
-            print(f"Tool '{name}' timed out after {timeout_sec}s.", file=sys.stderr)
+            print(f"[BRIDGE] Tool '{name}' timed out after {timeout_sec}s. Reconnecting SSE session to restore clean request pipeline.", file=sys.stderr)
+            await manager.handle_disconnect()
             return types.CallToolResult(
                 content=[
                     types.TextContent(
@@ -118,17 +119,21 @@ async def run_bridge(sse_url: str):
                 isError=True
             )
         except Exception as e:
-            err_str = str(e)
-            print(f"Error calling tool '{name}': {e}", file=sys.stderr)
-            # Only reset session if it was a true transport / connection error
-            is_connection_error = any(kw in err_str.lower() for kw in ["connection", "closed", "eof", "broken pipe", "stream", "sse"])
+            err_type = type(e).__name__
+            err_str = str(e).strip()
+            err_repr = repr(e)
+            err_msg = err_str if err_str else (f"{err_type}: {err_repr}" if err_repr else err_type)
+            print(f"[BRIDGE] Error calling tool '{name}' ({err_type}): {err_msg}", file=sys.stderr)
+            # Reset session if it was a connection error, SSE issue, or empty/opaque exception indicating stream breakage
+            is_connection_error = not err_str or any(kw in err_msg.lower() for kw in ["connection", "closed", "eof", "broken pipe", "stream", "sse", "mcperror", "remoteprotocolerror", "timeout", "cancel"])
             if is_connection_error:
+                print(f"[BRIDGE] Resetting session after transport/protocol anomaly ({err_type})...", file=sys.stderr)
                 await manager.handle_disconnect()
             return types.CallToolResult(
                 content=[
                     types.TextContent(
                         type="text",
-                        text=f"Error executing tool '{name}': {e}"
+                        text=f"Error executing tool '{name}': {err_msg}"
                     )
                 ],
                 isError=True

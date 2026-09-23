@@ -4510,6 +4510,10 @@ app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
 app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
     const rawTarget = (req.query.target || req.body?.target) as string;
     const maxHops = Math.min(Math.max(parseInt((req.query.max_hops || req.body?.max_hops || 15) as string, 10) || 15, 1), 20);
+    const rawMethod = String(req.query.method || req.body?.method || 'udp').toLowerCase().trim();
+    const method = (['udp', 'tcp', 'icmp'].includes(rawMethod) ? rawMethod : 'udp') as 'udp' | 'tcp' | 'icmp';
+    const rawPort = parseInt(String(req.query.port || req.body?.port || 443), 10);
+    const port = (!isNaN(rawPort) && rawPort >= 1 && rawPort <= 65535) ? rawPort : 443;
 
     if (!rawTarget || typeof rawTarget !== 'string') {
         return res.status(400).json({ success: false, error: 'Target IP or hostname is required' });
@@ -4533,30 +4537,58 @@ app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
     const execFilePromise = promisify(execFile);
     let rawOutput = '';
 
+    // Build argument array based on method
+    const tracerouteArgs = ['-n', '-m', String(maxHops), '-w', '2', '-q', '1'];
+    if (method === 'tcp') {
+        tracerouteArgs.push('-T', '-p', String(port));
+    } else if (method === 'icmp') {
+        tracerouteArgs.push('-I');
+    }
+    tracerouteArgs.push(target);
+
     // Attempt 1: traceroute with safe argument array
     try {
-        const tracerouteArgs = ['-n', '-m', String(maxHops), '-w', '2', '-q', '1', target];
         const { stdout, stderr } = await execFilePromise('traceroute', tracerouteArgs, { timeout: 30000 });
         rawOutput = (stdout || stderr || '').trim();
     } catch (errTraceroute: any) {
-        // If traceroute binary not found, attempt tracepath fallback with safe argument array
+        const errText = (errTraceroute.stdout || errTraceroute.stderr || errTraceroute.message || '').trim();
+        // Check for capability / raw socket errors
+        if (errText.includes('Operation not permitted') || errText.includes('Permission denied') || errText.includes('raw socket') || errText.includes('CAP_NET_RAW') || errText.includes('socket:')) {
+            return res.status(403).json({
+                success: false,
+                target,
+                method,
+                error: `Traceroute with method '${method.toUpperCase()}' requires CAP_NET_RAW capability or socket access in the container environment. Please use UDP or grant CAP_NET_RAW.`
+            });
+        }
+
+        // If traceroute binary not found and method is UDP, attempt tracepath fallback
         if (errTraceroute.code === 'ENOENT' || (errTraceroute.message && errTraceroute.message.includes('ENOENT'))) {
-            try {
-                const tracepathArgs = ['-n', '-m', String(maxHops), target];
-                const { stdout, stderr } = await execFilePromise('tracepath', tracepathArgs, { timeout: 30000 });
-                rawOutput = (stdout || stderr || '').trim();
-            } catch (errTracepath: any) {
-                if (errTracepath.code === 'ENOENT' || (errTracepath.message && errTracepath.message.includes('ENOENT'))) {
-                    return res.status(500).json({
-                        success: false,
-                        target,
-                        error: 'Neither traceroute nor tracepath binary is installed in this container environment. Please update the node container image.'
-                    });
+            if (method === 'udp') {
+                try {
+                    const tracepathArgs = ['-n', '-m', String(maxHops), target];
+                    const { stdout, stderr } = await execFilePromise('tracepath', tracepathArgs, { timeout: 30000 });
+                    rawOutput = (stdout || stderr || '').trim();
+                } catch (errTracepath: any) {
+                    if (errTracepath.code === 'ENOENT' || (errTracepath.message && errTracepath.message.includes('ENOENT'))) {
+                        return res.status(500).json({
+                            success: false,
+                            target,
+                            error: 'Neither traceroute nor tracepath binary is installed in this container environment. Please update the node container image.'
+                        });
+                    }
+                    rawOutput = (errTracepath.stdout || errTracepath.stderr || errTracepath.message || '').trim();
                 }
-                rawOutput = (errTracepath.stdout || errTracepath.stderr || errTracepath.message || '').trim();
+            } else {
+                return res.status(500).json({
+                    success: false,
+                    target,
+                    method,
+                    error: `Traceroute binary not installed and method '${method.toUpperCase()}' is not supported by tracepath.`
+                });
             }
         } else {
-            rawOutput = (errTraceroute.stdout || errTraceroute.stderr || errTraceroute.message || '').trim();
+            rawOutput = errText;
         }
     }
 
@@ -4591,6 +4623,9 @@ app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
     res.json({
         success: true,
         target,
+        method,
+        port: method === 'tcp' ? port : undefined,
+        max_hops: maxHops,
         total_hops: hops.length,
         destination_reached: destReached,
         hops,
@@ -11953,8 +11988,8 @@ app.post('/api/provisioning/purge-stale-leader', authenticateToken, async (req, 
             success: true,
             dry_run: dryRun,
             message: dryRun
-                ? `[DRY-RUN] Found ${result.cleared_bundles} stale bundles and ${result.cleared_revisions} revisions. Set dry_run=false to execute.`
-                : 'Stale local leader manifests and artifacts purged successfully.',
+                ? `[DRY-RUN] Found ${result.cleared_bundles} stale bundles, ${result.to_delete_count} unreferenced stale revisions to delete (${result.kept_applied_count} applied revisions preserved). Set dry_run=false to execute.`
+                : `Stale local leader manifests and ${result.to_delete_count} artifacts purged successfully (${result.kept_applied_count} applied revisions preserved).`,
             result
         });
     } catch (e: any) {

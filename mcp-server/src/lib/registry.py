@@ -115,6 +115,8 @@ class RegistryClient:
                                 if "xfr-source" not in caps_list: caps_list.append("xfr-source")
                                 if "xfr-target" not in caps_list: caps_list.append("xfr-target")
                             
+                            node_ver = t.get("version") or t.get("meta", {}).get("version")
+                            node_build = t.get("build") or t.get("meta", {}).get("build")
                             endpoint = StigixEndpoint(
                                 id=t.get("id", t.get("name")),
                                 kind=t.get("kind", "fabric"),
@@ -123,10 +125,14 @@ class RegistryClient:
                                 test_ip=host,
                                 public_ip=t.get("public_ip") or t.get("meta", {}).get("ip_public"),
                                 api_base_url=f"http://{host}:8080",
+                                version=node_ver,
+                                build=node_build,
                                 meta={
                                     **t.get("meta", {}),
                                     "site_name": t.get("name") or t.get("id"),
-                                    "source": t.get("source")
+                                    "source": t.get("source"),
+                                    "version": node_ver,
+                                    "build": node_build
                                 }
                             )
                             merged_endpoints[host] = endpoint

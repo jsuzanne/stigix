@@ -1322,6 +1322,8 @@ async def run_path_trace(
     agent_id: str,
     target: str,
     max_hops: Optional[int] = 15,
+    method: Optional[str] = "udp",
+    port: Optional[int] = 443,
     timeout_sec: Optional[int] = 10
 ) -> dict:
     """
@@ -1332,12 +1334,16 @@ async def run_path_trace(
         agent_id: ID of the Stigix node initiating the trace.
         target: Destination IP address or hostname to trace to.
         max_hops: Maximum number of hops (TTL) to probe (default 15, max 30).
+        method: Probe protocol ('udp', 'tcp', or 'icmp', default 'udp'). Use 'tcp' (port 443) or 'icmp' when UDP is filtered by edge firewalls.
+        port: TCP port when method='tcp' (default 443).
         timeout_sec: Probe timeout in seconds (default 10).
     """
     return await orchestrator.run_path_trace(
         agent_id=agent_id,
         target=target,
         max_hops=15 if max_hops is None else max_hops,
+        method="udp" if not method else method.lower(),
+        port=443 if port is None else port,
         timeout_sec=10 if timeout_sec is None else timeout_sec
     )
 
@@ -1773,7 +1779,10 @@ async def reset_tcp_app_metrics(agent_id: str, app_id: str) -> dict:
 # -----------------------------------------------------------------------------
 
 @mcp.tool()
-async def get_controller_status(agent_id: str) -> dict:
+async def get_controller_status(
+    agent_id: str,
+    summary_only: bool = True
+) -> dict:
     """
     Get Target Controller and Mesh status on a Stigix node.
     Shows whether the node operates as Leader or Branch/Peer, configured Site Name,
@@ -1781,8 +1790,9 @@ async def get_controller_status(agent_id: str) -> dict:
 
     Args:
         agent_id: ID of the Stigix node.
+        summary_only: When True (default), summarizes peer provisioning status to prevent oversized history outputs.
     """
-    return await orchestrator.get_controller_status(agent_id)
+    return await orchestrator.get_controller_status(agent_id=agent_id, summary_only=summary_only)
 
 
 @mcp.tool()

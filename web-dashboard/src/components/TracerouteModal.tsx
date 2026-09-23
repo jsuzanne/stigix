@@ -60,6 +60,8 @@ export const TracerouteModal: React.FC<TracerouteModalProps> = ({
 }) => {
     const [target, setTarget] = useState<string>('');
     const [maxHops, setMaxHops] = useState<number>(15);
+    const [method, setMethod] = useState<'udp' | 'tcp' | 'icmp'>('tcp');
+    const [port, setPort] = useState<number>(443);
     const [loading, setLoading] = useState<boolean>(false);
     const [result, setResult] = useState<TracerouteResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -76,14 +78,14 @@ export const TracerouteModal: React.FC<TracerouteModalProps> = ({
             setShowRaw(false);
             if (cleaned) {
                 // Auto-run when opened with a specific target
-                executeTrace(cleaned, maxHops);
+                executeTrace(cleaned, maxHops, method, port);
             }
         }
     }, [isOpen, initialTarget]);
 
     if (!isOpen) return null;
 
-    const executeTrace = async (targetToTrace?: string, hopsCount?: number) => {
+    const executeTrace = async (targetToTrace?: string, hopsCount?: number, traceMethod?: 'udp' | 'tcp' | 'icmp', tracePort?: number) => {
         const dest = cleanTarget(targetToTrace || target);
         if (!dest) {
             setError('Please enter a valid IP address or hostname');
@@ -104,7 +106,9 @@ export const TracerouteModal: React.FC<TracerouteModalProps> = ({
                 },
                 body: JSON.stringify({
                     target: dest,
-                    max_hops: hopsCount || maxHops
+                    max_hops: hopsCount || maxHops,
+                    method: traceMethod || method,
+                    port: (traceMethod || method) === 'tcp' ? (tracePort || port) : undefined
                 })
             });
 
@@ -211,6 +215,38 @@ export const TracerouteModal: React.FC<TracerouteModalProps> = ({
                             )}
                         </div>
 
+                        {/* Protocol Method Selector */}
+                        <div className="flex items-center p-0.5 bg-card-secondary/80 border border-border rounded-xl text-[11px] font-mono">
+                            {(['tcp', 'icmp', 'udp'] as const).map((m) => (
+                                <button
+                                    key={m}
+                                    type="button"
+                                    onClick={() => setMethod(m)}
+                                    className={twMerge(
+                                        "px-2.5 py-1.5 rounded-lg font-bold uppercase transition-all",
+                                        method === m
+                                            ? "bg-blue-600 text-white shadow-sm"
+                                            : "text-text-muted hover:text-text-primary"
+                                    )}
+                                >
+                                    {m}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Port (Only if TCP) */}
+                        {method === 'tcp' && (
+                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card-secondary/70 border border-border rounded-xl">
+                                <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Port</span>
+                                <input
+                                    type="number"
+                                    value={port}
+                                    onChange={(e) => setPort(Math.max(1, Math.min(65535, Number(e.target.value) || 443)))}
+                                    className="w-12 bg-transparent text-text-primary text-xs font-bold font-mono outline-none"
+                                />
+                            </div>
+                        )}
+
                         {/* Max Hops */}
                         <div className="flex items-center gap-1.5 px-3 py-2 bg-card-secondary/70 border border-border rounded-xl">
                             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Hops</span>
@@ -251,24 +287,29 @@ export const TracerouteModal: React.FC<TracerouteModalProps> = ({
                     </div>
 
                     {/* Quick Presets */}
-                    <div className="flex items-center gap-2 flex-wrap text-[10px]">
-                        <span className="text-text-muted font-bold uppercase tracking-wider">Presets:</span>
-                        {[
-                            { label: 'Cloudflare (1.1.1.1)', ip: '1.1.1.1' },
-                            { label: 'Google DNS (8.8.8.8)', ip: '8.8.8.8' },
-                            { label: 'Quad9 (9.9.9.9)', ip: '9.9.9.9' }
-                        ].map((preset) => (
-                            <button
-                                key={preset.ip}
-                                onClick={() => {
-                                    setTarget(preset.ip);
-                                    executeTrace(preset.ip);
-                                }}
-                                className="px-2.5 py-1 rounded-lg bg-card-secondary hover:bg-blue-500/10 hover:text-blue-500 hover:border-blue-500/20 border border-border text-text-muted transition-all font-mono"
-                            >
-                                {preset.label}
-                            </button>
-                        ))}
+                    <div className="flex items-center justify-between flex-wrap gap-2 text-[10px]">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-text-muted font-bold uppercase tracking-wider">Presets:</span>
+                            {[
+                                { label: 'Cloudflare (1.1.1.1)', ip: '1.1.1.1' },
+                                { label: 'Google DNS (8.8.8.8)', ip: '8.8.8.8' },
+                                { label: 'Quad9 (9.9.9.9)', ip: '9.9.9.9' }
+                            ].map((preset) => (
+                                <button
+                                    key={preset.ip}
+                                    onClick={() => {
+                                        setTarget(preset.ip);
+                                        executeTrace(preset.ip, maxHops, method, port);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-card-secondary hover:bg-blue-500/10 hover:text-blue-500 hover:border-blue-500/20 border border-border text-text-muted transition-all font-mono"
+                                >
+                                    {preset.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="text-[10px] text-text-muted/70 font-mono">
+                            Method: <span className="uppercase font-bold text-text-muted">{method}</span>{method === 'tcp' ? `:${port}` : ''}
+                        </div>
                     </div>
                 </div>
 

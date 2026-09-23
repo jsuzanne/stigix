@@ -2250,6 +2250,8 @@ class TestOrchestrator:
         agent_id: str,
         target: str,
         max_hops: int = 15,
+        method: str = "udp",
+        port: int = 443,
         timeout_sec: int = 10
     ) -> Dict[str, Any]:
         """Execute a live traceroute / path hop inspection from a specific Stigix node to identify where latency or packet drops occur."""
@@ -2259,12 +2261,13 @@ class TestOrchestrator:
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         base_url = agent.api_base_url
+        node_build = getattr(agent, "build", None) or getattr(agent, "version", None) or agent.meta.get("build") or agent.meta.get("version") or "unknown"
 
         async with httpx.AsyncClient(timeout=float(timeout_sec + 25)) as client:
             try:
                 r = await client.get(
                     f"{base_url}/api/network/traceroute",
-                    params={"target": target, "max_hops": max_hops},
+                    params={"target": target, "max_hops": max_hops, "method": method, "port": port},
                     headers=headers
                 )
                 if r.status_code == 200 and self._is_json_response(r):
@@ -2275,6 +2278,7 @@ class TestOrchestrator:
                         "status": "unsupported",
                         "error": f"Feature 'path_trace' is not supported on node '{agent_id}' (HTTP {r.status_code}: /api/network/traceroute not available). Please update the node container image to v2.0+.",
                         "node": agent_id,
+                        "node_build": node_build,
                         "url": str(r.url)
                     }
                 else:
@@ -2283,6 +2287,7 @@ class TestOrchestrator:
                         "status": "error",
                         "error": f"Traceroute returned HTTP {r.status_code}",
                         "status_code": r.status_code,
+                        "node_build": node_build,
                         "details": r.text[:300]
                     }
             except Exception as e:
@@ -3096,7 +3101,7 @@ class TestOrchestrator:
     # Target Controller & Mesh Leader (Phase 2)
     # -------------------------------------------------------------------------
 
-    async def get_controller_status(self, agent_id: str) -> Dict[str, Any]:
+    async def get_controller_status(self, agent_id: str, summary_only: bool = True) -> Dict[str, Any]:
         """Fetch Target Controller role, site name, leader IP, and peer count."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
@@ -3107,7 +3112,28 @@ class TestOrchestrator:
             try:
                 r = await client.get(f"{agent.api_base_url}/api/registry/status", headers=headers)
                 r.raise_for_status()
-                return r.json()
+                data = r.json()
+                if summary_only and isinstance(data, dict):
+                    local_instances = data.get("local_instances", [])
+                    if isinstance(local_instances, list):
+                        summarized_instances = []
+                        for inst in local_instances:
+                            if isinstance(inst, dict):
+                                inst_copy = dict(inst)
+                                ps = inst.get("provisioning_status")
+                                if isinstance(ps, dict):
+                                    inst_copy["provisioning_status"] = {
+                                        "appliedRevisions": ps.get("appliedRevisions", {}),
+                                        "pending": ps.get("pending", False),
+                                        "lastReportedAt": ps.get("lastReportedAt"),
+                                        "version": ps.get("version") or inst.get("version"),
+                                        "orphansCount": len(ps.get("orphans", {})) if isinstance(ps.get("orphans"), dict) else 0
+                                    }
+                                summarized_instances.append(inst_copy)
+                            else:
+                                summarized_instances.append(inst)
+                        data["local_instances"] = summarized_instances
+                return data
             except Exception as e:
                 return self._handle_exception(f"Controller status on {agent_id}", e)
 
