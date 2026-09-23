@@ -4541,20 +4541,22 @@ app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
 
         for (const line of lines) {
             const trimmed = line.trim();
-            // Match traceroute format: " 1  192.168.1.1  1.234 ms" or " 2  * "
-            const matchTraceroute = trimmed.match(/^(\d+)\s+([\d\.\*a-zA-Z:-]+)(?:\s+([\d\.]+)\s*ms)?/);
-            if (matchTraceroute) {
-                const hopNum = parseInt(matchTraceroute[1], 10);
-                const hopIp = matchTraceroute[2];
-                const rtt = matchTraceroute[3] ? parseFloat(matchTraceroute[3]) : null;
-                const isTimeout = hopIp === '*' || rtt === null;
+            if (trimmed.includes('[LOCALHOST]')) continue;
+            // Match standard traceroute: " 1  192.168.1.1  1.234 ms" or tracepath: " 1:  192.168.1.1  1.234ms"
+            const match = trimmed.match(/^(\d+)[?:\s]+(?:no reply|([\d\.\*a-zA-Z:-]+))(?:\s+.*?([\d\.]+)\s*ms)?/i);
+            if (match) {
+                const hopNum = parseInt(match[1], 10);
+                const isNoReply = trimmed.toLowerCase().includes('no reply');
+                const hopIp = isNoReply ? '*' : (match[2] || '*');
+                const rtt = match[3] ? parseFloat(match[3]) : null;
+                const isTimeout = hopIp === '*' || isNoReply || rtt === null;
                 hops.push({
                     hop: hopNum,
                     ip: isTimeout ? '*' : hopIp,
                     rtt_ms: rtt,
                     status: isTimeout ? 'timeout' : 'ok'
                 });
-                if (!isTimeout && (hopIp === sanitizedTarget || hopIp.includes(sanitizedTarget))) {
+                if (!isTimeout && (hopIp === sanitizedTarget || hopIp.includes(sanitizedTarget) || trimmed.toLowerCase().includes('reached'))) {
                     destReached = true;
                 }
             }
