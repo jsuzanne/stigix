@@ -777,16 +777,67 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'get_dem_probe_stats',
-        description: 'Get historical DEM probe statistics and health score over the last hour on a node.',
+        description: 'Get historical DEM probe statistics and health score over a time window with optional probe filtering and statistical aggregation (median, p95, success rate).',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
                     description: 'ID of the Stigix node.'
+                },
+                probe_name_filter: {
+                    type: 'string',
+                    description: 'Optional substring to filter probes by name (e.g. "MS -", "Exchange", "Azure").'
+                },
+                window_minutes: {
+                    type: 'number',
+                    description: 'Time window in minutes (default: 60).'
+                },
+                aggregate: {
+                    type: 'boolean',
+                    description: 'If true (default), computes clean aggregated stats (median, p95, success rate) per probe.'
                 }
             },
             required: ['agent_id']
+        }
+    },
+    {
+        name: 'update_dem_probe',
+        description: 'Update settings of an existing DEM probe (expected status codes, timeout, interval, URL) without deleting it or losing historical telemetry.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'ID of the Stigix node.'
+                },
+                probe_name: {
+                    type: 'string',
+                    description: 'Name or ID of the probe to update.'
+                },
+                expected_status_codes: {
+                    type: 'array',
+                    items: { type: 'number' },
+                    description: 'List of HTTP status codes considered successful (e.g. [200, 301, 302, 401, 403]).'
+                },
+                timeout_ms: {
+                    type: 'number',
+                    description: 'Timeout in ms (e.g. 5000).'
+                },
+                interval_sec: {
+                    type: 'number',
+                    description: 'Probing interval in seconds (e.g. 60).'
+                },
+                url: {
+                    type: 'string',
+                    description: 'Target URL or IP.'
+                },
+                enabled: {
+                    type: 'boolean',
+                    description: 'Enable or disable the probe.'
+                }
+            },
+            required: ['agent_id', 'probe_name']
         }
     },
     {
@@ -939,7 +990,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'get_convergence_history',
-        description: 'Get the convergence/failover test history for a specific node (target peer, blackout ms, verdict).',
+        description: 'Get the convergence/failover test history for a specific node (target peer, blackout ms, verdict, failover events). Compact summary by default to prevent context overflow.',
         input_schema: {
             type: 'object',
             properties: {
@@ -950,9 +1001,48 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
                 limit: {
                     type: 'number',
                     description: 'Maximum number of results (default: 10).'
+                },
+                summary_only: {
+                    type: 'boolean',
+                    description: 'If true (default), strips heavy raw sample logs and returns clean metrics.'
                 }
             },
             required: ['agent_id']
+        }
+    },
+    {
+        name: 'run_path_trace',
+        description: 'Execute a live traceroute / path hop inspection from a specific Stigix node to identify where latency or packet drops occur.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'ID of the Stigix node.'
+                },
+                target: {
+                    type: 'string',
+                    description: 'Destination IP address or hostname.'
+                },
+                max_hops: {
+                    type: 'number',
+                    description: 'Maximum hops to probe (default: 15, max 30).'
+                }
+            },
+            required: ['agent_id', 'target']
+        }
+    },
+    {
+        name: 'list_active_impairments',
+        description: 'Audit and list all active network impairments (injected latency, loss, throttling, disabled interfaces) currently running on VyOS routers across the fabric.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'Optional node ID. If omitted, audits all nodes across the mesh.'
+                }
+            }
         }
     },
     {
@@ -2255,11 +2345,142 @@ export async function executeCopilotTool(
 
             case 'get_dem_probe_stats': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                if (nodeCtx.isLocal && ctx.connectivityLogger) {
-                    return await ctx.connectivityLogger.getStats({ timeRange: args.range || '1h' });
+                const timeRange = args.window_minutes ? `${args.window_minutes}m` : (args.range || '1h');
+                const [statsRes, resultsRes, customRes] = await Promise.all([
+                    fetchApi(nodeCtx, `/api/connectivity/stats?range=${timeRange}`).catch(() => ({})),
+                    fetchApi(nodeCtx, `/api/connectivity/results?timeRange=${timeRange}&limit=1000`).catch(() => []),
+                    fetchApi(nodeCtx, '/api/connectivity/custom').catch(async () => fetchApi(nodeCtx, '/api/connectivity/active-probes')).catch(() => [])
+                ]);
+
+                const rawResults = Array.isArray(resultsRes) ? resultsRes : ((resultsRes as any)?.results || []);
+                const probesCfg = Array.isArray(customRes) ? customRes : ((customRes as any)?.targets || (customRes as any)?.probes || []);
+
+                // Group by probe name
+                const grouped: Record<string, any[]> = {};
+                for (const item of rawResults) {
+                    const pName = item.name || item.probe_name || item.target || 'unknown';
+                    if (!grouped[pName]) grouped[pName] = [];
+                    grouped[pName].push(item);
                 }
-                return await fetchApi(nodeCtx, `/api/connectivity/stats?range=${args.range || '1h'}`);
+
+                const filter = (args.probe_name_filter || '').toLowerCase();
+                const cfgMap = new Map(probesCfg.map((p: any) => [p.name, p]));
+                const allNames = Array.from(new Set([...Object.keys(grouped), ...cfgMap.keys()])).sort();
+
+                const probesSummary = [];
+                for (const name of allNames) {
+                    if (filter && !name.toLowerCase().includes(filter)) continue;
+                    const samples = grouped[name] || [];
+                    const cfg = cfgMap.get(name) || {};
+                    const rtts: number[] = [];
+                    let successCount = 0;
+
+                    for (const s of samples) {
+                        const isSuccess = s.success === true || s.status === 'success' || [200, 204, 301, 302].includes(Number(s.statusCode));
+                        if (isSuccess) successCount++;
+                        const rtt = s.rtt ?? s.responseTime ?? s.latency;
+                        if (typeof rtt === 'number' && !isNaN(rtt)) rtts.push(rtt);
+                    }
+
+                    rtts.sort((a, b) => a - b);
+                    const sampleCount = samples.length;
+                    const successRate = sampleCount > 0
+                        ? Math.round((1000 * successCount) / sampleCount) / 10
+                        : (cfg.enabled !== false ? 100.0 : 0.0);
+
+                    const p95Idx = Math.min(Math.floor(rtts.length * 0.95), Math.max(0, rtts.length - 1));
+                    const lastSample = samples[samples.length - 1] || {};
+
+                    probesSummary.push({
+                        name,
+                        type: cfg.type || lastSample.type || 'http',
+                        target: cfg.target || cfg.url || lastSample.target || '',
+                        samples_count: sampleCount,
+                        success_count: successCount,
+                        success_rate_pct: successRate,
+                        min_rtt_ms: rtts.length ? Math.round(rtts[0] * 100) / 100 : null,
+                        max_rtt_ms: rtts.length ? Math.round(rtts[rtts.length - 1] * 100) / 100 : null,
+                        avg_rtt_ms: rtts.length ? Math.round((rtts.reduce((a, b) => a + b, 0) / rtts.length) * 100) / 100 : null,
+                        median_rtt_ms: rtts.length ? Math.round(rtts[Math.floor(rtts.length / 2)] * 100) / 100 : null,
+                        p95_rtt_ms: rtts.length ? Math.round(rtts[p95Idx] * 100) / 100 : null,
+                        expected_status_codes: cfg.expectedStatusCodes || [200],
+                        last_status_code: lastSample.statusCode,
+                        last_error: lastSample.error,
+                        last_timestamp: lastSample.timestamp
+                    });
+                }
+
+                return {
+                    agent_id: nodeCtx.siteName,
+                    time_range: timeRange,
+                    total_probes_configured: probesCfg.length,
+                    probes_matched: probesSummary.length,
+                    global_stats: statsRes,
+                    probes_summary: probesSummary
+                };
             }
+
+            case 'update_dem_probe': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                let existingProbes: any[] = [];
+                if (nodeCtx.isLocal && ctx.getAllProbes) {
+                    existingProbes = ctx.getAllProbes();
+                } else {
+                    const current = await fetchApi(nodeCtx, '/api/connectivity/custom').catch(async () => {
+                        return await fetchApi(nodeCtx, '/api/connectivity/active-probes');
+                    });
+                    existingProbes = Array.isArray(current) ? current : (current?.probes || current?.targets || []);
+                }
+
+                const targetName = String(args.probe_name || '').trim().toLowerCase();
+                const matchedIdx = existingProbes.findIndex((p: any) =>
+                    p.name?.trim().toLowerCase() === targetName || p.id?.trim().toLowerCase() === targetName
+                );
+
+                if (matchedIdx === -1) {
+                    return {
+                        error: `Probe "${args.probe_name}" not found on ${nodeCtx.siteName}.`,
+                        available_probes: existingProbes.map((p: any) => p.name).filter(Boolean)
+                    };
+                }
+
+                const updated = { ...existingProbes[matchedIdx] };
+                if (args.expected_status_codes !== undefined) updated.expectedStatusCodes = args.expected_status_codes;
+                if (args.timeout_ms !== undefined) updated.timeout = args.timeout_ms;
+                if (args.interval_sec !== undefined) updated.interval = args.interval_sec;
+                if (args.url !== undefined) {
+                    updated.target = args.url;
+                    updated.url = args.url;
+                }
+                if (args.enabled !== undefined) updated.enabled = args.enabled;
+
+                const newProbesList = [...existingProbes];
+                newProbesList[matchedIdx] = updated;
+
+                if (nodeCtx.isLocal && ctx.saveCustomProbes) {
+                    await ctx.saveCustomProbes(newProbesList);
+                    return {
+                        success: true,
+                        probe_name: updated.name,
+                        updated_settings: updated,
+                        message: `DEM probe "${updated.name}" updated successfully on ${nodeCtx.siteName}.`
+                    };
+                }
+
+                const saveRes = await fetchApi(nodeCtx, '/api/connectivity/custom', {
+                    method: 'POST',
+                    body: JSON.stringify({ endpoints: newProbesList })
+                });
+
+                return {
+                    success: true,
+                    probe_name: updated.name,
+                    updated_settings: updated,
+                    result: saveRes,
+                    message: `DEM probe "${updated.name}" updated successfully on ${nodeCtx.siteName}.`
+                };
+            }
+
 
             case 'add_dem_probe': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
@@ -2421,8 +2642,9 @@ export async function executeCopilotTool(
             case 'get_convergence_history': {
                 const nodeCtx = resolveNodeContext(args.agent_id || args.node, ctx);
                 const limit = Number(args.limit) || 10;
+                const summaryOnly = args.summary_only !== false;
                 const history = await fetchApi(nodeCtx, `/api/convergence/history`).catch(() => []);
-                const arr = Array.isArray(history) ? history : [];
+                const arr = Array.isArray(history) ? history : ((history as any)?.results || []);
                 // Sort strictly newest first (descending sequence_id or timestamp)
                 const sorted = [...arr].sort((a: any, b: any) => {
                     const idA = a.testId || a.id || a.sequence_id || '';
@@ -2432,12 +2654,111 @@ export async function executeCopilotTool(
                     const dateB = new Date(b.timestamp || b.started_at || 0).getTime();
                     return dateB - dateA;
                 }).slice(0, limit);
+
+                const cleanedHistory = sorted.map((row: any) => {
+                    const item = { ...row };
+                    if (summaryOnly) {
+                        delete item.samples;
+                        delete item.raw_samples;
+                        delete item.packets;
+                        delete item.packet_log;
+                        delete item.time_series;
+                        delete item.telemetry;
+                    }
+                    return item;
+                });
+
                 return {
                     node: nodeCtx.siteName,
                     total_records: arr.length,
-                    recent_history: sorted
+                    count: cleanedHistory.length,
+                    recent_history: cleanedHistory
                 };
             }
+
+            case 'run_path_trace': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                const target = args.target;
+                const maxHops = Number(args.max_hops) || 15;
+                return await fetchApi(nodeCtx, `/api/network/traceroute?target=${encodeURIComponent(target)}&max_hops=${maxHops}`);
+            }
+
+            case 'list_active_impairments': {
+                const endpoints = (ctx.fabricEndpoints && ctx.fabricEndpoints.length > 0) ? ctx.fabricEndpoints : (ctx.targets || []);
+                const targetAgents = args.agent_id
+                    ? [resolveNodeContext(args.agent_id, ctx)]
+                    : endpoints.map((ep: any) => resolveNodeContext(ep.id || ep.host, ctx));
+
+                const activeImpairments: any[] = [];
+                for (const nodeCtx of targetAgents) {
+                    try {
+                        const routersData = await fetchApi(nodeCtx, '/api/vyos/routers').catch(() => []);
+                        const routers = Array.isArray(routersData) ? routersData : ((routersData as any)?.routers || []);
+                        for (const router of routers) {
+                            const rId = router.id || router.name;
+                            if (!rId) continue;
+                            const state = await fetchApi(nodeCtx, `/api/vyos/routers/${rId}/state`).catch(() => null);
+                            if (!state || !state.interfaces) continue;
+
+                            const ifaces = state.interfaces;
+                            const ifEntries = Array.isArray(ifaces)
+                                ? ifaces.map((item: any, i: number) => [item.name || `iface-${i}`, item])
+                                : Object.entries(ifaces);
+
+                            for (const [ifName, ifInfo] of ifEntries as any) {
+                                if (!ifInfo || typeof ifInfo !== 'object') continue;
+                                const adminStatus = String(ifInfo.admin_status || ifInfo.status || '').toLowerCase();
+                                const operStatus = String(ifInfo.oper_status || ifInfo.link || '').toLowerCase();
+                                if (['down', 'disable', 'disabled', 'shutdown'].includes(adminStatus) || ['down', 'lowerlayerdown'].includes(operStatus)) {
+                                    activeImpairments.push({
+                                        agent_id: nodeCtx.siteName,
+                                        router_id: rId,
+                                        interface: ifName,
+                                        type: 'interface_down',
+                                        severity: 'CRITICAL',
+                                        details: `Interface ${ifName} is administratively down / shut.`
+                                    });
+                                }
+
+                                const qos = ifInfo.qos || ifInfo.impairment || {};
+                                const lat = qos.latency ?? ifInfo.latency_ms ?? ifInfo.latency;
+                                const loss = qos.loss ?? ifInfo.loss_pct ?? ifInfo.loss;
+                                const rate = qos.rate ?? ifInfo.bandwidth_limit;
+
+                                const hasLat = lat !== undefined && lat !== null && Number(lat) > 0;
+                                const hasLoss = loss !== undefined && loss !== null && Number(loss) > 0;
+                                const hasRate = rate && !['0', 'none', 'unlimited', ''].includes(String(rate).toLowerCase());
+
+                                if (hasLat || hasLoss || hasRate) {
+                                    const parts = [];
+                                    if (hasLat) parts.push(`+${lat}ms latency`);
+                                    if (hasLoss) parts.push(`${loss}% loss`);
+                                    if (hasRate) parts.push(`rate ${rate}`);
+                                    activeImpairments.push({
+                                        agent_id: nodeCtx.siteName,
+                                        router_id: rId,
+                                        interface: ifName,
+                                        type: 'traffic_impairment',
+                                        severity: 'WARNING',
+                                        details: `Interface ${ifName} has active shaping: ${parts.join(', ')}`,
+                                        parameters: { latency_ms: lat, loss_pct: loss, rate }
+                                    });
+                                }
+                            }
+                        }
+                    } catch {}
+                }
+
+                return {
+                    total_impairments: activeImpairments.length,
+                    has_active_impairments: activeImpairments.length > 0,
+                    summary: activeImpairments.length > 0
+                        ? `Found ${activeImpairments.length} active impairment(s) across the fabric.`
+                        : 'Clean state: No active network impairments or disabled interfaces detected on any VyOS router.',
+                    impairments: activeImpairments
+                };
+            }
+
 
             case 'run_security_url_batch': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);

@@ -3112,6 +3112,7 @@ app.post('/api/prisma/flows', authenticateToken, async (req, res) => {
         if (tcp_src_port) { args.push('--tcp-src-port', String(tcp_src_port)); }
         if (tcp_dst_port) { args.push('--tcp-dst-port', String(tcp_dst_port)); }
         if (src_ip) { args.push('--src-ip', String(src_ip)); }
+        if (dst_ip) { args.push('--dst-ip', String(dst_ip)); }
         if (hours) {
             args.push('--hours', String(hours));
         } else if (minutes) {
@@ -4505,6 +4506,78 @@ app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
+
+// API: Run Path Trace (Traceroute / MTR)
+app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
+    const target = (req.query.target || req.body?.target) as string;
+    const maxHops = Math.min(Math.max(parseInt((req.query.max_hops || req.body?.max_hops || 15) as string, 10) || 15, 1), 30);
+
+    if (!target) {
+        return res.status(400).json({ success: false, error: 'Target IP or hostname is required' });
+    }
+
+    // Sanitize target to prevent command injection
+    const sanitizedTarget = target.trim().replace(/[^a-zA-Z0-9.-]/g, '');
+    if (!sanitizedTarget) {
+        return res.status(400).json({ success: false, error: 'Invalid target characters' });
+    }
+
+    const execPromise = promisify(exec);
+    const platform = os.platform();
+    let cmd = '';
+
+    if (platform === 'darwin') {
+        cmd = `traceroute -n -m ${maxHops} -w 2 -q 1 ${sanitizedTarget}`;
+    } else {
+        cmd = `traceroute -n -m ${maxHops} -w 2 -q 1 ${sanitizedTarget} 2>/dev/null || tracepath -n -m ${maxHops} ${sanitizedTarget}`;
+    }
+
+    try {
+        const { stdout, stderr } = await execPromise(cmd, { timeout: 25000 });
+        const rawOutput = (stdout || stderr || '').trim();
+        const lines = rawOutput.split('\n');
+        const hops: Array<{ hop: number; ip: string; rtt_ms: number | null; status: string }> = [];
+        let destReached = false;
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            // Match traceroute format: " 1  192.168.1.1  1.234 ms" or " 2  * "
+            const matchTraceroute = trimmed.match(/^(\d+)\s+([\d\.\*a-zA-Z:-]+)(?:\s+([\d\.]+)\s*ms)?/);
+            if (matchTraceroute) {
+                const hopNum = parseInt(matchTraceroute[1], 10);
+                const hopIp = matchTraceroute[2];
+                const rtt = matchTraceroute[3] ? parseFloat(matchTraceroute[3]) : null;
+                const isTimeout = hopIp === '*' || rtt === null;
+                hops.push({
+                    hop: hopNum,
+                    ip: isTimeout ? '*' : hopIp,
+                    rtt_ms: rtt,
+                    status: isTimeout ? 'timeout' : 'ok'
+                });
+                if (!isTimeout && (hopIp === sanitizedTarget || hopIp.includes(sanitizedTarget))) {
+                    destReached = true;
+                }
+            }
+        }
+
+        res.json({
+            success: true,
+            target: sanitizedTarget,
+            total_hops: hops.length,
+            destination_reached: destReached,
+            hops,
+            raw_output: rawOutput
+        });
+    } catch (e: any) {
+        res.status(500).json({
+            success: false,
+            target: sanitizedTarget,
+            error: e.message,
+            raw_output: e.stdout || e.stderr || ''
+        });
+    }
+});
+
 
 const getFullEffectiveConnectivityProbes = () => {
     const envProbes = getEnvConnectivityEndpoints();

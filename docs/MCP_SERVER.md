@@ -13,7 +13,7 @@ The Stigix MCP Server provides a **natural language interface** to orchestrate y
 ✅ **Mesh-Ready Orchestration** - Control any node in the mesh from any other node via distributed discovery.  
 ✅ **Natural Language** - Command your infrastructure in plain English or French.  
 ✅ **Distributed Control** - The MCP server runs on every Stigix instance, providing total redundancy.  
-✅ **Full Toolset** - 77 tools covering 100% of stigix-cli capabilities: traffic, security, DEM probes, custom TCP apps, voice ingress, mesh controller & provisioning, system health matrix, fabric targets, VyOS, config clone, and analytics.  
+✅ **Full Toolset** - 80 tools covering 100% of stigix-cli capabilities: traffic, security, DEM probes, custom TCP apps, voice ingress, mesh controller & provisioning, system health matrix, fabric targets, VyOS, config clone, and analytics.  
 ✅ **SSE Transport** - Native support for Server-Sent Events (SSE) for easy remote access.  
 ✅ **Interactive Enterprise Demo Script** - See [MCP Demo Scenario](file:///Users/jsuzanne/Github/stigix/docs/MCP_DEMO_SCENARIO.md) for a step-by-step 360° validation walkthrough and [MCP Failover Live Prompt](file:///Users/jsuzanne/Github/stigix/docs/MCP_FAILOVER_PROMPT.md) for automated live SD-WAN failover simulation.  
 
@@ -262,7 +262,7 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 
 
 
-## 🛠️ Available MCP Tools (77 tools)
+## 🛠️ Available MCP Tools (80 tools)
 
 > [!TIP]
 > All tools that target a specific node accept an `agent_id` parameter — this is the node's name as shown in `list_endpoints` (e.g., `"BR8"`, `"Paris"`, `"Hetzner"`).
@@ -333,7 +333,7 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `run_eicar_test` | EICAR threat prevention test (cloud URL or custom) | *"EICAR test on BR8"* |
 | `run_full_security_audit` | Complete suite: URL batch + DNS batch + EICAR | *"Full security audit on BR8"* |
 
-### DEM / Experience Probes (7 tools)
+### DEM / Experience Probes (8 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -341,7 +341,8 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `get_probe_details` | Detailed metrics for one probe by name | *"Details for Google DNS probe on BR8"* |
 | `list_dem_probes` | List all configured DEM probes | *"What probes are on BR8?"* |
 | `run_dem_probes_now` | Trigger immediate probe run, return results | *"Run probes now on BR8"* |
-| `get_dem_probe_stats` | Historical DEM stats (1h): health score, latency, reliability | *"DEM stats for BR8 last hour"* |
+| `get_dem_probe_stats` | Historical DEM stats: median, p95, success rate with name filter & aggregation | *"DEM stats for BR8 filtering 'MS -'"* |
+| `update_dem_probe` | Update probe settings (status codes, timeout, interval) without losing history | *"Update Office 365 probe to accept 200,204,401"* |
 | `add_dem_probe` | Add a new DEM probe (HTTP/HTTPS/PING/TCP/UDP/DNS) | *"Add a PING probe to 8.8.8.8 on BR8"* |
 | `remove_dem_probe` | Remove a probe by name | *"Remove 'Google DNS' probe from BR8"* |
 
@@ -387,13 +388,14 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `get_health_matrix` | 360° System Health Matrix across all 9 subsystems (operational score 0-100%) | *"Show health matrix for BR8"* |
 | `run_system_diagnostics` | Run deep diagnostic checks across all subsystems on demand | *"Run full system diagnostics on BR8"* |
 
-### Diagnostics & Analytics (3 tools)
+### Diagnostics & Analytics (4 tools)
 
 | Tool | Description | Example |
 |---|---|---|
 | `get_diagnostics` | Full node dashboard: CPU, bitrate, app stats, voice, peers | *"Health of BR8", "CPU/RAM Paris"* |
 | `get_app_score` | Success rate for a specific application | *"Teams score on BR8?"* |
 | `get_prisma_flows` | Query Prisma SD-WAN Flow Browser for path/session details | *"Query Prisma flows on BR8 for UDP port 30075"* |
+| `run_path_trace` | Live traceroute / hop-by-hop latency and drop inspection | *"Traceroute from BR8 to 192.168.203.100"* |
 
 ### Configuration Synchronization (1 tool)
 
@@ -410,7 +412,7 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `remove_fabric_target` | Remove a peer by name, host, or ID | *"Remove Hetzner target from BR8"* |
 | `set_fabric_target_enabled` | Enable or disable a peer target | *"Disable Paris target on BR8"* |
 
-### VyOS Router Management (9 tools)
+### VyOS Router Management (10 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -422,6 +424,7 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `get_vyos_interfaces` | List VyOS router interfaces with descriptions and up/down status — required first step before ad-hoc actions | *"Show interfaces of the router on BR8"* |
 | `vyos_execute_action` | Execute any VyOS action via natural language: shut/enable interface, add latency/loss/rate, block/unblock IP | *"Shut MPLS on BR1"*, *"Add 150ms latency on WAN"*, *"Block 10.0.0.5"* |
 | `get_vyos_router_state` | **Live state audit**: per-interface admin status (🟢/🔴), active QoS params (delay/loss/rate), and all tag-999 IP blocks in one call | *"What is the current state of vyosrouter?"* |
+| `list_active_impairments` | **Fabric Impairment Audit**: check all VyOS routers for active shaping, injected latency/loss, or shut links | *"Are there any active impairments left across the fabric?"* |
 | `vyos_bulk_reset` | **Bulk reset**: clear all active QoS, remove all IP blocks, and/or unshut all down interfaces — scope: `all-qos`, `all-blocks`, `unshut-all`, `full-reset` | *"Reset everything on BR8"* |
 
 > [!TIP]

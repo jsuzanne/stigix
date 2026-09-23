@@ -1225,8 +1225,136 @@ class TestOrchestrator:
                 logger.error(f"Failed to run probes for {agent_id}: {e}")
                 return {"error": str(e)}
 
-    async def get_dem_probe_stats(self, agent_id: str) -> Dict[str, Any]:
-        """Fetch historical DEM probe stats (global health score, per-probe latency, reliability)."""
+    async def get_dem_probe_stats(
+        self,
+        agent_id: str,
+        probe_name_filter: Optional[str] = None,
+        window_minutes: Optional[int] = None,
+        aggregate: bool = True,
+        raw: bool = False
+    ) -> Dict[str, Any]:
+        """Fetch historical DEM probe stats with optional name filtering and automatic statistical aggregation (median, p95, success rate)."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        base = agent.api_base_url
+        time_range = f"{window_minutes}m" if window_minutes else "1h"
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                result: Dict[str, Any] = {"agent_id": agent_id, "time_range": time_range}
+                # Global stats
+                stats_r = await client.get(f"{base}/api/connectivity/stats?range={time_range}", headers=headers)
+                if stats_r.status_code == 200:
+                    result["global_stats"] = stats_r.json()
+
+                # Recent results
+                results_r = await client.get(
+                    f"{base}/api/connectivity/results?timeRange={time_range}&limit=1000", headers=headers
+                )
+                raw_results = []
+                if results_r.status_code == 200:
+                    raw_data = results_r.json()
+                    raw_results = raw_data if isinstance(raw_data, list) else raw_data.get("results", [])
+
+                # Probe config for context
+                cfg_r = await client.get(f"{base}/api/connectivity/custom", headers=headers)
+                probes_cfg = []
+                if cfg_r.status_code == 200:
+                    data = cfg_r.json()
+                    probes_cfg = data if isinstance(data, list) else data.get("targets", [])
+
+                if aggregate:
+                    # Group measurements by probe name/target
+                    grouped: Dict[str, List[Dict[str, Any]]] = {}
+                    for item in raw_results:
+                        p_name = item.get("name") or item.get("probe_name") or item.get("target") or "unknown"
+                        grouped.setdefault(p_name, []).append(item)
+
+                    summary_list = []
+                    # Include configured probes even if they have 0 recent samples
+                    cfg_map = {p.get("name"): p for p in probes_cfg if isinstance(p, dict) and p.get("name")}
+                    all_probe_names = set(grouped.keys()).union(cfg_map.keys())
+
+                    for name in sorted(all_probe_names):
+                        if probe_name_filter and probe_name_filter.lower() not in name.lower():
+                            continue
+
+                        samples = grouped.get(name, [])
+                        cfg = cfg_map.get(name, {})
+                        rtts: List[float] = []
+                        success_count = 0
+
+                        for s in samples:
+                            is_success = s.get("success") is True or s.get("status") == "success" or s.get("statusCode", 0) in [200, 204, 301, 302]
+                            if is_success:
+                                success_count += 1
+                            rtt = s.get("rtt") or s.get("responseTime") or s.get("latency")
+                            if rtt is not None:
+                                try:
+                                    rtts.append(float(rtt))
+                                except (ValueError, TypeError):
+                                    pass
+
+                        sample_count = len(samples)
+                        success_rate = round(100.0 * success_count / max(sample_count, 1), 1) if sample_count > 0 else (100.0 if cfg.get("enabled") is not False else 0.0)
+
+                        sorted_rtts = sorted(rtts)
+                        p95_val = None
+                        median_val = None
+                        min_val = None
+                        max_val = None
+                        avg_val = None
+                        if sorted_rtts:
+                            min_val = round(sorted_rtts[0], 2)
+                            max_val = round(sorted_rtts[-1], 2)
+                            avg_val = round(sum(sorted_rtts) / len(sorted_rtts), 2)
+                            median_val = round(sorted_rtts[len(sorted_rtts) // 2], 2)
+                            p95_idx = int(len(sorted_rtts) * 0.95)
+                            p95_val = round(sorted_rtts[min(p95_idx, len(sorted_rtts) - 1)], 2)
+
+                        last_sample = samples[-1] if samples else {}
+                        summary_list.append({
+                            "name": name,
+                            "type": cfg.get("type") or last_sample.get("type", "http"),
+                            "target": cfg.get("target") or cfg.get("url") or last_sample.get("target", ""),
+                            "samples_count": sample_count,
+                            "success_count": success_count,
+                            "success_rate_pct": success_rate,
+                            "min_rtt_ms": min_val,
+                            "max_rtt_ms": max_val,
+                            "avg_rtt_ms": avg_val,
+                            "median_rtt_ms": median_val,
+                            "p95_rtt_ms": p95_val,
+                            "expected_status_codes": cfg.get("expectedStatusCodes") or [200],
+                            "last_status_code": last_sample.get("statusCode"),
+                            "last_error": last_sample.get("error"),
+                            "last_timestamp": last_sample.get("timestamp")
+                        })
+
+                    result["total_probes_configured"] = len(probes_cfg)
+                    result["probes_matched"] = len(summary_list)
+                    result["probes_summary"] = summary_list
+
+                if raw:
+                    result["recent_results"] = raw_results
+                return result
+            except Exception as e:
+                logger.error(f"Failed to fetch DEM probe stats for {agent_id}: {e}")
+                return {"error": str(e)}
+
+    async def update_dem_probe(
+        self,
+        agent_id: str,
+        probe_name: str,
+        expected_status_codes: Optional[List[int]] = None,
+        timeout_ms: Optional[int] = None,
+        interval_sec: Optional[int] = None,
+        url: Optional[str] = None,
+        enabled: Optional[bool] = None
+    ) -> Dict[str, Any]:
+        """Update settings of an existing DEM probe (e.g. accepted status codes, timeout, interval) without losing historical telemetry."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"error": f"Agent {agent_id} not found."}
@@ -1235,26 +1363,59 @@ class TestOrchestrator:
         base = agent.api_base_url
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
-                result: Dict[str, Any] = {"agent_id": agent_id}
-                # Global stats
-                stats_r = await client.get(f"{base}/api/connectivity/stats?range=1h", headers=headers)
-                if stats_r.status_code == 200:
-                    result["global_stats"] = stats_r.json()
-                # Recent results
-                results_r = await client.get(
-                    f"{base}/api/connectivity/results?timeRange=1h&limit=500", headers=headers
-                )
-                if results_r.status_code == 200:
-                    result["recent_results"] = results_r.json()
-                # Probe config for context
                 cfg_r = await client.get(f"{base}/api/connectivity/custom", headers=headers)
-                if cfg_r.status_code == 200:
-                    data = cfg_r.json()
-                    result["probes_config"] = data if isinstance(data, list) else data.get("targets", [])
-                return result
+                if cfg_r.status_code != 200:
+                    return {"error": f"Failed to fetch probe configuration: HTTP {cfg_r.status_code}"}
+
+                data = cfg_r.json()
+                probes = data if isinstance(data, list) else data.get("targets", [])
+                target_name = probe_name.strip().lower()
+                matched_idx = -1
+
+                for idx, p in enumerate(probes):
+                    if isinstance(p, dict) and (p.get("name", "").strip().lower() == target_name or p.get("id", "").strip().lower() == target_name):
+                        matched_idx = idx
+                        break
+
+                if matched_idx == -1:
+                    return {
+                        "error": f"Probe '{probe_name}' not found on {agent_id}.",
+                        "available_probes": [p.get("name") for p in probes if isinstance(p, dict) and p.get("name")]
+                    }
+
+                current = probes[matched_idx]
+                if expected_status_codes is not None:
+                    current["expectedStatusCodes"] = expected_status_codes
+                if timeout_ms is not None:
+                    current["timeout"] = timeout_ms
+                if interval_sec is not None:
+                    current["interval"] = interval_sec
+                if url is not None:
+                    current["target"] = url
+                    current["url"] = url
+                if enabled is not None:
+                    current["enabled"] = enabled
+
+                probes[matched_idx] = current
+                save_r = await client.post(
+                    f"{base}/api/connectivity/custom",
+                    json={"endpoints": probes},
+                    headers=headers
+                )
+                if save_r.status_code not in [200, 201]:
+                    return {"error": f"Failed to save updated probe: HTTP {save_r.status_code} - {save_r.text}"}
+
+                return {
+                    "success": True,
+                    "agent_id": agent_id,
+                    "probe_name": current.get("name"),
+                    "updated_settings": current,
+                    "message": f"DEM probe '{probe_name}' successfully updated on {agent_id}."
+                }
             except Exception as e:
-                logger.error(f"Failed to fetch DEM probe stats for {agent_id}: {e}")
+                logger.error(f"Failed to update DEM probe {probe_name} on {agent_id}: {e}")
                 return {"error": str(e)}
+
 
     async def list_fabric_targets(self, agent_id: str) -> Dict[str, Any]:
         """List all manually-managed Stigix peer/fabric targets configured on a node."""
@@ -1966,8 +2127,13 @@ class TestOrchestrator:
     # -------------------------------------------------------------------------
 
 
-    async def get_convergence_history(self, agent_id: str, limit: int = 10) -> Dict[str, Any]:
-        """Fetch the convergence/failover test history for a node."""
+    async def get_convergence_history(
+        self,
+        agent_id: str,
+        limit: int = 10,
+        summary_only: bool = True
+    ) -> Dict[str, Any]:
+        """Fetch the convergence/failover test history for a node with optional compact summary mode to prevent token overflow."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"error": f"Agent {agent_id} not found."}
@@ -1999,19 +2165,178 @@ class TestOrchestrator:
                         return "BAD"
                     return "CRITICAL"
 
+                cleaned_rows = []
                 for row in rows:
+                    item = dict(row)
                     max_bo = None
                     for key in ("max_blackout_ms", "maxBlackout", "blackout"):
-                        if key in row:
-                            max_bo = row[key]
+                        if key in item:
+                            max_bo = item[key]
                             break
-                    row["verdict"] = verdict(max_bo)
-                    row["max_blackout_ms"] = max_bo
+                    item["verdict"] = verdict(max_bo)
+                    item["max_blackout_ms"] = max_bo
 
-                return {"agent_id": agent_id, "count": len(rows), "history": rows}
+                    if summary_only:
+                        # Strip large high-frequency sample arrays to keep payload compact
+                        for heavy_key in ("samples", "raw_samples", "packets", "packet_log", "time_series", "telemetry"):
+                            item.pop(heavy_key, None)
+                    cleaned_rows.append(item)
+
+                return {"agent_id": agent_id, "count": len(cleaned_rows), "history": cleaned_rows}
             except Exception as e:
                 logger.error(f"Failed to fetch convergence history for {agent_id}: {e}")
                 return {"error": str(e)}
+
+    async def run_path_trace(
+        self,
+        agent_id: str,
+        target: str,
+        max_hops: int = 15,
+        timeout_sec: int = 10
+    ) -> Dict[str, Any]:
+        """Execute a live traceroute / path hop inspection from a specific Stigix node to identify where latency or packet drops occur."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        base_url = agent.api_base_url
+
+        async with httpx.AsyncClient(timeout=float(timeout_sec + 20)) as client:
+            try:
+                r = await client.get(
+                    f"{base_url}/api/network/traceroute",
+                    params={"target": target, "max_hops": max_hops},
+                    headers=headers
+                )
+                if r.status_code == 200:
+                    return r.json()
+                return {
+                    "error": f"Traceroute returned HTTP {r.status_code}",
+                    "details": r.text
+                }
+            except Exception as e:
+                return self._handle_exception(f"Path trace to {target} on {agent_id}", e)
+
+    async def list_active_impairments(self, agent_id: Optional[str] = None) -> Dict[str, Any]:
+        """Audit and list all active network impairments (injected latency, loss, throttling, disabled interfaces) across VyOS routers."""
+        agents_to_check = []
+        if agent_id:
+            agent = await self.registry.get_endpoint(agent_id)
+            if agent:
+                agents_to_check.append(agent)
+        else:
+            agents_to_check = await self.registry.list_endpoints()
+
+        active_impairments = []
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for ag in agents_to_check:
+                try:
+                    # 1. Get configured VyOS routers for this node
+                    r_routers = await client.get(f"{ag.api_base_url}/api/vyos/routers", headers=headers)
+                    if r_routers.status_code != 200:
+                        continue
+                    routers_data = r_routers.json()
+                    routers = routers_data if isinstance(routers_data, list) else routers_data.get("routers", [])
+
+                    for router in routers:
+                        r_id = router.get("id") or router.get("name")
+                        if not r_id:
+                            continue
+                        # Query live state
+                        r_state = await client.get(f"{ag.api_base_url}/api/vyos/routers/{r_id}/state", headers=headers)
+                        if r_state.status_code != 200:
+                            continue
+                        state_data = r_state.json()
+                        interfaces = state_data.get("interfaces", {})
+                        
+                        if isinstance(interfaces, dict):
+                            if_items = interfaces.items()
+                        elif isinstance(interfaces, list):
+                            if_items = [(item.get("name", f"iface-{i}"), item) for i, item in enumerate(interfaces)]
+                        else:
+                            if_items = []
+
+                        for if_name, if_info in if_items:
+                            if not isinstance(if_info, dict):
+                                continue
+                            
+                            # Check disabled / link down
+                            admin_status = str(if_info.get("admin_status") or if_info.get("status") or "").lower()
+                            oper_status = str(if_info.get("oper_status") or if_info.get("link") or "").lower()
+                            is_down = admin_status in ["down", "disable", "disabled", "shutdown"] or oper_status in ["down", "lowerlayerdown"]
+                            if is_down:
+                                active_impairments.append({
+                                    "agent_id": ag.id,
+                                    "agent_name": ag.site_name or ag.id,
+                                    "router_id": r_id,
+                                    "interface": if_name,
+                                    "type": "interface_down",
+                                    "severity": "CRITICAL",
+                                    "details": f"Interface {if_name} is administratively down / shut.",
+                                    "state": if_info
+                                })
+
+                            # Check QoS / Netem (latency, loss, corrupt, rate)
+                            qos = if_info.get("qos") or if_info.get("impairment") or if_info.get("traffic_control") or {}
+                            lat = qos.get("latency") or if_info.get("latency_ms") or if_info.get("latency")
+                            loss = qos.get("loss") or if_info.get("loss_pct") or if_info.get("loss")
+                            rate = qos.get("rate") or if_info.get("bandwidth_limit")
+                            
+                            has_lat = False
+                            if lat is not None:
+                                try:
+                                    has_lat = float(lat) > 0
+                                except Exception:
+                                    pass
+                            has_loss = False
+                            if loss is not None:
+                                try:
+                                    has_loss = float(loss) > 0
+                                except Exception:
+                                    pass
+                            has_rate = rate and str(rate).lower() not in ["0", "none", "unlimited", ""]
+                            
+                            if has_lat or has_loss or has_rate:
+                                details_parts = []
+                                if has_lat:
+                                    details_parts.append(f"+{lat}ms latency")
+                                if has_loss:
+                                    details_parts.append(f"{loss}% loss")
+                                if has_rate:
+                                    details_parts.append(f"rate {rate}")
+                                active_impairments.append({
+                                    "agent_id": ag.id,
+                                    "agent_name": ag.site_name or ag.id,
+                                    "router_id": r_id,
+                                    "interface": if_name,
+                                    "type": "traffic_impairment",
+                                    "severity": "WARNING",
+                                    "details": f"Interface {if_name} has active shaping: {', '.join(details_parts)}",
+                                    "parameters": {
+                                        "latency_ms": lat,
+                                        "loss_pct": loss,
+                                        "rate": rate
+                                    }
+                                })
+                except Exception as e:
+                    logger.debug(f"Error checking impairments for agent {ag.id}: {e}")
+
+        summary = (
+            f"Found {len(active_impairments)} active impairment(s) across the fabric."
+            if active_impairments
+            else "Clean state: No active network impairments or disabled interfaces detected on any VyOS router."
+        )
+
+        return {
+            "total_impairments": len(active_impairments),
+            "has_active_impairments": len(active_impairments) > 0,
+            "summary": summary,
+            "impairments": active_impairments
+        }
+
 
     async def list_security_results(self, agent_id: str, limit: int = 20) -> Dict[str, Any]:
         """Fetch the last N individual security test results from a node (all types)."""

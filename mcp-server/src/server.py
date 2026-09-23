@@ -980,16 +980,68 @@ async def run_dem_probes_now(agent_id: str) -> dict:
 
 
 @mcp.tool()
-async def get_dem_probe_stats(agent_id: str) -> dict:
+async def get_dem_probe_stats(
+    agent_id: str,
+    probe_name_filter: Optional[str] = None,
+    window_minutes: Optional[int] = None,
+    aggregate: Optional[bool] = True,
+    raw: Optional[bool] = False
+) -> dict:
     """
-    Get historical DEM probe statistics for a specific node.
-    Returns the global health score, per-probe average latency, and reliability
-    over the last hour. Includes raw probe results for detailed analysis.
+    Get historical DEM probe statistics with optional filtering and automated statistical aggregation.
+    Returns calculated median RTT, p95 RTT, min/max/avg latency, and success rates per probe,
+    avoiding massive raw data payload while enabling focused investigation.
 
     Args:
         agent_id: ID of the Stigix node.
+        probe_name_filter: Optional case-insensitive substring to filter probes (e.g. 'MS -', 'Exchange', 'Azure').
+        window_minutes: Time window in minutes (default 60 minutes / 1h).
+        aggregate: If True (default), computes statistical metrics and omits raw 500-sample JSON array.
+        raw: If True, includes full raw measurement objects.
     """
-    return await orchestrator.get_dem_probe_stats(agent_id)
+    return await orchestrator.get_dem_probe_stats(
+        agent_id=agent_id,
+        probe_name_filter=probe_name_filter,
+        window_minutes=window_minutes,
+        aggregate=True if aggregate is None else aggregate,
+        raw=False if raw is None else raw
+    )
+
+
+@mcp.tool()
+async def update_dem_probe(
+    agent_id: str,
+    probe_name: str,
+    expected_status_codes: Optional[List[int]] = None,
+    timeout_ms: Optional[int] = None,
+    interval_sec: Optional[int] = None,
+    url: Optional[str] = None,
+    enabled: Optional[bool] = None
+) -> dict:
+    """
+    Update configuration of an existing DEM probe without deleting it or losing historical telemetry.
+    Useful for adjusting expected HTTP status codes (e.g. allowing 200, 204, 301, 401, 403 on Microsoft/SaaS endpoints),
+    increasing probe timeouts, or changing testing frequency.
+
+    Args:
+        agent_id: ID of the Stigix node.
+        probe_name: Name or ID of the existing probe to update.
+        expected_status_codes: List of HTTP status codes considered successful (e.g. [200, 301, 302, 401, 403]).
+        timeout_ms: Request timeout in milliseconds (e.g. 5000).
+        interval_sec: Probing interval in seconds (e.g. 60).
+        url: Updated target URL or IP.
+        enabled: Enable or disable the probe.
+    """
+    return await orchestrator.update_dem_probe(
+        agent_id=agent_id,
+        probe_name=probe_name,
+        expected_status_codes=expected_status_codes,
+        timeout_ms=timeout_ms,
+        interval_sec=interval_sec,
+        url=url,
+        enabled=enabled
+    )
+
 
 
 @mcp.tool()
@@ -1253,17 +1305,68 @@ async def import_app_config(agent_id: str, config: dict) -> dict:
 # -----------------------------------------------------------------------------
 
 @mcp.tool()
-async def get_convergence_history(agent_id: str, limit: int = 10) -> dict:
+async def get_convergence_history(
+    agent_id: str,
+    limit: Optional[int] = 10,
+    summary_only: Optional[bool] = True
+) -> dict:
     """
     Get the convergence/failover test history for a specific node.
     Returns past test results including the target peer, max blackout duration (ms),
     and a human-readable verdict (PERFECT / GOOD / DEGRADED / BAD / CRITICAL).
+    By default (summary_only=True), strips heavy high-frequency packet dumps to keep response compact.
 
     Args:
         agent_id: ID of the Stigix node.
         limit: Maximum number of historical results to return (default 10).
+        summary_only: If True (default), omits raw packet logs and returns clean metrics.
     """
-    return await orchestrator.get_convergence_history(agent_id, limit)
+    return await orchestrator.get_convergence_history(
+        agent_id=agent_id,
+        limit=10 if limit is None else limit,
+        summary_only=True if summary_only is None else summary_only
+    )
+
+
+@mcp.tool()
+async def run_path_trace(
+    agent_id: str,
+    target: str,
+    max_hops: Optional[int] = 15,
+    timeout_sec: Optional[int] = 10
+) -> dict:
+    """
+    Execute a live traceroute / path hop inspection from a specific Stigix node to identify where latency or packet drops occur.
+    Returns the hop-by-hop breakdown (hop number, intermediate router IP, RTT in ms, status).
+
+    Args:
+        agent_id: ID of the Stigix node initiating the trace.
+        target: Destination IP address or hostname to trace to.
+        max_hops: Maximum number of hops (TTL) to probe (default 15, max 30).
+        timeout_sec: Probe timeout in seconds (default 10).
+    """
+    return await orchestrator.run_path_trace(
+        agent_id=agent_id,
+        target=target,
+        max_hops=15 if max_hops is None else max_hops,
+        timeout_sec=10 if timeout_sec is None else timeout_sec
+    )
+
+
+@mcp.tool()
+async def list_active_impairments(
+    agent_id: Optional[str] = None
+) -> dict:
+    """
+    Audit and list all active network impairments (injected latency, packet loss, bandwidth throttling, disabled interfaces)
+    currently running on VyOS routers across the fabric.
+    Essential for pre-test baseline validation and post-test cleanup verification (e.g. 'Is there lingering latency on BR5?').
+
+    Args:
+        agent_id: Optional Stigix node ID. If omitted, audits all registered nodes across the entire fabric mesh.
+    """
+    return await orchestrator.list_active_impairments(agent_id=agent_id)
+
 
 
 @mcp.tool()

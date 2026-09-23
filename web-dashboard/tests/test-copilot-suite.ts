@@ -562,6 +562,76 @@ export class CopilotTestSuite {
             };
         });
 
+        // 30. Tool: update_dem_probe (Update probe settings without losing history)
+        await this.runTest('30. Tool "update_dem_probe" (Update status codes & interval)', async () => {
+            const res = await executeCopilotTool('update_dem_probe', {
+                agent_id: this.host,
+                probe_name: 'test-google-dns',
+                expected_status_codes: [200, 204],
+                timeout_ms: 4000
+            }, remoteCtx);
+            if (res.error && !res.error.includes('not found')) throw new Error(res.error);
+            return res;
+        });
+
+        // 31. Tool: get_dem_probe_stats (Filtered & Aggregated with median/p95)
+        await this.runTest('31. Tool "get_dem_probe_stats" (Filtered & Aggregated)', async () => {
+            const res = await executeCopilotTool('get_dem_probe_stats', {
+                agent_id: this.host,
+                window_minutes: 60,
+                aggregate: true
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            if (!Array.isArray(res.probes_summary)) {
+                throw new Error(`Expected probes_summary array in aggregated stats, received: ${JSON.stringify(res)}`);
+            }
+            return {
+                probes_matched: res.probes_matched ?? res.probes_summary.length,
+                time_range: res.time_range,
+                sampleSummary: res.probes_summary[0] ? {
+                    name: res.probes_summary[0].name,
+                    median_rtt: res.probes_summary[0].median_rtt_ms,
+                    p95_rtt: res.probes_summary[0].p95_rtt_ms,
+                    success_rate: res.probes_summary[0].success_rate_pct
+                } : 'No probes configured'
+            };
+        });
+
+        // 32. Tool: run_path_trace (Traceroute hop inspection)
+        await this.runTest('32. Tool "run_path_trace" (Traceroute hop inspection)', async () => {
+            const res = await executeCopilotTool('run_path_trace', {
+                agent_id: this.host,
+                target: '127.0.0.1',
+                max_hops: 5
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            if (!Array.isArray(res.hops) && res.total_hops === undefined) {
+                throw new Error(`Expected hops payload, received: ${JSON.stringify(res)}`);
+            }
+            return {
+                target: res.target,
+                total_hops: res.total_hops ?? res.hops?.length,
+                reached: res.destination_reached
+            };
+        });
+
+        // 33. Tool: list_active_impairments (Audit VyOS shaping & disabled links)
+        await this.runTest('33. Tool "list_active_impairments" (Audit VyOS shaping & down links)', async () => {
+            const res = await executeCopilotTool('list_active_impairments', {
+                agent_id: this.host
+            }, remoteCtx);
+            if (res.error) throw new Error(res.error);
+            if (typeof res.has_active_impairments !== 'boolean' || !Array.isArray(res.impairments)) {
+                throw new Error(`Expected impairments array, received: ${JSON.stringify(res)}`);
+            }
+            return {
+                has_impairments: res.has_active_impairments,
+                total_found: res.total_impairments,
+                summary: res.summary
+            };
+        });
+
+
         // Summary
         const passedCount = this.results.filter(r => r.passed).length;
         const totalCount = this.results.length;
