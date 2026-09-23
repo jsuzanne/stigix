@@ -86,24 +86,42 @@ async def run_bridge(sse_url: str):
     @server.call_tool()
     async def handle_call_tool(name: str, arguments: dict | None) -> types.CallToolResult:
         print(f"Claude calling tool '{name}' with args {arguments}...", file=sys.stderr)
+        start_time = asyncio.get_event_loop().time()
         try:
             session = await manager.get_session()
-            res = await session.call_tool(name, arguments)
-            print(f"Tool '{name}' executed successfully.", file=sys.stderr)
+            # 60s protective timeout per tool invocation to prevent stalling Claude Desktop
+            res = await asyncio.wait_for(session.call_tool(name, arguments), timeout=60.0)
+            elapsed = round(asyncio.get_event_loop().time() - start_time, 2)
+            print(f"Tool '{name}' executed successfully in {elapsed}s.", file=sys.stderr)
             return res
-        except Exception as e:
-            print(f"Error calling tool '{name}': {e}", file=sys.stderr)
-            await manager.handle_disconnect()
+        except asyncio.TimeoutError:
+            print(f"Tool '{name}' timed out after 60.0s.", file=sys.stderr)
             return types.CallToolResult(
                 content=[
                     types.TextContent(
                         type="text",
-                        text=f"Error: Stigix agent at {manager.sse_url} is currently offline or rebooting. "
-                             f"Please wait a few seconds and try again. (Details: {e})"
+                        text=f"Error: Tool '{name}' timed out after 60 seconds. The target node may be busy or unreachable."
                     )
                 ],
                 isError=True
             )
+        except Exception as e:
+            err_str = str(e)
+            print(f"Error calling tool '{name}': {e}", file=sys.stderr)
+            # Only reset session if it was a true transport / connection error
+            is_connection_error = any(kw in err_str.lower() for kw in ["connection", "closed", "eof", "broken pipe", "stream", "sse"])
+            if is_connection_error:
+                await manager.handle_disconnect()
+            return types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text=f"Error executing tool '{name}': {e}"
+                    )
+                ],
+                isError=True
+            )
+
 
     @server.list_resources()
     async def handle_list_resources(request: types.ListResourcesRequest) -> types.ListResourcesResult:

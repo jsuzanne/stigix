@@ -3186,17 +3186,40 @@ class TestOrchestrator:
             except Exception as e:
                 return self._handle_exception(f"Rollback bundle {bundle_type} to rev {revision} on {agent_id}", e)
 
-    async def get_provisioning_history(self, agent_id: str, limit: int = 15) -> Dict[str, Any]:
-        """Fetch the audit trail of published configuration bundles and rollbacks."""
+    async def get_provisioning_history(self, agent_id: str, limit: int = 15, summary_only: bool = True) -> Dict[str, Any]:
+        """Fetch the audit trail of published configuration bundles and rollbacks with compact summary mode and backward fallback."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             try:
-                r = await client.get(f"{agent.api_base_url}/api/provisioning/history?limit={limit}", headers=headers)
-                r.raise_for_status()
-                return r.json()
+                r = await client.get(
+                    f"{agent.api_base_url}/api/provisioning/history?limit={limit}&summary={str(summary_only).lower()}",
+                    headers=headers
+                )
+                if r.status_code == 200 and self._is_json_response(r):
+                    return r.json()
+
+                # Fallback to /api/provisioning/config if node is running earlier release
+                r_cfg = await client.get(f"{agent.api_base_url}/api/provisioning/config", headers=headers)
+                if r_cfg.status_code == 200 and self._is_json_response(r_cfg):
+                    cfg_data = r_cfg.json()
+                    history_raw = cfg_data.get("state", {}).get("history", [])
+                    return {
+                        "success": True,
+                        "agent_id": agent_id,
+                        "total_records": len(history_raw),
+                        "count": min(len(history_raw), limit),
+                        "history": history_raw[:limit]
+                    }
+
+                return {
+                    "error": f"HTTP {r.status_code} calling provisioning history on {agent_id}",
+                    "status_code": r.status_code,
+                    "url": str(r.url)
+                }
             except Exception as e:
                 return self._handle_exception(f"Provisioning history on {agent_id}", e)
+

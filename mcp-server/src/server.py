@@ -18,25 +18,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
 
-# CRITICAL: All logs to stderr to avoid polluting stdio
+# CRITICAL: All logs to stderr to avoid polluting stdio JSON-RPC transport
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=sys.stderr  # NEVER use stdout
+    stream=sys.stderr  # NEVER use stdout for logs
 )
 
 logger = logging.getLogger(__name__)
-
-# DO NOT POLLUTE STDOUT (Reserved for JSON-RPC in stdio mode)
-# Redirect any accidental print or library log to stderr
-class StdoutRedirector:
-    def write(self, data):
-        sys.stderr.write(data)
-    def flush(self):
-        sys.stderr.flush()
-
-if os.getenv("MCP_TRANSPORT", "stdio").lower() == "stdio":
-    sys.stdout = StdoutRedirector()
 
 try:
     from fastmcp import FastMCP
@@ -1900,15 +1889,26 @@ async def rollback_configuration_bundle(agent_id: str, bundle_type: str, revisio
 
 
 @mcp.tool()
-async def get_provisioning_history(agent_id: str, limit: int = 15) -> dict:
+async def get_provisioning_history(
+    agent_id: str,
+    limit: Optional[int] = 15,
+    summary_only: Optional[bool] = True
+) -> dict:
     """
     Get the audit trail of published configuration bundles and rollbacks on a node.
+    Returns previous bundle revisions, change diffs, publication timestamps, and sync states.
 
     Args:
         agent_id: ID of the Stigix node.
         limit: Number of history records to return (default 15).
+        summary_only: If True (default), summarizes diffs to prevent oversized payload over MCP.
     """
-    return await orchestrator.get_provisioning_history(agent_id, limit)
+    return await orchestrator.get_provisioning_history(
+        agent_id=agent_id,
+        limit=15 if limit is None else limit,
+        summary_only=True if summary_only is None else summary_only
+    )
+
 
 
 # -----------------------------------------------------------------------------

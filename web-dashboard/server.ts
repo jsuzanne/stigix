@@ -11844,6 +11844,62 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     });
 });
 
+// API: Provisioning Status Alias (for MCP & Copilot parity)
+app.get('/api/provisioning/status', authenticateToken, (_req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
+    res.json({
+        success: true,
+        is_leader: isLeader,
+        pull_mode_enabled: provisioningManager.getState()?.enabled ?? true,
+        state: provisioningManager.getState(),
+        manifest: provisioningManager.getManifest()
+    });
+});
+
+// API: Provisioning Audit History (for MCP & Copilot parity)
+app.get('/api/provisioning/history', authenticateToken, (req, res) => {
+    try {
+        const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '15', 10), 1), 100);
+        const summaryOnly = req.query.summary !== 'false';
+        const rawHistory = provisioningManager.getState()?.history || [];
+        const entries = rawHistory.slice(0, limit).map((entry: any) => {
+            if (summaryOnly) {
+                return {
+                    timestamp: entry.timestamp,
+                    action: entry.action,
+                    type: entry.type,
+                    revision: entry.revision,
+                    checksum: entry.checksum ? `${entry.checksum.substring(0, 8)}...` : undefined,
+                    itemsCount: entry.itemsCount || (Array.isArray(entry.items) ? entry.items.length : undefined),
+                    addedCount: Array.isArray(entry.diff?.added) ? entry.diff.added.length : 0,
+                    modifiedCount: Array.isArray(entry.diff?.modified) ? entry.diff.modified.length : 0,
+                    deletedCount: Array.isArray(entry.diff?.deleted) ? entry.diff.deleted.length : 0,
+                    status: entry.status || 'applied'
+                };
+            }
+            return entry;
+        });
+        res.json({
+            success: true,
+            total_records: rawHistory.length,
+            count: entries.length,
+            history: entries
+        });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/provisioning/mode', authenticateToken, (req, res) => {
+    const enabled = typeof req.body?.enabled === 'boolean' 
+        ? req.body.enabled 
+        : (req.body?.mode === 'automatic' || req.body?.mode === 'auto' || req.body?.mode === 'pull');
+    const state = provisioningManager.setEnabled(enabled);
+    res.json({ success: true, pull_mode_enabled: enabled, state });
+});
+
 app.post('/api/provisioning/config', authenticateToken, (req, res) => {
     const { enabled } = req.body;
     if (typeof enabled !== 'boolean') {
