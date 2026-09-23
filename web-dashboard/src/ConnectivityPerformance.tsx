@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil } from 'lucide-react';
+import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine, ReferenceArea } from 'recharts';
 import { twMerge } from 'tailwind-merge';
+import { TracerouteModal } from './components/TracerouteModal';
 
 // ── Inline SVG sparkline (no recharts dependency) ───────────────────────────
 const Sparkline = ({ data, color, width = 80, height = 20 }: { data: number[]; color: string; width?: number; height?: number }) => {
@@ -315,6 +316,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
     const [editingProbe, setEditingProbe] = useState<any>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isSavingProbe, setIsSavingProbe] = useState(false);
+    const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
 
     const formatDisplayUrl = (endpoint: any) => {
         const target = endpoint.lastResult?.url || '';
@@ -576,6 +578,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 checks: endpointResults.length,
                 successRate: Math.round((reachable.length / endpointResults.length) * 100),
                 lastResult: last,
+                target: config?.target || last?.url || '',
                 enabled,
                 source: config?.source,
                 stale: config?.stale,
@@ -928,6 +931,14 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                     </div>
 
 
+                    <button
+                        onClick={() => setTracerouteTarget('')}
+                        className="flex items-center gap-1.5 bg-card-secondary hover:bg-card-secondary/80 border border-border text-text-muted hover:text-text-primary px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
+                        title="Trace network path (Layer-3 traceroute)"
+                    >
+                        <Route size={14} className="text-blue-500" /> Trace Path
+                    </button>
+
                     {onManage && (
                         <button
                             onClick={onManage}
@@ -1022,6 +1033,16 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 </td>
                                 <td className="px-6 py-4 px-8">
                                     <div className="flex justify-end items-center gap-2">
+                                        <button
+                                            onClick={(ev) => {
+                                                ev.stopPropagation();
+                                                setTracerouteTarget(e.target);
+                                            }}
+                                            className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-blue-500/10 hover:text-blue-500 hover:border-blue-500/20"
+                                            title="Trace Path (Traceroute)"
+                                        >
+                                            <Route size={16} />
+                                        </button>
                                         <button
                                             onClick={(ev) => {
                                                 ev.stopPropagation();
@@ -1149,6 +1170,16 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                         <button
                                             onClick={(ev) => {
                                                 ev.stopPropagation();
+                                                setTracerouteTarget(e.target || e.lastResult?.url || '');
+                                            }}
+                                            className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-blue-500/10 hover:text-blue-500 hover:border-blue-500/20"
+                                            title="Trace Path (Traceroute)"
+                                        >
+                                            <Route size={16} />
+                                        </button>
+                                        <button
+                                            onClick={(ev) => {
+                                                ev.stopPropagation();
                                                 startEditProbe(e);
                                             }}
                                             className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-blue-500/10 hover:text-blue-500 hover:border-blue-500/20"
@@ -1201,9 +1232,18 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                     <p className="text-[10px] text-text-muted font-mono font-bold break-all max-w-[700px] mt-1">{formatDisplayUrl(selectedEndpoint)}</p>
                                 </div>
                             </div>
-                            <button onClick={() => setShowDetailModal(false)} className="p-2 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors">
-                                <XCircle size={24} />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setTracerouteTarget(selectedEndpoint.target || selectedEndpoint.lastResult?.url || '')}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 dark:text-blue-400 border border-blue-500/20 text-xs font-semibold transition-all"
+                                    title="Trace path to this endpoint"
+                                >
+                                    <Route size={14} /> Trace Path
+                                </button>
+                                <button onClick={() => setShowDetailModal(false)} className="p-2 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors">
+                                    <XCircle size={24} />
+                                </button>
+                            </div>
                         </div>
 
                         {/* ── Content Match Info Banner (visible when enabled) ── */}
@@ -1657,6 +1697,15 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                     </div>
                 </div>
             )}
+
+            {/* Traceroute Modal */}
+            <TracerouteModal
+                isOpen={tracerouteTarget !== null}
+                onClose={() => setTracerouteTarget(null)}
+                initialTarget={tracerouteTarget || ''}
+                token={token}
+                title="Network Path Trace"
+            />
         </div>
     );
 }

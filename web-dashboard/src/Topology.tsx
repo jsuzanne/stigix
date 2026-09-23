@@ -56,11 +56,13 @@ import {
     Power,
     RotateCcw,
     Sliders,
-    Gauge
+    Gauge,
+    Route
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { TracerouteModal } from './components/TracerouteModal';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -852,6 +854,7 @@ function TopologyContent({ token }: TopologyProps) {
     const [showUnderlayDiagnostics, setShowUnderlayDiagnostics] = useState(false);
     const [diagnosticsFilter, setDiagnosticsFilter] = useState<'ALL' | 'matched' | 'no_match' | 'ambiguous' | 'wan_ip_unavailable'>('ALL');
     const [diagnosticsSearch, setDiagnosticsSearch] = useState('');
+    const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
 
     // VyOS Direct Action State (Interactive Topology Controls)
     const [isVyosExecuting, setIsVyosExecuting] = useState(false);
@@ -2033,6 +2036,15 @@ function TopologyContent({ token }: TopologyProps) {
                                     <RefreshCw size={16} />
                                 </button>
 
+                                {/* Trace Path Quick Tool */}
+                                <button
+                                    onClick={() => setTracerouteTarget('')}
+                                    className="w-9 h-9 hover:bg-card-secondary rounded-xl text-text-muted hover:text-blue-500 transition-all flex items-center justify-center cursor-pointer"
+                                    title="Trace Network Path (Traceroute)"
+                                >
+                                    <Route size={16} />
+                                </button>
+
                                 <div className="w-6 h-px bg-border/60 my-0.5" />
 
                                 {/* Underlay Inspect Button */}
@@ -2474,6 +2486,17 @@ function TopologyContent({ token }: TopologyProps) {
                                                 </div>
                                             </div>
 
+                                            {(selectedObject.public_ip || selectedObject.ip) && (
+                                                <div className="pt-1">
+                                                    <button
+                                                        onClick={() => setTracerouteTarget(selectedObject.public_ip || selectedObject.ip || '')}
+                                                        className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 text-xs font-bold transition-all shadow-sm cursor-pointer"
+                                                    >
+                                                        <Route size={13} /> Trace Circuit Path
+                                                    </button>
+                                                </div>
+                                            )}
+
                                             <div className="space-y-4 pt-2">
                                                 <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
                                                     <CheckCircle size={14} className="text-green-500" /> Circuit Compliance
@@ -2570,44 +2593,66 @@ function TopologyContent({ token }: TopologyProps) {
                                                 </div>
                                             </div>
                                         )}
-                                        <div className="space-y-2">
-                                            <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2"><GitBranch size={12} /> Prisma SD-WAN Interface</div>
-                                            <div className="bg-card-secondary/30 border border-border/60 rounded-2xl p-4 space-y-2.5">
-                                                <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Site</span><span className="font-black text-text-primary uppercase">{r.prismaWan.siteName}</span></div>
-                                                <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Device</span><span className="font-bold text-text-secondary font-mono">{r.prismaWan.elementName}</span></div>
-                                                <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Interface</span><span className="font-bold text-blue-400 font-mono uppercase">{r.prismaWan.interfaceName}</span></div>
-                                                <div className="flex justify-between items-center text-xs"><span className="text-text-muted">IP</span><span className="font-black text-text-primary font-mono">{r.prismaWan.ipCidr || r.prismaWan.ip || '—'}</span></div>
-                                                {r.prismaWan.linkType && (
-                                                    <div className="flex justify-between items-center text-xs">
-                                                        <span className="text-text-muted">Network</span>
-                                                        <span className={cn("font-black text-[10px] px-2 py-0.5 rounded-full border uppercase tracking-tighter", r.prismaWan.linkType.toLowerCase().includes('mpls') ? "text-purple-400 bg-purple-500/10 border-purple-500/30" : "text-blue-400 bg-blue-500/10 border-blue-500/30")}>{r.prismaWan.linkType}</span>
-                                                    </div>
-                                                )}
-                                                {r.prismaWan.ipType === 'dhcp_ip_only' && (
-                                                    <div className="text-[9px] text-amber-400/80 bg-amber-500/5 border border-amber-500/10 rounded-lg px-2 py-1 mt-1">DHCP — No prefix from Prisma. Matched using VyOS subnet as reference.</div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        {r.status === 'matched' && r.vyos && (
-                                            <div className="space-y-2">
-                                                <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2"><Router size={12} className="text-amber-400" /> VyOS Next-Hop</div>
-                                                <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 space-y-2.5">
-                                                    <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Router</span><span className="font-black text-text-primary">{r.vyos.routerName}</span></div>
-                                                    {r.vyos.location && <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Location</span><span className="font-bold text-text-secondary flex items-center gap-1"><MapPin size={10} />{r.vyos.location}</span></div>}
-                                                    <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Interface</span><span className="font-bold text-amber-400 font-mono">{r.vyos.interfaceName}</span></div>
-                                                    <div className="flex justify-between items-center text-xs"><span className="text-text-muted">IP (VyOS)</span><span className="font-black text-text-primary font-mono">{r.vyos.ipCidr}</span></div>
-                                                    <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Network</span><span className="font-mono text-green-400 text-[11px]">{r.vyos.network}</span></div>
-                                                    {r.vyos.description && <div className="flex justify-between items-start text-xs gap-2"><span className="text-text-muted shrink-0">Description</span><span className="font-medium text-text-secondary text-right leading-tight">{r.vyos.description}</span></div>}
-                                                    {r.vyos.routerStatus && (
-                                                        <div className="flex justify-between items-center text-xs">
-                                                            <span className="text-text-muted">Status</span>
-                                                            <span className={cn("font-black text-[9px] px-2 py-0.5 rounded-full border uppercase tracking-tighter", r.vyos.routerStatus === 'online' ? "text-green-400 bg-green-500/10 border-green-500/30" : "text-red-400 bg-red-500/10 border-red-500/30")}>{r.vyos.routerStatus}</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                {renderVyosControls(r)}
-                                            </div>
-                                        )}
+                                         <div className="space-y-2">
+                                             <div className="flex items-center justify-between">
+                                                 <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2"><GitBranch size={12} /> Prisma SD-WAN Interface</div>
+                                                 {r.prismaWan.ip && (
+                                                     <button
+                                                         onClick={() => setTracerouteTarget(r.prismaWan.ip?.split('/')[0] || '')}
+                                                         className="flex items-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded-md border border-blue-500/20 transition-colors"
+                                                         title="Trace network path to WAN IP"
+                                                     >
+                                                         <Route size={11} /> Trace
+                                                     </button>
+                                                 )}
+                                             </div>
+                                             <div className="bg-card-secondary/30 border border-border/60 rounded-2xl p-4 space-y-2.5">
+                                                 <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Site</span><span className="font-black text-text-primary uppercase">{r.prismaWan.siteName}</span></div>
+                                                 <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Device</span><span className="font-bold text-text-secondary font-mono">{r.prismaWan.elementName}</span></div>
+                                                 <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Interface</span><span className="font-bold text-blue-400 font-mono uppercase">{r.prismaWan.interfaceName}</span></div>
+                                                 <div className="flex justify-between items-center text-xs"><span className="text-text-muted">IP</span><span className="font-black text-text-primary font-mono">{r.prismaWan.ipCidr || r.prismaWan.ip || '—'}</span></div>
+                                                 {r.prismaWan.linkType && (
+                                                     <div className="flex justify-between items-center text-xs">
+                                                         <span className="text-text-muted">Network</span>
+                                                         <span className={cn("font-black text-[10px] px-2 py-0.5 rounded-full border uppercase tracking-tighter", r.prismaWan.linkType.toLowerCase().includes('mpls') ? "text-purple-400 bg-purple-500/10 border-purple-500/30" : "text-blue-400 bg-blue-500/10 border-blue-500/30")}>{r.prismaWan.linkType}</span>
+                                                     </div>
+                                                 )}
+                                                 {r.prismaWan.ipType === 'dhcp_ip_only' && (
+                                                     <div className="text-[9px] text-amber-400/80 bg-amber-500/5 border border-amber-500/10 rounded-lg px-2 py-1 mt-1">DHCP — No prefix from Prisma. Matched using VyOS subnet as reference.</div>
+                                                 )}
+                                             </div>
+                                         </div>
+                                         {r.status === 'matched' && r.vyos && (
+                                             <div className="space-y-2">
+                                                 <div className="flex items-center justify-between">
+                                                     <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2"><Router size={12} className="text-amber-400" /> VyOS Next-Hop</div>
+                                                     {r.vyos.ip && (
+                                                         <button
+                                                             onClick={() => setTracerouteTarget(r.vyos?.ip || '')}
+                                                             className="flex items-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded-md border border-blue-500/20 transition-colors"
+                                                             title="Trace network path to VyOS router"
+                                                         >
+                                                             <Route size={11} /> Trace
+                                                         </button>
+                                                     )}
+                                                 </div>
+                                                 <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 space-y-2.5">
+                                                     <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Router</span><span className="font-black text-text-primary">{r.vyos.routerName}</span></div>
+                                                     {r.vyos.location && <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Location</span><span className="font-bold text-text-secondary flex items-center gap-1"><MapPin size={10} />{r.vyos.location}</span></div>}
+                                                     <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Interface</span><span className="font-bold text-amber-400 font-mono">{r.vyos.interfaceName}</span></div>
+                                                     <div className="flex justify-between items-center text-xs"><span className="text-text-muted">IP (VyOS)</span><span className="font-black text-text-primary font-mono">{r.vyos.ipCidr}</span></div>
+                                                     <div className="flex justify-between items-center text-xs"><span className="text-text-muted">Network</span><span className="font-mono text-green-400 text-[11px]">{r.vyos.network}</span></div>
+                                                     {r.vyos.description && <div className="flex justify-between items-start text-xs gap-2"><span className="text-text-muted shrink-0">Description</span><span className="font-medium text-text-secondary text-right leading-tight">{r.vyos.description}</span></div>}
+                                                     {r.vyos.routerStatus && (
+                                                         <div className="flex justify-between items-center text-xs">
+                                                             <span className="text-text-muted">Status</span>
+                                                             <span className={cn("font-black text-[9px] px-2 py-0.5 rounded-full border uppercase tracking-tighter", r.vyos.routerStatus === 'online' ? "text-green-400 bg-green-500/10 border-green-500/30" : "text-red-400 bg-red-500/10 border-red-500/30")}>{r.vyos.routerStatus}</span>
+                                                         </div>
+                                                     )}
+                                                 </div>
+                                                 {renderVyosControls(r)}
+                                             </div>
+                                         )}
                                         {r.status === 'ambiguous' && r.candidates && r.candidates.length > 0 && (
                                             <div className="space-y-2">
                                                 <div className="text-[10px] font-black text-text-muted uppercase tracking-widest">Candidates ({r.candidates.length})</div>
@@ -2884,18 +2929,29 @@ function TopologyContent({ token }: TopologyProps) {
                                                         </div>
                                                     </td>
                                                     <td className="p-3 text-right">
-                                                        <button
-                                                            onClick={() => {
-                                                                setUnderlayPanelResolution(r);
-                                                                setShowUnderlayPanel(true);
-                                                                setShowUnderlayDiagnostics(false);
-                                                            }}
-                                                            className="p-1.5 hover:bg-amber-500/10 text-text-muted hover:text-amber-400 rounded-lg transition-colors inline-flex items-center gap-1 text-[11px] font-bold"
-                                                            title="Inspect circuit in side panel"
-                                                        >
-                                                            <Eye size={13} />
-                                                            <span>Inspect</span>
-                                                        </button>
+                                                        <div className="flex items-center justify-end gap-1.5">
+                                                            {(r.vyos?.ip || r.prismaWan?.ip) && (
+                                                                <button
+                                                                    onClick={() => setTracerouteTarget(r.vyos?.ip || r.prismaWan?.ip?.split('/')[0] || '')}
+                                                                    className="p-1.5 hover:bg-blue-500/10 text-text-muted hover:text-blue-400 rounded-lg transition-colors inline-flex items-center gap-1 text-[11px] font-bold cursor-pointer"
+                                                                    title="Trace route to this interface"
+                                                                >
+                                                                    <Route size={13} />
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={() => {
+                                                                    setUnderlayPanelResolution(r);
+                                                                    setShowUnderlayPanel(true);
+                                                                    setShowUnderlayDiagnostics(false);
+                                                                }}
+                                                                className="p-1.5 hover:bg-amber-500/10 text-text-muted hover:text-amber-400 rounded-lg transition-colors inline-flex items-center gap-1 text-[11px] font-bold cursor-pointer"
+                                                                title="Inspect circuit in side panel"
+                                                            >
+                                                                <Eye size={13} />
+                                                                <span>Inspect</span>
+                                                            </button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -3169,6 +3225,15 @@ function TopologyContent({ token }: TopologyProps) {
                     </div>
                 </div>
             )}
+
+            {/* Traceroute Modal */}
+            <TracerouteModal
+                isOpen={tracerouteTarget !== null}
+                onClose={() => setTracerouteTarget(null)}
+                initialTarget={tracerouteTarget || ''}
+                token={token}
+                title="Topology Path Trace"
+            />
         </div>
     );
 }
