@@ -27,12 +27,70 @@ class TestOrchestrator:
         logger.error(f"{context} failed: {e}")
         if isinstance(e, httpx.HTTPStatusError):
             body_preview = e.response.text[:300] if e.response is not None else ""
+            status_code = e.response.status_code if e.response is not None else 500
+            url = str(e.request.url) if e.request else ""
             return {
-                "error": f"{context} failed with HTTP {e.response.status_code}: {e}",
-                "status_code": e.response.status_code,
-                "url": str(e.request.url) if e.request else "",
+                "success": False,
+                "status": "error",
+                "error": f"{context} failed with HTTP {status_code}: {e}",
+                "status_code": status_code,
+                "url": url,
                 "body_preview": body_preview
             }
+        return {
+            "success": False,
+            "status": "error",
+            "error": f"{context} failed: {str(e)}",
+            "status_code": 500,
+            "exception_type": type(e).__name__
+        }
+
+    def _extract_counter(self, val: Any) -> int:
+        if isinstance(val, (int, float)):
+            return int(val)
+        if isinstance(val, (list, dict)):
+            return len(val)
+        return 0
+
+    def _normalize_history_entry_counters(self, entry: Dict[str, Any]) -> None:
+        summary = entry.get("summary") if isinstance(entry.get("summary"), dict) else {}
+        diff = entry.get("diff") if isinstance(entry.get("diff"), dict) else {}
+
+        if "addedCount" not in entry or entry.get("addedCount") == 0:
+            added = self._extract_counter(summary.get("added")) or self._extract_counter(diff.get("added"))
+            if added > 0:
+                entry["addedCount"] = added
+        if "modifiedCount" not in entry or entry.get("modifiedCount") == 0:
+            mod = self._extract_counter(summary.get("modified")) or self._extract_counter(diff.get("modified"))
+            if mod > 0:
+                entry["modifiedCount"] = mod
+        if "deletedCount" not in entry or entry.get("deletedCount") == 0:
+            deleted = self._extract_counter(summary.get("removed")) or self._extract_counter(summary.get("deleted")) or self._extract_counter(diff.get("removed")) or self._extract_counter(diff.get("deleted"))
+            if deleted > 0:
+                entry["deletedCount"] = deleted
+
+    def _compact_history_entry(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+        summary = entry.get("summary") if isinstance(entry.get("summary"), dict) else {}
+        diff = entry.get("diff") if isinstance(entry.get("diff"), dict) else {}
+        added = self._extract_counter(summary.get("added")) or self._extract_counter(diff.get("added"))
+        modified = self._extract_counter(summary.get("modified")) or self._extract_counter(diff.get("modified"))
+        deleted = self._extract_counter(summary.get("removed")) or self._extract_counter(summary.get("deleted")) or self._extract_counter(diff.get("removed")) or self._extract_counter(diff.get("deleted"))
+
+        checksum = entry.get("checksum") or (entry.get("bundle", {}).get("checksum") if isinstance(entry.get("bundle"), dict) else None)
+        short_chk = f"{checksum[:8]}..." if checksum and isinstance(checksum, str) else None
+
+        return {
+            "timestamp": entry.get("timestamp") or entry.get("appliedAt"),
+            "action": entry.get("action") or "publish",
+            "type": entry.get("type"),
+            "revision": entry.get("revision"),
+            "checksum": short_chk,
+            "itemsCount": entry.get("itemsCount") or entry.get("count") or (len(entry.get("items", [])) if isinstance(entry.get("items"), list) else None),
+            "addedCount": added,
+            "modifiedCount": modified,
+            "deletedCount": deleted,
+            "status": entry.get("status") or "applied"
+        }
     def _is_json_response(self, r: httpx.Response) -> bool:
         """Check if an HTTP response is valid JSON and not an HTML SPA fallback."""
         ct = r.headers.get("content-type", "")
@@ -2197,24 +2255,38 @@ class TestOrchestrator:
         """Execute a live traceroute / path hop inspection from a specific Stigix node to identify where latency or packet drops occur."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return {"error": f"Agent {agent_id} not found."}
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         base_url = agent.api_base_url
 
-        async with httpx.AsyncClient(timeout=float(timeout_sec + 20)) as client:
+        async with httpx.AsyncClient(timeout=float(timeout_sec + 25)) as client:
             try:
                 r = await client.get(
                     f"{base_url}/api/network/traceroute",
                     params={"target": target, "max_hops": max_hops},
                     headers=headers
                 )
-                if r.status_code == 200:
+                if r.status_code == 200 and self._is_json_response(r):
                     return r.json()
-                return {
-                    "error": f"Traceroute returned HTTP {r.status_code}",
-                    "details": r.text
-                }
+                elif r.status_code == 404:
+                    return {
+                        "success": False,
+                        "status": "unsupported",
+                        "error": f"Feature 'path_trace' is not supported on node '{agent_id}' (HTTP 404: /api/network/traceroute not found). Please update the node container image to v2.0+.",
+                        "node": agent_id,
+                        "url": str(r.url)
+                    }
+                else:
+                    if self._is_json_response(r):
+                        return r.json()
+                    return {
+                        "success": False,
+                        "status": "error",
+                        "error": f"Traceroute returned HTTP {r.status_code}",
+                        "status_code": r.status_code,
+                        "details": r.text[:300]
+                    }
             except Exception as e:
                 return self._handle_exception(f"Path trace to {target} on {agent_id}", e)
 
@@ -3100,18 +3172,42 @@ class TestOrchestrator:
     # Global Configuration Provisioning (Phase 2)
     # -------------------------------------------------------------------------
 
-    async def get_provisioning_status(self, agent_id: str) -> Dict[str, Any]:
+    async def get_provisioning_status(self, agent_id: str, summary_only: bool = True) -> Dict[str, Any]:
         """Fetch Global Provisioning pull mode status, active bundle revisions, and pending changes."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return {"error": f"Agent {agent_id} not found."}
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.get(f"{agent.api_base_url}/api/provisioning/config", headers=headers)
-                r.raise_for_status()
-                return r.json()
+                r = await client.get(
+                    f"{agent.api_base_url}/api/provisioning/status?summary={str(summary_only).lower()}",
+                    headers=headers
+                )
+                if r.status_code == 200 and self._is_json_response(r):
+                    data = r.json()
+                    if summary_only and isinstance(data, dict):
+                        if "state" in data and isinstance(data["state"], dict) and "history" in data["state"]:
+                            del data["state"]["history"]
+                    return data
+
+                # Fallback to /api/provisioning/config
+                r_cfg = await client.get(f"{agent.api_base_url}/api/provisioning/config", headers=headers)
+                if r_cfg.status_code == 200 and self._is_json_response(r_cfg):
+                    data = r_cfg.json()
+                    if summary_only and isinstance(data, dict):
+                        if "state" in data and isinstance(data["state"], dict) and "history" in data["state"]:
+                            del data["state"]["history"]
+                    return data
+                
+                return {
+                    "success": False,
+                    "status": "error",
+                    "error": f"HTTP {r.status_code} on provisioning status",
+                    "status_code": r.status_code,
+                    "url": str(r.url)
+                }
             except Exception as e:
                 return self._handle_exception(f"Provisioning status on {agent_id}", e)
 
@@ -3119,7 +3215,7 @@ class TestOrchestrator:
         """Enable or disable Global Provisioning pull daemon on a node."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return {"error": f"Agent {agent_id} not found."}
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -3134,7 +3230,22 @@ class TestOrchestrator:
         """Publish local configuration bundle(s) across the entire SD-WAN mesh."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return {"error": f"Agent {agent_id} not found."}
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
+
+        # Guard: check if node is leader
+        try:
+            ctrl = await self.get_controller_status(agent_id)
+            if isinstance(ctrl, dict) and ctrl.get("is_leader") is False:
+                leader_ip = ctrl.get("leader_ip") or "mesh leader"
+                return {
+                    "success": False,
+                    "status": "rejected",
+                    "error": f"Node '{agent_id}' is a member/branch node. Bundles can only be published from the active mesh Leader ({leader_ip}).",
+                    "agent_id": agent_id,
+                    "is_leader": False
+                }
+        except Exception as e:
+            logger.warning(f"Could not check leader status for {agent_id}: {e}")
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         valid_types = [
@@ -3151,7 +3262,7 @@ class TestOrchestrator:
                 for b_type in types_to_publish:
                     url = f"{agent.api_base_url}/api/provisioning/publish/{b_type}"
                     r = await client.post(url, headers=headers)
-                    if r.status_code in [200, 201]:
+                    if r.status_code in [200, 201] and self._is_json_response(r):
                         results.append(r.json())
                     elif r.status_code == 404:
                         fallback_r = await client.post(f"{agent.api_base_url}/api/provisioning/publish", json={"type": b_type, "bundle_type": b_type}, headers=headers)
@@ -3163,11 +3274,32 @@ class TestOrchestrator:
             except Exception as e:
                 return self._handle_exception(f"Publish bundle {bundle_type} on {agent_id}", e)
 
+    async def purge_stale_leader_state(self, agent_id: str) -> Dict[str, Any]:
+        """Purge stale local leader manifests and bundles on a non-leader branch node."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.post(f"{agent.api_base_url}/api/provisioning/purge-stale-leader", headers=headers)
+                if r.status_code in [200, 201] and self._is_json_response(r):
+                    return r.json()
+                return {
+                    "success": False,
+                    "status": "error",
+                    "error": f"Purge stale leader returned HTTP {r.status_code}",
+                    "details": r.text[:300]
+                }
+            except Exception as e:
+                return self._handle_exception(f"Purge stale leader on {agent_id}", e)
+
     async def rollback_configuration_bundle(self, agent_id: str, bundle_type: str, revision: str) -> Dict[str, Any]:
         """Rollback a specific configuration bundle to a prior revision hash."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return {"error": f"Agent {agent_id} not found."}
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -3190,7 +3322,7 @@ class TestOrchestrator:
         """Fetch the audit trail of published configuration bundles and rollbacks with compact summary mode and backward fallback."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return {"error": f"Agent {agent_id} not found."}
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -3200,22 +3332,39 @@ class TestOrchestrator:
                     headers=headers
                 )
                 if r.status_code == 200 and self._is_json_response(r):
-                    return r.json()
+                    data = r.json()
+                    if isinstance(data, dict) and "history" in data and isinstance(data["history"], list):
+                        for entry in data["history"]:
+                            if isinstance(entry, dict):
+                                self._normalize_history_entry_counters(entry)
+                    return data
 
                 # Fallback to /api/provisioning/config if node is running earlier release
                 r_cfg = await client.get(f"{agent.api_base_url}/api/provisioning/config", headers=headers)
                 if r_cfg.status_code == 200 and self._is_json_response(r_cfg):
                     cfg_data = r_cfg.json()
                     history_raw = cfg_data.get("state", {}).get("history", [])
+                    compact_entries = []
+                    for entry in history_raw[:limit]:
+                        if isinstance(entry, dict):
+                            if summary_only:
+                                compact_entries.append(self._compact_history_entry(entry))
+                            else:
+                                compact_entries.append(entry)
+                        else:
+                            compact_entries.append(entry)
+
                     return {
                         "success": True,
                         "agent_id": agent_id,
                         "total_records": len(history_raw),
-                        "count": min(len(history_raw), limit),
-                        "history": history_raw[:limit]
+                        "count": len(compact_entries),
+                        "history": compact_entries
                     }
 
                 return {
+                    "success": False,
+                    "status": "error",
                     "error": f"HTTP {r.status_code} calling provisioning history on {agent_id}",
                     "status_code": r.status_code,
                     "url": str(r.url)

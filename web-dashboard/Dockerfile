@@ -25,6 +25,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     iproute2 \
     iputils-ping \
+    iputils-tracepath \
+    traceroute \
     dnsutils \
     netcat-openbsd \
     iperf3 \

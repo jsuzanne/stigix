@@ -1544,13 +1544,31 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'get_provisioning_status',
-        description: 'Get Global Configuration Provisioning status across the SD-WAN fabric (bundle revisions, pull mode status).',
+        description: 'Get Global Configuration Provisioning status across the SD-WAN fabric (bundle revisions, pull mode status, applied hashes).',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
                     description: 'ID of the Stigix node.'
+                },
+                summary_only: {
+                    type: 'boolean',
+                    description: 'When True (default), omits raw history diffs returning a compact status payload.'
+                }
+            },
+            required: ['agent_id']
+        }
+    },
+    {
+        name: 'purge_stale_leader_state',
+        description: 'Purge stale local leader manifests and orphaned bundles on a non-leader member branch node.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                agent_id: {
+                    type: 'string',
+                    description: 'ID of the Stigix member node to clean up.'
                 }
             },
             required: ['agent_id']
@@ -3166,7 +3184,15 @@ export async function executeCopilotTool(
 
             case 'get_provisioning_status': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/provisioning/status');
+                const summary = args.summary_only !== false ? 'true' : 'false';
+                return await fetchApi(nodeCtx, `/api/provisioning/status?summary=${summary}`);
+            }
+
+            case 'purge_stale_leader_state': {
+                const nodeCtx = resolveNodeContext(args.agent_id, ctx);
+                return await fetchApi(nodeCtx, '/api/provisioning/purge-stale-leader', {
+                    method: 'POST'
+                });
             }
 
             case 'set_provisioning_mode': {

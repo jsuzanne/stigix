@@ -83,24 +83,36 @@ async def run_bridge(sse_url: str):
             await manager.handle_disconnect()
             return types.ListToolsResult(tools=[])
 
+    TOOL_TIMEOUTS: dict[str, float] = {
+        "run_path_trace": 120.0,
+        "run_dem_probes_now": 120.0,
+        "run_full_security_audit": 180.0,
+        "run_security_url_batch": 120.0,
+        "run_security_dns_batch": 120.0,
+        "generate_report": 120.0,
+        "list_active_impairments": 90.0,
+    }
+    DEFAULT_TOOL_TIMEOUT = 60.0
+
     @server.call_tool()
     async def handle_call_tool(name: str, arguments: dict | None) -> types.CallToolResult:
-        print(f"Claude calling tool '{name}' with args {arguments}...", file=sys.stderr)
+        timeout_sec = TOOL_TIMEOUTS.get(name, DEFAULT_TOOL_TIMEOUT)
+        print(f"Claude calling tool '{name}' with args {arguments} (timeout: {timeout_sec}s)...", file=sys.stderr)
         start_time = asyncio.get_event_loop().time()
         try:
             session = await manager.get_session()
-            # 60s protective timeout per tool invocation to prevent stalling Claude Desktop
-            res = await asyncio.wait_for(session.call_tool(name, arguments), timeout=60.0)
+            # Protective timeout per tool invocation to prevent stalling Claude Desktop
+            res = await asyncio.wait_for(session.call_tool(name, arguments), timeout=timeout_sec)
             elapsed = round(asyncio.get_event_loop().time() - start_time, 2)
             print(f"Tool '{name}' executed successfully in {elapsed}s.", file=sys.stderr)
             return res
         except asyncio.TimeoutError:
-            print(f"Tool '{name}' timed out after 60.0s.", file=sys.stderr)
+            print(f"Tool '{name}' timed out after {timeout_sec}s.", file=sys.stderr)
             return types.CallToolResult(
                 content=[
                     types.TextContent(
                         type="text",
-                        text=f"Error: Tool '{name}' timed out after 60 seconds. The target node may be busy or unreachable."
+                        text=f"Error: Tool '{name}' timed out after {int(timeout_sec)} seconds. The target node may be busy or unreachable."
                     )
                 ],
                 isError=True

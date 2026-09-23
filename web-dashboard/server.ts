@@ -4510,7 +4510,7 @@ app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
 // API: Run Path Trace (Traceroute / MTR)
 app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
     const target = (req.query.target || req.body?.target) as string;
-    const maxHops = Math.min(Math.max(parseInt((req.query.max_hops || req.body?.max_hops || 15) as string, 10) || 15, 1), 30);
+    const maxHops = Math.min(Math.max(parseInt((req.query.max_hops || req.body?.max_hops || 15) as string, 10) || 15, 1), 20);
 
     if (!target) {
         return res.status(400).json({ success: false, error: 'Target IP or hostname is required' });
@@ -4524,16 +4524,45 @@ app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
 
     const execPromise = promisify(exec);
     const platform = os.platform();
-    let cmd = '';
 
-    if (platform === 'darwin') {
+    // Verify binary availability
+    let binary = '';
+    try {
+        if (platform === 'darwin') {
+            await execPromise('which traceroute');
+            binary = 'traceroute';
+        } else {
+            const hasTraceroute = await execPromise('which traceroute').then(() => true).catch(() => false);
+            if (hasTraceroute) {
+                binary = 'traceroute';
+            } else {
+                const hasTracepath = await execPromise('which tracepath').then(() => true).catch(() => false);
+                if (hasTracepath) {
+                    binary = 'tracepath';
+                }
+            }
+        }
+    } catch {
+        binary = '';
+    }
+
+    if (!binary) {
+        return res.status(500).json({
+            success: false,
+            target: sanitizedTarget,
+            error: 'Neither traceroute nor tracepath binary is installed in this container environment. Please update the node container image.'
+        });
+    }
+
+    let cmd = '';
+    if (binary === 'traceroute') {
         cmd = `traceroute -n -m ${maxHops} -w 2 -q 1 ${sanitizedTarget}`;
     } else {
-        cmd = `traceroute -n -m ${maxHops} -w 2 -q 1 ${sanitizedTarget} 2>/dev/null || tracepath -n -m ${maxHops} ${sanitizedTarget}`;
+        cmd = `tracepath -n -m ${maxHops} ${sanitizedTarget}`;
     }
 
     try {
-        const { stdout, stderr } = await execPromise(cmd, { timeout: 25000 });
+        const { stdout, stderr } = await execPromise(cmd, { timeout: 35000 });
         const rawOutput = (stdout || stderr || '').trim();
         const lines = rawOutput.split('\n');
         const hops: Array<{ hop: number; ip: string; rtt_ms: number | null; status: string }> = [];
@@ -11845,15 +11874,18 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
 });
 
 // API: Provisioning Status Alias (for MCP & Copilot parity)
-app.get('/api/provisioning/status', authenticateToken, (_req, res) => {
+app.get('/api/provisioning/status', authenticateToken, (req, res) => {
     const isLeader = typeof registryManager?.isLeader === 'function' 
         ? registryManager.isLeader() 
         : (registryManager?.getStatus?.()?.mode === 'leader');
+    const summaryOnly = req.query.summary !== 'false';
+    const state = provisioningManager.getState();
+    const stateToReturn = summaryOnly ? { ...state, history: undefined } : state;
     res.json({
         success: true,
         is_leader: isLeader,
-        pull_mode_enabled: provisioningManager.getState()?.enabled ?? true,
-        state: provisioningManager.getState(),
+        pull_mode_enabled: state?.enabled ?? true,
+        state: stateToReturn,
         manifest: provisioningManager.getManifest()
     });
 });
@@ -11864,7 +11896,19 @@ app.get('/api/provisioning/history', authenticateToken, (req, res) => {
         const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '15', 10), 1), 100);
         const summaryOnly = req.query.summary !== 'false';
         const rawHistory = provisioningManager.getState()?.history || [];
+
+        const getCount = (val: any): number => {
+            if (typeof val === 'number') return val;
+            if (Array.isArray(val)) return val.length;
+            if (typeof val === 'object' && val !== null) return Object.keys(val).length;
+            return 0;
+        };
+
         const entries = rawHistory.slice(0, limit).map((entry: any) => {
+            const added = getCount(entry.diff?.added) || getCount(entry.summary?.added);
+            const modified = getCount(entry.diff?.modified) || getCount(entry.summary?.modified);
+            const deleted = getCount(entry.diff?.deleted) || getCount(entry.diff?.removed) || getCount(entry.summary?.deleted) || getCount(entry.summary?.removed);
+
             if (summaryOnly) {
                 return {
                     timestamp: entry.timestamp,
@@ -11873,19 +11917,50 @@ app.get('/api/provisioning/history', authenticateToken, (req, res) => {
                     revision: entry.revision,
                     checksum: entry.checksum ? `${entry.checksum.substring(0, 8)}...` : undefined,
                     itemsCount: entry.itemsCount || (Array.isArray(entry.items) ? entry.items.length : undefined),
-                    addedCount: Array.isArray(entry.diff?.added) ? entry.diff.added.length : 0,
-                    modifiedCount: Array.isArray(entry.diff?.modified) ? entry.diff.modified.length : 0,
-                    deletedCount: Array.isArray(entry.diff?.deleted) ? entry.diff.deleted.length : 0,
+                    addedCount: added,
+                    modifiedCount: modified,
+                    deletedCount: deleted,
                     status: entry.status || 'applied'
                 };
             }
-            return entry;
+            return {
+                ...entry,
+                addedCount: added,
+                modifiedCount: modified,
+                deletedCount: deleted
+            };
         });
         res.json({
             success: true,
             total_records: rawHistory.length,
             count: entries.length,
             history: entries
+        });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// API: Purge Stale Leader State (on Member/Branch nodes)
+app.post('/api/provisioning/purge-stale-leader', authenticateToken, async (_req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
+    if (isLeader) {
+        return res.status(400).json({
+            success: false,
+            error: 'Cannot purge leader state on the active Leader node.'
+        });
+    }
+    try {
+        const result = provisioningManager.purgeStaleLeaderState();
+        if (registryManager) {
+            await registryManager.syncProvisioning();
+        }
+        res.json({
+            success: true,
+            message: 'Stale local leader manifests and artifacts purged successfully.',
+            result
         });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
@@ -11921,6 +11996,16 @@ app.post('/api/provisioning/sync', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
+    if (!isLeader) {
+        return res.status(403).json({
+            success: false,
+            error: 'Cannot publish bundle from a member node. Only the active mesh Leader can publish configuration bundles.'
+        });
+    }
+
     const type = req.params.type as GlobalBundleType;
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
@@ -11962,6 +12047,16 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
 });
 
 app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
+    if (!isLeader) {
+        return res.status(403).json({
+            success: false,
+            error: 'Cannot publish bundle from a member node. Only the active mesh Leader can publish configuration bundles.'
+        });
+    }
+
     const type = (req.body?.type || req.body?.bundle_type || 'all') as string;
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',

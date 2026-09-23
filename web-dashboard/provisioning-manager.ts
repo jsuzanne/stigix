@@ -1038,4 +1038,47 @@ export class ProvisioningManager {
         this.saveLocalOverrides(type, overrides);
         this.reapplyEffectiveConfig(type);
     }
+
+    /**
+     * Purges stale local leader state (manifest.json bundles, local published revisions) on a member/branch node.
+     */
+    public purgeStaleLeaderState(): { clearedBundles: number; clearedRevisions: number } {
+        let clearedBundles = 0;
+        let clearedRevisions = 0;
+
+        try {
+            // Reset manifest.json to an empty member state
+            const emptyManifest: ProvisioningManifest = {
+                schemaVersion: 1,
+                updatedAt: new Date().toISOString(),
+                bundles: []
+            };
+            fs.writeFileSync(this.manifestFile, JSON.stringify(emptyManifest, null, 2), 'utf8');
+            clearedBundles++;
+
+            // Clean up files in globalDir if any
+            if (fs.existsSync(this.globalDir)) {
+                const subdirs = fs.readdirSync(this.globalDir);
+                for (const sub of subdirs) {
+                    const subPath = path.join(this.globalDir, sub);
+                    if (fs.statSync(subPath).isDirectory()) {
+                        const files = fs.readdirSync(subPath);
+                        for (const f of files) {
+                            if (f.startsWith('rev-') && f.endsWith('.json')) {
+                                fs.unlinkSync(path.join(subPath, f));
+                                clearedRevisions++;
+                            }
+                        }
+                    }
+                }
+            }
+
+            log('PROVISIONING', `Purged stale local leader state (cleared ${clearedRevisions} local bundle revisions)`);
+        } catch (e: any) {
+            log('PROVISIONING', `Error purging stale leader state: ${e.message}`, 'error');
+        }
+
+        return { clearedBundles, clearedRevisions };
+    }
 }
+

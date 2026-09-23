@@ -1825,7 +1825,7 @@ async def generate_peer_onboard_command(agent_id: str) -> dict:
 # -----------------------------------------------------------------------------
 
 @mcp.tool()
-async def get_provisioning_status(agent_id: str) -> dict:
+async def get_provisioning_status(agent_id: str, summary_only: bool = True) -> dict:
     """
     Get Global Configuration Provisioning status across the SD-WAN fabric.
     Shows whether provisioning pull mode is enabled, published revision hashes for all bundle types
@@ -1834,8 +1834,21 @@ async def get_provisioning_status(agent_id: str) -> dict:
 
     Args:
         agent_id: ID of the Stigix node.
+        summary_only: When True (default), omits raw history diffs returning a compact status payload.
     """
-    return await orchestrator.get_provisioning_status(agent_id)
+    return await orchestrator.get_provisioning_status(agent_id, summary_only=summary_only)
+
+
+@mcp.tool()
+async def purge_stale_leader_state(agent_id: str) -> dict:
+    """
+    Purge stale local leader manifests and orphaned bundles on a non-leader member branch node.
+    Cleans up local state so the member accurately reflects the mesh Leader without false pending publish flags.
+
+    Args:
+        agent_id: ID of the Stigix member node to clean up.
+    """
+    return await orchestrator.purge_stale_leader_state(agent_id)
 
 
 @mcp.tool()
