@@ -1041,22 +1041,26 @@ export class ProvisioningManager {
 
     /**
      * Purges stale local leader state (manifest.json bundles, local published revisions) on a member/branch node.
+     * Supports dry_run (default true) and automated backup before deletion.
      */
-    public purgeStaleLeaderState(): { clearedBundles: number; clearedRevisions: number } {
+    public purgeStaleLeaderState(dryRun: boolean = true): {
+        dry_run: boolean;
+        cleared_bundles: number;
+        cleared_revisions: number;
+        stale_revisions_list: string[];
+        backup_file: string | null;
+    } {
         let clearedBundles = 0;
         let clearedRevisions = 0;
+        const staleRevisionsList: string[] = [];
+        let backupFile: string | null = null;
 
         try {
-            // Reset manifest.json to an empty member state
-            const emptyManifest: ProvisioningManifest = {
-                schemaVersion: 1,
-                updatedAt: new Date().toISOString(),
-                bundles: []
-            };
-            fs.writeFileSync(this.manifestFile, JSON.stringify(emptyManifest, null, 2), 'utf8');
-            clearedBundles++;
+            // Read existing manifest
+            const currentManifest = this.getManifest();
+            clearedBundles = currentManifest.bundles?.length || 0;
 
-            // Clean up files in globalDir if any
+            // Scan files in globalDir
             if (fs.existsSync(this.globalDir)) {
                 const subdirs = fs.readdirSync(this.globalDir);
                 for (const sub of subdirs) {
@@ -1065,7 +1069,7 @@ export class ProvisioningManager {
                         const files = fs.readdirSync(subPath);
                         for (const f of files) {
                             if (f.startsWith('rev-') && f.endsWith('.json')) {
-                                fs.unlinkSync(path.join(subPath, f));
+                                staleRevisionsList.push(`${sub}/${f}`);
                                 clearedRevisions++;
                             }
                         }
@@ -1073,12 +1077,65 @@ export class ProvisioningManager {
                 }
             }
 
-            log('PROVISIONING', `Purged stale local leader state (cleared ${clearedRevisions} local bundle revisions)`);
+            if (dryRun) {
+                log('PROVISIONING', `[DRY-RUN] Found ${clearedBundles} stale bundles and ${clearedRevisions} revisions to purge`);
+                return {
+                    dry_run: true,
+                    cleared_bundles: clearedBundles,
+                    cleared_revisions: clearedRevisions,
+                    stale_revisions_list: staleRevisionsList,
+                    backup_file: null
+                };
+            }
+
+            // Real execution: create backup first
+            fs.mkdirSync(this.backupsDir, { recursive: true });
+            const backupFileName = `stale-leader-backup-${Date.now()}.json`;
+            const backupPath = path.join(this.backupsDir, backupFileName);
+            const backupData: any = {
+                timestamp: new Date().toISOString(),
+                manifest: currentManifest,
+                revisions: {}
+            };
+
+            // Read revision contents into backup
+            for (const relPath of staleRevisionsList) {
+                const fullP = path.join(this.globalDir, relPath);
+                try {
+                    backupData.revisions[relPath] = JSON.parse(fs.readFileSync(fullP, 'utf8'));
+                } catch {}
+            }
+            fs.writeFileSync(backupPath, JSON.stringify(backupData, null, 2), 'utf8');
+            backupFile = backupPath;
+
+            // Reset manifest.json
+            const emptyManifest: ProvisioningManifest = {
+                schemaVersion: 1,
+                updatedAt: new Date().toISOString(),
+                bundles: []
+            };
+            fs.writeFileSync(this.manifestFile, JSON.stringify(emptyManifest, null, 2), 'utf8');
+
+            // Delete stale revision files
+            for (const relPath of staleRevisionsList) {
+                const fullP = path.join(this.globalDir, relPath);
+                try {
+                    if (fs.existsSync(fullP)) fs.unlinkSync(fullP);
+                } catch {}
+            }
+
+            log('PROVISIONING', `Purged stale local leader state (cleared ${clearedRevisions} revisions, backup saved to ${backupFileName})`);
         } catch (e: any) {
             log('PROVISIONING', `Error purging stale leader state: ${e.message}`, 'error');
         }
 
-        return { clearedBundles, clearedRevisions };
+        return {
+            dry_run: false,
+            cleared_bundles: clearedBundles,
+            cleared_revisions: clearedRevisions,
+            stale_revisions_list: staleRevisionsList,
+            backup_file: backupFile
+        };
     }
 }
 

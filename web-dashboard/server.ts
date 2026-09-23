@@ -5,8 +5,7 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import dgram from 'dgram';
-//import { spawn, exec } from 'child_process';
-import { spawn, exec, execSync } from 'child_process';
+import { spawn, exec, execFile, execSync } from 'child_process';
 import crypto from 'crypto';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
@@ -4509,104 +4508,94 @@ app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
 
 // API: Run Path Trace (Traceroute / MTR)
 app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
-    const target = (req.query.target || req.body?.target) as string;
+    const rawTarget = (req.query.target || req.body?.target) as string;
     const maxHops = Math.min(Math.max(parseInt((req.query.max_hops || req.body?.max_hops || 15) as string, 10) || 15, 1), 20);
 
-    if (!target) {
+    if (!rawTarget || typeof rawTarget !== 'string') {
         return res.status(400).json({ success: false, error: 'Target IP or hostname is required' });
     }
 
-    // Sanitize target to prevent command injection
-    const sanitizedTarget = target.trim().replace(/[^a-zA-Z0-9.-]/g, '');
-    if (!sanitizedTarget) {
-        return res.status(400).json({ success: false, error: 'Invalid target characters' });
+    const target = rawTarget.trim();
+
+    // Strict validation: IPv4, IPv6, or valid RFC 1123 hostname (no command injection characters)
+    const ipv4Regex = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+    const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])$/;
+    const hostnameRegex = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z0-9-]{1,63})*$/;
+
+    if (!ipv4Regex.test(target) && !ipv6Regex.test(target) && !hostnameRegex.test(target)) {
+        return res.status(400).json({
+            success: false,
+            target,
+            error: 'Invalid target format. Target must be a valid IPv4, IPv6 address, or hostname without shell or special characters.'
+        });
     }
 
-    const execPromise = promisify(exec);
-    const platform = os.platform();
+    const execFilePromise = promisify(execFile);
+    let rawOutput = '';
 
-    // Verify binary availability
-    let binary = '';
+    // Attempt 1: traceroute with safe argument array
     try {
-        if (platform === 'darwin') {
-            await execPromise('which traceroute');
-            binary = 'traceroute';
+        const tracerouteArgs = ['-n', '-m', String(maxHops), '-w', '2', '-q', '1', target];
+        const { stdout, stderr } = await execFilePromise('traceroute', tracerouteArgs, { timeout: 30000 });
+        rawOutput = (stdout || stderr || '').trim();
+    } catch (errTraceroute: any) {
+        // If traceroute binary not found, attempt tracepath fallback with safe argument array
+        if (errTraceroute.code === 'ENOENT' || (errTraceroute.message && errTraceroute.message.includes('ENOENT'))) {
+            try {
+                const tracepathArgs = ['-n', '-m', String(maxHops), target];
+                const { stdout, stderr } = await execFilePromise('tracepath', tracepathArgs, { timeout: 30000 });
+                rawOutput = (stdout || stderr || '').trim();
+            } catch (errTracepath: any) {
+                if (errTracepath.code === 'ENOENT' || (errTracepath.message && errTracepath.message.includes('ENOENT'))) {
+                    return res.status(500).json({
+                        success: false,
+                        target,
+                        error: 'Neither traceroute nor tracepath binary is installed in this container environment. Please update the node container image.'
+                    });
+                }
+                rawOutput = (errTracepath.stdout || errTracepath.stderr || errTracepath.message || '').trim();
+            }
         } else {
-            const hasTraceroute = await execPromise('which traceroute').then(() => true).catch(() => false);
-            if (hasTraceroute) {
-                binary = 'traceroute';
-            } else {
-                const hasTracepath = await execPromise('which tracepath').then(() => true).catch(() => false);
-                if (hasTracepath) {
-                    binary = 'tracepath';
-                }
+            rawOutput = (errTraceroute.stdout || errTraceroute.stderr || errTraceroute.message || '').trim();
+        }
+    }
+
+    // Parse hops
+    const lines = rawOutput.split('\n');
+    const hops: Array<{ hop: number; ip: string; rtt_ms: number | null; status: string }> = [];
+    let destReached = false;
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.includes('[LOCALHOST]')) continue;
+        // Match standard traceroute: " 1  192.168.1.1  1.234 ms" or tracepath: " 1:  192.168.1.1  1.234ms"
+        const match = trimmed.match(/^(\d+)[?:\s]+(?:no reply|([\d\.\*a-zA-Z:-]+))(?:\s+.*?([\d\.]+)\s*ms)?/i);
+        if (match) {
+            const hopNum = parseInt(match[1], 10);
+            const isNoReply = trimmed.toLowerCase().includes('no reply');
+            const hopIp = isNoReply ? '*' : (match[2] || '*');
+            const rtt = match[3] ? parseFloat(match[3]) : null;
+            const isTimeout = hopIp === '*' || isNoReply || rtt === null;
+            hops.push({
+                hop: hopNum,
+                ip: isTimeout ? '*' : hopIp,
+                rtt_ms: rtt,
+                status: isTimeout ? 'timeout' : 'ok'
+            });
+            if (!isTimeout && (hopIp === target || hopIp.includes(target) || trimmed.toLowerCase().includes('reached'))) {
+                destReached = true;
             }
         }
-    } catch {
-        binary = '';
     }
 
-    if (!binary) {
-        return res.status(500).json({
-            success: false,
-            target: sanitizedTarget,
-            error: 'Neither traceroute nor tracepath binary is installed in this container environment. Please update the node container image.'
-        });
-    }
-
-    let cmd = '';
-    if (binary === 'traceroute') {
-        cmd = `traceroute -n -m ${maxHops} -w 2 -q 1 ${sanitizedTarget}`;
-    } else {
-        cmd = `tracepath -n -m ${maxHops} ${sanitizedTarget}`;
-    }
-
-    try {
-        const { stdout, stderr } = await execPromise(cmd, { timeout: 35000 });
-        const rawOutput = (stdout || stderr || '').trim();
-        const lines = rawOutput.split('\n');
-        const hops: Array<{ hop: number; ip: string; rtt_ms: number | null; status: string }> = [];
-        let destReached = false;
-
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (trimmed.includes('[LOCALHOST]')) continue;
-            // Match standard traceroute: " 1  192.168.1.1  1.234 ms" or tracepath: " 1:  192.168.1.1  1.234ms"
-            const match = trimmed.match(/^(\d+)[?:\s]+(?:no reply|([\d\.\*a-zA-Z:-]+))(?:\s+.*?([\d\.]+)\s*ms)?/i);
-            if (match) {
-                const hopNum = parseInt(match[1], 10);
-                const isNoReply = trimmed.toLowerCase().includes('no reply');
-                const hopIp = isNoReply ? '*' : (match[2] || '*');
-                const rtt = match[3] ? parseFloat(match[3]) : null;
-                const isTimeout = hopIp === '*' || isNoReply || rtt === null;
-                hops.push({
-                    hop: hopNum,
-                    ip: isTimeout ? '*' : hopIp,
-                    rtt_ms: rtt,
-                    status: isTimeout ? 'timeout' : 'ok'
-                });
-                if (!isTimeout && (hopIp === sanitizedTarget || hopIp.includes(sanitizedTarget) || trimmed.toLowerCase().includes('reached'))) {
-                    destReached = true;
-                }
-            }
-        }
-
-        res.json({
-            success: true,
-            target: sanitizedTarget,
-            total_hops: hops.length,
-            destination_reached: destReached,
-            hops,
-            raw_output: rawOutput
-        });
-    } catch (e: any) {
-        res.status(500).json({
-            success: false,
-            target: sanitizedTarget,
-            error: e.message,
-            raw_output: e.stdout || e.stderr || ''
-        });
-    }
+    res.json({
+        success: true,
+        target,
+        total_hops: hops.length,
+        destination_reached: destReached,
+        hops,
+        raw_output: rawOutput
+    });
 });
 
 
@@ -11942,24 +11931,30 @@ app.get('/api/provisioning/history', authenticateToken, (req, res) => {
 });
 
 // API: Purge Stale Leader State (on Member/Branch nodes)
-app.post('/api/provisioning/purge-stale-leader', authenticateToken, async (_req, res) => {
+app.post('/api/provisioning/purge-stale-leader', authenticateToken, async (req, res) => {
     const isLeader = typeof registryManager?.isLeader === 'function' 
         ? registryManager.isLeader() 
-        : (registryManager?.getStatus?.()?.mode === 'leader');
+        : (registryManager?.getStatus?.()?.current_mode === 'leader' || registryManager?.getStatus?.()?.mode === 'leader');
     if (isLeader) {
         return res.status(400).json({
             success: false,
             error: 'Cannot purge leader state on the active Leader node.'
         });
     }
+
+    const dryRun = req.query.dry_run !== 'false' && req.body?.dry_run !== false;
+
     try {
-        const result = provisioningManager.purgeStaleLeaderState();
-        if (registryManager) {
+        const result = provisioningManager.purgeStaleLeaderState(dryRun);
+        if (!dryRun && registryManager) {
             await registryManager.syncProvisioning();
         }
         res.json({
             success: true,
-            message: 'Stale local leader manifests and artifacts purged successfully.',
+            dry_run: dryRun,
+            message: dryRun
+                ? `[DRY-RUN] Found ${result.cleared_bundles} stale bundles and ${result.cleared_revisions} revisions. Set dry_run=false to execute.`
+                : 'Stale local leader manifests and artifacts purged successfully.',
             result
         });
     } catch (e: any) {

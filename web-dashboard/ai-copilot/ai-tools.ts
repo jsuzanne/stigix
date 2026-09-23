@@ -1562,13 +1562,17 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'purge_stale_leader_state',
-        description: 'Purge stale local leader manifests and orphaned bundles on a non-leader member branch node.',
+        description: 'Purge stale local leader manifests and orphaned bundles on a non-leader member branch node. Supports dry_run simulation.',
         input_schema: {
             type: 'object',
             properties: {
                 agent_id: {
                     type: 'string',
                     description: 'ID of the Stigix member node to clean up.'
+                },
+                dry_run: {
+                    type: 'boolean',
+                    description: 'When True (default), simulates the purge and lists items without deleting. Set False to apply.'
                 }
             },
             required: ['agent_id']
@@ -3190,8 +3194,10 @@ export async function executeCopilotTool(
 
             case 'purge_stale_leader_state': {
                 const nodeCtx = resolveNodeContext(args.agent_id, ctx);
-                return await fetchApi(nodeCtx, '/api/provisioning/purge-stale-leader', {
-                    method: 'POST'
+                const dryRun = args.dry_run !== false;
+                return await fetchApi(nodeCtx, `/api/provisioning/purge-stale-leader?dry_run=${dryRun}`, {
+                    method: 'POST',
+                    body: JSON.stringify({ dry_run: dryRun })
                 });
             }
 

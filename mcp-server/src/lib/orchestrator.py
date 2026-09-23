@@ -2269,17 +2269,15 @@ class TestOrchestrator:
                 )
                 if r.status_code == 200 and self._is_json_response(r):
                     return r.json()
-                elif r.status_code == 404:
+                elif r.status_code == 404 or not self._is_json_response(r):
                     return {
                         "success": False,
                         "status": "unsupported",
-                        "error": f"Feature 'path_trace' is not supported on node '{agent_id}' (HTTP 404: /api/network/traceroute not found). Please update the node container image to v2.0+.",
+                        "error": f"Feature 'path_trace' is not supported on node '{agent_id}' (HTTP {r.status_code}: /api/network/traceroute not available). Please update the node container image to v2.0+.",
                         "node": agent_id,
                         "url": str(r.url)
                     }
                 else:
-                    if self._is_json_response(r):
-                        return r.json()
                     return {
                         "success": False,
                         "status": "error",
@@ -3274,7 +3272,7 @@ class TestOrchestrator:
             except Exception as e:
                 return self._handle_exception(f"Publish bundle {bundle_type} on {agent_id}", e)
 
-    async def purge_stale_leader_state(self, agent_id: str) -> Dict[str, Any]:
+    async def purge_stale_leader_state(self, agent_id: str, dry_run: bool = True) -> Dict[str, Any]:
         """Purge stale local leader manifests and bundles on a non-leader branch node."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
@@ -3283,7 +3281,11 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/provisioning/purge-stale-leader", headers=headers)
+                r = await client.post(
+                    f"{agent.api_base_url}/api/provisioning/purge-stale-leader?dry_run={str(dry_run).lower()}",
+                    json={"dry_run": dry_run},
+                    headers=headers
+                )
                 if r.status_code in [200, 201] and self._is_json_response(r):
                     return r.json()
                 return {

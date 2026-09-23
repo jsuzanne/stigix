@@ -1840,15 +1840,21 @@ async def get_provisioning_status(agent_id: str, summary_only: bool = True) -> d
 
 
 @mcp.tool()
-async def purge_stale_leader_state(agent_id: str) -> dict:
+async def purge_stale_leader_state(agent_id: str, dry_run: bool = True) -> dict:
     """
     Purge stale local leader manifests and orphaned bundles on a non-leader member branch node.
     Cleans up local state so the member accurately reflects the mesh Leader without false pending publish flags.
 
+    [WRITE OPERATION / SAFETY]:
+    - dry_run: True (default) lists stale bundles and revisions without modifying any files.
+    - When dry_run is set to False, a backup is automatically created under .stigix-provisioning/backups/ before clearing stale artifacts.
+    - Refused on active Leader node.
+
     Args:
         agent_id: ID of the Stigix member node to clean up.
+        dry_run: When True (default), simulates the purge and lists items without deleting. Set False to apply with automatic backup.
     """
-    return await orchestrator.purge_stale_leader_state(agent_id)
+    return await orchestrator.purge_stale_leader_state(agent_id, dry_run=dry_run)
 
 
 @mcp.tool()

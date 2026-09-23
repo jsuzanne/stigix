@@ -170,6 +170,50 @@ async def run_tests():
         tests_run += 1
 
     # -------------------------------------------------------------------------
+    # 8. Test Malicious Traceroute Target Injection Rejection
+    # -------------------------------------------------------------------------
+    print("\n--- Testing Scenario 8: Malicious Target Command Injection Handling ---")
+    mock_400_injection = httpx.Response(
+        status_code=400,
+        headers={"content-type": "application/json"},
+        json={"success": False, "error": "Invalid target format. Target must be a valid IPv4, IPv6 address, or hostname without shell or special characters."},
+        request=httpx.Request("GET", "http://127.0.0.1:8080/api/network/traceroute?target=1.1.1.1%3B+id")
+    )
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_400_injection
+
+        res = await orchestrator.run_path_trace("mock-node", "1.1.1.1; id")
+        assert_dict_result("run_path_trace", "Malicious target injection 400 rejection", res)
+
+    # -------------------------------------------------------------------------
+    # 9. Test Purge Stale Leader (Dry-Run Simulation)
+    # -------------------------------------------------------------------------
+    print("\n--- Testing Scenario 9: Purge Stale Leader Dry-Run Simulation ---")
+    mock_purge_resp = httpx.Response(
+        status_code=200,
+        headers={"content-type": "application/json"},
+        json={
+            "success": True,
+            "dry_run": True,
+            "message": "[DRY-RUN] Found 2 stale bundles and 12 revisions to purge.",
+            "result": { "cleared_bundles": 2, "cleared_revisions": 12, "stale_revisions_list": ["connectivity-probes/rev-1.json"] }
+        },
+        request=httpx.Request("POST", "http://127.0.0.1:8080/api/provisioning/purge-stale-leader?dry_run=true")
+    )
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value = mock_purge_resp
+
+        res = await orchestrator.purge_stale_leader_state("mock-node", dry_run=True)
+        assert_dict_result("purge_stale_leader_state", "Dry-run simulation", res)
+        if res.get("dry_run") is True:
+            print(f"   ✅ Dry-run confirmed: {res.get('message')}")
+            tests_passed += 1
+            tests_run += 1
+        else:
+            print(f"   ❌ FAILED: Expected dry_run=True, got {res.get('dry_run')}")
+            tests_run += 1
+
+    # -------------------------------------------------------------------------
     # Summary
     # -------------------------------------------------------------------------
     print("\n=================================================================")
