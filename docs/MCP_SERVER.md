@@ -540,11 +540,18 @@ List all DEM probes configured on node <NODE_ID>.
 ```
 → `list_dem_probes(agent_id="<NODE_ID>")` — Name, type (HTTP/PING/DNS/TCP/UDP), target, enabled status.
 
-**Historical probe stats (last hour):**
+**Historical probe stats (filtered & aggregated with median / p95):**
 ```
-Show me historical DEM probe stats for node <NODE_ID> over the last hour.
+Show me DEM probe stats for node <NODE_ID> filtering only "MS -" probes over the last 60 minutes.
 ```
-→ `get_dem_probe_stats(agent_id="<NODE_ID>")` — Global score, average latency, reliability per probe.
+→ `get_dem_probe_stats(agent_id="<NODE_ID>", probe_name_filter="MS -", window_minutes=60, aggregate=True)`  
+*Returns calculated median RTT, p95 RTT, min/max/avg latency, and success rates per probe, avoiding massive raw data payloads.*
+
+**Update an existing probe (without losing historical data):**
+```
+Update the "Office 365" probe on node <NODE_ID> to accept HTTP status codes 200, 204, 301, 302, 401, 403 and set timeout to 5000ms.
+```
+→ `update_dem_probe(agent_id="<NODE_ID>", probe_name="Office 365", expected_status_codes=[200, 204, 301, 302, 401, 403], timeout_ms=5000)`
 
 **Details for a specific probe:**
 ```
@@ -570,6 +577,7 @@ Valid types: `HTTP`, `HTTPS`, `PING`, `TCP`, `UDP`, `DNS`.
 Remove the "Google DNS Test" probe from node <NODE_ID>.
 ```
 → `remove_dem_probe(agent_id="<NODE_ID>", probe_name="Google DNS Test")`
+
 
 ---
 
@@ -747,6 +755,12 @@ Interface eth7 (BR2-INET-226): 🔴 down  (admin disabled)
 IP Blocks: 192.168.1.100/32 (tag-999)
 ```
 
+**Fabric Impairment & Cleanup Audit (Across all nodes / routers):**
+```
+Audit all active network impairments, injected latencies, or disabled links across the fabric.
+```
+→ `list_active_impairments()` — Checks every managed VyOS router across the mesh and reports active `tc netem` shaping or shut links. Perfect for pre-test baseline validation and post-test cleanup verification.
+
 **Add latency (NL → confirmation → execute):**
 ```
 Add 100ms of latency on the MPLS link of BR1 via node <NODE_ID>.
@@ -912,6 +926,12 @@ Publish the custom-tcp-apps configuration bundle to all mesh nodes.
 ```
 → `publish_configuration_bundle(agent_id="DC1", bundle_type="custom-tcp-apps")`
 
+**Audit provisioning history:**
+```
+Show the last 5 provisioning bundle deployments on DC1 in compact summary mode.
+```
+→ `get_provisioning_history(agent_id="DC1", limit=5, summary_only=True)`
+
 **Generate zero-touch onboarding command:**
 ```
 Generate an onboarding command for a new branch node.
@@ -933,6 +953,12 @@ Show the 360-degree System Health Matrix for BR8.
 Run full system diagnostics on BR8.
 ```
 → `run_system_diagnostics(agent_id="BR8")`
+
+**Hop-by-hop Path Trace / Traceroute:**
+```
+Run a path trace from BR8 to 192.168.203.100 with a max of 15 hops to locate packet loss or latency.
+```
+→ `run_path_trace(agent_id="BR8", target="192.168.203.100", max_hops=15, timeout_sec=2)`
 
 ---
 
