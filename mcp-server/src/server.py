@@ -137,15 +137,19 @@ _patch_orchestrator_logging(orchestrator)
 # -----------------------------------------------------------------------------
 
 @mcp.tool()
-async def list_endpoints(kind: Optional[str] = None) -> List[dict]:
+async def list_endpoints(kind: Optional[str] = None) -> dict:
     """
     List available Stigix endpoints (Fabric nodes and Internet targets).
     
     Args:
         kind: Optional filter ('fabric' or 'internet')
     """
-    endpoints = await registry.list_endpoints(kind=kind)
-    return [e.model_dump() for e in endpoints]
+    try:
+        endpoints = await registry.list_endpoints(kind=kind)
+        return {"endpoints": [e.model_dump() for e in endpoints]}
+    except Exception as e:
+        logger.error(f"Failed to list endpoints: {e}")
+        return {"error": str(e), "endpoints": []}
 
 
 @mcp.tool()
@@ -399,7 +403,7 @@ async def run_security_probe(agent_id: str, probe_type: str, target: str) -> dic
 
 
 @mcp.tool()
-async def list_vyos_routers(agent_id: str) -> List[dict]:
+async def list_vyos_routers(agent_id: str) -> dict:
     """
     List all VyOS routers managed by a specific Stigix node.
 
@@ -418,7 +422,7 @@ async def list_vyos_routers(agent_id: str) -> List[dict]:
 
 
 @mcp.tool()
-async def list_vyos_scenarios(agent_id: str) -> List[dict]:
+async def list_vyos_scenarios(agent_id: str) -> dict:
     """
     List available VyOS configuration sequences (scenarios) on a specific Stigix node.
 
@@ -442,7 +446,7 @@ async def run_vyos_scenario(agent_id: str, scenario_id: str) -> dict:
 
 
 @mcp.tool()
-async def get_vyos_timeline(agent_id: str, limit: int = 20) -> List[dict]:
+async def get_vyos_timeline(agent_id: str, limit: int = 20) -> dict:
     """
     Get the history of recent VyOS configuration changes on a specific Stigix node.
     
@@ -468,7 +472,7 @@ async def set_vyos_scenario_status(agent_id: str, scenario_id: str, enabled: boo
 
 
 @mcp.tool()
-async def get_vyos_interfaces(agent_id: str, router_id: Optional[str] = None) -> List[dict]:
+async def get_vyos_interfaces(agent_id: str, router_id: Optional[str] = None) -> dict:
     """
     List VyOS routers and their CHAOS-ELIGIBLE interfaces managed by a Stigix node.
 

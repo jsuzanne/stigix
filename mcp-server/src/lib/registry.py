@@ -124,7 +124,7 @@ class RegistryClient:
                                 capabilities=caps_list,
                                 test_ip=host,
                                 public_ip=t.get("public_ip") or t.get("meta", {}).get("ip_public"),
-                                api_base_url=f"http://{host}:8080",
+                                api_base_url=t.get("api_base_url") or f"http://{host}:8080",
                                 version=node_ver,
                                 build=node_build,
                                 meta={

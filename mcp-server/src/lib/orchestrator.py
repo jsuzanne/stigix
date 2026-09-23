@@ -470,10 +470,14 @@ class TestOrchestrator:
         
         async with httpx.AsyncClient(timeout=10.0) as client:
             logger.info(f"Setting traffic status on {source.id} to {enabled} via {api_url}")
-            # POST with empty body as per server.ts implementation for start/stop
-            response = await client.post(api_url, json={}, headers=headers)
-            response.raise_for_status()
-            return response.json()
+            try:
+                # POST with empty body as per server.ts implementation for start/stop
+                response = await client.post(api_url, json={}, headers=headers)
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                logger.error(f"Failed to set traffic status on {source.id}: {e}")
+                return {"error": str(e)}
 
     async def set_traffic_rate(self, source: StigixEndpoint, sleep_interval: float) -> dict:
         """Updates the traffic generation sleep interval (delay between requests)."""
@@ -688,11 +692,11 @@ class TestOrchestrator:
                 logger.error(f"Security test {test_type} failed for {agent_id} on {target}: {e}")
                 return {"error": str(e), "target": target}
 
-    async def list_vyos_routers(self, agent_id: str) -> List[Dict[str, Any]]:
+    async def list_vyos_routers(self, agent_id: str) -> Dict[str, Any]:
         """List VyOS routers managed by a specific Stigix node."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return [{"error": f"Agent {agent_id} not found."}]
+            return {"error": f"Agent {agent_id} not found."}
             
         url = f"{agent.api_base_url}/api/vyos/routers"
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
@@ -700,16 +704,16 @@ class TestOrchestrator:
             try:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
-                return response.json()
+                return {"routers": response.json()}
             except Exception as e:
                 logger.error(f"Failed to list VyOS routers on {agent_id}: {e}")
-                return [{"error": str(e)}]
+                return {"error": str(e)}
 
-    async def list_vyos_sequences(self, agent_id: str) -> List[Dict[str, Any]]:
+    async def list_vyos_sequences(self, agent_id: str) -> Dict[str, Any]:
         """List available VyOS configuration sequences on a specific node."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return [{"error": f"Agent {agent_id} not found."}]
+            return {"error": f"Agent {agent_id} not found."}
             
         url = f"{agent.api_base_url}/api/vyos/sequences"
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
@@ -717,10 +721,10 @@ class TestOrchestrator:
             try:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
-                return response.json()
+                return {"scenarios": response.json()}
             except Exception as e:
                 logger.error(f"Failed to list VyOS sequences on {agent_id}: {e}")
-                return [{"error": str(e)}]
+                return {"error": str(e)}
 
     async def run_vyos_sequence(self, agent_id: str, sequence_id: str) -> Dict[str, Any]:
         """Trigger a VyOS sequence execution on a specific node."""
@@ -739,11 +743,11 @@ class TestOrchestrator:
                 logger.error(f"Failed to run VyOS sequence {sequence_id} on {agent_id}: {e}")
                 return {"error": str(e)}
 
-    async def get_vyos_history(self, agent_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    async def get_vyos_history(self, agent_id: str, limit: int = 50) -> Dict[str, Any]:
         """Fetch VyOS action history from a specific node."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return [{"error": f"Agent {agent_id} not found."}]
+            return {"error": f"Agent {agent_id} not found."}
             
         url = f"{agent.api_base_url}/api/vyos/history?limit={limit}"
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
@@ -751,10 +755,10 @@ class TestOrchestrator:
             try:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
-                return response.json()
+                return {"history": response.json()}
             except Exception as e:
                 logger.error(f"Failed to fetch VyOS history from {agent_id}: {e}")
-                return [{"error": str(e)}]
+                return {"error": str(e)}
 
     async def set_vyos_scenario_status(self, agent_id: str, sequence_id: str, enabled: bool) -> Dict[str, Any]:
         """Enable or disable a specific VyOS configuration sequence on a node."""
@@ -788,14 +792,14 @@ class TestOrchestrator:
                 logger.error(f"Failed to set status for sequence {sequence_id} on {agent_id}: {e}")
                 return {"error": str(e)}
 
-    async def get_vyos_interfaces(self, agent_id: str, router_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_vyos_interfaces(self, agent_id: str, router_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Return VyOS router interfaces with their descriptions.
         Used by Claude to identify which interface to target before executing an action.
         """
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return [{"error": f"Agent {agent_id} not found."}]
+            return {"error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         url = f"{agent.api_base_url}/api/vyos/routers"
@@ -825,10 +829,10 @@ class TestOrchestrator:
                             for iface in router.get("interfaces", [])
                         ]
                     })
-                return result
+                return {"routers": result}
             except Exception as e:
                 logger.error(f"Failed to fetch VyOS interfaces from {agent_id}: {e}")
-                return [{"error": str(e)}]
+                return {"error": str(e)}
 
     async def get_vyos_state(self, agent_id: str, router_id: str) -> Dict[str, Any]:
         """
@@ -1151,36 +1155,45 @@ class TestOrchestrator:
 
         # --- Weighted posture scores (the real scores shown in the dashboard) ---
         if not isinstance(score_r, Exception) and score_r.status_code == 200:
-            entry = score_r.json()
-            scores = entry.get("scores", {})
-            result["posture_scores"] = {
-                "url_filter":        scores.get("url"),
-                "dns_security":      scores.get("dns"),
-                "threat_prevention": scores.get("threat"),
-                "_note": "Weighted % of malicious categories correctly blocked/sinkholed (out of 100). Matches the Security dashboard exactly."
-            }
+            try:
+                entry = score_r.json()
+                scores = entry.get("scores", {})
+                result["posture_scores"] = {
+                    "url_filter":        scores.get("url"),
+                    "dns_security":      scores.get("dns"),
+                    "threat_prevention": scores.get("threat"),
+                    "_note": "Weighted % of malicious categories correctly blocked/sinkholed (out of 100). Matches the Security dashboard exactly."
+                }
+            except Exception as e:
+                result["posture_scores"] = {"error": f"Invalid response body: {e}"}
         else:
             result["posture_scores"] = {"error": str(score_r)}
 
         # --- Score trend (last 24 runs, newest first) ---
         if not isinstance(hist_r, Exception) and hist_r.status_code == 200:
-            history = hist_r.json() if hist_r.content else []
-            trend = [
-                {
-                    "ts":      h.get("timestamp"),
-                    "type":    h.get("type"),
-                    "url":     h.get("scores", {}).get("url"),
-                    "dns":     h.get("scores", {}).get("dns"),
-                    "threat":  h.get("scores", {}).get("threat"),
-                    "trigger": h.get("trigger"),
-                }
-                for h in (history if isinstance(history, list) else [])
-            ]
-            result["score_trend"] = sorted(trend, key=lambda x: x.get("ts") or 0, reverse=True)[:24]
+            try:
+                history = hist_r.json() if hist_r.content else []
+                trend = [
+                    {
+                        "ts":      h.get("timestamp"),
+                        "type":    h.get("type"),
+                        "url":     h.get("scores", {}).get("url"),
+                        "dns":     h.get("scores", {}).get("dns"),
+                        "threat":  h.get("scores", {}).get("threat"),
+                        "trigger": h.get("trigger"),
+                    }
+                    for h in (history if isinstance(history, list) else [])
+                ]
+                result["score_trend"] = sorted(trend, key=lambda x: x.get("ts") or 0, reverse=True)[:24]
+            except Exception as e:
+                result["score_trend"] = []
+                result["score_trend_error"] = f"Invalid response body: {e}"
         else:
-            result["score_trend"] = {"error": str(hist_r)}
+            result["score_trend"] = []
+            result["score_trend_error"] = str(hist_r)
 
         return result
+
 
     async def get_security_config(self, agent_id: str) -> Dict[str, Any]:
         """Fetch the security policy configuration (enabled modules, profile) from a node."""
