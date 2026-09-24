@@ -220,3 +220,37 @@ class TestLotBP7NamesResolved:
         assert names_resolved is True
 
 
+class TestLotBP4GlobalIdPersistenceAndLegacyFormat:
+    """Validate P4: Global ID matching without in-memory map & legacy format parsing."""
+
+    def test_p4_matches_global_id_in_history_record(self):
+        """P4: Global ID 'G-20260924-EFC7' matches history record with persisted global_id."""
+        orchestrator = TestOrchestrator()
+        record = {
+            "test_id": "CONV-0248 (BR8-DC1-failover-demo-v3)",
+            "global_id": "G-20260924-EFC7",
+            "global_test_id": "G-20260924-EFC7",
+            "label": "BR8-DC1-failover-demo-v3"
+        }
+        assert orchestrator._matches_test_id("G-20260924-EFC7", record) is True
+        assert orchestrator._matches_test_id("g-20260924-efc7", record) is True
+
+    def test_p4_matches_legacy_composite_string_bidirectional(self):
+        """P4: Matches 'CONV-0248' when searching composite string, and vice-versa."""
+        orchestrator = TestOrchestrator()
+        record = {
+            "test_id": "CONV-0248 (BR8-DC1-failover-demo-v3)",
+            "label": "BR8-DC1-failover-demo-v3"
+        }
+        # Searching by simple ID finds composite record
+        assert orchestrator._matches_test_id("CONV-0248", record) is True
+        assert orchestrator._matches_test_id("conv-0248", record) is True
+        
+        # Searching by composite query finds record
+        assert orchestrator._matches_test_id("CONV-0248 (BR8-DC1-failover-demo-v3)", record) is True
+
+        # Searching by non-matching ID fails
+        assert orchestrator._matches_test_id("CONV-9999", record) is False
+
+
+

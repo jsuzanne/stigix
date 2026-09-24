@@ -5292,11 +5292,12 @@ app.get('/api/icons', async (req, res) => {
 });
 
 app.post('/api/convergence/start', authenticateToken, (req, res) => {
-    const { target, port, rate, label } = req.body;
+    const { target, port, rate, label, global_id, global_test_id } = req.body;
+    const effectiveGlobalId = global_test_id || global_id || null;
     const timestamp = new Date().toLocaleTimeString('en-GB', { hour12: false });
     const testId = (req as any).testId || getNextFailoverTestId();
     (req as any).testId = testId; // Ensure it's available for subsequent logs
-    console.log(`[${testId}] [${timestamp}] 🚀 ${label || 'None'} - Incoming Start Request: Target=${target}:${port}, Rate=${rate}pps`);
+    console.log(`[${testId}] [${timestamp}] 🚀 ${label || 'None'} - Incoming Start Request: Target=${target}:${port}, Rate=${rate}pps, GlobalID=${effectiveGlobalId || 'none'}`);
 
     if (!target) return res.status(400).json({ error: 'Target IP required' });
 
@@ -5337,6 +5338,9 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
         const proc = spawn(PYTHON_PATH, args, { env: { ...process.env, PYTHONUNBUFFERED: '1' } });
         convergenceProcesses.set(testId, proc);
         convergencePPS.set(testId, requestedPPS);
+        if (effectiveGlobalId) {
+            (proc as any).globalTestId = effectiveGlobalId;
+        }
 
         proc.on('error', (err: any) => {
             console.error(`[CONVERGENCE-ERROR] Failed to start ${testId}: ${err.message}`);
@@ -5349,10 +5353,9 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
             const emoji = code === 0 || code === null ? '✅' : '❌';
             log(`CONV-${testId}`, `${emoji} Convergence test ended: ${status} (exit code: ${code})`);
 
+            const savedGlobalId = (proc as any).globalTestId || null;
             convergenceProcesses.delete(testId);
             convergencePPS.delete(testId);
-
-            // Finalize history entry
 
             // Finalize history entry
             if (fs.existsSync(statsFile)) {
@@ -5360,6 +5363,8 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
                     const finalStats = JSON.parse(fs.readFileSync(statsFile, 'utf8'));
                     fs.appendFileSync(CONVERGENCE_HISTORY_FILE, JSON.stringify({
                         ...finalStats,
+                        global_id: savedGlobalId || finalStats.global_id || finalStats.global_test_id || null,
+                        global_test_id: savedGlobalId || finalStats.global_test_id || finalStats.global_id || null,
                         timestamp: Date.now()
                     }) + '\n');
                     // Cleanup tmp file

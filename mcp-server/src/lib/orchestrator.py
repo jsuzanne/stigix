@@ -67,6 +67,30 @@ class TestOrchestrator:
         self.jwt_secret = os.getenv("JWT_SECRET", "super-secret-key-change-this")
         self.registry = RegistryClient()
 
+    def _matches_test_id(self, query_id: str, record: Dict[str, Any]) -> bool:
+        """
+        Matches a query test ID against a test record:
+        - Global IDs (G-YYYYMMDD-XXXX)
+        - Local IDs (CONV-XXXX, XFR-XXXX)
+        - Composite format ('CONV-0248 (BR8-DC1-failover-demo-v3)')
+        """
+        if not query_id or not record or not isinstance(record, dict):
+            return False
+        
+        q = str(query_id).strip().lower()
+        q_base = q.split("(")[0].strip()
+
+        for key in ("global_id", "global_test_id", "test_id", "testId", "id", "sequence_id", "label"):
+            val = str(record.get(key) or "").strip().lower()
+            if not val:
+                continue
+            val_base = val.split("(")[0].strip()
+            if q == val or q == val_base or q_base == val or q_base == val_base:
+                return True
+            if q in val:
+                return True
+        return False
+
     def _handle_exception(self, context: str, e: Exception) -> Dict[str, Any]:
         err_msg = str(e) or repr(e) or type(e).__name__
         logger.error(f"{context} failed: {err_msg}")
@@ -239,6 +263,9 @@ class TestOrchestrator:
                     logger.warning(f"Target {target.id} has no valid IP, skipping.")
                     continue
 
+                # Generate local global ID for tracking
+                global_id = f"G-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
+
                 if is_xfr_profile:
                     api_url = f"{source.api_base_url}/api/tests/xfr"
                     payload = {
@@ -248,39 +275,40 @@ class TestOrchestrator:
                         "direction": direction.lower() if direction else "client-to-server",
                         "duration_sec": duration_sec,
                         "bitrate": bitrate or "0", # 0 = max
-                        "parallel_streams": 4
+                        "parallel_streams": 4,
+                        "global_id": global_id,
+                        "global_test_id": global_id
                     }
                 elif is_convergence_profile:
                     api_url = f"{source.api_base_url}/api/convergence/start"
-                    # Auto-build a label from the target's registry name when the caller
-                    # did not provide one — avoids "Unknown" in the Failover dashboard.
                     effective_label = label or target.meta.get("site_name") or target.id
-                    # Convergence probe daemon listens strictly on UDP 6200
                     conv_port = 6200
                     payload = {
                         "target": target_ip,
                         "port": conv_port, # Convergence SLA probe port (UDP 6200)
-                        # Use pps directly if provided, else fallback to bitrate or 50
                         "rate": pps if pps is not None else (int(bitrate.replace('M', '')) if bitrate and 'M' in bitrate else 50),
-                        "label": effective_label
+                        "label": effective_label,
+                        "global_id": global_id,
+                        "global_test_id": global_id
                     }
                 elif is_voice_profile:
                     api_url = f"{source.api_base_url}/api/voice/control"
                     payload = {
                         "enabled": True,
                         "target": target_ip,
-                        "port": 6100 # VoIP RTP voice echo port (UDP 6100)
+                        "port": 6100, # VoIP RTP voice echo port (UDP 6100)
+                        "global_id": global_id,
+                        "global_test_id": global_id
                     }
                 elif is_iot_profile:
                     api_url = f"{source.api_base_url}/api/iot/control"
                     payload = {
-                        "enabled": True
+                        "enabled": True,
+                        "global_id": global_id,
+                        "global_test_id": global_id
                     }
                 else:
                     raise ValueError(f"Unresolved port routing for profile '{profile}'.")
-
-                # Generate local global ID for tracking
-                global_id = f"G-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
                 
                 try:
                     logger.info(f"Triggering test on {api_url} with payload {payload}")
@@ -402,7 +430,7 @@ class TestOrchestrator:
                             if conv_res.status_code == 200:
                                 conv_data = conv_res.json()
                                 c_jobs = conv_data if isinstance(conv_data, list) else []
-                                c_matched = next((c for c in c_jobs if str(c.get("testId", "")).lower() == test_id.lower() or str(c.get("test_id", "")).lower() == test_id.lower()), None)
+                                c_matched = next((c for c in c_jobs if self._matches_test_id(test_id, c)), None)
                                 if c_matched:
                                     mapping = {
                                         "source_url": ep.api_base_url,
@@ -435,8 +463,7 @@ class TestOrchestrator:
                     # 1. Try status endpoint (active tests)
                     job = None
                     if isinstance(data, list):
-                        # Match by testId (from server.ts) or test_id (from python stats)
-                        job = next((j for j in data if j.get("testId") == mapping["local_id"] or j.get("test_id") == mapping["local_id"]), None)
+                        job = next((j for j in data if self._matches_test_id(test_id, j) or self._matches_test_id(mapping.get("local_id", ""), j)), None)
                     
                     # 2. If not found, try history endpoint (finished tests)
                     if not job:
@@ -446,7 +473,7 @@ class TestOrchestrator:
                                 h_resp = await history_client.get(history_url, headers=headers)
                                 if h_resp.status_code == 200:
                                     history = h_resp.json()
-                                    matching_jobs = [j for j in history if str(j.get("testId", "")).startswith(mapping["local_id"]) or str(j.get("test_id", "")).startswith(mapping["local_id"])]
+                                    matching_jobs = [j for j in history if self._matches_test_id(test_id, j) or self._matches_test_id(mapping.get("local_id", ""), j)]
                                     if matching_jobs:
                                         job = matching_jobs[-1]
                                         job["running"] = False # Mark as finished
@@ -2478,11 +2505,7 @@ class TestOrchestrator:
 
                 # ── Apply test_id filter BEFORE limit ─────────────────────────
                 if test_id:
-                    tid_lower = test_id.strip().lower()
-                    rows = [
-                        row for row in rows
-                        if tid_lower in str(row.get("testId", row.get("test_id", row.get("id", "")))).lower()
-                    ]
+                    rows = [row for row in rows if self._matches_test_id(test_id, row)]
 
                 # ── Apply limit BEFORE building any structures ─────────────────
                 rows = rows[:limit]
