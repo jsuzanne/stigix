@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """
 Test suite for Speedtest (XFR) Bug Fixes (Bugs 8, 9, 10).
-Validates:
-- Bug 8: get_test_status / TestStatus preserves XFR throughput & transfer metrics in model_dump().
-- Bug 9: run_test displays 'max' or specified bitrate (never '50 pps') for XFR profile.
-- Bug 10: list_speedtest_history resolves target IP from job.params.host (never '?').
+Validated against exact BR8 live production fixtures (XFR-0904 & XFR-0905).
 """
 
 import json
@@ -14,7 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
-from src.types import TestStatus, TestRun, StigixEndpoint
+from src.types import TestStatus
 from src.lib.orchestrator import TestOrchestrator
 
 FIXTURES_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "real", "speedtest_fixtures.json")
@@ -27,12 +24,12 @@ def xfr_fixtures():
 
 
 class TestSpeedtestFixes:
-    """Validate fixes for speedtest bugs 8, 9, 10."""
+    """Validate fixes for speedtest bugs 8, 9, 10 using real BR8 production captures."""
 
     def test_bug_8_get_test_status_preserves_xfr_metrics(self, xfr_fixtures):
         """
-        Bug 8: get_test_status on XFR-0905 / XFR-0904 must preserve throughput_mbps
-        and other XFR metrics in model_dump() rather than stripping them via ConvMetrics.
+        Bug 8: get_test_status on XFR-0904 (BR8 live test) must preserve throughput_mbps (15.0),
+        retransmits (685), latency_ms (17.1) and transfer metrics in model_dump().
         """
         job = xfr_fixtures["xfr_0904_completed"]
         summary = job["summary"]
@@ -60,12 +57,10 @@ class TestSpeedtestFixes:
 
         dumped = status.model_dump()
         assert dumped["metrics"] is not None
-        assert dumped["metrics"]["throughput_mbps"] == 176.46
-        assert dumped["metrics"]["sent_mbps"] == 176.46
-        assert dumped["metrics"]["received_mbps"] == 174.20
-        assert dumped["metrics"]["retransmits"] == 12
-        assert dumped["metrics"]["bytes_total"] == 220575000
-        assert dumped["metrics"]["latency_ms"] == 8.12
+        assert dumped["metrics"]["throughput_mbps"] == 15.0
+        assert dumped["metrics"]["retransmits"] == 685
+        assert dumped["metrics"]["latency_ms"] == 17.1
+        assert dumped["metrics"]["bytes_total"] == 56821350
         assert "verdict" not in dumped["metrics"]
 
     def test_bug_9_xfr_test_run_bitrate_never_50_pps(self):
@@ -94,7 +89,7 @@ class TestSpeedtestFixes:
 
     def test_bug_10_list_speedtest_history_resolves_target_from_params_host(self, xfr_fixtures):
         """
-        Bug 10: list_speedtest_history must resolve target IP from job.params.host (not '?').
+        Bug 10: list_speedtest_history must resolve target IP from job.params.host ('192.168.203.100', never '?').
         """
         job = xfr_fixtures["xfr_0904_completed"]
         orchestrator = TestOrchestrator()

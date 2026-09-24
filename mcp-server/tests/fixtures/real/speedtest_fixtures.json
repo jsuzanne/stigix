@@ -1,53 +1,55 @@
 {
   "xfr_0904_completed": {
-    "id": "job-1727181000",
+    "id": "job-1790252303000",
     "sequence_id": "XFR-0904",
     "status": "completed",
-    "started_at": "2026-09-24T12:30:00.000Z",
-    "finished_at": "2026-09-24T12:30:10.000Z",
+    "started_at": "2026-09-24T12:18:23.000Z",
+    "finished_at": "2026-09-24T12:18:53.000Z",
     "params": {
       "mode": "custom",
       "host": "192.168.203.100",
       "port": 9000,
       "protocol": "tcp",
       "direction": "client-to-server",
-      "duration_sec": 10,
+      "duration_sec": 30,
       "bitrate": "0",
-      "parallel_streams": 4
+      "parallel_streams": 4,
+      "congestion": "cubic"
     },
     "summary": {
-      "throughput_mbps": 176.46,
-      "sent_mbps": 176.46,
-      "received_mbps": 174.20,
+      "throughput_mbps": 15.0,
+      "sent_mbps": 15.0,
+      "received_mbps": 0.0,
       "loss_percent": 0.0,
-      "retransmits": 12,
-      "bytes_total": 220575000,
-      "rtt_ms_avg": 8.12
+      "retransmits": 685,
+      "bytes_total": 56821350,
+      "rtt_ms_avg": 17.1
     }
   },
   "xfr_0905_completed": {
-    "id": "job-1727181060",
+    "id": "job-1790253160000",
     "sequence_id": "XFR-0905",
     "status": "completed",
-    "started_at": "2026-09-24T12:31:00.000Z",
-    "finished_at": "2026-09-24T12:31:10.000Z",
+    "started_at": "2026-09-24T12:32:40.000Z",
+    "finished_at": "2026-09-24T12:33:10.000Z",
     "params": {
       "mode": "custom",
       "host": "192.168.203.100",
       "port": 9000,
       "protocol": "tcp",
       "direction": "client-to-server",
-      "duration_sec": 10,
+      "duration_sec": 30,
       "bitrate": "0",
-      "parallel_streams": 4
+      "parallel_streams": 4,
+      "congestion": "cubic"
     },
     "summary": {
       "throughput_mbps": 176.46,
       "sent_mbps": 176.46,
-      "received_mbps": 174.20,
+      "received_mbps": 0.0,
       "loss_percent": 0.0,
       "retransmits": 12,
-      "bytes_total": 220575000,
+      "bytes_total": 661725000,
       "rtt_ms_avg": 8.12
     }
   }
