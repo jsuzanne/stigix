@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-07-30 | **Created:** 2026-01-18 (v1.1.0-beta.14)
+> **Last Updated:** 2026-09-25 | **Created:** 2026-01-18 (v1.1.0-beta.14)
 
 # Digital Experience Testing (DEM)
 
@@ -35,47 +35,71 @@ The platform supports various probe types, each measuring different aspects of t
 - **Mechanism**: Orchestrates a native OS `curl` subprocess to perform HTTP/HTTPS `GET` queries.
 - **Primary Benefit**: `curl` provides military-grade precision for extracting intricate low-level execution timings out-of-the-box, allowing us to perfectly isolate DNS lookup delays, TCP Handshake times, and TLS Handshake overhead from the raw Time-To-First-Byte (TTFB).
 - **Metrics**: 
-  - **Latency (ms)**: Total Time to first byte breakdown.
-  - **Status**: Success (2xx/3xx) or Failure (4xx/5xx/Timeout).
-- **Scoring**: Weighted calculation: `100 - (30% Latency + 35% TTFB + 25% TLS)`. Penalized heavily if Latency > 2s, TTFB > 1s, or TLS Handshake > 800ms.
+  - **Latency (ms)**: Total Time to first byte breakdown (`dns_ms`, `tcp_ms`, `tls_ms`, `ttfb_ms`, `total_ms`).
+  - **Status**: HTTP Status Code (`200`, `301`, `404`, `500`, etc.).
+- **HTTP Code Evaluation**:
+  - `2xx` / `3xx` (or custom `expectedStatusCodes`): Eligible for performance-weighted scoring.
+  - `5xx` (Server error): **Score = 0 / 100** (critical failure).
+  - `4xx` (Client error / unauthorized / not found): **Score capped at 20 / 100 max**.
+  - Content Match Failure: **Score forced to 0 / 100** (`reachable = false`).
+- **Performance Scoring**: When the HTTP code is valid:
+  $$\text{Score} = 100 - \Big( 30 \times \min\big(\frac{\text{Total}}{2000\text{ms}}, 1.0\big) + 35 \times \min\big(\frac{\text{TTFB}}{1000\text{ms}}, 1.0\big) + 25 \times \min\big(\frac{\text{TLS}}{800\text{ms}}, 1.0\big) \Big) - (\text{retries} \times 20)$$
 
 ### 2. PING (Network Reachability)
 - **Mechanism**: Executes the native OS `ping` binary to dispatch ICMP Echo Requests.
-- **Primary Benefit**: Using the host's native `ping` utility intelligently avoids the strict capability/root privileges required to open raw ICMP sockets programmatically, ensuring secure, unprivileged execution environments (like Docker containers) map reachability flawlessly.
-- **Metrics**: 
-  - **RTT (ms)**: Round-trip time.
-- **Scoring**: Good if < 100ms (Score 100). Reaches 0 at 500ms.
+- **Primary Benefit**: Using the host's native `ping` utility intelligently avoids the strict capability/root privileges required to open raw ICMP sockets programmatically.
+- **Metrics**: Round-trip time (`rtt_ms`).
+- **Scoring**:
+  - Latency $< 100\text{ms}$ ➔ **Score = 100**.
+  - Linear decay between $100\text{ms}$ and $500\text{ms}$: $\text{Score} = 100 - \big(\frac{\text{lat} - 100}{400}\big) \times 100$.
+  - Latency $\ge 500\text{ms}$ or 100% loss ➔ **Score = 0**.
 
 ### 3. DNS (Resolution Speed)
-- **Mechanism**: Queries the target domain leveraging the `dig` system utility.
-- **Primary Benefit**: `dig` bypasses systemic OS-level caching interfaces, providing the exact unadulterated response time of the raw nameserver for highly faithful resolution mapping.
-- **Metrics**:
-  - **Resolution Time (ms)**: Real-world mapping speed.
-- **Scoring**: Good if < 80ms (Score 100). Reaches 0 at 400ms.
+- **Mechanism**: Queries the target domain leveraging the `dig` system utility (bypassing OS cache).
+- **Metrics**: Resolution time (`dns_ms`).
+- **Scoring**:
+  - Resolution $< 80\text{ms}$ ➔ **Score = 100**.
+  - Linear decay between $80\text{ms}$ and $400\text{ms}$: $\text{Score} = 100 - \big(\frac{\text{lat} - 80}{320}\big) \times 100$.
+  - Resolution $\ge 400\text{ms}$ ➔ **Score = 0**.
 
-### 4. UDP (Voice/Real-time Quality)
+### 4. TCP (Port Reachability & Handshake)
+- **Mechanism**: Executes `nc` (Netcat) to measure TCP 3-way handshake speed.
+- **Metrics**: Connect time (`tcp_ms`).
+- **Scoring**:
+  - Handshake $< 150\text{ms}$ ➔ **Score = 100**.
+  - Linear decay between $150\text{ms}$ and $800\text{ms}$: $\text{Score} = 100 - \big(\frac{\text{lat} - 150}{650}\big) \times 100$.
+  - Handshake $\ge 800\text{ms}$ or unreachable ➔ **Score = 0**.
+
+### 5. UDP (Voice/Real-time Quality)
 - **Mechanism**: Triggers an `iperf3` client process (`-u` mode) aimed at the target port.
-- **Primary Benefit**: `iperf3` is the undisputed industry standard for UDP throughput mapping. It intrinsically calculates complex networking permutations including packet loss percentages and millisecond Jitter natively without requiring manual script math.
-- **Scoring**: `100 - (Loss % * 10) - Jitter penalty`. Jitter over 30ms reduces the score (max -50). 10% packet loss results in a score of **0**.
+- **Metrics**: Packet Loss Percentage (`loss_pct`) and Jitter (`jitter_ms`).
+- **Scoring**:
+  - Starts at $100$.
+  - Loss deduction: $-10\text{ points}$ per $1\%$ loss ($10\%$ loss = **0**).
+  - Jitter deduction: If Jitter $> 30\text{ms}$, deduct $(\text{jitter} - 30) \times 0.7$ (capped at $-50$).
 
-### 5. TCP (Port Reachability)
-- **Mechanism**: Executes `nc` (Netcat) to simulate a standard TCP socket connection.
-- **Primary Benefit**: Netcat securely tests port exposure and firewall routing viability without risking incomplete handshakes that some specialized application daemons reject.
+---
 
 ## 🏆 Scoring Methodology
 
-All probes return a score from **0 to 100**. The system stores the **Minimum**, **Maximum**, and **Average** score of each probe over time to facilitate long-term performance tracking and future alerting capabilities.
+All probes return a score from **0 to 100**. The system stores the **Minimum**, **Maximum**, and **Average** score of each probe over time to facilitate long-term performance tracking and alerting.
+
+### 📊 Score Classification
+
+| Score Range | Rating | UI Color | Meaning & Network Impact |
+| :--- | :--- | :--- | :--- |
+| **80 - 100** | **Optimal / Excellent** | 🟢 Green / Emerald | Optimal performance, negligible latency, 0% drop. |
+| **65 - 79** | **Good / Fair** | 🔵 Cyan / Blue | Good experience; minor latency variations within SLA. |
+| **50 - 64** | **Degraded** | 🟡 Amber / Orange | Noticeable latency or jitter; potential for degraded user experience. |
+| **1 - 49** | **Critical** | 🔴 Rose / Red | Severe network impairment; high packet loss, user complaints expected. |
+| **0** | **Down / Offline** | 💀 Dark Red | Resource unreachable, DNS failed, or returning HTTP 5xx. |
+
+### 🌐 Global Experience Score Aggregation
+The **Global Experience Score** displayed on the top gauge is the **arithmetic mean** of all probe sample scores collected during the selected time window ($T \in \{15\text{m}, 1\text{h}, 6\text{h}, 24\text{h}, 7\text{d}\}$):
+$$\text{Global Score} = \frac{1}{N} \sum_{i=1}^{N} \text{Score}_i$$
 
 *Detailed status table highlighting endpoint reliability and score distribution:*
 ![Endpoints Status and Reliability](screenshots/04-Performance/02-endpoints-status-table.png)
-
-
-| Score | Rating | Meaning |
-| :--- | :--- | :--- |
-| **80 - 100** | **Excellent** | Optimal performance, no user impact. |
-| **50 - 79** | **Fair** | Noticeable latency or jitter; potential for degraded experience. |
-| **1 - 49** | **Poor** | Severe degradation; high probability of user complaints. |
-| **0** | **Critical** | Resource unreachable or returning server error (HTTP 5xx). |
 
 ---
 
@@ -231,3 +255,14 @@ STIGIX_TARGET_BASE_URL=https://stigix-staging.workers.dev
 
 > [!NOTE]
 > Probes requiring authentication (Shared Key) are automatically signed by the backend using your `STIGIX_TARGET_SHARED_KEY`.
+
+---
+
+## 📜 Revision History
+
+| Date | Stigix Version | Author / Trigger | Summary of Changes |
+|---|---|---|---|
+| 2026-09-25 | `v2.0.64` | Stigix Core Team | Added exhaustive DEM scoring formulas (HTTP 5xx/4xx codes, TTFB/TLS breakdown, ICMP, DNS, TCP, UDP loss/jitter, and global aggregation) |
+| 2026-07-30 | `v1.4.1-patch.34` | Stigix Core Team | Added Content Matching documentation and UI screenshots |
+| 2026-01-18 | `v1.1.0-beta.14` | Stigix Core Team | Initial document creation |
+
