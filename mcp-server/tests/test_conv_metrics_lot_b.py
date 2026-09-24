@@ -253,4 +253,39 @@ class TestLotBP4GlobalIdPersistenceAndLegacyFormat:
         assert orchestrator._matches_test_id("CONV-9999", record) is False
 
 
+class TestLotBAliasesRationalization:
+    """Validate Aliases: canonical output fields and ingestion of legacy aliases."""
+
+    def test_canonical_fields_ingest_all_legacy_alias_variants(self):
+        """Input dicts with legacy aliases (loss_pct, tx_loss_pct, rx_loss_pct, avg_rtt_ms) map to canonical names."""
+        from src.types import ConvMetrics
+        legacy_dict = {
+            "loss_pct": 2.5,
+            "tx_loss_pct": 1.0,
+            "rx_loss_pct": 1.5,
+            "avg_rtt_ms": 42.1,
+            "durationSec": 60,
+            "maxBlackout": 500,
+        }
+        metrics = ConvMetrics.from_daemon(legacy_dict)
+        assert metrics.loss_percent == 2.5
+        assert metrics.uplink_loss_pct == 1.0
+        assert metrics.downlink_loss_pct == 1.5
+        assert metrics.latency_ms == 42.1
+        assert metrics.duration_s == 60.0
+        assert metrics.max_blackout_ms == 500.0
+
+        # Verify output dump has canonical fields only (no duplicate aliases)
+        dump = metrics.model_dump()
+        assert dump["loss_percent"] == 2.5
+        assert dump["uplink_loss_pct"] == 1.0
+        assert dump["downlink_loss_pct"] == 1.5
+        assert dump["latency_ms"] == 42.1
+        assert "loss_pct" not in dump
+        assert "tx_loss_pct" not in dump
+        assert "rx_loss_pct" not in dump
+        assert "avg_rtt_ms" not in dump
+
+
+
 

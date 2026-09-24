@@ -32,7 +32,6 @@ class TestLotAConvMetrics:
 
         # loss_percent must be 0.0 (float), NOT None
         assert metrics.loss_percent == 0.0
-        assert metrics.loss_pct == 0.0
         assert metrics.sent == 866.0
         assert metrics.received == 865.0
         assert metrics.latency_ms == 8.11
@@ -43,9 +42,14 @@ class TestLotAConvMetrics:
         assert metrics.egress_path is None
         # Directional loss reflects 1 packet in-flight at T+20s
         assert metrics.uplink_loss_pct == 0.1
-        assert metrics.tx_loss_pct == 0.1
         assert metrics.downlink_loss_pct == 0.0
-        assert metrics.rx_loss_pct == 0.0
+
+        # Assert duplicate alias fields are NOT in the model output
+        dump = metrics.model_dump()
+        assert "loss_pct" not in dump
+        assert "tx_loss_pct" not in dump
+        assert "rx_loss_pct" not in dump
+        assert "avg_rtt_ms" not in dump
 
     def test_p1_verdict_calculation_thresholds(self):
         """P1 & P3: Single verdict function validation across all thresholds."""
@@ -131,11 +135,9 @@ class TestLotAConvMetrics:
         status_dump = status.model_dump()
 
         assert status_dump["metrics"]["loss_percent"] == dumped["loss_percent"] == 3.1
-        assert status_dump["metrics"]["loss_pct"] == dumped["loss_pct"] == 3.1
         assert status_dump["metrics"]["uplink_loss_pct"] == dumped["uplink_loss_pct"] == 1.2
         assert status_dump["metrics"]["downlink_loss_pct"] == dumped["downlink_loss_pct"] == 2.0
         assert status_dump["metrics"]["latency_ms"] == dumped["latency_ms"] == 54.08
-        assert status_dump["metrics"]["avg_rtt_ms"] == dumped["avg_rtt_ms"] == 54.08
         assert status_dump["metrics"]["verdict"] == dumped["verdict"] == "BAD"
         assert status_dump["metrics"]["egress_path"] == dumped["egress_path"] == "BR8-INET2 → DC1-INET"
 

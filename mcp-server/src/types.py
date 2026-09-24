@@ -108,6 +108,10 @@ def compute_conv_verdict(max_blackout_ms: Optional[Union[float, int, str]]) -> O
 class ConvMetrics(BaseModel):
     """Metrics from a convergence (conv) or failover test.
 
+    Canonical output names are used. Legacy aliases (loss_pct, tx_loss_pct,
+    rx_loss_pct, avg_rtt_ms) are ingested from daemon inputs but removed from
+    model output dictionaries.
+
     Numeric fields default to None (not 0) when absent so callers can distinguish
     'not measured' from 'measured zero'. String fields default to None so an empty
     string returned by the daemon is normalised to None.
@@ -117,23 +121,19 @@ class ConvMetrics(BaseModel):
     sent: Optional[float] = None
     received: Optional[float] = None
 
-    # Loss
+    # Loss (canonical names)
     loss_percent: Optional[float] = None
-    loss_pct: Optional[float] = None  # Deprecated alias for backwards compatibility
     uplink_loss_pct: Optional[float] = None
-    tx_loss_pct: Optional[float] = None  # Alias
     downlink_loss_pct: Optional[float] = None
-    rx_loss_pct: Optional[float] = None  # Alias
 
-    # Blackout
+    # Blackout (canonical)
     max_blackout_ms: Optional[float] = None
 
-    # RTT & Jitter
+    # RTT & Jitter (canonical)
     latency_ms: Optional[float] = None
-    avg_rtt_ms: Optional[float] = None  # Alias
     jitter_ms: Optional[float] = None
 
-    # Metadata & Path
+    # Metadata & Path (canonical)
     duration_s: Optional[float] = None
     egress_path: Optional[str] = None
     verdict: Optional[str] = None
@@ -178,14 +178,10 @@ class ConvMetrics(BaseModel):
             sent=sent_val,
             received=rcvd_val,
             loss_percent=loss_val,
-            loss_pct=loss_val,
             uplink_loss_pct=tx_loss,
-            tx_loss_pct=tx_loss,
             downlink_loss_pct=rx_loss,
-            rx_loss_pct=rx_loss,
             max_blackout_ms=max_bo,
             latency_ms=lat_val,
-            avg_rtt_ms=lat_val,
             jitter_ms=jit_val,
             duration_s=dur_val,
             egress_path=egress_val,
