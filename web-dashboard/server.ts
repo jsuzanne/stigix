@@ -3191,7 +3191,7 @@ app.get('/api/version', (req, res) => {
 });
 
 // API: Speed Test (Public endpoint)
-app.get('/api/connectivity/speedtest', async (req, res) => {
+app.get('/api/connectivity/speedtest', authenticateToken, async (req, res) => {
     try {
         // exec already imported at top
         // util.promisify already imported as promisify
@@ -3231,7 +3231,7 @@ app.get('/api/connectivity/speedtest', async (req, res) => {
 });
 
 // API: Iperf Client
-app.post('/api/connectivity/iperf/client', async (req, res) => {
+app.post('/api/connectivity/iperf/client', authenticateToken, async (req, res) => {
     const { target, duration = 5, parallel = 1, reverse = false } = req.body;
 
     if (!target) {
@@ -3518,7 +3518,7 @@ app.get('/api/status', (req, res) => {
 
 // API: Traffic Control - Get Status
 // API: Traffic Control - Get Status
-app.get('/api/traffic/status', (req, res) => {
+app.get('/api/traffic/status', authenticateToken, (req, res) => {
     const defaultInterval = parseFloat(process.env.SLEEP_BETWEEN_REQUESTS || '1.0');
 
     if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
