@@ -261,7 +261,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'get_test_status',
-        description: 'Get the status and metrics of a specific test (e.g. CONV-XXXX or XFR-XXXX) or all currently running tests on a node.',
+        description: 'Get the status and metrics of a specific test on a SOURCE node. CRITICAL: you MUST pass (1) agent_id = the source node that ran the test (NOT the target, NOT the local node) and (2) test_id = the sequence_id returned by run_test (e.g. "XFR-0003", never a UUID). Poll this tool every 2-3 seconds until status="completed", then read metrics. If the test_id is not found, check that agent_id matches the source node.',
         input_schema: {
             type: 'object',
             properties: {
@@ -1782,8 +1782,11 @@ export async function executeCopilotTool(
                             ctx.xfrManager.startJob(id);
                             const job = ctx.xfrManager.getJob(id);
                             results.push({
-                                test_id: id,
+                                // Use sequence_id as the canonical test_id the model should poll with
+                                test_id: sequence_id || id,
                                 sequence_id: sequence_id,
+                                canonical_poll_id: sequence_id,   // always use this with get_test_status
+                                source_agent_id: ctx.localNodeId || 'local', // always pass this to get_test_status
                                 profile: 'xfr',
                                 status: job?.status || 'running',
                                 source: sourceNodeContext.siteName,
@@ -1807,8 +1810,11 @@ export async function executeCopilotTool(
                                 });
                             } else {
                                 results.push({
-                                    test_id: data.id || data.jobId,
+                                    // Use sequence_id as the canonical test_id the model should poll with
+                                    test_id: data.sequence_id || data.id || data.jobId,
                                     sequence_id: data.sequence_id,
+                                    canonical_poll_id: data.sequence_id,   // always use this with get_test_status
+                                    source_agent_id: sourceNodeContext.agentId || sourceNodeContext.siteName, // always pass this to get_test_status
                                     profile: 'xfr',
                                     status: data.status || 'running',
                                     source: sourceNodeContext.siteName,
@@ -1966,6 +1972,14 @@ export async function executeCopilotTool(
                                 duration_s: matchedConv.duration_s
                             };
                         }
+
+                        // Test ID provided but not found — return explicit error to prevent hallucination
+                        return {
+                            error: `Test '${testIdFilter}' not found on node '${nodeCtx.siteName}'.`,
+                            hint: 'Check that agent_id matches the SOURCE node that ran the test (not the target). Use the sequence_id (e.g. XFR-0003) returned by run_test as test_id — never a UUID. The test may also have expired from in-memory history.',
+                            node: nodeCtx.siteName,
+                            status: 'not_found'
+                        };
                     }
 
                     return {
