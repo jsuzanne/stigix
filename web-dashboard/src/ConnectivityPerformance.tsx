@@ -77,8 +77,8 @@ const GlobalExperienceGauge = ({ score }: { score: number }) => {
         ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' 
         : 'bg-red-500/10 text-red-400 border-red-500/20';
 
-    const size = 110;
-    const stroke = 8;
+    const size = 132;
+    const stroke = 9;
     const r = (size - stroke) / 2;
     const circ = 2 * Math.PI * r;
     const dash = (Math.max(0, Math.min(100, score)) / 100) * circ;
@@ -86,7 +86,7 @@ const GlobalExperienceGauge = ({ score }: { score: number }) => {
     const cy = size / 2;
 
     return (
-        <div className="flex flex-col items-center justify-center my-auto">
+        <div className="flex flex-col items-center justify-center my-auto py-1">
             <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
                 <svg width={size} height={size} className="transform -rotate-90">
                     <circle
@@ -108,23 +108,23 @@ const GlobalExperienceGauge = ({ score }: { score: number }) => {
                         strokeLinecap="round"
                         style={{
                             transition: 'stroke-dasharray 0.8s ease-in-out, stroke 0.4s ease',
-                            filter: `drop-shadow(0 0 6px ${strokeColor}55)`
+                            filter: `drop-shadow(0 0 8px ${strokeColor}66)`
                         }}
                     />
                 </svg>
 
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
                     <div className="flex items-baseline justify-center">
-                        <span className="text-3xl font-black font-mono tracking-normal text-text-primary">
+                        <span className="text-4xl font-black font-mono tracking-normal text-text-primary">
                             {score}
                         </span>
-                        <span className="text-[11px] font-bold text-text-muted ml-0.5 opacity-60">/100</span>
+                        <span className="text-xs font-bold text-text-muted ml-1 opacity-60">/100</span>
                     </div>
                 </div>
             </div>
 
-            <div className="mt-2 flex items-center gap-1.5">
-                <span className={cn("px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border", statusBadgeClass)}>
+            <div className="mt-3 flex items-center gap-1.5">
+                <span className={cn("px-3 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border", statusBadgeClass)}>
                     {statusLabel}
                 </span>
             </div>
@@ -267,21 +267,22 @@ function GlobalScoreTrendChart({ results, timeRange }: { results: any[]; timeRan
     }, [chartData]);
 
     if (!chartData.length) return (
-        <div className="h-[130px] flex items-center justify-center text-text-muted text-xs italic opacity-60">No data for this period</div>
+        <div className="h-full min-h-[160px] flex items-center justify-center text-text-muted text-xs italic opacity-60">No data for this period</div>
     );
     return (
-        <div className="h-[130px] w-full">
+        <div className="h-full w-full min-h-[170px] flex-1">
             <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 8, bottom: 0, left: -28 }}>
+                <AreaChart data={chartData} margin={{ top: 12, right: 12, bottom: 0, left: -24 }}>
                     <defs>
                         <linearGradient id="globalScoreGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                            <stop offset="0%" stopColor="#6366f1" stopOpacity={0.45} />
+                            <stop offset="60%" stopColor="#6366f1" stopOpacity={0.12} />
+                            <stop offset="100%" stopColor="#6366f1" stopOpacity={0.0} />
                         </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.4} vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} vertical={false} />
                     <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={9} tickLine={false} axisLine={false} />
-                    <YAxis domain={[0, 100]} stroke="var(--text-muted)" fontSize={9} tickLine={false} axisLine={false} width={32} />
+                    <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} stroke="var(--text-muted)" fontSize={9} tickLine={false} axisLine={false} width={30} />
                     <ReTooltip
                         contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.15)' }}
                         itemStyle={{ color: 'var(--text-primary)', fontSize: '11px', fontWeight: 'bold' }}
@@ -322,11 +323,11 @@ function GlobalScoreTrendChart({ results, timeRange }: { results: any[]; timeRan
                     <Area 
                         type="monotone" 
                         dataKey="score" 
-                        stroke="#6366f1" 
-                        strokeWidth={2} 
+                        stroke="#818cf8" 
+                        strokeWidth={2.5} 
                         fillOpacity={1} 
                         fill="url(#globalScoreGrad)" 
-                        dot={{ r: 3.5, stroke: '#6366f1', strokeWidth: 1.5, fill: 'var(--card)' }} 
+                        dot={{ r: 3.5, stroke: '#818cf8', strokeWidth: 1.5, fill: 'var(--card)' }} 
                         activeDot={{ r: 6, fill: '#6366f1', stroke: '#fff', strokeWidth: 2 }} 
                     />
                 </AreaChart>
@@ -813,7 +814,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden flex flex-col xl:flex-row">
                     
                     {/* Left: Global Experience */}
-                    <div className="flex flex-col border-b xl:border-b-0 xl:border-r border-border bg-card-secondary/10 w-full xl:w-[250px] shrink-0">
+                    <div className="flex flex-col border-b xl:border-b-0 xl:border-r border-border bg-card-secondary/10 w-full xl:w-[275px] shrink-0">
                         <div className="flex items-center justify-center px-6 py-3 border-b border-border bg-card-secondary/40 h-[49px]">
                             <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
                                 <Gauge size={14} className="text-blue-500" /> Global Experience
@@ -821,7 +822,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                         </div>
                         <div className="flex-1 p-5 flex flex-col items-center justify-center text-center">
                             {loadingStats ? (
-                                <div className="h-24 w-24 rounded-full bg-card-secondary animate-pulse my-auto" />
+                                <div className="h-28 w-28 rounded-full bg-card-secondary animate-pulse my-auto" />
                             ) : (
                                 <GlobalExperienceGauge score={stats?.globalHealth || 0} />
                             )}
@@ -845,19 +846,17 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 ))}
                             </div>
                         </div>
-                        <div className="px-6 pt-4 pb-3 flex-1 flex flex-col justify-end">
+                        <div className="p-4 flex-1 flex flex-col min-h-[195px]">
                             {loadingStats ? (
-                                <div className="h-[140px] flex items-center justify-center"><div className="w-full h-full bg-card-secondary animate-pulse rounded-xl" /></div>
+                                <div className="flex-1 flex items-center justify-center"><div className="w-full h-full bg-card-secondary animate-pulse rounded-xl" /></div>
                             ) : (
-                                <div className="h-[140px] w-full">
-                                    <GlobalScoreTrendChart results={results} timeRange={timeRange} />
-                                </div>
+                                <GlobalScoreTrendChart results={results} timeRange={timeRange} />
                             )}
                         </div>
                     </div>
 
                     {/* Right: Flaky Probes */}
-                    <div className="w-full xl:w-[320px] shrink-0 flex flex-col min-w-0">
+                    <div className="w-full xl:w-[340px] shrink-0 flex flex-col min-w-0">
                         <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-card-secondary/40 h-[49px]">
                             <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
                                 <Flame size={14} className="text-orange-500" /> Unstable & Down Probes
