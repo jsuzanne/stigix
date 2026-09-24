@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { LineChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
+import { AreaChart, LineChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Statistics from './Statistics';
 import Security from './Security';
 import Voice from './Voice';
@@ -190,6 +190,17 @@ export default function App() {
       return parseFloat(localStorage.getItem('stigix_rpm_cache') || '0');
     } catch { return 0; }
   });
+
+  const trafficMetrics = useMemo(() => {
+    if (!history || history.length === 0) {
+      return { avg: 0, peak: 0, current: Math.round(currentRpm) || 0 };
+    }
+    const values = history.map((h: any) => Number(h.requests) || 0);
+    const peak = values.length > 0 ? Math.max(...values) : 0;
+    const nonZero = values.filter((v: number) => v > 0);
+    const avg = nonZero.length > 0 ? Math.round(nonZero.reduce((a: number, b: number) => a + b, 0) / nonZero.length) : 0;
+    return { avg, peak, current: Math.round(currentRpm) || 0 };
+  }, [history, currentRpm]);
 
   const addUser = async () => {
     if (!token) return;
@@ -1504,14 +1515,37 @@ export default function App() {
 
             {/* Main Chart */}
             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-center mb-6">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
-                    <BarChart3 size={20} />
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
+                      <BarChart3 size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-text-primary tracking-tight">Traffic Volume</h3>
+                      <p className="text-[10px] text-text-muted font-bold uppercase tracking-wider">SaaS & WAN Real-Time Monitor</p>
+                    </div>
                   </div>
-                  <h3 className="text-lg font-black text-text-primary tracking-tight">Traffic Volume</h3>
+
+                  {/* Summary Metric Pills */}
+                  <div className="flex items-center gap-2 sm:ml-3 sm:pl-3 sm:border-l sm:border-border/50">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                      <span className="text-[10px] uppercase font-black text-blue-400 tracking-wider">Rate:</span>
+                      <span className="font-mono font-black text-blue-300">{Math.round(currentRpm)} <span className="text-[9px] font-normal text-text-muted">req/min</span></span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card-secondary/50 border border-border text-xs">
+                      <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Avg:</span>
+                      <span className="font-mono font-bold text-text-primary">{trafficMetrics.avg} <span className="text-[9px] font-normal text-text-muted">req/min</span></span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card-secondary/50 border border-border text-xs">
+                      <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Peak:</span>
+                      <span className="font-mono font-bold text-amber-400">{trafficMetrics.peak} <span className="text-[9px] font-normal text-text-muted">req/min</span></span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex bg-card-secondary/20 p-1 rounded-xl border border-border">
+
+                <div className="flex bg-card-secondary/20 p-1 rounded-xl border border-border self-end sm:self-auto">
                   {(['1h', '6h', '24h'] as const).map((range) => (
                     <button
                       key={range}
@@ -1528,6 +1562,7 @@ export default function App() {
                   ))}
                 </div>
               </div>
+
               <div className="h-[300px] w-full relative">
                 {isHistoryLoading && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm z-10 rounded-xl">
@@ -1538,14 +1573,15 @@ export default function App() {
                   </div>
                 )}
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={history}>
+                  <AreaChart data={history}>
                     <defs>
-                      <linearGradient id="colorRequests" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                      <linearGradient id="colorRequestsGlow" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.38} />
+                        <stop offset="60%" stopColor="#3b82f6" stopOpacity={0.08} />
+                        <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
                     <XAxis
                       dataKey="time"
                       tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }}
@@ -1569,36 +1605,48 @@ export default function App() {
                       }}
                     />
                     <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        borderRadius: '12px',
-                        fontSize: '11px',
-                        color: '#fff',
-                        backdropFilter: 'blur(8px)',
-                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)'
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          const reqs = payload[0].value;
+                          return (
+                            <div className="bg-slate-950/95 border border-blue-500/30 backdrop-blur-xl rounded-xl p-3 shadow-2xl shadow-blue-950/50 text-xs min-w-[170px]">
+                              <div className="flex items-center justify-between gap-3 pb-2 mb-2 border-b border-white/10">
+                                <span className="text-slate-400 font-mono text-[11px] font-semibold">{label || data.time}</span>
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-500/20 text-blue-400 text-[9px] font-black uppercase tracking-wider">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                                  Live
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-4 py-1">
+                                <span className="text-slate-300 font-medium text-[11px]">Traffic Rate:</span>
+                                <span className="text-blue-400 font-mono font-black text-sm">{reqs} <span className="text-[10px] text-slate-400 font-normal">req/min</span></span>
+                              </div>
+                              {data.total !== undefined && (
+                                <div className="flex items-center justify-between gap-4 pt-1 border-t border-white/5 text-[11px] text-slate-400">
+                                  <span>Cumulative:</span>
+                                  <span className="font-mono font-bold text-slate-200">{Number(data.total).toLocaleString()} reqs</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
                       }}
-                      itemStyle={{ color: '#3b82f6', fontWeight: 'bold' }}
                       cursor={{ stroke: '#3b82f6', strokeWidth: 1, strokeDasharray: '4 4' }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="requests"
-                      stroke="#3b82f6"
-                      strokeWidth={3}
-                      dot={false}
-                      activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: '#3b82f6' }}
-                      name="Requests/Min"
-                      isAnimationActive={false}
                     />
                     <Area
                       type="monotone"
                       dataKey="requests"
-                      stroke="none"
-                      fill="url(#colorRequests)"
+                      stroke="#3b82f6"
+                      strokeWidth={2.5}
                       fillOpacity={1}
+                      fill="url(#colorRequestsGlow)"
+                      activeDot={{ r: 5, stroke: '#93c5fd', strokeWidth: 2, fill: '#1d4ed8' }}
+                      name="Traffic Rate"
+                      isAnimationActive={false}
                     />
-                  </LineChart>
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
             </div>
