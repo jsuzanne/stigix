@@ -201,6 +201,15 @@ tools:
     # get_diagnostics calls get_agent_dashboard → returns {stats, version, uptime}
     expected_keys: [stats, version]
 
+  get_server_info:
+    category: read
+    scope: global
+    min_node_version: "2.0.0"
+    size_budget_kb: 5
+    timeout_class: fast
+    nominal_args: {}
+    expected_keys: [version, git_commit, build_date]
+
   get_health_matrix:
     category: read
     scope: node

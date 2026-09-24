@@ -8,7 +8,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from .registry import RegistryClient
-from ..types import TestRun, TestStatus, StigixEndpoint, ConvMetrics
+from ..types import TestRun, TestStatus, StigixEndpoint, ConvMetrics, compute_conv_verdict
 
 logger = logging.getLogger(__name__)
 
@@ -413,48 +413,6 @@ class TestOrchestrator:
                     if not job:
                         logger.warning(f"Job {mapping['local_id']} not found in convergence status or history on {mapping['source_url']}")
                         return TestStatus(test_id=test_id, status="unknown", source_id=mapping["source_id"], target_id=mapping["target_id"])
-                    
-                    # ── Full convergence metrics from daemon ───────────────────
-                    def _bo_verdict(max_bo: Any) -> str:
-                        if max_bo is None:
-                            return "UNKNOWN"
-                        try:
-                            mb = float(max_bo)
-                        except Exception:
-                            return "UNKNOWN"
-                        if mb == 0: return "PERFECT"
-                        if mb < 1000: return "GOOD"
-                        if mb < 5000: return "DEGRADED"
-                        if mb < 10000: return "BAD"
-                        return "CRITICAL"
-
-                    max_bo = job.get("max_blackout_ms") or job.get("maxBlackout") or job.get("blackout")
-                    metrics = {
-                        # Packet counts
-                        "sent": job.get("sent") or job.get("tx_total") or 0,
-                        "received": job.get("received") or job.get("rx_total") or 0,
-                        # Overall loss
-                        "loss_percent": job.get("loss_pct") or job.get("loss_percent") or 0,
-                        # Directional loss
-                        "uplink_loss_pct": job.get("uplink_loss_pct") or job.get("uplinkLoss") or 0,
-                        "downlink_loss_pct": job.get("downlink_loss_pct") or job.get("downlinkLoss") or 0,
-                        # Blackout
-                        "max_blackout_ms": max_bo,
-                        "blackout_count": job.get("blackout_count") or job.get("blackoutCount") or 0,
-                        "total_blackout_ms": job.get("total_blackout_ms") or job.get("totalBlackoutMs") or 0,
-                        # RTT
-                        "latency_ms": job.get("avg_rtt_ms") or job.get("latency_ms") or 0,
-                        "min_latency_ms": job.get("min_rtt_ms") or job.get("minRtt") or 0,
-                        "max_latency_ms": job.get("max_rtt_ms") or job.get("maxRtt") or 0,
-                        # Jitter
-                        "jitter_ms": job.get("jitter_ms") or job.get("avg_jitter_ms") or 0,
-                        "min_jitter_ms": job.get("min_jitter_ms") or job.get("minJitter") or 0,
-                        "max_jitter_ms": job.get("max_jitter_ms") or job.get("maxJitter") or 0,
-                        # Metadata
-                        "duration_s": job.get("duration_s") or job.get("durationSec") or 0,
-                        "egress_path": job.get("egress_path") or job.get("egressPath") or "",
-                        "verdict": _bo_verdict(max_bo),
-                    }
 
                     # Derive status from 'running' boolean if present, else fallback to 'status' string
                     status_str = "running"
@@ -612,7 +570,7 @@ class TestOrchestrator:
                             return {
                                 "success": True,
                                 "message": "Test stopped and final metrics captured",
-                                "metrics": ConvMetrics.from_daemon(job).model_dump(exclude_none=True),
+                                "metrics": ConvMetrics.from_daemon(job).model_dump(),
                             }
                 except Exception as e:
                     logger.warning(f"Error polling history: {e}")
@@ -2488,24 +2446,22 @@ class TestOrchestrator:
 
                 cleaned_rows = []
                 for row in rows:
-                    if summary_only:
-                        item = _strip_record(dict(row))
-                        # Keep only whitelisted keys
-                        item = {k: v for k, v in item.items() if k in _SUMMARY_WHITELIST}
-                    else:
-                        item = dict(row)
-                        # Even in full mode, drop the very heaviest arrays to avoid 1MB overflow
-                        for heavy_key in _HEAVY_ROOT:
-                            item.pop(heavy_key, None)
+                    metrics_dump = ConvMetrics.from_daemon(row).model_dump()
+                    item = {
+                        "test_id": row.get("test_id") or row.get("testId"),
+                        "testId": row.get("testId") or row.get("test_id"),
+                        "target": row.get("target"),
+                        "label": row.get("label"),
+                        "timestamp": row.get("timestamp") or row.get("start_time"),
+                        "path_evolution": row.get("path_evolution"),
+                        **metrics_dump
+                    }
+                    if not summary_only:
+                        # In full mode, keep non-heavy auxiliary fields from raw record
+                        for k, v in row.items():
+                            if k not in item and k not in _HEAVY_ROOT:
+                                item[k] = v
 
-                    # Enrich with verdict + normalised blackout field
-                    max_bo = None
-                    for key in ("max_blackout_ms", "maxBlackout", "blackout"):
-                        if key in item:
-                            max_bo = item[key]
-                            break
-                    item["verdict"] = _verdict(max_bo)
-                    item["max_blackout_ms"] = max_bo
                     cleaned_rows.append(item)
 
                 result = {"agent_id": agent_id, "count": len(cleaned_rows), "history": cleaned_rows}
@@ -3275,6 +3231,31 @@ class TestOrchestrator:
     # System Health Matrix & Diagnostics (Phase 1)
     # -------------------------------------------------------------------------
 
+    def get_build_info(self) -> Dict[str, Any]:
+        """Returns MCP server build metadata (git commit, build date, software version)."""
+        import subprocess
+        git_hash = os.getenv("GIT_COMMIT") or os.getenv("STIGIX_BUILD") or ""
+        build_date = os.getenv("BUILD_DATE") or ""
+        if not git_hash:
+            try:
+                res = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=1.0)
+                if res.returncode == 0:
+                    git_hash = res.stdout.strip()
+            except Exception:
+                pass
+        if not build_date:
+            try:
+                res = subprocess.run(["git", "log", "-1", "--format=%ci"], capture_output=True, text=True, timeout=1.0)
+                if res.returncode == 0:
+                    build_date = res.stdout.strip()
+            except Exception:
+                pass
+        return {
+            "version": os.getenv("STIGIX_VERSION", "2.0.64"),
+            "git_commit": git_hash or "unknown",
+            "build_date": build_date or "unknown",
+        }
+
     async def get_health_matrix(self, agent_id: str) -> Dict[str, Any]:
         """Fetch the 360-degree system health matrix across all 9 subsystems."""
         agent = await self.registry.get_endpoint(agent_id)
@@ -3286,7 +3267,10 @@ class TestOrchestrator:
             try:
                 r = await client.get(f"{agent.api_base_url}/api/system/health-matrix", headers=headers)
                 r.raise_for_status()
-                return r.json()
+                data = r.json()
+                if isinstance(data, dict):
+                    data["mcp_server_build"] = self.get_build_info()
+                return data
             except Exception as e:
                 return self._handle_exception(f"Health matrix fetch on {agent_id}", e)
 

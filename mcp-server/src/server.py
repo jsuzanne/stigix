@@ -1650,6 +1650,14 @@ async def get_prisma_flows(
 # -----------------------------------------------------------------------------
 
 @mcp.tool()
+async def get_server_info() -> dict:
+    """
+    Get MCP server version, Git commit hash, and build timestamp for traceability.
+    """
+    return orchestrator.get_build_info()
+
+
+@mcp.tool()
 async def get_health_matrix(agent_id: str) -> dict:
     """
     Get the 360° System Health Matrix of a Stigix node.

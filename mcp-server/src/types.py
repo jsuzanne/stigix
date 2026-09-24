@@ -84,42 +84,69 @@ class TestRun(BaseModel):
     error: Optional[str] = Field(None, description="Error message if status=error")
 
 
+def compute_conv_verdict(max_blackout_ms: Optional[Union[float, int, str]]) -> Optional[str]:
+    """Calculate standard verdict string from max_blackout_ms.
+    Returns None if max_blackout_ms is None / empty (no blackout measured yet).
+    """
+    if max_blackout_ms is None or max_blackout_ms == "":
+        return None
+    try:
+        mb = float(max_blackout_ms)
+    except (TypeError, ValueError):
+        return None
+    if mb == 0:
+        return "PERFECT"
+    if mb < 1000:
+        return "GOOD"
+    if mb < 5000:
+        return "DEGRADED"
+    if mb < 10000:
+        return "BAD"
+    return "CRITICAL"
+
+
 class ConvMetrics(BaseModel):
     """Metrics from a convergence (conv) or failover test.
 
     Numeric fields default to None (not 0) when absent so callers can distinguish
     'not measured' from 'measured zero'. String fields default to None so an empty
-    string returned by the daemon is normalised to None by the validator below.
+    string returned by the daemon is normalised to None.
     """
 
     # Packet counts
     sent: Optional[float] = None
     received: Optional[float] = None
+
     # Loss
     loss_percent: Optional[float] = None
+    loss_pct: Optional[float] = None  # Deprecated alias for backwards compatibility
     uplink_loss_pct: Optional[float] = None
+    tx_loss_pct: Optional[float] = None  # Alias
     downlink_loss_pct: Optional[float] = None
+    rx_loss_pct: Optional[float] = None  # Alias
+
     # Blackout
     max_blackout_ms: Optional[float] = None
-    blackout_count: Optional[float] = None
-    total_blackout_ms: Optional[float] = None
-    # RTT
+
+    # RTT & Jitter
     latency_ms: Optional[float] = None
-    min_latency_ms: Optional[float] = None
-    max_latency_ms: Optional[float] = None
-    # Jitter
+    avg_rtt_ms: Optional[float] = None  # Alias
     jitter_ms: Optional[float] = None
-    min_jitter_ms: Optional[float] = None
-    max_jitter_ms: Optional[float] = None
-    # Metadata
+
+    # Metadata & Path
     duration_s: Optional[float] = None
-    # String fields — must NOT be in Dict[str, float]
     egress_path: Optional[str] = None
     verdict: Optional[str] = None
 
     @classmethod
     def from_daemon(cls, d: Dict[str, Any]) -> "ConvMetrics":
         """Build a ConvMetrics from a raw daemon dict, normalising empty strings to None."""
+        def _first_valid(source: Dict[str, Any], *keys: str) -> Any:
+            for k in keys:
+                if k in source and source[k] is not None and source[k] != "":
+                    return source[k]
+            return None
+
         def _f(val: Any) -> Optional[float]:
             if val is None or val == "":
                 return None
@@ -133,24 +160,36 @@ class ConvMetrics(BaseModel):
                 return None
             return str(val)
 
+        sent_val = _f(_first_valid(d, "sent", "tx_total"))
+        rcvd_val = _f(_first_valid(d, "received", "rx_total"))
+        loss_val = _f(_first_valid(d, "loss_pct", "loss_percent", "total_loss_pct", "live_loss_pct"))
+        tx_loss = _f(_first_valid(d, "tx_loss_pct", "uplink_loss_pct", "uplinkLoss"))
+        rx_loss = _f(_first_valid(d, "rx_loss_pct", "downlink_loss_pct", "downlinkLoss"))
+        max_bo = _f(_first_valid(d, "max_blackout_ms", "maxBlackout", "blackout"))
+        lat_val = _f(_first_valid(d, "avg_rtt_ms", "latency_ms", "current_rtt_ms"))
+        jit_val = _f(_first_valid(d, "jitter_ms", "avg_jitter_ms"))
+        dur_val = _f(_first_valid(d, "duration_s", "durationSec"))
+        egress_val = _s(_first_valid(d, "egress_path", "egressPath"))
+        
+        verdict_raw = _s(d.get("verdict"))
+        verdict_val = verdict_raw if verdict_raw else compute_conv_verdict(max_bo)
+
         return cls(
-            sent=_f(d.get("sent") or d.get("tx_total")),
-            received=_f(d.get("received") or d.get("rx_total")),
-            loss_percent=_f(d.get("loss_pct") or d.get("loss_percent")),
-            uplink_loss_pct=_f(d.get("uplink_loss_pct") or d.get("uplinkLoss")),
-            downlink_loss_pct=_f(d.get("downlink_loss_pct") or d.get("downlinkLoss")),
-            max_blackout_ms=_f(d.get("max_blackout_ms") or d.get("maxBlackout") or d.get("blackout")),
-            blackout_count=_f(d.get("blackout_count") or d.get("blackoutCount")),
-            total_blackout_ms=_f(d.get("total_blackout_ms") or d.get("totalBlackoutMs")),
-            latency_ms=_f(d.get("avg_rtt_ms") or d.get("latency_ms")),
-            min_latency_ms=_f(d.get("min_rtt_ms") or d.get("minRtt")),
-            max_latency_ms=_f(d.get("max_rtt_ms") or d.get("maxRtt")),
-            jitter_ms=_f(d.get("jitter_ms") or d.get("avg_jitter_ms")),
-            min_jitter_ms=_f(d.get("min_jitter_ms") or d.get("minJitter")),
-            max_jitter_ms=_f(d.get("max_jitter_ms") or d.get("maxJitter")),
-            duration_s=_f(d.get("duration_s") or d.get("durationSec")),
-            egress_path=_s(d.get("egress_path") or d.get("egressPath")),
-            verdict=_s(d.get("verdict")),
+            sent=sent_val,
+            received=rcvd_val,
+            loss_percent=loss_val,
+            loss_pct=loss_val,
+            uplink_loss_pct=tx_loss,
+            tx_loss_pct=tx_loss,
+            downlink_loss_pct=rx_loss,
+            rx_loss_pct=rx_loss,
+            max_blackout_ms=max_bo,
+            latency_ms=lat_val,
+            avg_rtt_ms=lat_val,
+            jitter_ms=jit_val,
+            duration_s=dur_val,
+            egress_path=egress_val,
+            verdict=verdict_val,
         )
 
 
