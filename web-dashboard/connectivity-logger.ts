@@ -199,12 +199,33 @@ export class ConnectivityLogger {
                 : httpResults;
             const uniqueHttpEndpoints = new Set(activeHttpResults.map(r => r.endpointId)).size;
 
-            // Group by endpoint to find flaky ones (all types)
-            const endpointStats = new Map<string, { name: string, count: number, success: number, totalScore: number }>();
+            // Group by endpoint to find flaky / down ones (all types)
+            const endpointStats = new Map<string, { 
+                name: string, 
+                type?: string,
+                target?: string,
+                count: number, 
+                success: number, 
+                totalScore: number,
+                lastError?: string,
+                lastLatency?: number
+            }>();
             filtered.forEach(r => {
-                const stats = endpointStats.get(r.endpointId) || { name: r.endpointName, count: 0, success: 0, totalScore: 0 };
+                const stats = endpointStats.get(r.endpointId) || { 
+                    name: r.endpointName, 
+                    type: r.type,
+                    target: r.target,
+                    count: 0, 
+                    success: 0, 
+                    totalScore: 0,
+                    lastError: r.error,
+                    lastLatency: r.latency
+                };
                 stats.count++;
                 if (r.reachable) stats.success++;
+                if (r.error && !stats.lastError) stats.lastError = r.error;
+                if (r.type && !stats.type) stats.type = r.type;
+                if (r.target && !stats.target) stats.target = r.target;
                 stats.totalScore += r.score;
                 endpointStats.set(r.endpointId, stats);
             });
@@ -214,12 +235,16 @@ export class ConnectivityLogger {
                 .map(([id, stats]) => ({
                     id,
                     name: stats.name,
+                    type: (stats.type || 'HTTP').toUpperCase(),
+                    target: stats.target,
+                    lastError: stats.lastError || (stats.success === 0 ? 'Probe unreachable (100% loss)' : 'Intermittent timeouts / drops'),
                     reliability: Math.round((stats.success / stats.count) * 100),
-                    avgScore: Math.round(stats.totalScore / stats.count)
+                    avgScore: Math.round(stats.totalScore / stats.count),
+                    isDown: stats.success === 0
                 }))
                 .filter(e => e.reliability < 95 || e.avgScore < 70)
                 .sort((a, b) => (a.reliability + a.avgScore) - (b.reliability + b.avgScore))
-                .slice(0, 3);
+                .slice(0, 5);
 
             const computedStats = {
                 globalHealth: activeScoreResults.length > 0

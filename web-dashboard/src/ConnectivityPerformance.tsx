@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route } from 'lucide-react';
+import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine, ReferenceArea } from 'recharts';
 import { twMerge } from 'tailwind-merge';
 import { TracerouteModal } from './components/TracerouteModal';
@@ -777,14 +777,19 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                     <div className="w-full xl:w-[320px] shrink-0 flex flex-col min-w-0">
                         <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-card-secondary/40 h-[49px]">
                             <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
-                                <Flame size={14} className="text-orange-500" /> Flaky Probes
+                                <Flame size={14} className="text-orange-500" /> Unstable & Down Probes
                             </div>
+                            {stats?.flakyEndpoints?.length > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 text-[9px] font-mono font-bold">
+                                    {stats.flakyEndpoints.length}
+                                </span>
+                            )}
                         </div>
-                        <div className="p-5 space-y-2 overflow-y-auto flex-1 max-h-[250px] xl:max-h-none bg-card-secondary/5">
+                        <div className="p-3 space-y-2 overflow-y-auto flex-1 max-h-[250px] xl:max-h-none bg-card-secondary/5 scrollbar-thin">
                             {loadingStats ? (
                                 <>
-                                    <div className="h-8 bg-card-secondary animate-pulse rounded border border-border" />
-                                    <div className="h-8 bg-card-secondary animate-pulse rounded border border-border opacity-60" />
+                                    <div className="h-10 bg-card-secondary animate-pulse rounded-lg border border-border" />
+                                    <div className="h-10 bg-card-secondary animate-pulse rounded-lg border border-border opacity-60" />
                                 </>
                             ) : stats?.flakyEndpoints?.filter((e: any) => {
                                 if (activeProbes.length > 0 && !activeProbes.includes(e.id)) return false;
@@ -794,15 +799,64 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                     if (activeProbes.length > 0 && !activeProbes.includes(e.id)) return false;
                                     return true;
                                 })
-                                .map((e: any) => (
-                                    <div key={e.id} className="flex items-center justify-between gap-2 text-[11px] bg-red-500/5 border border-red-500/20 p-2 rounded-lg transition-colors hover:bg-red-500/10">
-                                        <span className="text-text-primary font-bold min-w-0 flex-1 truncate pr-2">{e.name}</span>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                            <span className="text-red-600 dark:text-red-400 font-black font-mono">{e.reliability}%</span>
+                                .map((e: any) => {
+                                    const isOffline = e.reliability === 0 || e.isDown;
+                                    const typeColor = e.type === 'PING' || e.type === 'ICMP' 
+                                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' 
+                                        : e.type === 'DNS' 
+                                        ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
+                                        : 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+
+                                    return (
+                                        <div 
+                                            key={e.id} 
+                                            onClick={() => {
+                                                const found = (endpoints || []).find((ep: any) => ep.id === e.id || ep.name === e.name);
+                                                if (found) {
+                                                    setSelectedEndpoint(found);
+                                                    setShowDetailModal(true);
+                                                }
+                                            }}
+                                            className={cn(
+                                                "p-2.5 rounded-xl border transition-all cursor-pointer group flex flex-col gap-1.5 shadow-sm",
+                                                isOffline 
+                                                    ? "bg-red-500/5 border-red-500/20 hover:border-red-500/40 hover:bg-red-500/10" 
+                                                    : "bg-amber-500/5 border-amber-500/20 hover:border-amber-500/40 hover:bg-amber-500/10"
+                                            )}
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                                    <span className={cn("px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border", typeColor)}>
+                                                        {e.type || 'HTTP'}
+                                                    </span>
+                                                    <span className="text-text-primary font-bold text-xs truncate group-hover:text-blue-400 transition-colors">
+                                                        {e.name}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                    <span className={cn(
+                                                        "px-1.5 py-0.5 rounded text-[9px] font-black font-mono uppercase tracking-wider border",
+                                                        isOffline 
+                                                            ? "bg-red-500/20 text-red-400 border-red-500/30" 
+                                                            : "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                                                    )}>
+                                                        {isOffline ? 'DOWN (0%)' : `${e.reliability}%`}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            {e.lastError && (
+                                                <div className="flex items-center gap-1 text-[10px] text-text-muted truncate font-mono pl-0.5">
+                                                    <AlertCircle size={10} className={isOffline ? "text-red-400 flex-shrink-0" : "text-amber-400 flex-shrink-0"} />
+                                                    <span className="truncate opacity-85">{e.lastError}</span>
+                                                </div>
+                                            )}
                                         </div>
-                                    </div>
-                                )) : (
-                                <div className="text-xs text-text-muted italic py-4 text-center">All probes stable</div>
+                                    );
+                                }) : (
+                                <div className="text-xs text-text-muted italic py-6 text-center flex flex-col items-center gap-2">
+                                    <CheckCircle size={20} className="text-emerald-500 opacity-70" />
+                                    <span className="text-[11px] font-medium text-emerald-400/80">All monitored probes stable</span>
+                                </div>
                             )}
                         </div>
                     </div>
