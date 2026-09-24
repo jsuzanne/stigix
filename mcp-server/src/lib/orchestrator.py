@@ -384,13 +384,48 @@ class TestOrchestrator:
                         logger.warning(f"Job {mapping['local_id']} not found in convergence status or history on {mapping['source_url']}")
                         return TestStatus(test_id=test_id, status="unknown", source_id=mapping["source_id"], target_id=mapping["target_id"])
                     
-                    # Normalize metrics
+                    # ── Full convergence metrics from daemon ───────────────────
+                    def _bo_verdict(max_bo: Any) -> str:
+                        if max_bo is None:
+                            return "UNKNOWN"
+                        try:
+                            mb = float(max_bo)
+                        except Exception:
+                            return "UNKNOWN"
+                        if mb == 0: return "PERFECT"
+                        if mb < 1000: return "GOOD"
+                        if mb < 5000: return "DEGRADED"
+                        if mb < 10000: return "BAD"
+                        return "CRITICAL"
+
+                    max_bo = job.get("max_blackout_ms") or job.get("maxBlackout") or job.get("blackout")
                     metrics = {
-                        "loss_percent": job.get("loss_pct", 0) or job.get("loss_percent", 0),
-                        "latency_ms": job.get("avg_rtt_ms", 0) or job.get("latency_ms", 0),
-                        "jitter_ms": job.get("jitter_ms", 0)
+                        # Packet counts
+                        "sent": job.get("sent") or job.get("tx_total") or 0,
+                        "received": job.get("received") or job.get("rx_total") or 0,
+                        # Overall loss
+                        "loss_percent": job.get("loss_pct") or job.get("loss_percent") or 0,
+                        # Directional loss
+                        "uplink_loss_pct": job.get("uplink_loss_pct") or job.get("uplinkLoss") or 0,
+                        "downlink_loss_pct": job.get("downlink_loss_pct") or job.get("downlinkLoss") or 0,
+                        # Blackout
+                        "max_blackout_ms": max_bo,
+                        "blackout_count": job.get("blackout_count") or job.get("blackoutCount") or 0,
+                        "total_blackout_ms": job.get("total_blackout_ms") or job.get("totalBlackoutMs") or 0,
+                        # RTT
+                        "latency_ms": job.get("avg_rtt_ms") or job.get("latency_ms") or 0,
+                        "min_latency_ms": job.get("min_rtt_ms") or job.get("minRtt") or 0,
+                        "max_latency_ms": job.get("max_rtt_ms") or job.get("maxRtt") or 0,
+                        # Jitter
+                        "jitter_ms": job.get("jitter_ms") or job.get("avg_jitter_ms") or 0,
+                        "min_jitter_ms": job.get("min_jitter_ms") or job.get("minJitter") or 0,
+                        "max_jitter_ms": job.get("max_jitter_ms") or job.get("maxJitter") or 0,
+                        # Metadata
+                        "duration_s": job.get("duration_s") or job.get("durationSec") or 0,
+                        "egress_path": job.get("egress_path") or job.get("egressPath") or "",
+                        "verdict": _bo_verdict(max_bo),
                     }
-                    
+
                     # Derive status from 'running' boolean if present, else fallback to 'status' string
                     status_str = "running"
                     if "running" in job:
@@ -399,11 +434,11 @@ class TestOrchestrator:
                         status_str = job["status"]
 
                     return TestStatus(
-                        test_id=test_id, 
+                        test_id=test_id,
                         local_id=mapping["local_id"],
-                        status=status_str, 
-                        source_id=mapping["source_id"], 
-                        target_id=mapping["target_id"], 
+                        status=status_str,
+                        source_id=mapping["source_id"],
+                        target_id=mapping["target_id"],
                         metrics=metrics
                     )
 
@@ -544,17 +579,48 @@ class TestOrchestrator:
                         matching_jobs = [j for j in history if str(j.get("testId", "")).startswith(mapping["local_id"]) or str(j.get("test_id", "")).startswith(mapping["local_id"])]
                         if matching_jobs:
                             job = matching_jobs[-1]
-                            # Check if the metrics look somewhat final (not just 0s if it actually ran)
-                            # or just return it because we waited
+
+                            def _stop_verdict(max_bo: Any) -> str:
+                                if max_bo is None: return "UNKNOWN"
+                                try:
+                                    mb = float(max_bo)
+                                except Exception:
+                                    return "UNKNOWN"
+                                if mb == 0: return "PERFECT"
+                                if mb < 1000: return "GOOD"
+                                if mb < 5000: return "DEGRADED"
+                                if mb < 10000: return "BAD"
+                                return "CRITICAL"
+
+                            max_bo = job.get("max_blackout_ms") or job.get("maxBlackout") or job.get("blackout")
                             return {
                                 "success": True,
                                 "message": "Test stopped and final metrics captured",
                                 "metrics": {
-                                    "sent": job.get("sent", 0),
-                                    "received": job.get("received", 0),
-                                    "loss_pct": job.get("loss_pct", 0) or job.get("loss_percent", 0),
-                                    "latency_ms": job.get("avg_rtt_ms", 0) or job.get("latency_ms", 0),
-                                    "jitter_ms": job.get("jitter_ms", 0)
+                                    # Packet counts
+                                    "sent": job.get("sent") or job.get("tx_total") or 0,
+                                    "received": job.get("received") or job.get("rx_total") or 0,
+                                    # Overall loss
+                                    "loss_pct": job.get("loss_pct") or job.get("loss_percent") or 0,
+                                    # Directional loss
+                                    "uplink_loss_pct": job.get("uplink_loss_pct") or job.get("uplinkLoss") or 0,
+                                    "downlink_loss_pct": job.get("downlink_loss_pct") or job.get("downlinkLoss") or 0,
+                                    # Blackout
+                                    "max_blackout_ms": max_bo,
+                                    "blackout_count": job.get("blackout_count") or job.get("blackoutCount") or 0,
+                                    "total_blackout_ms": job.get("total_blackout_ms") or job.get("totalBlackoutMs") or 0,
+                                    # RTT
+                                    "latency_ms": job.get("avg_rtt_ms") or job.get("latency_ms") or 0,
+                                    "min_latency_ms": job.get("min_rtt_ms") or job.get("minRtt") or 0,
+                                    "max_latency_ms": job.get("max_rtt_ms") or job.get("maxRtt") or 0,
+                                    # Jitter
+                                    "jitter_ms": job.get("jitter_ms") or job.get("avg_jitter_ms") or 0,
+                                    "min_jitter_ms": job.get("min_jitter_ms") or job.get("minJitter") or 0,
+                                    "max_jitter_ms": job.get("max_jitter_ms") or job.get("maxJitter") or 0,
+                                    # Metadata
+                                    "duration_s": job.get("duration_s") or job.get("durationSec") or 0,
+                                    "egress_path": job.get("egress_path") or job.get("egressPath") or "",
+                                    "verdict": _stop_verdict(max_bo),
                                 }
                             }
                 except Exception as e:
@@ -2271,9 +2337,104 @@ class TestOrchestrator:
         self,
         agent_id: str,
         limit: int = 10,
-        summary_only: bool = True
+        summary_only: bool = True,
+        test_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Fetch the convergence/failover test history for a node with optional compact summary mode to prevent token overflow."""
+        """
+        Fetch the convergence/failover test history for a node.
+
+        summary_only=True (default) returns only aggregated KPIs per test — NO raw packet arrays.
+        Enforces a 200 KB response guard-rail: if payload is still too large, truncates and sets
+        truncated=True. limit is applied before any processing to avoid building huge structures.
+        test_id filters to a single record by testId or local id (partial match tolerated).
+        """
+        import json as _json
+
+        # Heavy keys that exist at the record root level (common names from the convergence daemon)
+        _HEAVY_ROOT = frozenset({
+            "samples", "raw_samples", "packets", "packet_log",
+            "time_series", "telemetry", "metrics_series",
+            "packet_sequence", "seq", "rawPackets",
+            "pathHistory_raw", "events_raw",
+        })
+        # Heavy keys nested inside sub-dicts (e.g. stats.samples, result.packets)
+        _HEAVY_NESTED_KEYS = frozenset({
+            "samples", "packets", "raw", "rawPackets", "data",
+        })
+
+        # Compact whitelist when summary_only=True — only these top-level keys are kept
+        _SUMMARY_WHITELIST = {
+            "testId", "test_id", "id", "label", "target", "targetId",
+            "startTime", "endTime", "timestamp", "duration_s", "durationSec",
+            "sent", "received", "tx_total", "rx_total",
+            "loss_pct", "loss_percent", "uplink_loss_pct", "uplinkLoss",
+            "downlink_loss_pct", "downlinkLoss",
+            "max_blackout_ms", "maxBlackout", "blackout",
+            "blackout_count", "blackoutCount",
+            "avg_rtt_ms", "latency_ms", "min_rtt_ms", "max_rtt_ms",
+            "jitter_ms", "min_jitter_ms", "max_jitter_ms",
+            "egress_path", "egressPath",
+            "path_transitions", "pathTransitions",  # lightweight list of {ts, path} only
+            "status", "running",
+            # enriched fields added by this method
+            "verdict", "max_blackout_ms",
+        }
+
+        def _verdict(max_bo: Any) -> str:
+            if max_bo is None:
+                return "UNKNOWN"
+            try:
+                mb = float(max_bo)
+            except Exception:
+                return "UNKNOWN"
+            if mb == 0:
+                return "PERFECT"
+            if mb < 1000:
+                return "GOOD"
+            if mb < 5000:
+                return "DEGRADED"
+            if mb < 10000:
+                return "BAD"
+            return "CRITICAL"
+
+        def _compact_path_transitions(raw: Any) -> Any:
+            """Keep only {timestamp, path} from path_transitions to avoid huge objects."""
+            if not isinstance(raw, list):
+                return raw
+            out = []
+            for entry in raw:
+                if isinstance(entry, dict):
+                    out.append({
+                        "ts": entry.get("timestamp") or entry.get("ts") or entry.get("time"),
+                        "path": entry.get("path") or entry.get("chosen_path") or entry.get("egressPath"),
+                    })
+            return out
+
+        def _strip_record(row: dict) -> dict:
+            """Apply aggressive summary_only stripping to a single history record."""
+            item: dict = {}
+            for k, v in row.items():
+                # Skip any heavy root-level array
+                if k in _HEAVY_ROOT:
+                    continue
+                # Compact path transition objects
+                if k in ("path_transitions", "pathTransitions"):
+                    item[k] = _compact_path_transitions(v)
+                    continue
+                # Strip heavy nested sub-dicts (e.g. result.packets, stats.data)
+                if isinstance(v, dict):
+                    cleaned_sub = {sk: sv for sk, sv in v.items() if sk not in _HEAVY_NESTED_KEYS and not isinstance(sv, list)}
+                    item[k] = cleaned_sub
+                # Drop unknown large lists not in whitelist
+                elif isinstance(v, list) and k not in ("path_transitions", "pathTransitions"):
+                    # Keep only if it's a list of scalars / very short
+                    if len(v) <= 5 and all(not isinstance(i, (dict, list)) for i in v):
+                        item[k] = v
+                    # else: drop silently
+                else:
+                    item[k] = v
+            return item
+
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"error": f"Agent {agent_id} not found."}
@@ -2284,45 +2445,58 @@ class TestOrchestrator:
                 r = await client.get(f"{agent.api_base_url}/api/convergence/history", headers=headers)
                 r.raise_for_status()
                 data = r.json()
-                rows = data if isinstance(data, list) else data.get("results", [])
-                rows = rows[:limit]
+                rows: list = data if isinstance(data, list) else data.get("results", [])
 
-                # Enrich each row with a human-readable verdict
-                def verdict(max_bo: Any) -> str:
-                    if max_bo is None:
-                        return "UNKNOWN"
-                    try:
-                        mb = float(max_bo)
-                    except Exception:
-                        return "UNKNOWN"
-                    if mb == 0:
-                        return "PERFECT"
-                    if mb < 1000:
-                        return "GOOD"
-                    if mb < 5000:
-                        return "DEGRADED"
-                    if mb < 10000:
-                        return "BAD"
-                    return "CRITICAL"
+                # ── Apply test_id filter BEFORE limit ─────────────────────────
+                if test_id:
+                    tid_lower = test_id.strip().lower()
+                    rows = [
+                        row for row in rows
+                        if tid_lower in str(row.get("testId", row.get("test_id", row.get("id", "")))).lower()
+                    ]
+
+                # ── Apply limit BEFORE building any structures ─────────────────
+                rows = rows[:limit]
 
                 cleaned_rows = []
                 for row in rows:
-                    item = dict(row)
+                    if summary_only:
+                        item = _strip_record(dict(row))
+                        # Keep only whitelisted keys
+                        item = {k: v for k, v in item.items() if k in _SUMMARY_WHITELIST}
+                    else:
+                        item = dict(row)
+                        # Even in full mode, drop the very heaviest arrays to avoid 1MB overflow
+                        for heavy_key in _HEAVY_ROOT:
+                            item.pop(heavy_key, None)
+
+                    # Enrich with verdict + normalised blackout field
                     max_bo = None
                     for key in ("max_blackout_ms", "maxBlackout", "blackout"):
                         if key in item:
                             max_bo = item[key]
                             break
-                    item["verdict"] = verdict(max_bo)
+                    item["verdict"] = _verdict(max_bo)
                     item["max_blackout_ms"] = max_bo
-
-                    if summary_only:
-                        # Strip large high-frequency sample arrays to keep payload compact
-                        for heavy_key in ("samples", "raw_samples", "packets", "packet_log", "time_series", "telemetry"):
-                            item.pop(heavy_key, None)
                     cleaned_rows.append(item)
 
-                return {"agent_id": agent_id, "count": len(cleaned_rows), "history": cleaned_rows}
+                result = {"agent_id": agent_id, "count": len(cleaned_rows), "history": cleaned_rows}
+
+                # ── 200 KB guard-rail ─────────────────────────────────────────
+                serialized = _json.dumps(result)
+                MAX_BYTES = 200_000
+                if len(serialized) > MAX_BYTES:
+                    # Drop records from the end until we fit, flag truncation
+                    while len(cleaned_rows) > 0 and len(_json.dumps(result)) > MAX_BYTES:
+                        cleaned_rows.pop()
+                        result = {"agent_id": agent_id, "count": len(cleaned_rows), "history": cleaned_rows}
+                    result["truncated"] = True
+                    result["truncation_hint"] = (
+                        f"Response exceeded {MAX_BYTES // 1000} KB. "
+                        "Use summary_only=true, reduce limit, or call get_convergence_report(test_id=...) for a specific test."
+                    )
+
+                return result
             except Exception as e:
                 logger.error(f"Failed to fetch convergence history for {agent_id}: {e}")
                 return {"error": str(e)}
@@ -2910,23 +3084,164 @@ class TestOrchestrator:
     async def query_prisma_flows(self, agent_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
         """
         Query the Prisma SD-WAN Flow Browser via the Stigix node's local API.
+
+        PATH NAME CACHE (bug-fix):
+        When fast=False (default), the backend resolves path IDs to human-readable names
+        (e.g. "BR8-INET1 to DC1-INET"). This method stores the resulting path_id→name
+        mapping in an in-process cache keyed by (agent_id, site_id) with a 5-minute TTL.
+        When fast=True, the cache is consulted first so already-resolved names are preserved.
+        If the cache is cold, fast=True silently falls back to "Path ID: <id>" only for
+        unknown IDs — already-seen IDs are always resolved.
+
+        SINGLE-PACKET FLOWS NOTE (informational):
+        For a convergence test on UDP 6200, the Flow Browser typically shows:
+        - Dozens of 1-packet flows with ephemeral source ports — these are probe-echo
+          reply bursts or retransmit artefacts captured by the SD-WAN telemetry engine.
+          Each appears as a distinct flow because the source port randomises per burst.
+        - One (or a few) long-lived flows carrying the actual sustained probe stream
+          (e.g. src_port=30246). This is the flow of interest for path analysis.
+        The aggregate_path_timeline option merges all matching flows into one timeline.
         """
+        import time as _time
+
+        # ── In-process path name cache ─────────────────────────────────────────
+        # Structure: { (agent_id, site_id): {"expires": float, "names": {str: str}} }
+        if not hasattr(self, "_path_name_cache"):
+            self._path_name_cache: Dict[tuple, Dict] = {}
+        _CACHE_TTL = 300  # 5 minutes
+
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        fast: bool = body.get("fast", False)
+        aggregate: bool = body.get("aggregate_path_timeline", False)
+        # Remove our extra param before forwarding — backend doesn't know it
+        forward_body = {k: v for k, v in body.items() if k != "aggregate_path_timeline"}
+
+        # Determine cache key (site-level)
+        site_id_key = body.get("site_id") or body.get("site_name") or "default"
+        cache_key = (agent_id, site_id_key)
+
         async with httpx.AsyncClient(timeout=45.0) as client:
             try:
                 r = await client.post(
                     f"{agent.api_base_url}/api/prisma/flows",
-                    json=body,
+                    json=forward_body,
                     headers=headers
                 )
                 r.raise_for_status()
-                return r.json()
+                result = r.json()
+
+                # ── Populate / use path name cache ────────────────────────────
+                entry = self._path_name_cache.get(cache_key)
+                if entry and _time.time() < entry["expires"]:
+                    cached_names: Dict[str, str] = entry["names"]
+                else:
+                    cached_names = {}
+
+                # Harvest newly resolved names from this response (present when fast=False)
+                def _harvest_names(flows_data: Any) -> None:
+                    flows = flows_data if isinstance(flows_data, list) else (
+                        flows_data.get("flows") or flows_data.get("records") or []
+                    )
+                    for flow in flows:
+                        for field in ("egress_path", "egressPath", "path_name", "pathName"):
+                            val = flow.get(field, "")
+                            if val and not val.startswith("Path ID:"):
+                                # Also look for the raw path_id that may live alongside
+                                pid = flow.get("path_id") or flow.get("pathId") or flow.get("vpn_path_id")
+                                if pid:
+                                    cached_names[str(pid)] = val
+                        for ph in flow.get("path_history", flow.get("pathHistory", [])):
+                            path_val = (
+                                ph.get("path") or ph.get("chosen_path") or
+                                ph.get("chosenPath") or ph.get("egressPath") or ""
+                            )
+                            pid = ph.get("path_id") or ph.get("pathId")
+                            if pid and path_val and not path_val.startswith("Path ID:"):
+                                cached_names[str(pid)] = path_val
+
+                _harvest_names(result)
+
+                # Persist updated cache
+                if cached_names:
+                    self._path_name_cache[cache_key] = {
+                        "expires": _time.time() + _CACHE_TTL,
+                        "names": cached_names,
+                    }
+
+                # ── Resolve path ID placeholders using cache (fast=True fix) ──
+                def _resolve_name(val: str) -> str:
+                    if not val:
+                        return val
+                    if val.startswith("Path ID:"):
+                        pid = val.split("Path ID:")[-1].strip()
+                        return cached_names.get(pid, val)
+                    return val
+
+                def _fix_flow(flow: dict) -> dict:
+                    for field in ("egress_path", "egressPath", "path_name", "pathName"):
+                        if field in flow:
+                            flow[field] = _resolve_name(flow[field])
+                    for ph in flow.get("path_history", flow.get("pathHistory", [])):
+                        for pf in ("path", "chosen_path", "chosenPath", "preferred_path",
+                                   "preferredPath", "egressPath"):
+                            if pf in ph:
+                                ph[pf] = _resolve_name(ph[pf])
+                    return flow
+
+                # Apply resolution to all flows in the result
+                if isinstance(result, list):
+                    result = [_fix_flow(f) for f in result]
+                elif isinstance(result, dict):
+                    for key in ("flows", "records", "items"):
+                        if key in result and isinstance(result[key], list):
+                            result[key] = [_fix_flow(f) for f in result[key]]
+
+                # ── Aggregate path timeline across all matched flows ───────────
+                if aggregate:
+                    flows_list = (
+                        result if isinstance(result, list) else
+                        result.get("flows") or result.get("records") or []
+                    )
+                    merged: list = []
+                    seen_keys: set = set()
+                    for flow in flows_list:
+                        for ph in flow.get("path_history", flow.get("pathHistory", [])):
+                            ts = ph.get("timestamp") or ph.get("ts") or ph.get("time") or ""
+                            path = (
+                                ph.get("path") or ph.get("chosen_path") or
+                                ph.get("chosenPath") or ph.get("egressPath") or ""
+                            )
+                            preferred = ph.get("preferred_path") or ph.get("preferredPath") or ""
+                            key = (ts, path)
+                            if key not in seen_keys:
+                                seen_keys.add(key)
+                                merged.append({
+                                    "ts": ts,
+                                    "path": _resolve_name(path),
+                                    "preferred_path": _resolve_name(preferred),
+                                })
+                    # Sort chronologically and keep only entries where path actually changed
+                    merged.sort(key=lambda x: x["ts"])
+                    timeline: list = []
+                    last_path = None
+                    for e in merged:
+                        if e["path"] != last_path:
+                            timeline.append(e)
+                            last_path = e["path"]
+
+                    if isinstance(result, dict):
+                        result["aggregate_path_timeline"] = timeline
+                    else:
+                        result = {"flows": result, "aggregate_path_timeline": timeline}
+
+                return result
             except Exception as e:
                 return self._handle_exception(f"Prisma flow query on {agent_id}", e)
+
 
     # -------------------------------------------------------------------------
     # System Health Matrix & Diagnostics (Phase 1)

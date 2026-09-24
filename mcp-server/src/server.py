@@ -180,12 +180,20 @@ async def run_test(
     - 'voice': UDP Port 6100 (VoIP RTP call simulation & MOS calculation).
     - 'iot': TCP/UDP Port 8082 / IoT telemetry fleet simulation.
 
-    ⚠️  CONVERGENCE WORKFLOW (profile='conv') — MANDATORY BEHAVIOR:
+    ⚠️  CONVERGENCE WORKFLOW (profile='conv') — DEFAULT BEHAVIOR:
     1. Call run_test once to START the test (initiates UDP 6200 probe stream).
     2. Immediately inform the user of the test ID (e.g., "Test CONV-0129 started, dis-moi quand arrêter").
     3. STOP IMMEDIATELY — do NOT call get_test_status, do NOT poll.
     4. Wait for the user to explicitly say "stop" / "arrête" / "stop test".
     5. Only then call stop_test(test_id) to get final results.
+
+    RUNBOOK / SCRIPTED EXCEPTION:
+    - If the user has explicitly pre-authorized a full automated failover sequence in this
+      conversation (e.g. "run the full demo yourself", "execute the runbook automatically"),
+      you MAY trigger the failover (vyos_execute_action interface-down), wait the agreed
+      duration, and call stop_test autonomously — without asking again at each step.
+    - This exception applies ONLY to the scope the user explicitly authorized.
+    - Never apply it to actions outside that scope (e.g. unexpected config changes).
 
     Args:
         source_id: Node ID (initiator).
@@ -251,8 +259,20 @@ async def get_test_status(test_id: str) -> dict:
 async def stop_test(test_id: str) -> dict:
     """
     Stop an active traffic test and retrieve final metrics.
-    Call this ONLY when the user explicitly asks to stop (for convergence tests).
-    After stopping, always summarize the final metrics (packets sent/received, loss %, latency, jitter).
+
+    DEFAULT BEHAVIOR (interactive / manual session):
+    - Call this ONLY when the user explicitly asks to stop ("stop", "arrête", "stop test").
+    - After stopping, always summarize the final metrics to the user.
+
+    RUNBOOK / SCRIPTED EXCEPTION:
+    - If the user has explicitly pre-authorized a full automated sequence in this conversation
+      (e.g. "run the full failover scenario yourself", "execute the runbook"), you MAY call
+      stop_test autonomously as part of that sequence — no need to re-ask for confirmation.
+    - This exception does NOT apply to actions not covered by the user's explicit authorization.
+
+    Returns (for conv profile): sent, received, loss_pct, uplink_loss_pct, downlink_loss_pct,
+    max_blackout_ms, blackout_count, total_blackout_ms, latency_ms (min/avg/max),
+    jitter_ms (min/avg/max), duration_s, egress_path, verdict.
 
     Args:
         test_id: The global test ID (e.g., G-20260313-ABCD) or a local ID (CONV-XXXX).
@@ -1310,23 +1330,32 @@ async def import_app_config(agent_id: str, config: dict) -> dict:
 async def get_convergence_history(
     agent_id: str,
     limit: Optional[int] = 10,
-    summary_only: Optional[bool] = True
+    summary_only: Optional[bool] = True,
+    test_id: Optional[str] = None,
 ) -> dict:
     """
     Get the convergence/failover test history for a specific node.
     Returns past test results including the target peer, max blackout duration (ms),
     and a human-readable verdict (PERFECT / GOOD / DEGRADED / BAD / CRITICAL).
-    By default (summary_only=True), strips heavy high-frequency packet dumps to keep response compact.
+
+    summary_only=True (default) returns only aggregated KPIs — NO raw packet arrays.
+    A 200 KB guard-rail is enforced: if the response is still too large after stripping,
+    records are dropped from the end and truncated=True is set in the response.
 
     Args:
         agent_id: ID of the Stigix node.
         limit: Maximum number of historical results to return (default 10).
-        summary_only: If True (default), omits raw packet logs and returns clean metrics.
+        summary_only: If True (default), strips all raw packet/time-series arrays and returns
+            compact KPIs only: testId, target, timestamps, sent/received counts,
+            loss % (uplink/downlink), max_blackout_ms, latency/jitter avg, verdict, path transitions.
+        test_id: Optional filter — return only the record matching this test ID (partial match).
+            Use this to retrieve a single result without scanning the full history.
     """
     return await orchestrator.get_convergence_history(
         agent_id=agent_id,
         limit=10 if limit is None else limit,
-        summary_only=True if summary_only is None else summary_only
+        summary_only=True if summary_only is None else summary_only,
+        test_id=test_id,
     )
 
 
@@ -1506,11 +1535,11 @@ async def get_prisma_flows(
     minutes: Optional[int] = None,
     hours: Optional[int] = None,
     fast: Optional[bool] = False,
-    page_size: Optional[int] = 10
+    page_size: Optional[int] = 10,
+    aggregate_path_timeline: Optional[bool] = False,
 ) -> dict:
     """
-    Query the Prisma SD-WAN Flow Browser to retrieve paths, stats, and chronological path transitions for specific flows.
-    Fetches the flows from the target site with filtering options.
+    Query the Prisma SD-WAN Flow Browser to retrieve paths, stats, and chronological path transitions.
 
     RETENTION & TIME WINDOW:
     - Default time window: Last 15 minutes (recommended range: 5 to 60 minutes).
@@ -1518,10 +1547,24 @@ async def get_prisma_flows(
 
     RETURNS:
     - egress_path: The active/latest SD-WAN path (e.g. 'Branch-MPLS to DC-MPLS').
-    - path_history: Chronological list of all path changes/failovers for that flow with exact timestamps (ISO),
-      chosen paths, preferred paths, allowed policy paths, and reachability.
+    - path_history: Chronological list of all path changes/failovers for that flow.
     - path_history_complete: True if full decision sequence is returned.
     - query_window: Exact start and end UTC timestamps of the query.
+    - aggregate_path_timeline (when requested): Merged, deduplicated timeline of path transitions
+      across ALL matched flows — useful when a conv test generates many short flows.
+
+    FAST MODE & PATH NAME CACHE:
+    - fast=False (default): backend resolves path IDs to human-readable names, results are cached
+      for 5 minutes per site. Subsequent fast=True calls reuse this cache.
+    - fast=True with cold cache: unknown path IDs appear as "Path ID: <id>"; run once with
+      fast=False first to warm the cache.
+
+    SINGLE-PACKET FLOWS (UDP convergence tests):
+    - A convergence test on UDP 6200 (50 pps) typically generates dozens of 1-packet flows
+      with ephemeral source ports in the Flow Browser. These are probe-echo reply artefacts
+      captured per-burst by the SD-WAN telemetry engine (source port randomises per burst).
+    - The actual sustained probe stream appears as one long-lived flow (e.g. src_port=30246).
+    - Use aggregate_path_timeline=True to merge all flows into a single path-change timeline.
 
     Args:
         agent_id: ID of the Stigix node executing the query (local backend).
@@ -1529,16 +1572,20 @@ async def get_prisma_flows(
         site_id: UUID of the site to query.
         protocol: Filter by protocol number (6=TCP, 17=UDP, 1=ICMP).
         udp_src_port: Filter by UDP source port.
-        udp_dst_port: Filter by UDP destination port.
+        udp_dst_port: Filter by UDP destination port (e.g. 6200 for conv tests).
         tcp_src_port: Filter by TCP source port.
         tcp_dst_port: Filter by TCP destination port.
         src_ip: Filter by source IP.
         dst_ip: Filter by destination IP.
         minutes: Number of minutes to look back (default: 15 if hours is omitted).
         hours: Number of hours to look back (e.g. 1, 24, 48).
-        fast: Skip detailed VPN path name resolution to speed up execution.
+        fast: Skip detailed VPN path name resolution. Cache is still consulted for
+            already-resolved IDs. Run once with fast=False to warm the cache.
         page_size: Maximum number of flow records to return.
+        aggregate_path_timeline: If True, merge path_history from all matched flows into a
+            single deduplicated timeline of path changes (useful for conv test analysis).
     """
+
     body = {
         "site_name": site_name,
         "site_id": site_id,
@@ -1552,7 +1599,8 @@ async def get_prisma_flows(
         "minutes": minutes if (minutes is not None or hours is None) else None,
         "hours": hours,
         "fast": fast,
-        "page_size": page_size
+        "page_size": page_size,
+        "aggregate_path_timeline": aggregate_path_timeline,
     }
     if body.get("minutes") is None and body.get("hours") is None:
         body["minutes"] = 15
