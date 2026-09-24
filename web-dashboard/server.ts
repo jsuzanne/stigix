@@ -5513,20 +5513,36 @@ app.post('/api/convergence/stop', authenticateToken, (req, res) => {
     }
 });
 
+const lastConvergenceStatsCache = new Map<string, any>();
+
 app.get('/api/convergence/status', authenticateToken, (req, res) => {
     const results: any[] = [];
     try {
-        const files = fs.readdirSync('/tmp').filter(f => f.startsWith('convergence_stats_') && f.endsWith('.json'));
+        const files = fs.readdirSync('/tmp').filter(f => f.startsWith('convergence_stats_') && f.endsWith('.json') && !f.includes('.tmp.'));
         for (const file of files) {
+            const testId = file.replace('convergence_stats_', '').replace('.json', '');
             try {
-                const stats = JSON.parse(fs.readFileSync(path.join('/tmp', file), 'utf8'));
-                const testId = file.replace('convergence_stats_', '').replace('.json', '');
+                const content = fs.readFileSync(path.join('/tmp', file), 'utf8');
+                if (content && content.trim()) {
+                    const stats = JSON.parse(content);
+                    lastConvergenceStatsCache.set(testId, stats);
+                    results.push({
+                        ...stats,
+                        testId,
+                        running: convergenceProcesses.has(testId)
+                    });
+                    continue;
+                }
+            } catch (e) { }
+
+            // Fallback to last known valid stats if reading/parsing raced with file write
+            if (lastConvergenceStatsCache.has(testId)) {
                 results.push({
-                    ...stats,
+                    ...lastConvergenceStatsCache.get(testId),
                     testId,
                     running: convergenceProcesses.has(testId)
                 });
-            } catch (e) { }
+            }
         }
     } catch (e) { }
 
