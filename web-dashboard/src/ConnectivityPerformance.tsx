@@ -47,6 +47,91 @@ const DonutRing = ({ pct, size = 34 }: { pct: number; size?: number }) => {
     );
 };
 
+// ── Circular Score Gauge for Global Experience ────────────────────────────
+const GlobalExperienceGauge = ({ score }: { score: number }) => {
+    const isOptimal = score >= 80;
+    const isGood = score >= 65 && score < 80;
+    const isDegraded = score >= 50 && score < 65;
+
+    const strokeColor = isOptimal 
+        ? '#10b981' // emerald-500
+        : isGood 
+        ? '#06b6d4' // cyan-500
+        : isDegraded 
+        ? '#f59e0b' // amber-500
+        : '#ef4444'; // red-500
+
+    const statusLabel = isOptimal 
+        ? 'OPTIMAL' 
+        : isGood 
+        ? 'GOOD' 
+        : isDegraded 
+        ? 'DEGRADED' 
+        : 'CRITICAL';
+
+    const statusBadgeClass = isOptimal 
+        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+        : isGood 
+        ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' 
+        : isDegraded 
+        ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' 
+        : 'bg-red-500/10 text-red-400 border-red-500/20';
+
+    const size = 110;
+    const stroke = 8;
+    const r = (size - stroke) / 2;
+    const circ = 2 * Math.PI * r;
+    const dash = (Math.max(0, Math.min(100, score)) / 100) * circ;
+    const cx = size / 2;
+    const cy = size / 2;
+
+    return (
+        <div className="flex flex-col items-center justify-center my-auto">
+            <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+                <svg width={size} height={size} className="transform -rotate-90">
+                    <circle
+                        cx={cx}
+                        cy={cy}
+                        r={r}
+                        fill="none"
+                        stroke="rgba(255, 255, 255, 0.08)"
+                        strokeWidth={stroke}
+                    />
+                    <circle
+                        cx={cx}
+                        cy={cy}
+                        r={r}
+                        fill="none"
+                        stroke={strokeColor}
+                        strokeWidth={stroke}
+                        strokeDasharray={`${dash.toFixed(2)} ${circ.toFixed(2)}`}
+                        strokeLinecap="round"
+                        style={{
+                            transition: 'stroke-dasharray 0.8s ease-in-out, stroke 0.4s ease',
+                            filter: `drop-shadow(0 0 6px ${strokeColor}55)`
+                        }}
+                    />
+                </svg>
+
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
+                    <div className="flex items-baseline justify-center">
+                        <span className="text-3xl font-black font-mono tracking-normal text-text-primary">
+                            {score}
+                        </span>
+                        <span className="text-[11px] font-bold text-text-muted ml-0.5 opacity-60">/100</span>
+                    </div>
+                </div>
+            </div>
+
+            <div className="mt-2 flex items-center gap-1.5">
+                <span className={cn("px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border", statusBadgeClass)}>
+                    {statusLabel}
+                </span>
+            </div>
+        </div>
+    );
+};
+
 interface ConnectivityPerformanceProps {
     token: string;
     uiConfig?: { maxCaptures: number };
@@ -734,15 +819,13 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 <Gauge size={14} className="text-blue-500" /> Global Experience
                             </div>
                         </div>
-                        <div className="flex-1 p-6 flex flex-col items-center justify-center text-center">
+                        <div className="flex-1 p-5 flex flex-col items-center justify-center text-center">
                             {loadingStats ? (
-                                <div className="h-12 w-24 bg-card-secondary animate-pulse rounded-lg mb-1" />
+                                <div className="h-24 w-24 rounded-full bg-card-secondary animate-pulse my-auto" />
                             ) : (
-                                <div className={cn("text-5xl font-black mb-1 tracking-tighter", stats?.globalHealth >= 80 ? "text-green-600 dark:text-green-400" : stats?.globalHealth >= 50 ? "text-orange-500" : "text-red-500")}>
-                                    {stats?.globalHealth || 0}<span className="text-xl text-text-muted">/100</span>
-                                </div>
+                                <GlobalExperienceGauge score={stats?.globalHealth || 0} />
                             )}
-                            <div className="text-[10px] text-text-muted font-bold tracking-tight opacity-70 mt-1">Avg. Scoring across all probes</div>
+                            <div className="text-[10px] text-text-muted font-bold tracking-tight opacity-70 mt-2">Avg. Scoring across all probes</div>
                         </div>
                     </div>
 
