@@ -180,7 +180,28 @@ async def run_test(
     - 'voice': UDP Port 6100 (VoIP RTP call simulation & MOS calculation).
     - 'iot': TCP/UDP Port 8082 / IoT telemetry fleet simulation.
 
+    ─────────────────────────────────────────────────────────────────────────────
+    ⚠️  XFR / SPEEDTEST WORKFLOW — MANDATORY BEHAVIOR:
+    ─────────────────────────────────────────────────────────────────────────────
+    1. The XFR daemon runs the full test synchronously and returns the results
+       directly in the response. The call BLOCKS for the entire test duration
+       (default 30s). This is NORMAL — do NOT assume an error if it takes time.
+    2. When run_test returns:
+       - Check 'status' field: must be 'finished'. If 'error', STOP and report the error.
+       - If status='finished', read 'xfr_result' directly from the response.
+         xfr_result contains: throughput_mbps, sent_mbps, received_mbps, loss_percent,
+         retransmits, bytes_total, latency_ms, started_at, finished_at.
+    3. NEVER fabricate or estimate throughput values.
+       If xfr_result is absent or throughput_mbps=0, call list_speedtest_history(agent_id=source_id, limit=1)
+       to retrieve the result from the node's history log.
+    4. Always report:
+       - The real sequence_id (e.g. 'XFR-0903') from local_id
+       - Actual throughput_mbps from xfr_result (not an estimate)
+       - The started_at / finished_at timestamps (real dates, NOT 2025 or invented dates)
+
+    ─────────────────────────────────────────────────────────────────────────────
     ⚠️  CONVERGENCE WORKFLOW (profile='conv') — DEFAULT BEHAVIOR:
+    ─────────────────────────────────────────────────────────────────────────────
     1. Call run_test once to START the test (initiates UDP 6200 probe stream).
     2. Immediately inform the user of the test ID (e.g., "Test CONV-0129 started, dis-moi quand arrêter").
     3. STOP IMMEDIATELY — do NOT call get_test_status, do NOT poll.
@@ -233,6 +254,7 @@ async def run_test(
             direction=direction,
             pps=pps
         )
+
         
         # Return individual TestRun model_dumps in a list
         return {"tests": [t.model_dump() for t in results]}

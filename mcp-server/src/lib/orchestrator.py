@@ -183,10 +183,13 @@ class TestOrchestrator:
         elif duration.endswith('m'):
             duration_sec = int(duration[:-1]) * 60
 
+        # --- XFR: dynamic timeout = test duration + 60s headroom ---
+        xfr_timeout = duration_sec + 60 if is_xfr_profile else 10
+
         test_runs = []
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=float(xfr_timeout)) as client:
             for target in targets:
                 target_ip = target.test_ip if target.kind == "fabric" else target.public_ip
                 if not target_ip:
@@ -244,6 +247,31 @@ class TestOrchestrator:
                     
                     # Capture the native reference (sequence_id e.g. XFR-0007 / CONV-0001)
                     local_id = result.get("sequence_id") or result.get("testId") or result.get("id") or "CONV-000"
+
+                    # ── XFR: results are synchronous — extract them now ──────────────
+                    # The XFR daemon blocks until the test completes, then returns the
+                    # full summary inline. Capture it here so Claude never has to guess.
+                    xfr_inline_result: Optional[dict] = None
+                    if is_xfr_profile:
+                        # The response IS the completed job — extract metrics immediately
+                        summary = result.get("summary") or {}
+                        if summary or result.get("status") in ("completed", "finished", "success"):
+                            throughput = (
+                                summary.get("received_mbps") or summary.get("sent_mbps") or
+                                summary.get("throughput_mbps") or summary.get("avg_bandwidth_mbps") or 0
+                            )
+                            xfr_inline_result = {
+                                "throughput_mbps": float(throughput),
+                                "sent_mbps": float(summary.get("sent_mbps") or 0),
+                                "received_mbps": float(summary.get("received_mbps") or 0),
+                                "loss_percent": float(summary.get("loss_percent") or 0),
+                                "retransmits": int(summary.get("retransmits") or 0),
+                                "bytes_total": int(summary.get("bytes_total") or 0),
+                                "latency_ms": float(summary.get("rtt_ms_avg") or summary.get("rtt_ms") or 0),
+                                "status": result.get("status", "completed"),
+                                "started_at": result.get("started_at"),
+                                "finished_at": result.get("finished_at"),
+                            }
                     
                     # Store mapping for status checks
                     self._test_mappings[global_id] = {
@@ -264,7 +292,9 @@ class TestOrchestrator:
                         duration=duration,
                         bitrate=str(pps) + " pps" if pps else (bitrate or "50 pps"),
                         label=label,
-                        status="running"
+                        status="finished" if (is_xfr_profile and xfr_inline_result) else "running",
+                        # Carry inline XFR result so the MCP layer can expose it immediately
+                        **({"xfr_result": xfr_inline_result} if xfr_inline_result else {})
                     ))
                 except Exception as e:
                     logger.error(f"Failed to trigger test on agent {source.id} for target {target.id}: {e}")
@@ -1642,7 +1672,7 @@ class TestOrchestrator:
                 return {"error": str(e)}
 
     async def list_speedtest_history(self, agent_id: str, limit: int = 20) -> Dict[str, Any]:
-        """Fetch the speedtest (XFR) history from a node."""
+        """Fetch the speedtest (XFR) history from a node, with normalised metrics."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"error": f"Agent {agent_id} not found."}
@@ -1653,8 +1683,45 @@ class TestOrchestrator:
                 r = await client.get(f"{agent.api_base_url}/api/tests/xfr", headers=headers)
                 r.raise_for_status()
                 data = r.json()
-                jobs = data if isinstance(data, list) else data.get("jobs", [])
-                return {"agent_id": agent_id, "count": len(jobs), "jobs": jobs[:limit]}
+                raw_jobs = data if isinstance(data, list) else data.get("jobs", [])
+                raw_jobs = raw_jobs[:limit]
+
+                normalized = []
+                for job in raw_jobs:
+                    summary = job.get("summary") or {}
+                    throughput = (
+                        summary.get("received_mbps") or summary.get("sent_mbps") or
+                        summary.get("throughput_mbps") or summary.get("avg_bandwidth_mbps") or 0
+                    )
+                    raw_status = job.get("status", "unknown").lower()
+                    status_str = "finished" if raw_status in ("completed", "finished", "success") else raw_status
+                    normalized.append({
+                        "sequence_id": job.get("sequence_id") or job.get("id"),
+                        "status": status_str,
+                        "source": job.get("source") or job.get("source_id") or agent_id,
+                        "target": (
+                            job.get("target") or
+                            (job.get("params") or {}).get("target", {}).get("host") or
+                            job.get("target_host") or "?"
+                        ),
+                        "protocol": (job.get("params") or {}).get("protocol") or job.get("protocol") or "tcp",
+                        "direction": (job.get("params") or {}).get("direction") or job.get("direction") or "client-to-server",
+                        "duration_s": (job.get("params") or {}).get("duration_sec") or job.get("duration_sec") or 0,
+                        "parallel_streams": (job.get("params") or {}).get("parallel_streams") or 4,
+                        # ── Normalised throughput metrics ─────────────────────
+                        "throughput_mbps": float(throughput),
+                        "sent_mbps": float(summary.get("sent_mbps") or 0),
+                        "received_mbps": float(summary.get("received_mbps") or 0),
+                        "loss_percent": float(summary.get("loss_percent") or 0),
+                        "retransmits": int(summary.get("retransmits") or 0),
+                        "bytes_total": int(summary.get("bytes_total") or 0),
+                        "latency_ms": float(summary.get("rtt_ms_avg") or summary.get("rtt_ms") or 0),
+                        # ── Timestamps ────────────────────────────────────────
+                        "started_at": job.get("started_at"),
+                        "finished_at": job.get("finished_at"),
+                    })
+
+                return {"agent_id": agent_id, "count": len(normalized), "jobs": normalized}
             except Exception as e:
                 logger.error(f"Failed to fetch speedtest history for {agent_id}: {e}")
                 return {"error": str(e)}

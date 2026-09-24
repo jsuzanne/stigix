@@ -76,6 +76,12 @@ class TestRun(BaseModel):
     label: Optional[str] = Field(None, description="Optional user-defined label")
     status: str = Field("running", description="Test status: running, completed, failed")
     metrics: Optional[Dict[str, float]] = Field(None, description="Key performance metrics")
+    # XFR-only: inline result captured synchronously when the daemon returns
+    xfr_result: Optional[Dict[str, Any]] = Field(
+        None,
+        description="For XFR tests: complete result metrics captured synchronously at test completion."
+    )
+    error: Optional[str] = Field(None, description="Error message if status=error")
 
 
 class TestStatus(BaseModel):
