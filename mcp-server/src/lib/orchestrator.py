@@ -8,7 +8,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from .registry import RegistryClient
-from ..types import TestRun, TestStatus, StigixEndpoint
+from ..types import TestRun, TestStatus, StigixEndpoint, ConvMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -469,7 +469,7 @@ class TestOrchestrator:
                         status=status_str,
                         source_id=mapping["source_id"],
                         target_id=mapping["target_id"],
-                        metrics=metrics
+                        metrics=ConvMetrics.from_daemon(job)
                     )
 
                 # Standard XFR jobs (from /api/tests/xfr)
@@ -609,49 +609,10 @@ class TestOrchestrator:
                         matching_jobs = [j for j in history if str(j.get("testId", "")).startswith(mapping["local_id"]) or str(j.get("test_id", "")).startswith(mapping["local_id"])]
                         if matching_jobs:
                             job = matching_jobs[-1]
-
-                            def _stop_verdict(max_bo: Any) -> str:
-                                if max_bo is None: return "UNKNOWN"
-                                try:
-                                    mb = float(max_bo)
-                                except Exception:
-                                    return "UNKNOWN"
-                                if mb == 0: return "PERFECT"
-                                if mb < 1000: return "GOOD"
-                                if mb < 5000: return "DEGRADED"
-                                if mb < 10000: return "BAD"
-                                return "CRITICAL"
-
-                            max_bo = job.get("max_blackout_ms") or job.get("maxBlackout") or job.get("blackout")
                             return {
                                 "success": True,
                                 "message": "Test stopped and final metrics captured",
-                                "metrics": {
-                                    # Packet counts
-                                    "sent": job.get("sent") or job.get("tx_total") or 0,
-                                    "received": job.get("received") or job.get("rx_total") or 0,
-                                    # Overall loss
-                                    "loss_pct": job.get("loss_pct") or job.get("loss_percent") or 0,
-                                    # Directional loss
-                                    "uplink_loss_pct": job.get("uplink_loss_pct") or job.get("uplinkLoss") or 0,
-                                    "downlink_loss_pct": job.get("downlink_loss_pct") or job.get("downlinkLoss") or 0,
-                                    # Blackout
-                                    "max_blackout_ms": max_bo,
-                                    "blackout_count": job.get("blackout_count") or job.get("blackoutCount") or 0,
-                                    "total_blackout_ms": job.get("total_blackout_ms") or job.get("totalBlackoutMs") or 0,
-                                    # RTT
-                                    "latency_ms": job.get("avg_rtt_ms") or job.get("latency_ms") or 0,
-                                    "min_latency_ms": job.get("min_rtt_ms") or job.get("minRtt") or 0,
-                                    "max_latency_ms": job.get("max_rtt_ms") or job.get("maxRtt") or 0,
-                                    # Jitter
-                                    "jitter_ms": job.get("jitter_ms") or job.get("avg_jitter_ms") or 0,
-                                    "min_jitter_ms": job.get("min_jitter_ms") or job.get("minJitter") or 0,
-                                    "max_jitter_ms": job.get("max_jitter_ms") or job.get("maxJitter") or 0,
-                                    # Metadata
-                                    "duration_s": job.get("duration_s") or job.get("durationSec") or 0,
-                                    "egress_path": job.get("egress_path") or job.get("egressPath") or "",
-                                    "verdict": _stop_verdict(max_bo),
-                                }
+                                "metrics": ConvMetrics.from_daemon(job).model_dump(exclude_none=True),
                             }
                 except Exception as e:
                     logger.warning(f"Error polling history: {e}")

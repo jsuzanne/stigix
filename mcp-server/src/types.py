@@ -6,7 +6,7 @@ including agents, test runs, statistics, and API responses.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field, HttpUrl
 
 
@@ -84,15 +84,90 @@ class TestRun(BaseModel):
     error: Optional[str] = Field(None, description="Error message if status=error")
 
 
+class ConvMetrics(BaseModel):
+    """Metrics from a convergence (conv) or failover test.
+
+    Numeric fields default to None (not 0) when absent so callers can distinguish
+    'not measured' from 'measured zero'. String fields default to None so an empty
+    string returned by the daemon is normalised to None by the validator below.
+    """
+
+    # Packet counts
+    sent: Optional[float] = None
+    received: Optional[float] = None
+    # Loss
+    loss_percent: Optional[float] = None
+    uplink_loss_pct: Optional[float] = None
+    downlink_loss_pct: Optional[float] = None
+    # Blackout
+    max_blackout_ms: Optional[float] = None
+    blackout_count: Optional[float] = None
+    total_blackout_ms: Optional[float] = None
+    # RTT
+    latency_ms: Optional[float] = None
+    min_latency_ms: Optional[float] = None
+    max_latency_ms: Optional[float] = None
+    # Jitter
+    jitter_ms: Optional[float] = None
+    min_jitter_ms: Optional[float] = None
+    max_jitter_ms: Optional[float] = None
+    # Metadata
+    duration_s: Optional[float] = None
+    # String fields — must NOT be in Dict[str, float]
+    egress_path: Optional[str] = None
+    verdict: Optional[str] = None
+
+    @classmethod
+    def from_daemon(cls, d: Dict[str, Any]) -> "ConvMetrics":
+        """Build a ConvMetrics from a raw daemon dict, normalising empty strings to None."""
+        def _f(val: Any) -> Optional[float]:
+            if val is None or val == "":
+                return None
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return None
+
+        def _s(val: Any) -> Optional[str]:
+            if val is None or val == "":
+                return None
+            return str(val)
+
+        return cls(
+            sent=_f(d.get("sent") or d.get("tx_total")),
+            received=_f(d.get("received") or d.get("rx_total")),
+            loss_percent=_f(d.get("loss_pct") or d.get("loss_percent")),
+            uplink_loss_pct=_f(d.get("uplink_loss_pct") or d.get("uplinkLoss")),
+            downlink_loss_pct=_f(d.get("downlink_loss_pct") or d.get("downlinkLoss")),
+            max_blackout_ms=_f(d.get("max_blackout_ms") or d.get("maxBlackout") or d.get("blackout")),
+            blackout_count=_f(d.get("blackout_count") or d.get("blackoutCount")),
+            total_blackout_ms=_f(d.get("total_blackout_ms") or d.get("totalBlackoutMs")),
+            latency_ms=_f(d.get("avg_rtt_ms") or d.get("latency_ms")),
+            min_latency_ms=_f(d.get("min_rtt_ms") or d.get("minRtt")),
+            max_latency_ms=_f(d.get("max_rtt_ms") or d.get("maxRtt")),
+            jitter_ms=_f(d.get("jitter_ms") or d.get("avg_jitter_ms")),
+            min_jitter_ms=_f(d.get("min_jitter_ms") or d.get("minJitter")),
+            max_jitter_ms=_f(d.get("max_jitter_ms") or d.get("maxJitter")),
+            duration_s=_f(d.get("duration_s") or d.get("durationSec")),
+            egress_path=_s(d.get("egress_path") or d.get("egressPath")),
+            verdict=_s(d.get("verdict")),
+        )
+
+
 class TestStatus(BaseModel):
     """Current status of a running or completed test."""
-    
+
     test_id: str = Field(..., description="Global Test ID")
     local_id: Optional[str] = Field(None, description="Local agent-side test ID")
     status: str = Field(..., description="Test status (running, completed, failed)")
     source_id: str = Field(..., description="Source ID")
     target_id: str = Field(..., description="Target ID")
-    metrics: Optional[Dict[str, float]] = Field(None, description="Current metrics")
+    # conv tests: typed ConvMetrics (supports string fields like egress_path / verdict)
+    # xfr / voice / iot: falls back to generic Dict[str, Any]
+    metrics: Optional[Union[ConvMetrics, Dict[str, Any]]] = Field(
+        None,
+        description="Current metrics. Conv tests return ConvMetrics; other profiles return a raw dict."
+    )
 
 
 class TestSummary(BaseModel):
