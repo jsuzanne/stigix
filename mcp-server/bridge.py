@@ -65,6 +65,94 @@ class SSEConnectionManager:
         async with self._lock:
             await self.close()
 
+READ_ONLY_PREFIXES = ("get_", "list_", "describe_", "compare_", "export_", "generate_peer_onboard_command")
+MUTATING_TOOLS = {
+    "vyos_execute_action", "vyos_bulk_reset", "run_vyos_scenario", "set_vyos_scenario_status",
+    "run_test", "stop_test",
+    "set_traffic_status", "set_traffic_rate", "set_voice_status", "set_traffic_client_count",
+    "run_security_probe", "run_security_url_batch", "run_security_dns_batch", "run_full_security_audit", "run_eicar_test",
+    "run_dem_probes_now", "add_dem_probe", "remove_dem_probe", "update_dem_probe",
+    "add_fabric_target", "remove_fabric_target", "set_fabric_target_enabled",
+    "import_app_config", "clone_node_config",
+    "create_custom_tcp_app", "add_tcp_app_peer", "delete_custom_tcp_app",
+    "start_tcp_app_listener", "stop_tcp_app_listener",
+    "start_tcp_app_workload", "stop_tcp_app_workload",
+    "test_tcp_app_handshake", "reset_tcp_app_metrics",
+    "set_controller_leader", "set_provisioning_mode",
+    "publish_configuration_bundle", "rollback_configuration_bundle", "purge_stale_leader_state",
+}
+
+def is_read_only_tool(name: str) -> bool:
+    if name in MUTATING_TOOLS:
+        return False
+    if name.startswith("vyos_") or name.startswith("set_") or name.startswith("stop_") or name.startswith("create_") or name.startswith("delete_") or name.startswith("add_") or name.startswith("remove_") or name.startswith("import_") or name.startswith("start_"):
+        return False
+    if name.startswith("run_"):
+        return name in ("run_path_trace", "run_system_diagnostics")
+    return name.startswith(READ_ONLY_PREFIXES) or name in ("generate_report",)
+
+async def execute_tool_with_retry(
+    manager: SSEConnectionManager,
+    tool_name: str,
+    arguments: dict | None,
+    timeout_sec: float
+) -> types.CallToolResult:
+    is_read_only = is_read_only_tool(tool_name)
+    for attempt in range(2):
+        start_time = asyncio.get_event_loop().time()
+        try:
+            session = await manager.get_session()
+            res = await asyncio.wait_for(session.call_tool(tool_name, arguments), timeout=timeout_sec)
+            elapsed = round(asyncio.get_event_loop().time() - start_time, 2)
+            print(f"Tool '{tool_name}' executed successfully in {elapsed}s (attempt {attempt+1}).", file=sys.stderr)
+            return res
+        except asyncio.TimeoutError:
+            print(f"[BRIDGE] Tool '{tool_name}' timed out after {timeout_sec}s. Reconnecting SSE session to restore clean request pipeline.", file=sys.stderr)
+            await manager.handle_disconnect()
+            return types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text=f"Error: Tool '{tool_name}' timed out after {int(timeout_sec)} seconds. The target node may be busy or unreachable."
+                    )
+                ],
+                isError=True
+            )
+        except Exception as e:
+            err_type = type(e).__name__
+            err_str = str(e).strip()
+            err_repr = repr(e)
+            err_msg = err_str if err_str else (f"{err_type}: {err_repr}" if err_repr else err_type)
+            print(f"[BRIDGE] Error calling tool '{tool_name}' ({err_type}, attempt {attempt+1}): {err_msg}", file=sys.stderr)
+            is_connection_error = not err_str or any(kw in err_msg.lower() for kw in ["connection", "closed", "closedresourceerror", "eof", "broken pipe", "stream", "sse", "mcperror", "remoteprotocolerror", "timeout", "cancel"])
+            if is_connection_error:
+                print(f"[BRIDGE] Resetting session after transport anomaly ({err_type})...", file=sys.stderr)
+                await manager.handle_disconnect()
+                # Retry once ONLY for read-only tools
+                if is_read_only and attempt == 0:
+                    print(f"[BRIDGE] Reconnecting and retrying read-only tool '{tool_name}'...", file=sys.stderr)
+                    continue
+            return types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text=f"Error executing tool '{tool_name}': {err_msg}"
+                    )
+                ],
+                isError=True
+            )
+
+TOOL_TIMEOUTS: dict[str, float] = {
+    "run_path_trace": 120.0,
+    "run_dem_probes_now": 120.0,
+    "run_full_security_audit": 180.0,
+    "run_security_url_batch": 120.0,
+    "run_security_dns_batch": 120.0,
+    "generate_report": 120.0,
+    "list_active_impairments": 90.0,
+}
+DEFAULT_TOOL_TIMEOUT = 60.0
+
 async def run_bridge(sse_url: str):
     """
     Dynamic bridge from Claude (STDIO) to Stigix (SSE) using low-level MCP Server
@@ -92,61 +180,11 @@ async def run_bridge(sse_url: str):
             await manager.handle_disconnect()
             return types.ListToolsResult(tools=[])
 
-    TOOL_TIMEOUTS: dict[str, float] = {
-        "run_path_trace": 120.0,
-        "run_dem_probes_now": 120.0,
-        "run_full_security_audit": 180.0,
-        "run_security_url_batch": 120.0,
-        "run_security_dns_batch": 120.0,
-        "generate_report": 120.0,
-        "list_active_impairments": 90.0,
-    }
-    DEFAULT_TOOL_TIMEOUT = 60.0
-
     @server.call_tool()
     async def handle_call_tool(name: str, arguments: dict | None) -> types.CallToolResult:
         timeout_sec = TOOL_TIMEOUTS.get(name, DEFAULT_TOOL_TIMEOUT)
         print(f"Claude calling tool '{name}' with args {arguments} (timeout: {timeout_sec}s)...", file=sys.stderr)
-        start_time = asyncio.get_event_loop().time()
-        try:
-            session = await manager.get_session()
-            # Protective timeout per tool invocation to prevent stalling Claude Desktop
-            res = await asyncio.wait_for(session.call_tool(name, arguments), timeout=timeout_sec)
-            elapsed = round(asyncio.get_event_loop().time() - start_time, 2)
-            print(f"Tool '{name}' executed successfully in {elapsed}s.", file=sys.stderr)
-            return res
-        except asyncio.TimeoutError:
-            print(f"[BRIDGE] Tool '{name}' timed out after {timeout_sec}s. Reconnecting SSE session to restore clean request pipeline.", file=sys.stderr)
-            await manager.handle_disconnect()
-            return types.CallToolResult(
-                content=[
-                    types.TextContent(
-                        type="text",
-                        text=f"Error: Tool '{name}' timed out after {int(timeout_sec)} seconds. The target node may be busy or unreachable."
-                    )
-                ],
-                isError=True
-            )
-        except Exception as e:
-            err_type = type(e).__name__
-            err_str = str(e).strip()
-            err_repr = repr(e)
-            err_msg = err_str if err_str else (f"{err_type}: {err_repr}" if err_repr else err_type)
-            print(f"[BRIDGE] Error calling tool '{name}' ({err_type}): {err_msg}", file=sys.stderr)
-            # Reset session if it was a connection error, SSE issue, or empty/opaque exception indicating stream breakage
-            is_connection_error = not err_str or any(kw in err_msg.lower() for kw in ["connection", "closed", "eof", "broken pipe", "stream", "sse", "mcperror", "remoteprotocolerror", "timeout", "cancel"])
-            if is_connection_error:
-                print(f"[BRIDGE] Resetting session after transport/protocol anomaly ({err_type})...", file=sys.stderr)
-                await manager.handle_disconnect()
-            return types.CallToolResult(
-                content=[
-                    types.TextContent(
-                        type="text",
-                        text=f"Error executing tool '{name}': {err_msg}"
-                    )
-                ],
-                isError=True
-            )
+        return await execute_tool_with_retry(manager, name, arguments, timeout_sec)
 
 
     @server.list_resources()
