@@ -119,12 +119,15 @@ class ConvMetrics(BaseModel):
 
     # Packet counts
     sent: Optional[float] = None
+    echo_received: Optional[float] = None
     received: Optional[float] = None
 
     # Loss (canonical names)
     loss_percent: Optional[float] = None
     uplink_loss_pct: Optional[float] = None
     downlink_loss_pct: Optional[float] = None
+    uplink_loss_ms: Optional[float] = None
+    downlink_loss_ms: Optional[float] = None
 
     # Blackout (canonical)
     max_blackout_ms: Optional[float] = None
@@ -161,10 +164,13 @@ class ConvMetrics(BaseModel):
             return str(val)
 
         sent_val = _f(_first_valid(d, "sent", "tx_total"))
+        echo_val = _f(_first_valid(d, "echo_received", "server_received", "echo"))
         rcvd_val = _f(_first_valid(d, "received", "rx_total"))
         loss_val = _f(_first_valid(d, "loss_pct", "loss_percent", "total_loss_pct", "live_loss_pct"))
         tx_loss = _f(_first_valid(d, "tx_loss_pct", "uplink_loss_pct", "uplinkLoss"))
         rx_loss = _f(_first_valid(d, "rx_loss_pct", "downlink_loss_pct", "downlinkLoss"))
+        tx_loss_ms = _f(_first_valid(d, "uplink_loss_ms", "tx_loss_ms"))
+        rx_loss_ms = _f(_first_valid(d, "downlink_loss_ms", "rx_loss_ms"))
         max_bo = _f(_first_valid(d, "max_blackout_ms", "maxBlackout", "blackout"))
         lat_val = _f(_first_valid(d, "avg_rtt_ms", "latency_ms", "current_rtt_ms"))
         jit_val = _f(_first_valid(d, "jitter_ms", "avg_jitter_ms"))
@@ -176,10 +182,13 @@ class ConvMetrics(BaseModel):
 
         return cls(
             sent=sent_val,
+            echo_received=echo_val,
             received=rcvd_val,
             loss_percent=loss_val,
             uplink_loss_pct=tx_loss,
             downlink_loss_pct=rx_loss,
+            uplink_loss_ms=tx_loss_ms,
+            downlink_loss_ms=rx_loss_ms,
             max_blackout_ms=max_bo,
             latency_ms=lat_val,
             jitter_ms=jit_val,

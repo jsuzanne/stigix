@@ -2541,10 +2541,92 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
+                # Helper to parse identifiers & ports
+                def _parse_conv_ids(row: Dict[str, Any]) -> Dict[str, Any]:
+                    raw_id = str(row.get("test_id") or row.get("testId") or row.get("id") or "").strip()
+                    raw_label = str(row.get("label") or "").strip()
+                    
+                    local_id = None
+                    label = raw_label or None
+                    
+                    if "(" in raw_id and ")" in raw_id:
+                        parts = raw_id.split("(", 1)
+                        local_id = parts[0].strip()
+                        if not label:
+                            label = parts[1].split(")", 1)[0].strip()
+                    elif raw_id.startswith("CONV-"):
+                        local_id = raw_id
+                    elif raw_id.isdigit():
+                        local_id = f"CONV-{raw_id.zfill(4)}"
+                    else:
+                        local_id = raw_id or None
+
+                    if local_id and not local_id.startswith("CONV-") and raw_id.replace("CONV-", "").strip().isdigit():
+                        local_id = f"CONV-{raw_id.replace('CONV-', '').strip().zfill(4)}"
+
+                    if local_id and label and f"({label})" not in local_id:
+                        canonical_test_id = f"{local_id} ({label})"
+                    else:
+                        canonical_test_id = local_id or raw_id or "UNKNOWN"
+
+                    global_id = row.get("global_id") or row.get("global_test_id") or None
+                    
+                    sport = row.get("source_port") or row.get("src_port") or row.get("sourcePort")
+                    if sport is None and local_id and "CONV-" in local_id:
+                        num_part = re.sub(r"[^\d]", "", local_id)
+                        if num_part:
+                            sport = 30000 + (int(num_part) % 10000)
+
+                    return {
+                        "global_id": global_id,
+                        "local_id": local_id,
+                        "label": label,
+                        "test_id": canonical_test_id,
+                        "source_port": int(sport) if sport is not None else None,
+                    }
+
+                # 1. Query active / running convergence tests
+                status_rows = []
+                try:
+                    r_status = await client.get(f"{agent.api_base_url}/api/convergence/status", headers=headers)
+                    if r_status.status_code == 200:
+                        s_data = r_status.json()
+                        status_rows = s_data if isinstance(s_data, list) else s_data.get("results", [])
+                except Exception as e_status:
+                    logger.debug(f"Convergence status check failed: {e_status}")
+
+                # 2. Query completed history
                 r = await client.get(f"{agent.api_base_url}/api/convergence/history", headers=headers)
                 r.raise_for_status()
                 data = r.json()
-                rows: list = data if isinstance(data, list) else data.get("results", [])
+                history_rows: list = data if isinstance(data, list) else data.get("results", [])
+
+                # Combine running tests first, followed by history (deduplicated)
+                seen_ids = set()
+                combined_rows = []
+
+                for row in status_rows:
+                    if not isinstance(row, dict):
+                        continue
+                    parsed = _parse_conv_ids(row)
+                    key = (parsed["local_id"] or parsed["test_id"]).lower()
+                    if key and key not in seen_ids:
+                        seen_ids.add(key)
+                        row_copy = dict(row)
+                        row_copy["running"] = True
+                        row_copy["status"] = "running"
+                        combined_rows.append(row_copy)
+
+                for row in history_rows:
+                    if not isinstance(row, dict):
+                        continue
+                    parsed = _parse_conv_ids(row)
+                    key = (parsed["local_id"] or parsed["test_id"]).lower()
+                    if key and key not in seen_ids:
+                        seen_ids.add(key)
+                        combined_rows.append(row)
+
+                rows = combined_rows
 
                 # ── Apply test_id filter BEFORE limit ─────────────────────────
                 if test_id:
@@ -2555,20 +2637,25 @@ class TestOrchestrator:
 
                 cleaned_rows = []
                 for row in rows:
+                    parsed = _parse_conv_ids(row)
                     metrics_dump = ConvMetrics.from_daemon(row).model_dump()
                     item = {
-                        "test_id": row.get("test_id") or row.get("testId"),
-                        "testId": row.get("testId") or row.get("test_id"),
+                        "global_id": parsed["global_id"],
+                        "local_id": parsed["local_id"],
+                        "label": parsed["label"],
+                        "test_id": parsed["test_id"],
                         "target": row.get("target"),
-                        "label": row.get("label"),
+                        "source_port": parsed["source_port"],
                         "timestamp": row.get("timestamp") or row.get("start_time"),
                         "path_evolution": row.get("path_evolution"),
+                        "running": row.get("running", False),
+                        "status": row.get("status", "completed"),
                         **metrics_dump
                     }
                     if not summary_only:
                         # In full mode, keep non-heavy auxiliary fields from raw record
                         for k, v in row.items():
-                            if k not in item and k not in _HEAVY_ROOT:
+                            if k not in item and k not in _HEAVY_ROOT and k != "testId":
                                 item[k] = v
 
                     cleaned_rows.append(item)
