@@ -347,6 +347,9 @@ def receiver_thread(sock, metrics: ConvergenceMetrics, stop_event):
         except socket.timeout:
             continue
         except Exception:
+            break
+
+
 def _atomic_write_json(file_path: str, data: dict):
     """Write JSON atomically using a temporary file and os.replace to prevent readers from seeing empty/truncated files."""
     tmp_path = f"{file_path}.tmp.{os.getpid()}"
