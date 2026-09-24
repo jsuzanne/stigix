@@ -2327,6 +2327,217 @@ class TestOrchestrator:
                 logger.error(f"Failed to fetch convergence history for {agent_id}: {e}")
                 return {"error": str(e)}
 
+    async def get_convergence_report(
+        self,
+        agent_id: str,
+        test_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Fetch a specific convergence test record and generate an SVG chart
+        reproducing the RTT, Jitter, Packet Loss curves and 100-packet sequence bar.
+        Returns the SVG as a base64 string suitable for embedding in reports or markdown.
+        """
+        import base64, math
+
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                r = await client.get(f"{agent.api_base_url}/api/convergence/history", headers=headers)
+                r.raise_for_status()
+                rows = r.json()
+                if not isinstance(rows, list):
+                    rows = rows.get("results", [])
+            except Exception as e:
+                return {"error": f"Failed to fetch history: {e}"}
+
+        # Find the matching record (by testId, partial match tolerated)
+        record = None
+        tid_lower = test_id.strip().lower()
+        for row in rows:
+            rid = str(row.get("testId", row.get("id", ""))).lower()
+            if tid_lower in rid or rid in tid_lower:
+                record = row
+                break
+
+        if record is None:
+            available = [str(r.get("testId", r.get("id", "?"))) for r in rows[:20]]
+            return {
+                "error": f"Test '{test_id}' not found in history.",
+                "available_test_ids": available
+            }
+
+        # Extract time-series data
+        series = record.get("metrics_series") or record.get("time_series") or []
+
+        # ── Compute summary stats ──────────────────────────────────────────────
+        def _vals(key: str) -> list:
+            return [float(p[key]) for p in series if key in p and p[key] is not None]
+
+        rtt_vals   = _vals("rtt_ms")
+        jitter_vals = _vals("jitter_ms")
+        loss_vals  = _vals("loss_percent")
+        # Packet sequence data (0=ok, 1=lost)
+        pkt_seq    = [p.get("lost", 0) for p in series] if series else []
+
+        avg_rtt    = sum(rtt_vals)    / len(rtt_vals)    if rtt_vals    else 0
+        avg_jitter = sum(jitter_vals) / len(jitter_vals) if jitter_vals else 0
+        peak_loss  = max(loss_vals)                       if loss_vals   else 0
+
+        max_blackout_ms = record.get("max_blackout_ms") or record.get("maxBlackout") or 0
+        verdict         = record.get("verdict", "UNKNOWN")
+        label           = record.get("label", record.get("testId", test_id))
+        target          = record.get("target", "")
+        start_time      = record.get("startTime", record.get("timestamp", ""))
+        duration_s      = record.get("duration_s", record.get("durationSec", 0))
+        uplink_loss     = record.get("uplink_loss_pct", record.get("uplinkLoss", 0)) or 0
+        downlink_loss   = record.get("downlink_loss_pct", record.get("downlinkLoss", 0)) or 0
+        egress_path     = record.get("egress_path", record.get("egressPath", ""))
+        tx_total        = record.get("tx_total", record.get("txTotal", 0)) or 0
+        rx_total        = record.get("rx_total", record.get("rxTotal", 0)) or 0
+
+        # ── SVG generation ─────────────────────────────────────────────────────
+        W, H = 1100, 580
+        CHART_H = 110      # height of each mini-chart
+        CHART_X = 20
+        CHART_W = W - 40
+        PAD_TOP = 130      # space for header
+
+        VERDICT_COLOR = {
+            "PERFECT": "#22c55e", "GOOD": "#4ade80", "DEGRADED": "#f59e0b",
+            "BAD": "#ef4444", "CRITICAL": "#dc2626", "UNKNOWN": "#94a3b8"
+        }
+        v_color = VERDICT_COLOR.get(verdict, "#94a3b8")
+
+        def _sparkline(vals: list, color: str, y_off: int, show_zero_line: bool = True) -> str:
+            if not vals:
+                return f'<text x="{CHART_X + CHART_W//2}" y="{y_off + CHART_H//2}" fill="#64748b" font-size="11" text-anchor="middle">No data</text>'
+            mn, mx = min(vals), max(vals)
+            span = mx - mn if mx != mn else 1.0
+            pts = []
+            n = len(vals)
+            for i, v in enumerate(vals):
+                x = CHART_X + int(i / (n - 1) * CHART_W) if n > 1 else CHART_X
+                y = y_off + CHART_H - 8 - int((v - mn) / span * (CHART_H - 16))
+                pts.append(f"{x},{y}")
+            path_d = "M " + " L ".join(pts)
+            # Fill area under curve
+            fill_pts = f"{CHART_X},{y_off+CHART_H-8} " + " ".join(pts) + f" {CHART_X+CHART_W},{y_off+CHART_H-8}"
+            svg = (
+                f'<polygon points="{fill_pts}" fill="{color}" fill-opacity="0.12"/>'
+                f'<path d="{path_d}" stroke="{color}" stroke-width="1.8" fill="none"/>'
+            )
+            # Zero-loss reference line
+            if show_zero_line and mn == 0:
+                zero_y = y_off + CHART_H - 8
+                svg += f'<line x1="{CHART_X}" y1="{zero_y}" x2="{CHART_X+CHART_W}" y2="{zero_y}" stroke="#334155" stroke-width="0.5" stroke-dasharray="3,3"/>'
+            return svg
+
+        def _seq_bar(seq: list, y_off: int) -> str:
+            if not seq:
+                return f'<rect x="{CHART_X}" y="{y_off}" width="{CHART_W}" height="22" fill="#1e293b" rx="3"/>'
+            n = len(seq)
+            bw = max(1, CHART_W // n)
+            rects = [f'<rect x="{CHART_X}" y="{y_off}" width="{CHART_W}" height="22" fill="#1e293b" rx="3"/>']
+            for i, lost in enumerate(seq):
+                x = CHART_X + int(i / n * CHART_W)
+                w = max(1, int((i+1)/n * CHART_W) - int(i/n * CHART_W))
+                fill = "#ef4444" if lost else "#3b82f6"
+                rects.append(f'<rect x="{x}" y="{y_off}" width="{w}" height="22" fill="{fill}"/>')
+            return "".join(rects)
+
+        # Y offsets for each panel
+        Y_RTT    = PAD_TOP
+        Y_JIT    = PAD_TOP + CHART_H + 36
+        Y_LOSS   = PAD_TOP + (CHART_H + 36) * 2
+        Y_SEQ    = PAD_TOP + (CHART_H + 36) * 3
+        Y_FOOTER = Y_SEQ + 40
+
+        svg_lines = [
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{Y_FOOTER + 90}" viewBox="0 0 {W} {Y_FOOTER + 90}" style="font-family:Inter,Segoe UI,sans-serif;background:#0f172a;">',
+            # ── Header ──
+            f'<rect x="0" y="0" width="{W}" height="{PAD_TOP - 6}" fill="#1e293b" rx="0"/>',
+            f'<text x="20" y="28" fill="#94a3b8" font-size="11">Date / ID / Label</text>',
+            f'<text x="20" y="50" fill="#38bdf8" font-size="13" font-weight="600">{record.get("testId", test_id)}</text>',
+            f'<text x="20" y="68" fill="#cbd5e1" font-size="12">{label}</text>',
+            f'<text x="20" y="86" fill="#64748b" font-size="10">{start_time}  ·  Target: {target}  ·  Duration: {duration_s}s</text>',
+            # Verdict badge
+            f'<rect x="{W - 130}" y="16" width="110" height="28" rx="6" fill="{v_color}" fill-opacity="0.2" stroke="{v_color}" stroke-width="1.5"/>',
+            f'<text x="{W - 75}" y="35" fill="{v_color}" font-size="13" font-weight="700" text-anchor="middle">{verdict}</text>',
+            # Max blackout
+            f'<text x="{W//2}" y="40" fill="{v_color}" font-size="20" font-weight="700" text-anchor="middle">{(max_blackout_ms/1000):.2f}s MAX BLACKOUT</text>',
+            f'<text x="{W//2}" y="58" fill="#94a3b8" font-size="10" text-anchor="middle">Failover Duration: {duration_s}s</text>',
+            # ── RTT panel ──
+            f'<text x="{CHART_X}" y="{Y_RTT - 8}" fill="#4ade80" font-size="11">↗ RTT LATENCY</text>',
+            f'<text x="{CHART_X + CHART_W}" y="{Y_RTT - 8}" fill="#4ade80" font-size="11" text-anchor="end">Avg: {avg_rtt:.2f}ms</text>',
+            f'<rect x="{CHART_X}" y="{Y_RTT}" width="{CHART_W}" height="{CHART_H}" fill="#0f172a" rx="4"/>',
+            _sparkline(rtt_vals, "#4ade80", Y_RTT),
+            # ── Jitter panel ──
+            f'<text x="{CHART_X}" y="{Y_JIT - 8}" fill="#f59e0b" font-size="11">≈ JITTER</text>',
+            f'<text x="{CHART_X + CHART_W}" y="{Y_JIT - 8}" fill="#f59e0b" font-size="11" text-anchor="end">Avg: {avg_jitter:.2f}ms</text>',
+            f'<rect x="{CHART_X}" y="{Y_JIT}" width="{CHART_W}" height="{CHART_H}" fill="#0f172a" rx="4"/>',
+            _sparkline(jitter_vals, "#f59e0b", Y_JIT),
+            # ── Packet Loss panel ──
+            f'<text x="{CHART_X}" y="{Y_LOSS - 8}" fill="#ef4444" font-size="11">⚡ PACKET LOSS SPIKE</text>',
+            f'<text x="{CHART_X + CHART_W}" y="{Y_LOSS - 8}" fill="#ef4444" font-size="11" text-anchor="end">Peak: {peak_loss:.0f}%</text>',
+            f'<rect x="{CHART_X}" y="{Y_LOSS}" width="{CHART_W}" height="{CHART_H}" fill="#0f172a" rx="4"/>',
+            _sparkline(loss_vals, "#ef4444", Y_LOSS, show_zero_line=False),
+            # ── 100-Packet sequence bar ──
+            f'<text x="{CHART_X}" y="{Y_SEQ - 6}" fill="#94a3b8" font-size="10">100-PACKET SEQUENCE / OUTAGE DETECTION</text>',
+            f'<text x="{CHART_X + CHART_W}" y="{Y_SEQ - 6}" fill="#94a3b8" font-size="10" text-anchor="end">{rx_total}/{tx_total} PACKETS ({uplink_loss:.1f}% TX LOSS)</text>',
+            _seq_bar(pkt_seq, Y_SEQ),
+            # ── Footer KPIs ──
+            f'<rect x="0" y="{Y_FOOTER}" width="{W}" height="80" fill="#1e293b"/>',
+            f'<text x="60"  y="{Y_FOOTER+22}" fill="#94a3b8" font-size="10">UPLINK LOSS</text>',
+            f'<text x="60"  y="{Y_FOOTER+42}" fill="#ef4444" font-size="16" font-weight="700">↑ {uplink_loss:.1f}%</text>',
+            f'<text x="220" y="{Y_FOOTER+22}" fill="#94a3b8" font-size="10">DOWNLINK LOSS</text>',
+            f'<text x="220" y="{Y_FOOTER+42}" fill="#ef4444" font-size="16" font-weight="700">↓ {downlink_loss:.1f}%</text>',
+            f'<text x="400" y="{Y_FOOTER+22}" fill="#94a3b8" font-size="10">AVG LATENCY</text>',
+            f'<text x="400" y="{Y_FOOTER+42}" fill="#e2e8f0" font-size="16" font-weight="700">{avg_rtt:.2f}ms</text>',
+            f'<text x="560" y="{Y_FOOTER+22}" fill="#94a3b8" font-size="10">JITTER (MS)</text>',
+            f'<text x="560" y="{Y_FOOTER+42}" fill="#e2e8f0" font-size="16" font-weight="700">{avg_jitter:.2f}ms</text>',
+            f'<text x="750" y="{Y_FOOTER+22}" fill="#94a3b8" font-size="10">☰ EGRESS PATH</text>',
+            f'<text x="750" y="{Y_FOOTER+42}" fill="#38bdf8" font-size="13" font-weight="600">{egress_path}</text>',
+            '</svg>'
+        ]
+
+        svg_str = "\n".join(svg_lines)
+        svg_b64 = base64.b64encode(svg_str.encode("utf-8")).decode("ascii")
+
+        return {
+            "agent_id": agent_id,
+            "test_id": record.get("testId", test_id),
+            "label": label,
+            "verdict": verdict,
+            "max_blackout_s": round(max_blackout_ms / 1000, 3) if max_blackout_ms else 0,
+            "avg_rtt_ms": round(avg_rtt, 2),
+            "avg_jitter_ms": round(avg_jitter, 2),
+            "peak_loss_pct": round(peak_loss, 1),
+            "uplink_loss_pct": uplink_loss,
+            "downlink_loss_pct": downlink_loss,
+            "egress_path": egress_path,
+            "duration_s": duration_s,
+            "data_points": len(series),
+            "chart_svg_base64": svg_b64,
+            "chart_embed_html": (
+                '<img src="data:image/svg+xml;base64,' + svg_b64 + '" '
+                'style="width:100%;max-width:1100px;" '
+                'alt="Convergence Report ' + str(record.get("testId", test_id)) + '"/>'
+            ),
+            "chart_markdown": (
+                "![Convergence Report " + str(record.get("testId", test_id)) + "]"
+                "(data:image/svg+xml;base64," + svg_b64 + ")"
+            ),
+            "usage_hint": (
+                "chart_svg_base64: save as .svg file or decode. "
+                "chart_embed_html: paste in HTML report. "
+                "chart_markdown: paste in Markdown/Notion."
+            )
+        }
+
     async def run_path_trace(
         self,
         agent_id: str,

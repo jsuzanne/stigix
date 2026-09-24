@@ -1331,6 +1331,35 @@ async def get_convergence_history(
 
 
 @mcp.tool()
+async def get_convergence_report(
+    agent_id: str,
+    test_id: str,
+) -> dict:
+    """
+    Generate a visual convergence/failover test report for a specific historical test.
+
+    Fetches the test record from the node's convergence history and builds an SVG chart
+    reproducing the Stigix dashboard view: RTT latency curve, Jitter curve, Packet Loss spike
+    curve, 100-packet sequence bar, and a KPI footer (uplink/downlink loss, avg latency, jitter,
+    egress path).
+
+    Returns:
+    - Structured metrics (verdict, max_blackout_s, avg_rtt_ms, avg_jitter_ms, peak_loss_pct, ...)
+    - chart_svg_base64: the SVG chart encoded in base64 (decode → save as .svg)
+    - chart_embed_html: <img> tag for HTML reports
+    - chart_markdown: Markdown image syntax for Notion / GitHub / reports
+
+    Use get_convergence_history first to list available test IDs, then call this tool
+    with the desired test_id to get the visual report.
+
+    Args:
+        agent_id: ID of the Stigix node that ran the convergence test.
+        test_id: Test ID to retrieve (e.g. 'CONV-0022'). Partial match is tolerated.
+    """
+    return await orchestrator.get_convergence_report(agent_id=agent_id, test_id=test_id)
+
+
+@mcp.tool()
 async def run_path_trace(
     agent_id: str,
     target: str,
