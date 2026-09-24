@@ -74,7 +74,7 @@ export class AiManager {
             apiKey: envKey,
             defaultModel: 'claude-sonnet-4-5-20250929',
             requireConfirmation: true,
-            maxTokensPerRequest: 4096
+            maxTokensPerRequest: 8192
         };
 
         if (fs.existsSync(this.configPath)) {
@@ -347,7 +347,7 @@ YOUR ROLE & BEHAVIOR:
         // Multi-turn loop: handles assistant text and sequential tool executions
         let continueLoop = true;
         let loopCount = 0;
-        const MAX_TOOL_LOOPS = 5;
+        const MAX_TOOL_LOOPS = 10;
 
         while (continueLoop && loopCount < MAX_TOOL_LOOPS) {
             loopCount++;

@@ -213,7 +213,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'run_test',
-        description: 'Start a coordinated traffic test between Stigix endpoints. Source initiates (client) and target receives (server). For "conv" (convergence failover), does NOT stop automatically — inform user of test ID and wait for "stop" before calling stop_test.',
+        description: 'Start a coordinated traffic test between Stigix endpoints. Source initiates (client) and target receives (server). WORKFLOW FOR XFR/SPEEDTEST: After calling run_test, you MUST call get_test_status with the returned test_id and poll until status is "completed" before reading metrics — do NOT read list_speedtest_history immediately or you will get results from a previous test. For "conv" (convergence failover), does NOT stop automatically — inform user of test ID and wait for explicit "stop" before calling stop_test.',
         input_schema: {
             type: 'object',
             properties: {
@@ -573,7 +573,7 @@ export const COPILOT_TOOLS: AnthropicToolDefinition[] = [
     },
     {
         name: 'vyos_execute_action',
-        description: 'Execute an ad-hoc VyOS network action on a router interface ("interface-down", "interface-up", "set-impairment", "clear-qos", "deny-traffic", "allow-traffic", "clear-all-blocks").',
+        description: 'Execute an ad-hoc VyOS network action on a router interface ("interface-down", "interface-up", "set-impairment", "clear-qos", "deny-traffic", "allow-traffic", "clear-all-blocks"). SAFETY PRECONDITIONS — before calling this tool you MUST have: (1) called list_vyos_routers to identify the correct agent_id and router_id; (2) called get_vyos_interfaces to list all available interfaces and confirm the target interface name; (3) presented the planned action (node, router, interface, command) to the user and received their explicit confirmation. Never execute interface-down, set-impairment, deny-traffic or any destructive action without completing all three steps.',
         input_schema: {
             type: 'object',
             properties: {
@@ -1733,6 +1733,22 @@ export async function executeCopilotTool(
                 const isIot = profile.includes('iot');
                 const isXfr = !isConvergence && !isVoice && !isIot;
 
+                /**
+                 * parseDurationSec — converts human-readable duration strings to seconds.
+                 * Examples: "30s" → 30, "2m" → 120, "1h" → 3600, "45" → 45.
+                 * Replaces the previous broken `.replace('m', '0')` approach.
+                 */
+                const parseDurationSec = (d: string | number | undefined): number => {
+                    if (typeof d === 'number') return d > 0 ? d : 10;
+                    if (!d) return 10;
+                    const m = String(d).trim().match(/^(\d+(?:\.\d+)?)(s|m|h)?$/i);
+                    if (!m) return 10;
+                    const n = parseFloat(m[1]);
+                    if (m[2]?.toLowerCase() === 'm') return Math.round(n * 60);
+                    if (m[2]?.toLowerCase() === 'h') return Math.round(n * 3600);
+                    return Math.round(n) || 10;
+                };
+
                 const targetList = targetIdsStr.split(',').map((t: string) => t.trim()).filter(Boolean);
                 const results: any[] = [];
 
@@ -1740,12 +1756,11 @@ export async function executeCopilotTool(
                     const targetEndpoint = resolveTargetEndpoint(targetQuery, ctx);
 
                     if (isXfr) {
-                        const durationSec = typeof args.duration === 'string'
-                            ? parseInt(args.duration.replace('s', '').replace('m', '0')) || 10
-                            : (args.duration_sec || 10);
+                        const durationSec = parseDurationSec(args.duration ?? args.duration_sec);
                         const payload = {
                             mode: 'custom',
-                            target: { host: targetEndpoint.host, port: targetEndpoint.port || 9000 },
+                            // Always use port 9000 for XFR — never the peer's API port (8080)
+                            target: { host: targetEndpoint.host, port: 9000 },
                             protocol: (args.protocol || 'tcp').toLowerCase(),
                             direction: (args.direction || 'client-to-server').toLowerCase(),
                             duration_sec: durationSec,
@@ -1757,7 +1772,7 @@ export async function executeCopilotTool(
                             const { id, sequence_id } = ctx.xfrManager.createJob({
                                 mode: payload.mode,
                                 host: targetEndpoint.host,
-                                port: targetEndpoint.port || 9000,
+                                port: 9000,
                                 protocol: payload.protocol,
                                 direction: payload.direction,
                                 duration_sec: payload.duration_sec,
@@ -1873,7 +1888,10 @@ export async function executeCopilotTool(
                     }
                 }
 
-                return { tests: results };
+                return {
+                    tests: results,
+                    note_for_model: 'Tests launched. For XFR/speedtest: call get_test_status with each test_id and repeat until status=\'completed\' before reporting throughput metrics. Do NOT call list_speedtest_history until status is completed.'
+                };
             }
 
             case 'get_test_status': {
@@ -1913,7 +1931,12 @@ export async function executeCopilotTool(
                                 duration: matchedXfr.params?.duration_sec ? `${matchedXfr.params.duration_sec}s` : undefined,
                                 started_at: matchedXfr.started_at,
                                 finished_at: matchedXfr.finished_at,
-                                throughput_mbps: sum?.throughput_mbps ?? sum?.avg_bandwidth_mbps ?? sum?.received_mbps ?? sum?.sent_mbps,
+                                throughput_mbps: sum?.throughput_mbps ?? sum?.avg_bandwidth_mbps ?? (
+                                    // For bidirectional tests, sum both directions
+                                    (sum?.received_mbps !== undefined && sum?.sent_mbps !== undefined)
+                                        ? (sum.received_mbps + sum.sent_mbps)
+                                        : (sum?.received_mbps ?? sum?.sent_mbps)
+                                ),
                                 upload_mbps: sum?.sent_mbps,
                                 download_mbps: sum?.received_mbps,
                                 rtt_ms: sum?.rtt_ms_avg ?? sum?.rtt_ms,
@@ -2649,7 +2672,12 @@ export async function executeCopilotTool(
                         protocol: j.params?.protocol || 'tcp',
                         direction: j.params?.direction || 'bidirectional',
                         duration: j.params?.duration_sec ? `${j.params.duration_sec}s` : undefined,
-                        throughput_mbps: j.summary?.throughput_mbps ?? j.summary?.avg_bandwidth_mbps ?? j.summary?.received_mbps ?? j.summary?.sent_mbps,
+                        throughput_mbps: j.summary?.throughput_mbps ?? j.summary?.avg_bandwidth_mbps ?? (
+                            // For bidirectional tests, sum both directions
+                            (j.summary?.received_mbps !== undefined && j.summary?.sent_mbps !== undefined)
+                                ? (j.summary.received_mbps + j.summary.sent_mbps)
+                                : (j.summary?.received_mbps ?? j.summary?.sent_mbps)
+                        ),
                         upload_mbps: j.summary?.sent_mbps,
                         download_mbps: j.summary?.received_mbps,
                         rtt_ms: j.summary?.rtt_ms_avg ?? j.summary?.rtt_ms ?? j.summary?.avg_rtt_ms,
