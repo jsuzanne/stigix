@@ -182,3 +182,41 @@ class TestLotBAggregatePathTimeline:
         assert len(timeline_unfiltered) == 2
         assert timeline_unfiltered[1]["path"] == "Single-Packet-Probe"
 
+
+class TestLotBP7NamesResolved:
+    """Validate P7: names_resolved boolean indicator for fast=True / fast=False queries."""
+
+    def test_p7_names_resolved_fast_false_is_true(self):
+        """P7: When fast=False, names_resolved must be True."""
+        orchestrator = TestOrchestrator()
+        result = {
+            "flows": [
+                {"egress_path": "BR8-INET2 → DC1-INET", "path_history": [{"path": "BR8-INET2 → DC1-INET"}]}
+            ]
+        }
+        names_resolved = orchestrator._compute_names_resolved(result, fast=False)
+        assert names_resolved is True
+
+    def test_p7_names_resolved_fast_true_cold_cache_is_false(self):
+        """P7: When fast=True with unresolved 'Path ID: ...' in flows, names_resolved must be False."""
+        orchestrator = TestOrchestrator()
+        result = {
+            "flows": [
+                {"egress_path": "Path ID: 102", "path_history": [{"path": "Path ID: 102"}]}
+            ]
+        }
+        names_resolved = orchestrator._compute_names_resolved(result, fast=True)
+        assert names_resolved is False
+
+    def test_p7_names_resolved_fast_true_warm_cache_is_true(self):
+        """P7: When fast=True and all Path IDs were resolved from cache, names_resolved must be True."""
+        orchestrator = TestOrchestrator()
+        result = {
+            "flows": [
+                {"egress_path": "BR8-INET2 → DC1-INET", "path_history": [{"path": "BR8-INET2 → DC1-INET"}]}
+            ]
+        }
+        names_resolved = orchestrator._compute_names_resolved(result, fast=True)
+        assert names_resolved is True
+
+

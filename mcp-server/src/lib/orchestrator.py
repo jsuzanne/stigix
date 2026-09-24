@@ -3248,9 +3248,44 @@ class TestOrchestrator:
                     else:
                         result = {"flows": result, "aggregate_path_timeline": timeline}
 
+                # ── Add names_resolved indicator (P7) ──────────────────────────
+                names_resolved = self._compute_names_resolved(result, fast=fast)
+                if isinstance(result, dict):
+                    result["names_resolved"] = names_resolved
+
                 return result
             except Exception as e:
                 return self._handle_exception(f"Prisma flow query on {agent_id}", e)
+
+    def _compute_names_resolved(self, flows_data: Any, fast: bool) -> bool:
+        """
+        Determines whether all path IDs in the response were resolved to friendly names.
+        When fast=False, backend did full name resolution -> True.
+        When fast=True, returns True only if all path placeholders were resolved from cache.
+        """
+        if not fast:
+            return True
+
+        flows = flows_data if isinstance(flows_data, list) else (
+            flows_data.get("flows") or flows_data.get("records") or flows_data.get("items") or []
+        )
+        if not flows and isinstance(flows_data, dict):
+            flows = [flows_data]
+
+        for flow in flows:
+            if not isinstance(flow, dict):
+                continue
+            for field in ("egress_path", "egressPath", "path_name", "pathName"):
+                val = str(flow.get(field) or "")
+                if val.startswith("Path ID:"):
+                    return False
+            for ph in flow.get("path_history", flow.get("pathHistory", [])):
+                if not isinstance(ph, dict):
+                    continue
+                val = str(ph.get("path") or ph.get("chosen_path") or ph.get("chosenPath") or "")
+                if val.startswith("Path ID:"):
+                    return False
+        return True
 
     def _build_aggregate_path_timeline(
         self,
