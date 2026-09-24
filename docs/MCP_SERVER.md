@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-23 | **Created:** 2026-02-05 (v1.1.2-patch.33.80)
+
 # Stigix MCP Server
 
 **Model Context Protocol (MCP) Server for Distributed Natural Language Orchestration**

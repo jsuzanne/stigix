@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-02-27 | **Created:** 2025-11-28 (v1.0.0)
+
 bash
 # Créer le répertoire docs
 mkdir -p ~/stigix/docs

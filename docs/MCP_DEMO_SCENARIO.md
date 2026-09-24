@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-23 | **Created:** 2026-09-21 (v2.0.55)
+
 # Stigix AI Copilot & FastMCP — End-to-End Enterprise Demo Scenario
 
 **Interactive 360° SD-WAN & SASE Validation Demo Script for Network Engineers, Security Architects, and CIOs**

@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-03 | **Created:** 2026-02-02 (v1.1.2-patch.33.54)
+
 # VyOS Control - SD-WAN Impairment Simulation
 
 The **VyOS Control** module is a specialized subsystem of the SD-WAN Traffic Generator designed to simulate network-level impairments on VyOS routers. It allows for highly orchestrated "missions" that can automate latency, packet loss, and rate-limiting across multiple SD-WAN paths.

@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-09 | **Created:** 2026-01-19 (v1.1.0)
+
 # Traffic Generator Configuration Guide
 
 Learn how to configure and optimize the SD-WAN Traffic Generator for realistic application traffic simulation.

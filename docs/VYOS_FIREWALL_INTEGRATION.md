@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-02-03 | **Created:** 2026-02-03 (v1.1.2-patch.33.65)
+
 # 🔥 VyOS Firewall Integration Guide - FIREWALL ONLY
 
 ## 🎯 Objectif

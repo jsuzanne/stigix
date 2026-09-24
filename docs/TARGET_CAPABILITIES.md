@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-08 | **Created:** 2026-02-08 (v1.2.1-patch.4)
+
 # Target Site Capabilities
 
 In Stigix, **every instance is both a Source and a Target.** By default, when you deploy a Stigix node (All-in-One), it automatically starts a suite of responsive services. This means any node can act as a destination for traffic generation, SLA monitoring, and performance validation from any other peer in the network.

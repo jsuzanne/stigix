@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-04-16 | **Created:** 2026-01-16 (v1.0.2)
+
 # Security Testing - Quick Reference Guide
 
 ## Quick Start

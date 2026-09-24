@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-05 | **Created:** 2026-09-02 (v1.4.1-patch.41)
+
 # 🌐 Underlay Topology — VyOS Physical Infrastructure & WAN Next-Hop Mapping
 
 ## Overview

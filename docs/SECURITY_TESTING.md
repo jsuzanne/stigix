@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-06-05 | **Created:** 2026-01-16 (v1.0.2)
+
 # Security Testing Feature - Technical Documentation
 
 ## Overview

@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-03-12 | **Created:** 2026-03-11 (v1.2.1-patch.158)
+
 # Stigix Autodiscovery & Registry Guide
 
 This document explains the technical implementation of the automatic peer discovery mechanism in Stigix.

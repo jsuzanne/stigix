@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-04-16 | **Created:** 2026-01-19 (v1.1.0)
+
 # Quick Start Guide
 
 Get your SD-WAN Traffic Generator up and running in 5 minutes!

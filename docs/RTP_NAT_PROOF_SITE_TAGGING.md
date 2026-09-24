@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-01 | **Created:** 2026-09-01 (v1.4.1-patch.41)
+
 # 🏷️ Identification du Site Source par Tagging RTP (NAT-Proof)
 
 ## 📌 Contexte & Problématique

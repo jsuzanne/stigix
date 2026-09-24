@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-05-11 | **Created:** 2026-05-11 (v1.3.0-patch.16)
+
 # Stigix on Azure — Deployment Guide
 
 Step-by-step guide to deploy Stigix on a Microsoft Azure Ubuntu VM.

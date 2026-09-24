@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-04-16 | **Created:** 2026-01-19 (v1.1.0)
+
 # Persistent Logging and Test Results
 
 Learn about the persistent logging system introduced in v1.1.0 for security test results and system monitoring.

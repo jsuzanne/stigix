@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-04-16 | **Created:** 2026-03-05 (v1.2.1-patch.151)
+
 # Traffic Flow Guide — Container Architecture & Port Reference
 
 > **Who is this for?** Anyone deploying or using Stigix who wants to understand what each container does, what traffic it sends and receives, on which ports, and how each relates to the web dashboard menus.

@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-13 | **Created:** 2026-09-13 (v2.0.55)
+
 # 📡 Stigix API Studio & Live Observability Guide
 
 > **Target Audience**: NOC Engineers, NetOps, SecOps, and Automation Engineers  

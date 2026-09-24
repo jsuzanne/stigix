@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-05-16 | **Created:** 2026-01-23 (v1.1.0-patch.40)
+
 # 🎙️ Voice Simulation (RTP) Guide
 
 The SD-WAN Traffic Generator includes a sophisticated Voice over IP (VoIP) simulation engine. Unlike standard HTTP traffic, this module simulates real-time RTP (Real-time Transport Protocol) streams to test Quality of Service (QoS) and SD-WAN path selection policies.

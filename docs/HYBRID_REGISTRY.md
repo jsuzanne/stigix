@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-01 | **Created:** 2026-03-12 (v1.2.1-patch.180)
+
 # Stigix Hybrid Registry: Architecture & Logic
 
 The Stigix Hybrid Registry is a discovery system designed to allow Stigix instances to find each other and establish peer-to-peer connections with minimal configuration and zero cost (using Cloudflare Free Tier).

@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-04-16 | **Created:** 2026-01-27 (v1.1.2-patch.5)
+
 # Technical Communication Flow
 
 This diagram illustrates the flows between the various containers and external targets.

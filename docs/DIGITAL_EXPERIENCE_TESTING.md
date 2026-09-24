@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-07-30 | **Created:** 2026-01-18 (v1.1.0-beta.14)
+
 # Digital Experience Testing (DEM)
 
 The **Digital Experience Monitoring (DEM)** (formerly Synthetic Endpoints / Connectivity Probes) provides real-time visibility into the health and performance of critical application targets by simulating user traffic patterns.

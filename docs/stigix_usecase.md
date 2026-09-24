@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-04-16 | **Created:** 2026-03-01 (v1.2.1-patch.125)
+
 # STIGIX – SD-WAN & SASE Use Cases
 
 ## Use Case 1 – SaaS Traffic Generation

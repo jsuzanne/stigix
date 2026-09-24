@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-20 | **Created:** 2026-09-20 (v2.0.55)
+
 # PRD — Stigix In-App AI Copilot (BYO Key) & Dual-Mode Architecture
 
 **Document Status:** Approved Specification / Ready for Implementation  

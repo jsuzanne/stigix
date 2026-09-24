@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-02 | **Created:** 2026-05-28 (v1.4.0-patch.41)
+
 # Stigix CLI Reference Guide
 
 `stigix-cli` is an interactive console and automation tool for managing Stigix instances. It connects directly to the Stigix backend API, allowing you to trigger tests, view real-time traffic statistics, run security audits, control simulated IoT devices, and monitor router failover convergence.
