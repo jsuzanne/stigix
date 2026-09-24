@@ -59,11 +59,19 @@ v2 branch (dev)
    git checkout v2
    ```
 2. Implement features, bug fixes.
-3. For every shippable change, follow the **stigix-deploy** skill:
-   - Bump VERSION files to `v2.0.Z`
-   - Update CHANGELOG.md
+3. **For lab testing** — just push the branch, no version bump needed:
+   ```bash
+   git add -A && git commit -m "fix: <description>"
+   git push   # → CI builds :v2 image (AMD64, ~2 min)
+   ```
+   Lab nodes update with: `docker compose pull && docker compose up -d`
+
+4. **For a traceable milestone** (feature complete, confirmed fix) — follow the **stigix-deploy** skill (Mode B):
+   - Bump `VERSION` files to `v2.0.Z`
+   - Update `CHANGELOG.md`
    - Commit + push branch + push versioned tag `v2.0.Z`
-4. **NEVER push directly to `main` during this phase.**
+
+5. **NEVER push directly to `main` during this phase.**
 
 ---
 

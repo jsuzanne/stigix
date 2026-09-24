@@ -18,6 +18,35 @@ Use this skill whenever you make **code changes** to the stigix project that sho
 
 ---
 
+## Two Push Modes
+
+Choose based on the goal:
+
+### Mode A — Dev Push (lab testing)
+> "Je veux tester le fix sur mon lab maintenant"
+
+- **What it does**: pushes branch → CI builds `:v2` image (AMD64, ~2 min) → lab can `docker compose pull`
+- **No version bump required**, no CHANGELOG entry, no tag
+- Just commit + push:
+  ```bash
+  git add -A && git commit -m "fix: <description>"
+  git push
+  ```
+- Lab nodes pull the fresh image:
+  ```bash
+  docker compose pull && docker compose up -d
+  ```
+
+### Mode B — Shippable Push (versioned, traceable)
+> "Cette version est stable, je veux un tag propre"
+
+- **What it does**: bumps VERSION, updates CHANGELOG, pushes branch + versioned tag → CI builds `:2.0.XX` image
+- Follow the full steps below (Steps 1–5)
+- Use this when the change is significant enough to be identified by version number in the future
+
+> [!TIP]
+> You don't need to do Mode B for every commit. Only tag when the change is a meaningful milestone (feature complete, bug confirmed fixed, etc.).
+
 ## Versioning Scheme (v2.x)
 
 The project uses a **flat `v2.0.Z` patch scheme** — no more `patch.NNN` suffix.
