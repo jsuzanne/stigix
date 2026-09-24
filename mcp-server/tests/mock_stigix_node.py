@@ -324,7 +324,7 @@ def create_app(
             return _old_build_response(path, request.method)
 
         # nominal and nominal_minimal — return contextual responses
-        return await _nominal_response(path, request.method, body_bytes)
+        return await _nominal_response(path, request.method, body_bytes, request.query_params)
 
     return app
 
@@ -402,7 +402,7 @@ def _old_build_response(path: str, method: str) -> JSONResponse:
 # Nominal responses (realistic fixture data)
 # ---------------------------------------------------------------------------
 
-async def _nominal_response(path: str, method: str, body_bytes: bytes = b"") -> JSONResponse:
+async def _nominal_response(path: str, method: str, body_bytes: bytes = b"", query_params: Any = None) -> JSONResponse:
     """Return contextual, realistic responses for common Stigix API paths.
     Used in both 'nominal' and 'nominal_minimal' modes."""
 
@@ -419,13 +419,13 @@ async def _nominal_response(path: str, method: str, body_bytes: bytes = b"") -> 
 
     # -------- Injection guard on traceroute target --------
     if "network/traceroute" in path:
-        target = body_json.get("target", "")
+        target = (query_params.get("target") if query_params else None) or body_json.get("target", "")
         if target and _contains_injection(str(target)):
             return JSONResponse(
                 {
                     "success": False,
                     "error": "Invalid target: contains forbidden characters",
-                    "target": target[:100],
+                    "target": str(target)[:100],
                 },
                 status_code=400,
             )

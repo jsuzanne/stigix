@@ -26,16 +26,16 @@ class TestLotBFlowDiagnostics:
     """Validate P6: path_history preservation and dynamic path_history_complete."""
 
     def test_p6_path_history_preserves_unresolved_and_multi_transitions(self, flow_fixtures):
-        """P6: Ensure all 4 transitions in CONV-0248 flow are preserved in path_history even if labels require fallback."""
+        """P6: Ensure all 4 transitions in CONV-0248 flow are preserved in path_history with real Prisma 64-bit IDs."""
         from engines.getflow import resolve_path_label
         
         flow = flow_fixtures["flow_conv_0248_main"]
         decisions = flow.get("flow_decision_metadata_list", [])
         assert len(decisions) == 4
 
-        # Topology lookup mock with only INET2 resolved, others requiring fallback or partial resolution
+        # Topology lookup mock with only the primary path 1762789923250022645 resolved
         topology = {
-            "path-inet2-dc1": {"source_wan_if_id": "if-br8-inet2", "target_wan_if_id": "if-dc1-inet"}
+            "1762789923250022645": {"source_wan_if_id": "if-br8-inet2", "target_wan_if_id": "if-dc1-inet"}
         }
         wan_if_lookup = {
             "if-br8-inet2": {"full_name": "BR8-INET2"},
@@ -81,8 +81,8 @@ class TestLotBFlowDiagnostics:
         # All 4 decisions had distinct consecutive chosen_wan_path IDs, so path_history MUST have 4 entries
         assert len(path_history) == 4
         assert path_history[0]["path"] == "BR8-INET2 to DC1-INET"
-        assert path_history[1]["path"] == "Path ID: path-inet1-dc2"
-        assert path_history[2]["path"] == "Path ID: path-inet1-dc1"
+        assert path_history[1]["path"] == "Path ID: 1772715677472006545"
+        assert path_history[2]["path"] == "Path ID: 1762789923162021545"
         assert path_history[3]["path"] == "BR8-INET2 to DC1-INET"
 
     def test_p6_dynamic_path_history_complete_flag(self):
@@ -90,26 +90,26 @@ class TestLotBFlowDiagnostics:
         # Case 1: Decisions exist and match count
         decisions_full = [{"flow_decision_time": 100, "chosen_wan_path": "p1"}]
         total_count_1 = 1
-        is_complete_1 = len(decisions_full) >= total_count_1 and total_count_1 > 0
+        is_complete_1 = bool(len(decisions_full) >= total_count_1 and total_count_1 > 0)
         assert is_complete_1 is True
 
         # Case 2: Decisions empty
         decisions_empty = []
         total_count_0 = 0
-        is_complete_0 = len(decisions_empty) >= total_count_0 and total_count_0 > 0
+        is_complete_0 = bool(len(decisions_empty) >= total_count_0 and total_count_0 > 0)
         assert is_complete_0 is False
 
         # Case 3: Truncated decisions
         total_count_truncated = 10
-        is_complete_trunc = len(decisions_full) >= total_count_truncated and total_count_truncated > 0
+        is_complete_trunc = bool(len(decisions_full) >= total_count_truncated and total_count_truncated > 0)
         assert is_complete_trunc is False
 
 
 class TestLotBAggregatePathTimeline:
-    """Validate P5: aggregate_path_timeline overhaul, time_iso, consecutive dedup, single-packet filtering."""
+    """Validate P5: aggregate_path_timeline overhaul, time_iso, consecutive dedup, reachability probe filtering."""
 
     def test_p5_timeline_preserves_failover_and_failback_oscillations(self):
-        """P5: Merging timeline across events must preserve oscillations (INET2 -> INET1/DC2 -> INET1/DC1 -> INET2)."""
+        """P5: Merging timeline across events must preserve oscillations (INET2 -> INET1/DC2 -> INET2/Alt -> INET2)."""
         orchestrator = TestOrchestrator()
         
         # Mock result containing CONV-0248 flow with 4 decisions
@@ -123,7 +123,7 @@ class TestLotBAggregatePathTimeline:
                     "path_history": [
                         {"time_ms": 1790247679000, "time_iso": "2026-09-24T11:01:19Z", "path": "BR8-INET2 → DC1-INET"},
                         {"time_ms": 1790247821700, "time_iso": "2026-09-24T11:03:41.700Z", "path": "BR8-INET1 → DC2-INET"},
-                        {"time_ms": 1790247903000, "time_iso": "2026-09-24T11:05:03Z", "path": "BR8-INET1 → DC1-INET"},
+                        {"time_ms": 1790247903000, "time_iso": "2026-09-24T11:05:03Z", "path": "BR8-INET2 → DC1-INET (Alt)"},
                         {"time_ms": 1790247908000, "time_iso": "2026-09-24T11:05:08Z", "path": "BR8-INET2 → DC1-INET"},
                     ]
                 }
@@ -139,12 +139,12 @@ class TestLotBAggregatePathTimeline:
         assert timeline[0]["path"] == "BR8-INET2 → DC1-INET"
         assert timeline[1]["path"] == "BR8-INET1 → DC2-INET"
         assert timeline[1]["time_iso"] == "2026-09-24T11:03:41.700Z"
-        assert timeline[2]["path"] == "BR8-INET1 → DC1-INET"
+        assert timeline[2]["path"] == "BR8-INET2 → DC1-INET (Alt)"
         assert timeline[3]["path"] == "BR8-INET2 → DC1-INET"
         assert timeline[3]["time_ms"] == 1790247908000
 
-    def test_p5_single_packet_probe_filtering(self):
-        """P5: Single packet reachability probes must be excluded by default, included only when requested."""
+    def test_p5_single_packet_and_reachability_probe_filtering(self):
+        """P5: Reachability probes (1 c2s + 1 s2c = 2 pkts total, c2s<=1) must be excluded by default."""
         orchestrator = TestOrchestrator()
 
         flows = [
@@ -163,10 +163,18 @@ class TestLotBAggregatePathTimeline:
                 "path_history": [
                     {"time_ms": 1790247800000, "time_iso": "2026-09-24T11:03:20Z", "path": "Single-Packet-Probe"}
                 ]
+            },
+            {
+                "flow_id": 99999002,
+                "packets_c2s": 1,
+                "packets_s2c": 1,
+                "path_history": [
+                    {"time_ms": 1790247805000, "time_iso": "2026-09-24T11:03:25Z", "path": "Two-Packet-Reachability-Probe"}
+                ]
             }
         ]
 
-        # Default: exclude single packet flows
+        # Default: exclude probe flows where packets_c2s <= 1
         timeline_filtered = orchestrator._build_aggregate_path_timeline(
             flows,
             include_single_packet_flows=False
@@ -174,20 +182,21 @@ class TestLotBAggregatePathTimeline:
         assert len(timeline_filtered) == 1
         assert timeline_filtered[0]["path"] == "BR8-INET2 → DC1-INET"
 
-        # Explicit: include single packet flows
+        # Explicit: include probe flows
         timeline_unfiltered = orchestrator._build_aggregate_path_timeline(
             flows,
             include_single_packet_flows=True
         )
-        assert len(timeline_unfiltered) == 2
+        assert len(timeline_unfiltered) == 3
         assert timeline_unfiltered[1]["path"] == "Single-Packet-Probe"
+        assert timeline_unfiltered[2]["path"] == "Two-Packet-Reachability-Probe"
 
 
 class TestLotBP7NamesResolved:
-    """Validate P7: names_resolved boolean indicator for fast=True / fast=False queries."""
+    """Validate P7: names_resolved boolean indicator across fast=True and fast=False queries."""
 
-    def test_p7_names_resolved_fast_false_is_true(self):
-        """P7: When fast=False, names_resolved must be True."""
+    def test_p7_names_resolved_fast_false_all_resolved_is_true(self):
+        """P7: When fast=False and all paths are resolved names, names_resolved must be True."""
         orchestrator = TestOrchestrator()
         result = {
             "flows": [
@@ -196,6 +205,17 @@ class TestLotBP7NamesResolved:
         }
         names_resolved = orchestrator._compute_names_resolved(result, fast=False)
         assert names_resolved is True
+
+    def test_p7_names_resolved_fast_false_unresolved_id_is_false(self):
+        """P7: When fast=False but unknown path ID 'Path ID: ...' is present in output, names_resolved must be False."""
+        orchestrator = TestOrchestrator()
+        result = {
+            "flows": [
+                {"egress_path": "Path ID: 1772715677472006545", "path_history": [{"path": "Path ID: 1772715677472006545"}]}
+            ]
+        }
+        names_resolved = orchestrator._compute_names_resolved(result, fast=False)
+        assert names_resolved is False
 
     def test_p7_names_resolved_fast_true_cold_cache_is_false(self):
         """P7: When fast=True with unresolved 'Path ID: ...' in flows, names_resolved must be False."""
@@ -285,7 +305,3 @@ class TestLotBAliasesRationalization:
         assert "tx_loss_pct" not in dump
         assert "rx_loss_pct" not in dump
         assert "avg_rtt_ms" not in dump
-
-
-
-

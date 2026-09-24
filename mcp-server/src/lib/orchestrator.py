@@ -892,6 +892,8 @@ class TestOrchestrator:
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
                 response = await client.get(url, headers=headers)
+                if response.status_code == 404 and self._is_json_response(response):
+                    return response.json()
                 response.raise_for_status()
                 routers = response.json()
 
@@ -1548,6 +1550,8 @@ class TestOrchestrator:
                     result["total_probes_configured"] = len(probes_cfg)
                     result["probes_matched"] = len(summary_list)
                     result["probes_summary"] = summary_list
+                    result["probes"] = summary_list
+                    result["results"] = summary_list
 
                 if raw:
                     filtered_raw = raw_results
@@ -3280,33 +3284,34 @@ class TestOrchestrator:
             except Exception as e:
                 return self._handle_exception(f"Prisma flow query on {agent_id}", e)
 
-    def _compute_names_resolved(self, flows_data: Any, fast: bool) -> bool:
+    def _compute_names_resolved(self, flows_data: Any, fast: bool = False) -> bool:
         """
         Determines whether all path IDs in the response were resolved to friendly names.
-        When fast=False, backend did full name resolution -> True.
-        When fast=True, returns True only if all path placeholders were resolved from cache.
+        Calculates on the actual output in BOTH fast and non-fast modes:
+        returns False if any egress_path or path_history entry contains 'Path ID:', True otherwise.
         """
-        if not fast:
-            return True
-
         flows = flows_data if isinstance(flows_data, list) else (
             flows_data.get("flows") or flows_data.get("records") or flows_data.get("items") or []
         )
         if not flows and isinstance(flows_data, dict):
-            flows = [flows_data]
+            if "egress_path" in flows_data or "path_history" in flows_data or "flow_id" in flows_data:
+                flows = [flows_data]
 
         for flow in flows:
             if not isinstance(flow, dict):
                 continue
             for field in ("egress_path", "egressPath", "path_name", "pathName"):
                 val = str(flow.get(field) or "")
-                if val.startswith("Path ID:"):
+                if "Path ID:" in val:
                     return False
             for ph in flow.get("path_history", flow.get("pathHistory", [])):
                 if not isinstance(ph, dict):
                     continue
                 val = str(ph.get("path") or ph.get("chosen_path") or ph.get("chosenPath") or "")
-                if val.startswith("Path ID:"):
+                if "Path ID:" in val:
+                    return False
+                pref = str(ph.get("preferred_path") or ph.get("preferredPath") or "")
+                if "Path ID:" in pref:
                     return False
         return True
 
@@ -3319,16 +3324,20 @@ class TestOrchestrator:
         """
         Merges path_history from matching flows into a single chronological timeline.
         Preserves path transitions and oscillations across time.
-        Filters out 1-packet reachability probe flows by default.
+        Filters out reachability probe flows (packets_c2s <= 1) by default.
         """
         resolver = resolve_fn if resolve_fn else (lambda x: x)
         filtered_flows = []
         for f in flows_list:
             if not isinstance(f, dict):
                 continue
-            pkts = (f.get("packets_c2s") or 0) + (f.get("packets_s2c") or 0)
-            if not include_single_packet_flows and pkts <= 1 and (f.get("packets_c2s") is not None or f.get("packets_s2c") is not None):
-                continue
+            c2s = f.get("packets_c2s")
+            if not include_single_packet_flows and c2s is not None:
+                try:
+                    if int(c2s) <= 1:
+                        continue
+                except (ValueError, TypeError):
+                    pass
             filtered_flows.append(f)
 
         all_events = []

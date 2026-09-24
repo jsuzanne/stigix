@@ -2043,7 +2043,7 @@ def main():
                                     prev_path_name = chosen_name
 
                         total_decisions = len(decisions) if isinstance(decisions, list) else 0
-                        is_history_complete = (len(path_history) > 0 and total_decisions > 0)
+                        is_history_complete = bool(len(path_history) >= total_decisions and total_decisions > 0)
 
                         flow_info = {
                             "source_ip": flow.get('source_ip'),
