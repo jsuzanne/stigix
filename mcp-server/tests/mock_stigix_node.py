@@ -657,12 +657,13 @@ async def _nominal_response(path: str, method: str, body_bytes: bytes = b"") -> 
     if "convergence/status" in path:
         return JSONResponse([
             {
-                "test_id": "CONV-0248 (BR8-DC1-failover-demo-v3)",
-                "testId": "CONV-0248",
+                "test_id": "CONV-0249 (BR8-DC1-failover-demo-v4)",
+                "testId": "CONV-0249",
+                "label": "BR8-DC1-failover-demo-v4",
                 "status": "running",
-                "sent": 937,
-                "received": 936,
-                "server_received": 936,
+                "sent": 866,
+                "received": 865,
+                "server_received": 865,
                 "loss_pct": 0.0,
                 "live_loss_pct": 0.0,
                 "total_loss_pct": 0.1,
@@ -670,23 +671,21 @@ async def _nominal_response(path: str, method: str, body_bytes: bytes = b"") -> 
                 "rx_loss_pct": 0.0,
                 "tx_lost_packets": 1,
                 "rx_lost_packets": 0,
-                "tx_loss_ms": 20,
-                "rx_loss_ms": 0,
-                "sync_lost": False,
                 "max_blackout_ms": 0,
                 "current_blackout_ms": 0,
-                "avg_rtt_ms": 20.48,
-                "current_rtt_ms": 19.8,
-                "jitter_ms": 13.02,
+                "avg_rtt_ms": 8.11,
+                "current_rtt_ms": 8.0,
+                "jitter_ms": 3.2,
                 "rate_pps": 50,
-                "duration_s": 21.1,
+                "duration_s": 19.7,
                 "history": [1] * 100,
-                "start_time": 1727175679.0,
+                "start_time": 1790248000.0,
                 "target": "192.168.203.100",
                 "port": 6200,
-                "label": "BR8-DC1-failover-demo-v3",
-                "source_port": 30248,
+                "source_port": 30249,
                 "running": True,
+                "egress_path": None,
+                "path_evolution": None,
             }
         ])
     if "convergence/history" in path:
@@ -694,6 +693,7 @@ async def _nominal_response(path: str, method: str, body_bytes: bytes = b"") -> 
             {
                 "test_id": "CONV-0248 (BR8-DC1-failover-demo-v3)",
                 "testId": "CONV-0248 (BR8-DC1-failover-demo-v3)",
+                "label": "BR8-DC1-failover-demo-v3",
                 "status": "stopped",
                 "sent": 14981,
                 "received": 14512,
@@ -701,13 +701,10 @@ async def _nominal_response(path: str, method: str, body_bytes: bytes = b"") -> 
                 "loss_pct": 3.1,
                 "live_loss_pct": 0.0,
                 "total_loss_pct": 3.1,
-                "tx_loss_pct": 3.1,
-                "rx_loss_pct": 0.0,
-                "tx_lost_packets": 469,
-                "rx_lost_packets": 0,
-                "tx_loss_ms": 9380,
-                "rx_loss_ms": 0,
-                "sync_lost": False,
+                "tx_loss_pct": 1.2,
+                "rx_loss_pct": 2.0,
+                "tx_lost_packets": 180,
+                "rx_lost_packets": 289,
                 "max_blackout_ms": 8859,
                 "current_blackout_ms": 0,
                 "avg_rtt_ms": 54.08,
@@ -717,15 +714,15 @@ async def _nominal_response(path: str, method: str, body_bytes: bytes = b"") -> 
                 "duration_s": 304.7,
                 "target": "192.168.203.100",
                 "port": 6200,
-                "label": "BR8-DC1-failover-demo-v3",
                 "source_port": 30248,
                 "egress_path": "BR8-INET2 → DC1-INET",
-                "path_evolution": "BR8-INET2 → DC1-INET ➔ BR8-INET1 → DC2-INET ➔ BR8-INET2 → DC1-INET",
-                "timestamp": 1727175983700,
+                "path_evolution": "BR8-INET2 → DC1-INET",
+                "timestamp": 1790247984681,
             },
             {
                 "test_id": "CONV-0247 (BR8-DC1-failover-demo-v2)",
                 "testId": "CONV-0247 (BR8-DC1-failover-demo-v2)",
+                "label": "BR8-DC1-failover-demo-v2",
                 "status": "stopped",
                 "sent": 56699,
                 "received": 56052,
@@ -740,13 +737,12 @@ async def _nominal_response(path: str, method: str, body_bytes: bytes = b"") -> 
                 "egress_path": "BR8-INET2 → DC1-INET",
                 "target": "192.168.203.100",
                 "port": 6200,
-                "label": "BR8-DC1-failover-demo-v2",
                 "source_port": 30247,
-                "timestamp": 1727174000000,
+                "timestamp": 1790240000000,
             }
         ])
     if "convergence/stop" in path:
-        return JSONResponse({"success": True, "stopped_test": "CONV-0248"})
+        return JSONResponse({"success": True, "stopped_test": "CONV-0249"})
     if "convergence" in path:
         return JSONResponse({"success": True, "status": "ok"})
 

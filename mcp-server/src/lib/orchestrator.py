@@ -12,6 +12,49 @@ from ..types import TestRun, TestStatus, StigixEndpoint, ConvMetrics, compute_co
 
 logger = logging.getLogger(__name__)
 
+def _compute_build_info() -> Dict[str, Any]:
+    git_hash = os.getenv("GIT_COMMIT") or os.getenv("STIGIX_BUILD") or ""
+    build_date = os.getenv("BUILD_DATE") or ""
+    version = os.getenv("STIGIX_VERSION", "")
+    if not version:
+        for p in ["/app/VERSION", "VERSION", os.path.join(os.path.dirname(__file__), "../../../VERSION")]:
+            if os.path.exists(p):
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        v = f.read().strip()
+                        if v:
+                            version = v
+                            break
+                except Exception:
+                    pass
+    if not version:
+        version = "2.0.64"
+
+    if not git_hash:
+        try:
+            import subprocess
+            res = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=1.0)
+            if res.returncode == 0:
+                git_hash = res.stdout.strip()
+        except Exception:
+            pass
+    if not build_date:
+        try:
+            import subprocess
+            res = subprocess.run(["git", "log", "-1", "--format=%ci"], capture_output=True, text=True, timeout=1.0)
+            if res.returncode == 0:
+                build_date = res.stdout.strip()
+        except Exception:
+            pass
+    return {
+        "version": version,
+        "git_commit": git_hash or "unknown",
+        "build_date": build_date or "unknown",
+    }
+
+_BUILD_INFO: Dict[str, Any] = _compute_build_info()
+
+
 class TestOrchestrator:
     """
     Orchestrates traffic tests between Stigix endpoints.
@@ -3232,29 +3275,8 @@ class TestOrchestrator:
     # -------------------------------------------------------------------------
 
     def get_build_info(self) -> Dict[str, Any]:
-        """Returns MCP server build metadata (git commit, build date, software version)."""
-        import subprocess
-        git_hash = os.getenv("GIT_COMMIT") or os.getenv("STIGIX_BUILD") or ""
-        build_date = os.getenv("BUILD_DATE") or ""
-        if not git_hash:
-            try:
-                res = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=1.0)
-                if res.returncode == 0:
-                    git_hash = res.stdout.strip()
-            except Exception:
-                pass
-        if not build_date:
-            try:
-                res = subprocess.run(["git", "log", "-1", "--format=%ci"], capture_output=True, text=True, timeout=1.0)
-                if res.returncode == 0:
-                    build_date = res.stdout.strip()
-            except Exception:
-                pass
-        return {
-            "version": os.getenv("STIGIX_VERSION", "2.0.64"),
-            "git_commit": git_hash or "unknown",
-            "build_date": build_date or "unknown",
-        }
+        """Returns MCP server build metadata (git commit, build date, software version). Computed once at startup."""
+        return dict(_BUILD_INFO)
 
     async def get_health_matrix(self, agent_id: str) -> Dict[str, Any]:
         """Fetch the 360-degree system health matrix across all 9 subsystems."""

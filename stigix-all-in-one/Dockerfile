@@ -102,6 +102,11 @@ COPY web-dashboard/src/types ./src/types
 COPY web-dashboard/tsconfig.json ./
 COPY --from=builder /app/VERSION ./VERSION
 ARG VERSION
+ARG GIT_COMMIT
+ARG BUILD_DATE
+ENV STIGIX_VERSION=${VERSION}
+ENV GIT_COMMIT=${GIT_COMMIT}
+ENV BUILD_DATE=${BUILD_DATE}
 RUN if [ -n "$VERSION" ]; then echo "$VERSION" > VERSION; fi
 
 # Copy components

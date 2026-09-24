@@ -266,6 +266,11 @@ async def run_test(
 async def get_test_status(test_id: str) -> dict:
     """
     Get the status and metrics of a specific test.
+
+    Note on in-flight packets (conv profile):
+    - While the test is actively running, live `uplink_loss_pct` and `downlink_loss_pct` may
+      temporarily account for packets in flight (e.g. 0.1% at T+20s), which settle to 0.0%
+      when the probe stream terminates.
     
     Args:
         test_id: The global test ID (e.g., G-20260313-ABCD) or a local ID (CONV-XXXX).
@@ -292,9 +297,13 @@ async def stop_test(test_id: str) -> dict:
       stop_test autonomously as part of that sequence — no need to re-ask for confirmation.
     - This exception does NOT apply to actions not covered by the user's explicit authorization.
 
-    Returns (for conv profile): sent, received, loss_pct, uplink_loss_pct, downlink_loss_pct,
-    max_blackout_ms, blackout_count, total_blackout_ms, latency_ms (min/avg/max),
-    jitter_ms (min/avg/max), duration_s, egress_path, verdict.
+    Returns (for conv profile): sent, received, loss_percent, uplink_loss_pct, downlink_loss_pct,
+    max_blackout_ms, latency_ms, jitter_ms, duration_s, egress_path, verdict.
+
+    Note on egress_path:
+    - `egress_path` is `null` immediately upon `stop_test` return.
+    - It appears in `get_convergence_history` approximately 1 minute later once background
+      getflow path resolution and flow enrichment complete.
 
     Args:
         test_id: The global test ID (e.g., G-20260313-ABCD) or a local ID (CONV-XXXX).
