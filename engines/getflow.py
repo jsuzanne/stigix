@@ -19,7 +19,11 @@ import os
 from typing import Optional, Dict, Any
 import concurrent.futures
 
-from prisma_sase import API, jd
+try:
+    from prisma_sase import API, jd
+except ImportError:
+    API = None
+    jd = None
 
 try:
     from stigix_telemetry import init_telemetry
@@ -1992,7 +1996,8 @@ def main():
                                 [d for d in decisions if isinstance(d, dict) and d.get('flow_decision_time')],
                                 key=lambda d: d.get('flow_decision_time', 0)
                             )
-                            prev_path = None
+                            prev_path_id = None
+                            prev_path_name = None
                             for d in sorted_decisions:
                                 chosen_path_id = d.get('chosen_wan_path') or d.get('chosen_path') or d.get('path_id') or d.get('wan_path') or d.get('waninterface_id') or d.get('chosen_path_id')
                                 pref_path_id = d.get('preferred_wan_path') or d.get('preferred_path') or d.get('preferred_path_id')
@@ -2005,13 +2010,15 @@ def main():
                                 allowed_policy_names = [resolve_path_label(pid, topology, wan_if_lookup) for pid in allowed_policy_ids] if isinstance(allowed_policy_ids, list) else []
                                 allowed_reach_names = [resolve_path_label(pid, topology, wan_if_lookup) for pid in allowed_reach_ids] if isinstance(allowed_reach_ids, list) else []
 
+                                display_path = chosen_name or (f"Path ID: {chosen_path_id}" if chosen_path_id is not None else "Unknown")
+
                                 entry = {
                                     "time_ms": dec_time_ms,
                                     "time_iso": datetime.fromtimestamp(dec_time_ms / 1000.0, timezone.utc).isoformat() if dec_time_ms else None,
-                                    "path": chosen_name,
+                                    "path": display_path,
                                     "path_id": chosen_path_id,
-                                    "chosen_path": chosen_name,
-                                    "preferred_path": pref_name,
+                                    "chosen_path": display_path,
+                                    "preferred_path": pref_name or (f"Path ID: {pref_path_id}" if pref_path_id is not None else None),
                                     "allowed_paths_by_policy": allowed_policy_names,
                                     "allowed_paths_by_reachability": allowed_reach_names,
                                     "available_wan_networks": d.get('available_wan_networks') or [],
@@ -2020,9 +2027,23 @@ def main():
                                     "device_role": d.get('device_role')
                                 }
 
-                                if chosen_name and chosen_name != prev_path:
+                                has_changed = False
+                                if chosen_path_id is not None:
+                                    if chosen_path_id != prev_path_id:
+                                        has_changed = True
+                                elif chosen_name is not None:
+                                    if chosen_name != prev_path_name:
+                                        has_changed = True
+                                elif prev_path_id is None and prev_path_name is None:
+                                    has_changed = True
+
+                                if has_changed:
                                     path_history.append(entry)
-                                    prev_path = chosen_name
+                                    prev_path_id = chosen_path_id
+                                    prev_path_name = chosen_name
+
+                        total_decisions = len(decisions) if isinstance(decisions, list) else 0
+                        is_history_complete = (len(path_history) > 0 and total_decisions > 0)
 
                         flow_info = {
                             "source_ip": flow.get('source_ip'),
@@ -2037,7 +2058,7 @@ def main():
                             "path_type": flow.get('path_type'),
                             "egress_path": egress_path,
                             "path_history": path_history,
-                            "path_history_complete": True,
+                            "path_history_complete": is_history_complete,
                             "total_decisions_count": len(decisions) if isinstance(decisions, list) else 0,
                             "app_id": flow.get('app_id'),
                             "flow_id": flow.get('flow_id'),

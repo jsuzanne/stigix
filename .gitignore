@@ -17,6 +17,7 @@ playwright.config.ts
 !tsconfig.app.json
 !tsconfig.node.json
 !logs/stats.json
+!mcp-server/tests/fixtures/**
 
 # -------------------------------------------------------
 # Credentials & Secrets — NEVER commit these

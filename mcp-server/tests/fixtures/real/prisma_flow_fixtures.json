@@ -1,0 +1,69 @@
+{
+  "flow_conv_0248_main": {
+    "flow_id": 70656819,
+    "source_ip": "192.168.1.100",
+    "source_port": 30248,
+    "destination_ip": "192.168.203.100",
+    "destination_port": 6200,
+    "protocol": 17,
+    "bytes_c2s": 1443200,
+    "bytes_s2c": 1398000,
+    "packets_c2s": 14432,
+    "packets_s2c": 13980,
+    "path_type": "VPN",
+    "flow_start_time_ms": 1790247679000,
+    "flow_end_time_ms": 1790247970000,
+    "flow_decision_metadata_list": [
+      {
+        "flow_decision_time": 1790247679000,
+        "chosen_wan_path": "path-inet2-dc1",
+        "preferred_wan_path": "path-inet2-dc1",
+        "device_id": "dev-br8-01",
+        "device_model_name": "ION-3000"
+      },
+      {
+        "flow_decision_time": 1790247821700,
+        "chosen_wan_path": "path-inet1-dc2",
+        "preferred_wan_path": "path-inet2-dc1",
+        "device_id": "dev-br8-01",
+        "device_model_name": "ION-3000"
+      },
+      {
+        "flow_decision_time": 1790247903000,
+        "chosen_wan_path": "path-inet1-dc1",
+        "preferred_wan_path": "path-inet2-dc1",
+        "device_id": "dev-br8-01",
+        "device_model_name": "ION-3000"
+      },
+      {
+        "flow_decision_time": 1790247908000,
+        "chosen_wan_path": "path-inet2-dc1",
+        "preferred_wan_path": "path-inet2-dc1",
+        "device_id": "dev-br8-01",
+        "device_model_name": "ION-3000"
+      }
+    ]
+  },
+  "single_packet_probe_flow": {
+    "flow_id": 99999001,
+    "source_ip": "192.168.1.100",
+    "source_port": 54321,
+    "destination_ip": "192.168.203.100",
+    "destination_port": 6200,
+    "protocol": 17,
+    "bytes_c2s": 64,
+    "bytes_s2c": 0,
+    "packets_c2s": 1,
+    "packets_s2c": 0,
+    "path_type": "DirectInternet",
+    "flow_start_time_ms": 1790247800000,
+    "flow_end_time_ms": 1790247800050,
+    "flow_decision_metadata_list": [
+      {
+        "flow_decision_time": 1790247800000,
+        "chosen_wan_path": "path-probe-single",
+        "preferred_wan_path": "path-probe-single"
+      }
+    ]
+  }
+}
