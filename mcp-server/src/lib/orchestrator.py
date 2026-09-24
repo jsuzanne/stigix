@@ -1039,16 +1039,28 @@ class TestOrchestrator:
                 # Without this, the history lookup can race and return 'Unknown'.
                 await asyncio.sleep(0.4)
 
-                # Step 3 — Fetch history to get CLI equivalent (last entry)
+                # Step 3 — Fetch history to get CLI equivalent and commit timestamp
                 history_resp = await client.get(
                     f"{base_url}/api/vyos/history?limit=1",
                     headers=headers
                 )
                 cli_equivalent = None
+                commit_ts = None
+                commit_ts_ms = None
                 if history_resp.status_code == 200:
                     history = history_resp.json()
-                    if history:
-                        cli_equivalent = history[0].get("cli_equivalent")
+                    if history and isinstance(history, list) and len(history) > 0:
+                        first_entry = history[0]
+                        cli_equivalent = first_entry.get("cli_equivalent")
+                        commit_ts = first_entry.get("timestamp") or first_entry.get("timestamp_iso") or first_entry.get("executed_at")
+                        commit_ts_ms = first_entry.get("timestamp_ms") or first_entry.get("time_ms")
+
+                if not commit_ts:
+                    import datetime
+                    import time
+                    now_dt = datetime.datetime.utcnow()
+                    commit_ts = now_dt.isoformat() + "Z"
+                    commit_ts_ms = int(time.time() * 1000)
 
                 # Step 4 — Delete the temp sequence
                 await client.delete(
@@ -1063,6 +1075,8 @@ class TestOrchestrator:
                     "interface": interface,
                     "parameters": parameters,
                     "cli_equivalent": cli_equivalent,
+                    "commit_timestamp": commit_ts,
+                    "commit_timestamp_ms": commit_ts_ms,
                     "result": run_result
                 }
 

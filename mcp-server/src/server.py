@@ -833,7 +833,8 @@ async def vyos_execute_action(
     """
     Execute an ad-hoc VyOS network action on a specific router interface.
     Creates a temporary sequence, runs it immediately, then deletes it.
-    Returns the result AND the VyOS CLI equivalent for full transparency.
+    Returns the result, the VyOS CLI equivalent, and the exact commit_timestamp (ISO 8601 & ms)
+    to precisely measure failover detection and convergence times.
 
     ⚠️  ONLY CALL THIS AFTER:
     1. Having called get_vyos_interfaces to list all routers and interfaces.
@@ -1576,10 +1577,10 @@ async def get_prisma_flows(
     dst_ip: Optional[str] = None,
     minutes: Optional[int] = None,
     hours: Optional[int] = None,
-    fast: Optional[bool] = False,
-    page_size: Optional[int] = 10,
-    aggregate_path_timeline: Optional[bool] = False,
-    include_single_packet_flows: Optional[bool] = False,
+    fast: bool = False,
+    page_size: int = 10,
+    aggregate_path_timeline: bool = False,
+    include_single_packet_flows: bool = False,
 ) -> dict:
     """
     Query the Prisma SD-WAN Flow Browser to retrieve paths, stats, and chronological path transitions.
@@ -1595,6 +1596,9 @@ async def get_prisma_flows(
     - query_window: Exact start and end UTC timestamps of the query.
     - aggregate_path_timeline (when requested): Merged, deduplicated timeline of path transitions
       across matched flows — preserves chronological transitions and failover/failback oscillations.
+      NOTE: The timeline aggregates over the returned page (limited by `page_size`, default 10).
+      To isolate the exact convergence test flow, pass `udp_src_port` (obtained from `get_convergence_history`
+      `source_port` field) and `udp_dst_port=6200`.
 
     FAST MODE & PATH NAME CACHE:
     - fast=False (default): backend resolves path IDs to human-readable names, results are cached
@@ -1612,7 +1616,7 @@ async def get_prisma_flows(
         site_name: Name of the site to query flows for (alternative to site_id, e.g. 'BR8').
         site_id: UUID of the site to query.
         protocol: Filter by protocol number (6=TCP, 17=UDP, 1=ICMP).
-        udp_src_port: Filter by UDP source port.
+        udp_src_port: Filter by UDP source port (from get_convergence_history source_port).
         udp_dst_port: Filter by UDP destination port (e.g. 6200 for conv tests).
         tcp_src_port: Filter by TCP source port.
         tcp_dst_port: Filter by TCP destination port.
@@ -1622,9 +1626,9 @@ async def get_prisma_flows(
         hours: Number of hours to look back (e.g. 1, 24, 48).
         fast: Skip detailed VPN path name resolution. Cache is still consulted for
             already-resolved IDs. Run once with fast=False to warm the cache.
-        page_size: Maximum number of flow records to return.
-        aggregate_path_timeline: If True, merge path_history from all matched flows into a
-            single deduplicated timeline of path changes (useful for conv test analysis).
+        page_size: Maximum number of flow records to return (default: 10).
+        aggregate_path_timeline: If True, merge path_history from all matched flows in the current page
+            into a single deduplicated timeline of path changes (useful for conv test analysis).
         include_single_packet_flows: If True, include single-packet probe flows in the timeline
             (default: False to avoid polluting test failover sequences).
     """
