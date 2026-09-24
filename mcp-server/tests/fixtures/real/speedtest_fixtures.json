@@ -1,0 +1,54 @@
+{
+  "xfr_0904_completed": {
+    "id": "job-1727181000",
+    "sequence_id": "XFR-0904",
+    "status": "completed",
+    "started_at": "2026-09-24T12:30:00.000Z",
+    "finished_at": "2026-09-24T12:30:10.000Z",
+    "params": {
+      "mode": "custom",
+      "host": "192.168.203.100",
+      "port": 9000,
+      "protocol": "tcp",
+      "direction": "client-to-server",
+      "duration_sec": 10,
+      "bitrate": "0",
+      "parallel_streams": 4
+    },
+    "summary": {
+      "throughput_mbps": 176.46,
+      "sent_mbps": 176.46,
+      "received_mbps": 174.20,
+      "loss_percent": 0.0,
+      "retransmits": 12,
+      "bytes_total": 220575000,
+      "rtt_ms_avg": 8.12
+    }
+  },
+  "xfr_0905_completed": {
+    "id": "job-1727181060",
+    "sequence_id": "XFR-0905",
+    "status": "completed",
+    "started_at": "2026-09-24T12:31:00.000Z",
+    "finished_at": "2026-09-24T12:31:10.000Z",
+    "params": {
+      "mode": "custom",
+      "host": "192.168.203.100",
+      "port": 9000,
+      "protocol": "tcp",
+      "direction": "client-to-server",
+      "duration_sec": 10,
+      "bitrate": "0",
+      "parallel_streams": 4
+    },
+    "summary": {
+      "throughput_mbps": 176.46,
+      "sent_mbps": 176.46,
+      "received_mbps": 174.20,
+      "loss_percent": 0.0,
+      "retransmits": 12,
+      "bytes_total": 220575000,
+      "rtt_ms_avg": 8.12
+    }
+  }
+}

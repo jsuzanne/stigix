@@ -197,9 +197,8 @@ class TestStatus(BaseModel):
     status: str = Field(..., description="Test status (running, completed, failed)")
     source_id: str = Field(..., description="Source ID")
     target_id: str = Field(..., description="Target ID")
-    # conv tests: typed ConvMetrics (supports string fields like egress_path / verdict)
-    # xfr / voice / iot: falls back to generic Dict[str, Any]
-    metrics: Optional[Union[ConvMetrics, Dict[str, Any]]] = Field(
+    # conv tests: typed ConvMetrics; xfr / voice / iot: raw dict preserving all profile-specific fields
+    metrics: Optional[Union[Dict[str, Any], ConvMetrics]] = Field(
         None,
         description="Current metrics. Conv tests return ConvMetrics; other profiles return a raw dict."
     )

@@ -353,6 +353,8 @@ class TestOrchestrator:
                         "is_convergence": is_convergence_profile
                     }
 
+                    display_bitrate = self._compute_display_bitrate(profile=profile, bitrate=bitrate, pps=pps)
+
                     test_runs.append(TestRun(
                         id=global_id,
                         local_id=local_id,
@@ -361,7 +363,7 @@ class TestOrchestrator:
                         target_id=target.id,
                         profile=profile,
                         duration=duration,
-                        bitrate=str(pps) + " pps" if pps else (bitrate or "50 pps"),
+                        bitrate=display_bitrate,
                         label=label,
                         status="finished" if (is_xfr_profile and xfr_inline_result) else "running",
                         # Carry inline XFR result so the MCP layer can expose it immediately
@@ -1692,11 +1694,7 @@ class TestOrchestrator:
                         "sequence_id": job.get("sequence_id") or job.get("id"),
                         "status": status_str,
                         "source": job.get("source") or job.get("source_id") or agent_id,
-                        "target": (
-                            job.get("target") or
-                            (job.get("params") or {}).get("target", {}).get("host") or
-                            job.get("target_host") or "?"
-                        ),
+                        "target": self._extract_xfr_target(job),
                         "protocol": (job.get("params") or {}).get("protocol") or job.get("protocol") or "tcp",
                         "direction": (job.get("params") or {}).get("direction") or job.get("direction") or "client-to-server",
                         "duration_s": (job.get("params") or {}).get("duration_sec") or job.get("duration_sec") or 0,
@@ -1718,6 +1716,47 @@ class TestOrchestrator:
             except Exception as e:
                 logger.error(f"Failed to fetch speedtest history for {agent_id}: {e}")
                 return {"error": str(e)}
+
+    def _compute_display_bitrate(self, profile: str, bitrate: Optional[str] = None, pps: Optional[int] = None) -> str:
+        """Compute human-friendly bitrate display string depending on test profile."""
+        prof = (profile or "").lower()
+        if prof in ("xfr", "speedtest"):
+            if bitrate and str(bitrate).strip() not in ("0", ""):
+                return str(bitrate).strip()
+            return "max"
+        elif prof == "conv":
+            if pps:
+                return f"{pps} pps"
+            if bitrate:
+                b_str = str(bitrate).strip()
+                return b_str if "pps" in b_str else f"{b_str} pps"
+            return "50 pps"
+        elif prof == "voice":
+            return "64 kbps (G.711)"
+        elif prof == "iot":
+            return f"{pps or 10} pps"
+        return str(bitrate) if bitrate else "default"
+
+    def _extract_xfr_target(self, job: Dict[str, Any]) -> str:
+        """Extract target host/IP from an XFR job representation."""
+        if not isinstance(job, dict):
+            return "?"
+        params = job.get("params") or {}
+        if not isinstance(params, dict):
+            params = {}
+        target_obj = params.get("target") or job.get("target")
+        if isinstance(target_obj, dict):
+            host = target_obj.get("host") or target_obj.get("ip")
+            if host:
+                return str(host)
+        elif target_obj and str(target_obj).strip() not in ("?", ""):
+            return str(target_obj).strip()
+        
+        host_val = params.get("host") or job.get("host") or job.get("target_host")
+        if host_val and str(host_val).strip() not in ("?", ""):
+            return str(host_val).strip()
+        
+        return "?"
 
     # -------------------------------------------------------------------------
     # Phase 2 Additions
