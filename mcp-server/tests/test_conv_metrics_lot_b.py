@@ -103,3 +103,82 @@ class TestLotBFlowDiagnostics:
         total_count_truncated = 10
         is_complete_trunc = len(decisions_full) >= total_count_truncated and total_count_truncated > 0
         assert is_complete_trunc is False
+
+
+class TestLotBAggregatePathTimeline:
+    """Validate P5: aggregate_path_timeline overhaul, time_iso, consecutive dedup, single-packet filtering."""
+
+    def test_p5_timeline_preserves_failover_and_failback_oscillations(self):
+        """P5: Merging timeline across events must preserve oscillations (INET2 -> INET1/DC2 -> INET1/DC1 -> INET2)."""
+        orchestrator = TestOrchestrator()
+        
+        # Mock result containing CONV-0248 flow with 4 decisions
+        flows_result = {
+            "flows": [
+                {
+                    "flow_id": 70656819,
+                    "source_port": 30248,
+                    "packets_c2s": 14432,
+                    "packets_s2c": 13980,
+                    "path_history": [
+                        {"time_ms": 1790247679000, "time_iso": "2026-09-24T11:01:19Z", "path": "BR8-INET2 → DC1-INET"},
+                        {"time_ms": 1790247821700, "time_iso": "2026-09-24T11:03:41.700Z", "path": "BR8-INET1 → DC2-INET"},
+                        {"time_ms": 1790247903000, "time_iso": "2026-09-24T11:05:03Z", "path": "BR8-INET1 → DC1-INET"},
+                        {"time_ms": 1790247908000, "time_iso": "2026-09-24T11:05:08Z", "path": "BR8-INET2 → DC1-INET"},
+                    ]
+                }
+            ]
+        }
+
+        timeline = orchestrator._build_aggregate_path_timeline(
+            flows_result["flows"],
+            include_single_packet_flows=False
+        )
+
+        assert len(timeline) == 4
+        assert timeline[0]["path"] == "BR8-INET2 → DC1-INET"
+        assert timeline[1]["path"] == "BR8-INET1 → DC2-INET"
+        assert timeline[1]["time_iso"] == "2026-09-24T11:03:41.700Z"
+        assert timeline[2]["path"] == "BR8-INET1 → DC1-INET"
+        assert timeline[3]["path"] == "BR8-INET2 → DC1-INET"
+        assert timeline[3]["time_ms"] == 1790247908000
+
+    def test_p5_single_packet_probe_filtering(self):
+        """P5: Single packet reachability probes must be excluded by default, included only when requested."""
+        orchestrator = TestOrchestrator()
+
+        flows = [
+            {
+                "flow_id": 70656819,
+                "packets_c2s": 14432,
+                "packets_s2c": 13980,
+                "path_history": [
+                    {"time_ms": 1790247679000, "time_iso": "2026-09-24T11:01:19Z", "path": "BR8-INET2 → DC1-INET"}
+                ]
+            },
+            {
+                "flow_id": 99999001,
+                "packets_c2s": 1,
+                "packets_s2c": 0,
+                "path_history": [
+                    {"time_ms": 1790247800000, "time_iso": "2026-09-24T11:03:20Z", "path": "Single-Packet-Probe"}
+                ]
+            }
+        ]
+
+        # Default: exclude single packet flows
+        timeline_filtered = orchestrator._build_aggregate_path_timeline(
+            flows,
+            include_single_packet_flows=False
+        )
+        assert len(timeline_filtered) == 1
+        assert timeline_filtered[0]["path"] == "BR8-INET2 → DC1-INET"
+
+        # Explicit: include single packet flows
+        timeline_unfiltered = orchestrator._build_aggregate_path_timeline(
+            flows,
+            include_single_packet_flows=True
+        )
+        assert len(timeline_unfiltered) == 2
+        assert timeline_unfiltered[1]["path"] == "Single-Packet-Probe"
+

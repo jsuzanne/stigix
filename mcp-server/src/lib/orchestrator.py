@@ -3144,8 +3144,12 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         fast: bool = body.get("fast", False)
         aggregate: bool = body.get("aggregate_path_timeline", False)
-        # Remove our extra param before forwarding — backend doesn't know it
-        forward_body = {k: v for k, v in body.items() if k != "aggregate_path_timeline"}
+        include_single: bool = body.get("include_single_packet_flows", False)
+        # Remove our extra params before forwarding — backend doesn't know them
+        forward_body = {
+            k: v for k, v in body.items()
+            if k not in ("aggregate_path_timeline", "include_single_packet_flows")
+        }
 
         # Determine cache key (site-level)
         site_id_key = body.get("site_id") or body.get("site_name") or "default"
@@ -3233,32 +3237,11 @@ class TestOrchestrator:
                         result if isinstance(result, list) else
                         result.get("flows") or result.get("records") or []
                     )
-                    merged: list = []
-                    seen_keys: set = set()
-                    for flow in flows_list:
-                        for ph in flow.get("path_history", flow.get("pathHistory", [])):
-                            ts = ph.get("timestamp") or ph.get("ts") or ph.get("time") or ""
-                            path = (
-                                ph.get("path") or ph.get("chosen_path") or
-                                ph.get("chosenPath") or ph.get("egressPath") or ""
-                            )
-                            preferred = ph.get("preferred_path") or ph.get("preferredPath") or ""
-                            key = (ts, path)
-                            if key not in seen_keys:
-                                seen_keys.add(key)
-                                merged.append({
-                                    "ts": ts,
-                                    "path": _resolve_name(path),
-                                    "preferred_path": _resolve_name(preferred),
-                                })
-                    # Sort chronologically and keep only entries where path actually changed
-                    merged.sort(key=lambda x: x["ts"])
-                    timeline: list = []
-                    last_path = None
-                    for e in merged:
-                        if e["path"] != last_path:
-                            timeline.append(e)
-                            last_path = e["path"]
+                    timeline = self._build_aggregate_path_timeline(
+                        flows_list,
+                        include_single_packet_flows=include_single,
+                        resolve_fn=_resolve_name,
+                    )
 
                     if isinstance(result, dict):
                         result["aggregate_path_timeline"] = timeline
@@ -3268,6 +3251,75 @@ class TestOrchestrator:
                 return result
             except Exception as e:
                 return self._handle_exception(f"Prisma flow query on {agent_id}", e)
+
+    def _build_aggregate_path_timeline(
+        self,
+        flows_list: List[Dict[str, Any]],
+        include_single_packet_flows: bool = False,
+        resolve_fn: Optional[Any] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Merges path_history from matching flows into a single chronological timeline.
+        Preserves path transitions and oscillations across time.
+        Filters out 1-packet reachability probe flows by default.
+        """
+        resolver = resolve_fn if resolve_fn else (lambda x: x)
+        filtered_flows = []
+        for f in flows_list:
+            if not isinstance(f, dict):
+                continue
+            pkts = (f.get("packets_c2s") or 0) + (f.get("packets_s2c") or 0)
+            if not include_single_packet_flows and pkts <= 1 and (f.get("packets_c2s") is not None or f.get("packets_s2c") is not None):
+                continue
+            filtered_flows.append(f)
+
+        all_events = []
+        for flow in filtered_flows:
+            for ph in flow.get("path_history", flow.get("pathHistory", [])):
+                if not isinstance(ph, dict):
+                    continue
+                time_ms = ph.get("time_ms") or ph.get("timestamp_ms")
+                ts_str = ph.get("time_iso") or ph.get("timestamp") or ph.get("ts") or ph.get("time") or ""
+                if time_ms is None and ts_str:
+                    try:
+                        dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        time_ms = int(dt.timestamp() * 1000)
+                    except Exception:
+                        time_ms = 0
+                elif time_ms is not None and not ts_str:
+                    try:
+                        ts_str = datetime.fromtimestamp(time_ms / 1000.0, timezone.utc).isoformat()
+                    except Exception:
+                        ts_str = ""
+
+                raw_path = (
+                    ph.get("path") or ph.get("chosen_path") or
+                    ph.get("chosenPath") or ph.get("egressPath") or ""
+                )
+                resolved_path = resolver(raw_path)
+                raw_pref = ph.get("preferred_path") or ph.get("preferredPath") or ""
+                resolved_pref = resolver(raw_pref) if raw_pref else None
+
+                all_events.append({
+                    "time_ms": time_ms or 0,
+                    "time_iso": ts_str,
+                    "path": resolved_path,
+                    "preferred_path": resolved_pref,
+                    "path_id": ph.get("path_id") or ph.get("pathId"),
+                })
+
+        # Sort chronologically by time_ms
+        all_events.sort(key=lambda x: x["time_ms"])
+
+        # Consecutive-only deduplication (preserves return-to-path failback / oscillations)
+        timeline = []
+        last_path = None
+        for e in all_events:
+            if e["path"] and e["path"] != last_path:
+                timeline.append(e)
+                last_path = e["path"]
+
+        return timeline
 
 
     # -------------------------------------------------------------------------

@@ -1579,6 +1579,7 @@ async def get_prisma_flows(
     fast: Optional[bool] = False,
     page_size: Optional[int] = 10,
     aggregate_path_timeline: Optional[bool] = False,
+    include_single_packet_flows: Optional[bool] = False,
 ) -> dict:
     """
     Query the Prisma SD-WAN Flow Browser to retrieve paths, stats, and chronological path transitions.
@@ -1593,7 +1594,7 @@ async def get_prisma_flows(
     - path_history_complete: True if full decision sequence is returned.
     - query_window: Exact start and end UTC timestamps of the query.
     - aggregate_path_timeline (when requested): Merged, deduplicated timeline of path transitions
-      across ALL matched flows — useful when a conv test generates many short flows.
+      across matched flows — preserves chronological transitions and failover/failback oscillations.
 
     FAST MODE & PATH NAME CACHE:
     - fast=False (default): backend resolves path IDs to human-readable names, results are cached
@@ -1602,14 +1603,9 @@ async def get_prisma_flows(
       fast=False first to warm the cache.
 
     SINGLE-PACKET FLOWS (UDP convergence tests):
-    - When querying flows for a conv test on UDP 6200, the Flow Browser typically returns
-      dozens of short flows with ephemeral source ports alongside one (or a few) long-lived
-      flows carrying the sustained probe stream (e.g. src_port=30246).
-    - The origin of the 1-packet flows is unconfirmed: they may be probe-echo reply bursts,
-      retransmit artefacts, or background exchanges (BR8 192.168.219.1 → DC1 UDP 6200,
-      ~5s interval) that appear even when no test is running. Do not assert a specific cause.
-    - Use aggregate_path_timeline=True to merge all matching flows into a single path-change
-      timeline regardless of origin.
+    - When querying flows for a conv test on UDP 6200, reachability probes (1-packet flows)
+      are excluded from the merged timeline by default. Pass `include_single_packet_flows=True`
+      to include all flows regardless of packet count.
 
     Args:
         agent_id: ID of the Stigix node executing the query (local backend).
@@ -1629,6 +1625,8 @@ async def get_prisma_flows(
         page_size: Maximum number of flow records to return.
         aggregate_path_timeline: If True, merge path_history from all matched flows into a
             single deduplicated timeline of path changes (useful for conv test analysis).
+        include_single_packet_flows: If True, include single-packet probe flows in the timeline
+            (default: False to avoid polluting test failover sequences).
     """
 
     body = {
@@ -1646,6 +1644,7 @@ async def get_prisma_flows(
         "fast": fast,
         "page_size": page_size,
         "aggregate_path_timeline": aggregate_path_timeline,
+        "include_single_packet_flows": include_single_packet_flows,
     }
     if body.get("minutes") is None and body.get("hours") is None:
         body["minutes"] = 15
