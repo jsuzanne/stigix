@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.63] - 2026-09-24
+
+### Fixed
+- **Registry Peer Sync — Static Leader Recovery (`registry-manager.ts`)** 🔧:
+  - Fixed a critical bug where a transient startup failure (e.g., leader not yet ready) caused `resetToRemote()` to be called, permanently locking the peer node in Cloudflare fallback mode.
+  - Previously, `performHeartbeat()` and `performDiscovery()` would skip reconnecting to the configured `staticLeaderUrl` after a reset, causing nodes like BR8 to remain `NOT CONNECTED` indefinitely until a manual toggle.
+  - Both recovery paths now detect a configured `staticLeaderUrl` and reconnect directly to it on every cycle, bypassing Cloudflare `findLeader()`. This ensures the node self-heals automatically within the next discovery interval (max 2 min) without any manual intervention.
+
+---
+
 ## [2.0.62] - 2026-09-23
 
 ### Added / Changed
@@ -26,6 +36,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Error returns across orchestrator tools now guarantee informative non-empty messages.
   - Added synthesized `version` and `build` metadata to targets and controller status peers.
   - Fixed `purgeStaleLeaderState` applied revision parsing to correctly classify active leader bundles into `kept_applied`.
+
+---
+
+## [2.0.61] - 2026-09-22
+
+### Fixed
+- **Core Stability** 🛡️:
+  - Improved `purgeStaleLeaderState` safety with dry-run and backup mechanisms.
+  - Hardened bridge reconnect logic for more resilient MCP connections.
+  - Enhanced traceroute protocol support and output parsing for both `traceroute` and `tracepath` (Linux).
+  - Improved fabric rollout visibility in provisioning status reporting.
+
+---
+
+## [2.0.60] - 2026-09-22
+
+### Added / Fixed
+- **MCP Server Hardening** 🛡️:
+  - Hardened output schemas across all tool responses for strict type conformance.
+  - Added traceroute support inside Docker container with `execFile` security enforcement.
+  - Normalized flow history counters; added stale leader purge utility.
+  - Added per-tool bridge timeouts to prevent indefinite hangs on slow nodes.
+  - Added `path_trace`, active impairments audit, DEM probe update, and aggregated statistics tools.
+  - Fixed `stdio` stdout hijack in FastMCP server; added provisioning API routes.
+
+---
+
+## [2.0.59] - 2026-09-20
+
+### Added
+- **In-App AI Copilot** 🤖:
+  - New dedicated AI Copilot tab with BYOK (Bring Your Own Key) Claude integration and dual-mode architecture (in-app + MCP).
+  - Full 1:1 tool parity with Python FastMCP server (speedtest, convergence, voice, mesh, security probes, DEM management, TCP apps).
+  - Rich Markdown table renderer with zebra striping and list badges.
+  - Global slide-over drawer, floating quick-action button, and Cmd+J keyboard shortcut.
+  - Copilot and Anthropic key UI gated behind `ENABLE_AI_COPILOT` environment variable.
+  - Phase 2 automated test harness (79/81 nominal tests passing).
 
 ---
 
