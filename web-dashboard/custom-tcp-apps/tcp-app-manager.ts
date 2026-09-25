@@ -191,45 +191,72 @@ export class TcpAppManager extends EventEmitter {
             if (!raw || typeof raw !== 'object' || !raw.name) {
                 continue;
             }
+            const rawListener = raw.listener || {};
+            const rawServerBehavior = raw.serverBehavior || {};
+            const rawClientDefaults = raw.clientDefaults || {};
+            const rawStartup = raw.startup || {};
+
             const app: CustomTcpApplicationConfig = {
-                id: raw.id || `app-${crypto.randomUUID().substring(0, 6)}`,
+                id: raw.id || `app-${crypto.randomUUID().substring(0, 8)}`,
                 name: String(raw.name).trim(),
                 description: raw.description || '',
-                protocol: raw.protocol === 'http_1_1' ? 'http_1_1' : 'tcp_raw',
+                protocol: raw.protocol === 'http_1_1' ? 'http_1_1' : 'stigix_tcp',
                 enabled: raw.enabled !== false,
                 listener: {
-                    bindAddress: raw.listener?.bindAddress || '0.0.0.0',
-                    port: Number(raw.listener?.port) || 9000,
-                    behavior: raw.listener?.behavior || 'echo',
-                    maxConcurrentSessions: raw.listener?.maxConcurrentSessions || 100,
-                    idleTimeoutSec: raw.listener?.idleTimeoutSec || 300,
-                    responseDelayMs: raw.listener?.responseDelayMs || 0,
-                    httpResponseCode: raw.listener?.httpResponseCode || 200,
-                    httpResponseBody: raw.listener?.httpResponseBody || '{"status":"ok"}'
+                    bindAddress: rawListener.bindAddress || '0.0.0.0',
+                    port: Number(rawListener.port) || 8443,
+                    maxConnections: Number(rawListener.maxConnections) || 100,
+                    idleTimeoutMs: Number(rawListener.idleTimeoutMs) || 60000,
+                    maxPayloadBytes: Number(rawListener.maxPayloadBytes) || 1048576,
+                    tcpKeepalive: rawListener.tcpKeepalive !== false,
+                    allowCidrs: Array.isArray(rawListener.allowCidrs) ? rawListener.allowCidrs : [],
+                    auth: {
+                        enabled: rawListener.auth?.enabled === true,
+                        token: rawListener.auth?.token
+                    }
+                },
+                serverBehavior: {
+                    mode: (rawServerBehavior.mode || 'echo') as any,
+                    fixedDelayMs: Number(rawServerBehavior.fixedDelayMs) || 500,
+                    randomDelayMinMs: Number(rawServerBehavior.randomDelayMinMs) || 100,
+                    randomDelayMaxMs: Number(rawServerBehavior.randomDelayMaxMs) || 1000,
+                    loopingNormalSec: Number(rawServerBehavior.loopingNormalSec) || 60,
+                    loopingSlowSec: Number(rawServerBehavior.loopingSlowSec) || 60,
+                    loopingSlowDelayMs: Number(rawServerBehavior.loopingSlowDelayMs) || 1000,
+                    dropProbability: Number(rawServerBehavior.dropProbability) || 0,
+                    errorProbability: Number(rawServerBehavior.errorProbability) || 0,
+                    errorCode: rawServerBehavior.errorCode || 'SIMULATED_DB_ERROR',
+                    closeAfterRequests: rawServerBehavior.closeAfterRequests ? Number(rawServerBehavior.closeAfterRequests) : undefined,
+                    closeAfterDurationSec: rawServerBehavior.closeAfterDurationSec ? Number(rawServerBehavior.closeAfterDurationSec) : undefined
                 },
                 clientDefaults: {
-                    mode: raw.clientDefaults?.mode || 'request_reply',
-                    connectionsPerPeer: raw.clientDefaults?.connectionsPerPeer || 1,
-                    connectTimeoutMs: raw.clientDefaults?.connectTimeoutMs || 3000,
-                    reconnectDelayMs: raw.clientDefaults?.reconnectDelayMs || 2000,
-                    requestRatePerSec: raw.clientDefaults?.requestRatePerSec || 1,
-                    requestPayloadSizeBytes: raw.clientDefaults?.requestPayloadSizeBytes || 64,
-                    responseTimeoutMs: raw.clientDefaults?.responseTimeoutMs || 5000,
-                    httpRequestPath: raw.clientDefaults?.httpRequestPath || '/api/health',
-                    httpMethod: raw.clientDefaults?.httpMethod || 'GET'
+                    mode: (rawClientDefaults.mode || 'persistent_request_reply') as any,
+                    connectionsPerPeer: Number(rawClientDefaults.connectionsPerPeer) || 2,
+                    intervalMs: Number(rawClientDefaults.intervalMs) || 1000,
+                    payloadBytes: Number(rawClientDefaults.payloadBytes) || 1024,
+                    requestTimeoutMs: Number(rawClientDefaults.requestTimeoutMs) || 5000,
+                    connectTimeoutMs: Number(rawClientDefaults.connectTimeoutMs) || 5000,
+                    autoReconnect: rawClientDefaults.autoReconnect !== false,
+                    reconnectInitialMs: Number(rawClientDefaults.reconnectInitialMs) || 1000,
+                    reconnectMaxMs: Number(rawClientDefaults.reconnectMaxMs) || 30000,
+                    tcpKeepalive: rawClientDefaults.tcpKeepalive !== false,
+                    sourceInterface: rawClientDefaults.sourceInterface || 'auto'
                 },
                 peers: Array.isArray(raw.peers) ? raw.peers.map((p: any) => ({
-                    peerId: p.peerId || `peer-${crypto.randomUUID().substring(0, 6)}`,
-                    name: p.name || 'Remote Peer',
+                    id: p.id || p.peerId || `peer-${crypto.randomUUID().substring(0, 8)}`,
+                    name: p.name || p.host || 'Peer',
+                    siteName: p.siteName || p.name || p.host || 'Peer',
                     host: p.host || '127.0.0.1',
-                    port: Number(p.port) || Number(raw.listener?.port) || 9000,
+                    port: Number(p.port) || Number(rawListener.port) || 8443,
                     enabled: p.enabled !== false,
-                    connectionsOverride: p.connectionsOverride,
-                    rateOverride: p.rateOverride
+                    connectionsOverride: p.connectionsOverride ? Number(p.connectionsOverride) : undefined,
+                    intervalOverrideMs: p.intervalOverrideMs ? Number(p.intervalOverrideMs) : undefined,
+                    token: p.token,
+                    tags: Array.isArray(p.tags) ? p.tags : []
                 })) : [],
                 startup: {
-                    startListener: raw.startup?.startListener !== false,
-                    startClientWorkload: raw.startup?.startClientWorkload === true
+                    startListener: rawStartup.startListener !== false,
+                    startClientWorkload: rawStartup.startClientWorkload === true
                 }
             };
 

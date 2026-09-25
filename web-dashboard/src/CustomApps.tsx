@@ -2,7 +2,7 @@
  * Stigix Custom TCP Inter-Site Applications — Operational Control Center
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component, type ErrorInfo, type ReactNode } from 'react';
 import {
     Play, Square, RefreshCw, Server, Globe, Activity, Plus,
     Copy, Trash2, Edit3, Shield, AlertTriangle, CheckCircle2,
@@ -13,6 +13,56 @@ import toast from 'react-hot-toast';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return inputs.filter(Boolean).join(' ');
+}
+
+interface ErrorBoundaryProps {
+    children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+    hasError: boolean;
+    error: Error | null;
+}
+
+class CustomAppsErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+    constructor(props: ErrorBoundaryProps) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+
+    static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+        return { hasError: true, error };
+    }
+
+    componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+        console.error('CustomApps component crashed:', error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="p-8 max-w-2xl mx-auto my-12 bg-card border border-rose-500/30 rounded-3xl p-8 shadow-2xl space-y-4 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center mx-auto">
+                        <AlertTriangle size={28} />
+                    </div>
+                    <h2 className="text-lg font-bold text-text-primary">Custom Applications Error</h2>
+                    <p className="text-xs text-text-muted leading-relaxed">
+                        An error occurred while displaying Custom Applications: {this.state.error?.message || 'Unknown error'}
+                    </p>
+                    <button
+                        onClick={() => {
+                            this.setState({ hasError: false, error: null });
+                            window.location.reload();
+                        }}
+                        className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl shadow-sm cursor-pointer"
+                    >
+                        Reload Page
+                    </button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
 }
 import type {
     CustomTcpApplicationConfig,
@@ -997,7 +1047,7 @@ const secs = seconds % 60;
                                 </div>
                             </div>
                             <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
-                                <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.serverBehavior?.mode.replace('_', ' ')}</strong></span>
+                                <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.serverBehavior?.mode ? currentApp.serverBehavior.mode.replace(/_/g, ' ') : 'echo'}</strong></span>
                                 <span>Handled: <strong className="text-text-secondary">{serverHandled}</strong> {liveServerTps > 0 && incomingSessions.length > 0 && <span className="text-indigo-500 font-mono text-[10px]">({liveServerTps} tps)</span>}</span>
                             </div>
                         </div>

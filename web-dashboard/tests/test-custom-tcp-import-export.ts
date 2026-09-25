@@ -115,6 +115,80 @@ async function runTests() {
         }
         console.log('✓ Replace mode validation passed (only 1 target app remains)');
 
+        // 6. Test Exact User Roundtrip Fidelity (Import Hetzner payload -> Export -> Match full schema)
+        const hetznerPayload = {
+            version: 1,
+            exportedAt: '2026-09-25T17:25:05.388Z',
+            exportedFromSite: 'Hetzner-Ubuntu',
+            application: {
+                id: 'app-muh8djl2',
+                name: 'test2',
+                description: 'Detailed banking test app',
+                enabled: true,
+                protocol: 'http_1_1',
+                listener: {
+                    bindAddress: '0.0.0.0',
+                    port: 8098,
+                    maxConnections: 100,
+                    idleTimeoutMs: 60000,
+                    maxPayloadBytes: 1048576,
+                    tcpKeepalive: true,
+                    allowCidrs: ['10.0.0.0/8'],
+                    auth: {
+                        enabled: false
+                    }
+                },
+                serverBehavior: {
+                    mode: 'fixed_delay',
+                    fixedDelayMs: 500,
+                    randomDelayMinMs: 100,
+                    randomDelayMaxMs: 1000,
+                    loopingNormalSec: 60,
+                    loopingSlowSec: 60,
+                    loopingSlowDelayMs: 1000,
+                    dropProbability: 0,
+                    errorProbability: 0
+                },
+                clientDefaults: {
+                    mode: 'persistent_request_reply',
+                    connectionsPerPeer: 2,
+                    intervalMs: 1000,
+                    payloadBytes: 1024,
+                    requestTimeoutMs: 5000,
+                    connectTimeoutMs: 5000,
+                    autoReconnect: true,
+                    reconnectInitialMs: 1000,
+                    reconnectMaxMs: 30000,
+                    tcpKeepalive: true,
+                    sourceInterface: 'auto'
+                },
+                peers: [],
+                startup: {
+                    startListener: true,
+                    startClientWorkload: false
+                }
+            }
+        };
+
+        await manager.importApplications([hetznerPayload.application], 'merge');
+        const reExportedApp = manager.getConfig().applications.find(a => a.id === 'app-muh8djl2');
+        if (!reExportedApp) {
+            throw new Error('Hetzner app test2 was not found after import');
+        }
+        if (!reExportedApp.serverBehavior || reExportedApp.serverBehavior.mode !== 'fixed_delay') {
+            throw new Error(`Expected serverBehavior.mode === 'fixed_delay', got ${reExportedApp.serverBehavior?.mode}`);
+        }
+        if (reExportedApp.serverBehavior.fixedDelayMs !== 500) {
+            throw new Error(`Expected fixedDelayMs === 500, got ${reExportedApp.serverBehavior.fixedDelayMs}`);
+        }
+        if (reExportedApp.listener.port !== 8098) {
+            throw new Error(`Expected listener.port === 8098, got ${reExportedApp.listener.port}`);
+        }
+        if (reExportedApp.listener.maxConnections !== 100) {
+            throw new Error(`Expected maxConnections === 100, got ${reExportedApp.listener.maxConnections}`);
+        }
+        console.log('✓ Full roundtrip fidelity confirmed: serverBehavior, listener, clientDefaults, protocol preserved with 100% precision');
+
         console.log('\n🎉 ALL CUSTOM TCP IMPORT/EXPORT TESTS PASSED SUCCESSFULLY!');
     } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });

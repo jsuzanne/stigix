@@ -252,10 +252,10 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
                                                 </button>
                                             </td>
                                             <td className="py-3 px-4 text-text-secondary capitalize">
-                                                {app.serverBehavior?.mode.replace('_', ' ')}
+                                                {app.serverBehavior?.mode ? app.serverBehavior.mode.replace(/_/g, ' ') : 'echo'}
                                             </td>
                                             <td className="py-3 px-4 text-text-secondary capitalize">
-                                                {app.clientDefaults?.mode.replace(/_/g, ' ')}
+                                                {app.clientDefaults?.mode ? app.clientDefaults.mode.replace(/_/g, ' ') : 'persistent request reply'}
                                             </td>
                                             <td className="py-3 px-4 font-semibold text-text-primary">
                                                 {app.peers?.length || 0} nodes
