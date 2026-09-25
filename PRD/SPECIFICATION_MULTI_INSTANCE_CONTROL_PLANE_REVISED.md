@@ -36,10 +36,21 @@ Do not invent endpoint names, payloads, source paths, or authentication mechanis
 
 # Stigix — Specification: Multi-Instance Control Plane
 
+**Last Updated:** 2026-09-25  
+**Creation Date:** 2026-09-25  
+**Initial Stigix Version:** v2.1 (planned)  
 **Status:** Revised proposal, aligned with direct peer installation and global configuration provisioning  
-**Version:** 0.2  
+**Version:** 0.3  
 **Audience:** Stigix development / Google Antigravity  
 **Language:** English for implementation clarity
+
+## Revision History
+
+| Version | Date | Author | Changes |
+|---|---|---|---|
+| 0.1 | 2026-09-25 | jsuzanne | Initial draft — broad Hub-calls-agent model |
+| 0.2 | 2026-09-25 | jsuzanne | Revised to agent-pull model, aligned with Phase 1 (Direct Controller) and Phase 2 (Global Provisioning), removed competing Fleet Config APIs |
+| 0.3 | 2026-09-25 | jsuzanne | Integrated architectural review recommendations: enriched heartbeat telemetry instead of separate `/api/fleet/telemetry`, last-known-state for offline peers, MCP/Fleet coexistence clarification, WebSocket for Fleet UI updates, adaptive polling for job storm mitigation |
 
 ## Objective
 
