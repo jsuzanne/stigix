@@ -20,13 +20,16 @@ class RegistryClient:
         # IMPORTANT: default MUST match the docker-compose default (your-secure-secret-here).
         # If JWT_SECRET is not set in the MCP container env, it will mismatch with Stigix nodes
         # that also use the docker-compose default → 403 Forbidden on all remote API calls.
-        self.jwt_secret = os.getenv("JWT_SECRET", "your-secure-secret-here")
-        if self.jwt_secret == "your-secure-secret-here":
+        self.jwt_secret = os.getenv("JWT_SECRET", "super-secret-key-change-this")
+        if self.jwt_secret == "super-secret-key-change-this":
             logger.warning(
                 "JWT_SECRET is using the insecure default value. "
                 "Set JWT_SECRET in the MCP container environment to a strong secret "
                 "that matches all Stigix nodes."
             )
+        self._cached_endpoints: List[StigixEndpoint] = []
+        self._cached_at: float = 0.0
+        self._cache_ttl_sec: float = 30.0
         self._mock_endpoints = [
             StigixEndpoint(
                 id="branch-paris-1",
@@ -74,6 +77,7 @@ class RegistryClient:
 
     async def list_endpoints(self, kind: Optional[str] = None) -> List[StigixEndpoint]:
         """Fetches and merges endpoints from all available sources (local aggregation is preferred)."""
+        import time
         sources = []
         # Local dashboard is the primary aggregator
         sources.append("http://localhost:8080/api/targets")
@@ -115,6 +119,8 @@ class RegistryClient:
                                 if "xfr-source" not in caps_list: caps_list.append("xfr-source")
                                 if "xfr-target" not in caps_list: caps_list.append("xfr-target")
                             
+                            node_ver = t.get("version") or t.get("meta", {}).get("version")
+                            node_build = t.get("build") or t.get("meta", {}).get("build")
                             endpoint = StigixEndpoint(
                                 id=t.get("id", t.get("name")),
                                 kind=t.get("kind", "fabric"),
@@ -122,11 +128,15 @@ class RegistryClient:
                                 capabilities=caps_list,
                                 test_ip=host,
                                 public_ip=t.get("public_ip") or t.get("meta", {}).get("ip_public"),
-                                api_base_url=f"http://{host}:8080",
+                                api_base_url=t.get("api_base_url") or f"http://{host}:8080",
+                                version=node_ver,
+                                build=node_build,
                                 meta={
                                     **t.get("meta", {}),
                                     "site_name": t.get("name") or t.get("id"),
-                                    "source": t.get("source")
+                                    "source": t.get("source"),
+                                    "version": node_ver,
+                                    "build": node_build
                                 }
                             )
                             merged_endpoints[host] = endpoint
@@ -137,7 +147,13 @@ class RegistryClient:
                     logger.warning(f"Discovery failed for {targets_api}: {e}")
         
         endpoints = list(merged_endpoints.values())
-        if not endpoints:
+        if endpoints:
+            self._cached_endpoints = endpoints
+            self._cached_at = time.time()
+        elif self._cached_endpoints:
+            logger.warning("Discovery sources failed, using cached endpoints.")
+            endpoints = list(self._cached_endpoints)
+        else:
             logger.error("All discovery sources failed (Dashboard may be unreachable or JWT_SECRET mismatch). Using fallback.")
             return self._mock_endpoints
         
@@ -154,40 +170,56 @@ class RegistryClient:
         Match priority (first hit wins):
           1. Exact match on id, site_name, test_ip, or public_ip  (case-sensitive)
           2. Case-insensitive exact match on id or site_name
-          3. Partial/substring match: identifier is contained in site_name or id
+          3. Prefix stripped match (reg-self-, reg-shared-, target-)
+          4. Partial/substring match: identifier is contained in site_name or id
              e.g. "BR5" matches "ubuntubr5", "BR8" matches "BR8-Ubuntu"
-          4. Reverse partial: site_name/id is contained in identifier
+          5. Reverse partial: site_name/id is contained in identifier
              e.g. "ubuntubr5" matches if user typed "ubuntubr5-extra"
         """
         endpoints = await self.list_endpoints()
         needle = identifier.lower()
 
+        # Clean prefix for synthetic and target IDs
+        clean_id = identifier
+        for prefix in ("reg-self-", "reg-shared-", "target-"):
+            if clean_id.startswith(prefix):
+                clean_id = clean_id[len(prefix):]
+                break
+        clean_needle = clean_id.lower()
+
         # Pass 1 — exact match (original behaviour, fastest)
         for e in endpoints:
             if (e.id == identifier or
+                    e.id == clean_id or
                     e.meta.get("site_name") == identifier or
+                    e.meta.get("site_name") == clean_id or
                     e.test_ip == identifier or
-                    e.public_ip == identifier):
+                    e.test_ip == clean_id or
+                    e.public_ip == identifier or
+                    e.public_ip == clean_id):
                 return e
 
         # Pass 2 — case-insensitive exact
         for e in endpoints:
             site = (e.meta.get("site_name") or "").lower()
-            if e.id.lower() == needle or site == needle:
+            eid = e.id.lower()
+            if eid == needle or site == needle or eid == clean_needle or site == clean_needle:
                 logger.debug(f"get_endpoint({identifier!r}): case-insensitive match → {e.id}")
                 return e
 
         # Pass 3 — partial substring: needle inside id/site_name
         for e in endpoints:
             site = (e.meta.get("site_name") or "").lower()
-            if needle in site or needle in e.id.lower():
+            eid = e.id.lower()
+            if needle in site or needle in eid or clean_needle in site or clean_needle in eid:
                 logger.info(f"get_endpoint({identifier!r}): partial match → {e.id} (site={e.meta.get('site_name')})")
                 return e
 
         # Pass 4 — reverse partial: id/site_name inside needle (handles long user input)
         for e in endpoints:
             site = (e.meta.get("site_name") or "").lower()
-            if (site and site in needle) or e.id.lower() in needle:
+            eid = e.id.lower()
+            if (site and site in needle) or eid in needle or (site and site in clean_needle) or eid in clean_needle:
                 logger.info(f"get_endpoint({identifier!r}): reverse-partial match → {e.id}")
                 return e
 

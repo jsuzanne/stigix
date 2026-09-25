@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-05 | **Created:** 2026-09-02 (v2.0.3)
+
 # Validating Real Network Impairments with Stigix Custom TCP Applications
 
 > **Audience**: Network Engineers, SD-WAN Architects, SASE Validation Engineers, POC Evaluators.  

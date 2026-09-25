@@ -3,7 +3,7 @@ import {
     RefreshCw, Download, AlertCircle, CheckCircle, Clock, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
     Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers, X, Radio,
-    Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy, History, ChevronUp, PhoneCall
+    Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy, History, ChevronUp, PhoneCall, Bot
 } from 'lucide-react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
@@ -408,10 +408,11 @@ function IoTDebugMonitor({ token }: { token: string }) {
     );
 }
 
-export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab }: { 
+export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCopilotConfig, initialTab }: { 
     token: string, 
     uiConfig?: { maxCaptures: number; globalScoreTypes?: string[] },
     onUpdateUIConfig?: () => void,
+    onUpdateCopilotConfig?: () => void,
     initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'
 }) {
     const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'>(initialTab || 'distribution');
@@ -583,6 +584,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
     });
     const [mcpStatus, setMcpStatus] = useState<{ online: boolean; status?: string; transport?: string; url?: string; error?: string } | null>(null);
     const [mcpHistory, setMcpHistory] = useState<{ entries: any[]; stats: { totalCalls: number; errorCount: number; avgDuration: number } } | null>(null);
+    const [copilotConfig, setCopilotConfig] = useState<any>(null);
+    const [copilotApiKey, setCopilotApiKey] = useState('');
+    const [isSavingCopilot, setIsSavingCopilot] = useState(false);
+    const [isTestingCopilot, setIsTestingCopilot] = useState(false);
     const [slsConfig, setSlsConfig] = useState<any>(null);
     const [isTestingPrisma, setIsTestingPrisma] = useState(false);
     const [prismaTestResult, setPrismaTestResult] = useState<{ success?: boolean; error?: string } | null>(null);
@@ -797,6 +802,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         };
         fetchMcpHistory();
         const mcpHistoryInterval = setInterval(fetchMcpHistory, 3000);
+
+        const fetchCopilotConfig = () => {
+            fetch('/api/copilot/config', { headers: authHeaders })
+                .then(r => r.ok ? r.json() : null)
+                .then(data => { if (data) setCopilotConfig(data.config || data); })
+                .catch(() => {});
+        };
+        fetchCopilotConfig();
 
         return () => {
             clearInterval(sysInfoInterval);
@@ -1770,7 +1783,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
         ...(systemInfo?.beta ? [{ id: 'maintenance', label: 'System Maintenance', beta: true }] : []),
         { id: 'targets', label: 'Stigix Targets' },
         { id: 'registry', label: 'Target Controller' },
-        { id: 'mcp', label: 'MCP Server', beta: true },
+        ...(copilotConfig?.featureEnabled ? [{ id: 'mcp', label: 'AI & Copilot', beta: true }] : []),
         { id: 'prisma-api', label: 'Prisma SASE API' },
         { id: 'api-studio', label: 'API Studio', isNew: true },
     ];
@@ -5151,6 +5164,211 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, initialTab
 
                 {activeTab === 'mcp' && (
                     <div className="space-y-6">
+                        {/* ── Stigix In-App AI Copilot (BYOK) Card ── */}
+                        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-blue-600/10 rounded-xl text-blue-500">
+                                        <Bot size={24} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-3">
+                                            <h2 className="text-lg font-black text-text-primary tracking-tight">Stigix In-App AI Copilot</h2>
+                                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                                BYOK Claude
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">
+                                            Native Conversational Assistant for SD-WAN & SASE Orchestration
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className={cn(
+                                        "flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase border",
+                                        copilotConfig?.hasKey 
+                                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" 
+                                            : "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                    )}>
+                                        <div className={cn("w-2 h-2 rounded-full", copilotConfig?.hasKey ? "bg-emerald-500" : "bg-amber-500 animate-pulse")} />
+                                        {copilotConfig?.hasKey ? "Key Configured" : "Key Required"}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="bg-card-secondary/30 border border-border rounded-xl p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-black uppercase tracking-wider text-text-primary">
+                                            Anthropic API Key
+                                        </label>
+                                        {copilotConfig?.hasKey && (
+                                            <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                                Active: {copilotConfig.keyMasked}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col sm:flex-row gap-2">
+                                        <input
+                                            type="password"
+                                            value={copilotApiKey}
+                                            onChange={(e) => setCopilotApiKey(e.target.value)}
+                                            placeholder={copilotConfig?.hasKey ? "Enter new key to replace..." : "sk-ant-api03-..."}
+                                            className="flex-1 bg-card border border-border focus:border-blue-500 rounded-xl px-4 py-2 text-xs font-mono text-text-primary focus:outline-none shadow-inner"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                if (!copilotApiKey.trim()) return;
+                                                setIsTestingCopilot(true);
+                                                try {
+                                                    const res = await fetch('/api/copilot/test-key', {
+                                                        method: 'POST',
+                                                        headers: authHeaders,
+                                                        body: JSON.stringify({ apiKey: copilotApiKey.trim() })
+                                                    });
+                                                    const d = await res.json();
+                                                    if (d.success || d.valid) toast.success('API Key validated successfully!');
+                                                    else toast.error(`Validation failed: ${d.error}`);
+                                                } catch (e: any) {
+                                                    toast.error(e.message || 'Test failed');
+                                                } finally {
+                                                    setIsTestingCopilot(false);
+                                                }
+                                            }}
+                                            disabled={!copilotApiKey.trim() || isTestingCopilot}
+                                            className="px-3 py-2 bg-card-secondary hover:bg-card-hover border border-border text-text-secondary text-xs font-bold rounded-xl transition-all disabled:opacity-50"
+                                        >
+                                            {isTestingCopilot ? 'Testing...' : 'Test Key'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                if (!copilotApiKey.trim()) return;
+                                                setIsSavingCopilot(true);
+                                                try {
+                                                    const res = await fetch('/api/copilot/config', {
+                                                        method: 'POST',
+                                                        headers: authHeaders,
+                                                        body: JSON.stringify({ apiKey: copilotApiKey.trim() })
+                                                    });
+                                                    if (res.ok) {
+                                                        const d = await res.json();
+                                                        setCopilotConfig(d.config || d);
+                                                        setCopilotApiKey('');
+                                                        toast.success('Anthropic API key saved!');
+                                                        onUpdateCopilotConfig?.();
+                                                    } else {
+                                                        toast.error('Failed to save API key');
+                                                    }
+                                                } catch (e: any) {
+                                                    toast.error(e.message || 'Error saving key');
+                                                } finally {
+                                                    setIsSavingCopilot(false);
+                                                }
+                                            }}
+                                            disabled={!copilotApiKey.trim() || isSavingCopilot}
+                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50"
+                                        >
+                                            {isSavingCopilot ? 'Saving...' : 'Save Key'}
+                                        </button>
+                                        {copilotConfig?.hasKey && (
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    if (!confirm('Are you sure you want to remove your Anthropic API key?')) return;
+                                                    try {
+                                                        const res = await fetch('/api/copilot/config', {
+                                                            method: 'POST',
+                                                            headers: authHeaders,
+                                                            body: JSON.stringify({ apiKey: '' })
+                                                        });
+                                                        if (res.ok) {
+                                                            const d = await res.json();
+                                                            setCopilotConfig(d);
+                                                            toast.success('API key removed');
+                                                            onUpdateCopilotConfig?.();
+                                                        }
+                                                    } catch {}
+                                                }}
+                                                className="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold rounded-xl transition-all"
+                                            >
+                                                Remove Key
+                                            </button>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] text-text-muted leading-relaxed">
+                                        Saved securely in <code className="font-mono text-text-primary">config/ai-config.json</code> (chmod 600). Direct proxy to Anthropic API — zero log sharing or retention.
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="bg-card-secondary/30 border border-border rounded-xl p-4 space-y-2">
+                                        <label className="text-xs font-black uppercase tracking-wider text-text-primary">
+                                            Default Claude Model
+                                        </label>
+                                        <select
+                                            value={copilotConfig?.defaultModel || 'claude-sonnet-4-5-20250929'}
+                                            onChange={async (e) => {
+                                                const model = e.target.value;
+                                                try {
+                                                    const res = await fetch('/api/copilot/config', {
+                                                        method: 'POST',
+                                                        headers: authHeaders,
+                                                        body: JSON.stringify({ defaultModel: model })
+                                                    });
+                                                    if (res.ok) {
+                                                        const d = await res.json();
+                                                        setCopilotConfig(d.config || d);
+                                                        toast.success(`Default model set to ${model}`);
+                                                    }
+                                                } catch {}
+                                            }}
+                                            className="w-full bg-card border border-border focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-text-primary focus:outline-none"
+                                        >
+                                            <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 (Recommended)</option>
+                                            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fast)</option>
+                                            <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+                                            <option value="claude-sonnet-5">Claude Sonnet 5 (Latest)</option>
+                                            <option value="claude-opus-4-5-20251101">Claude Opus 4.5</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="bg-card-secondary/30 border border-border rounded-xl p-4 flex items-center justify-between">
+                                        <div>
+                                            <div className="text-xs font-black uppercase tracking-wider text-text-primary">
+                                                Destructive Action Safety
+                                            </div>
+                                            <p className="text-[11px] text-text-muted mt-0.5">
+                                                Prompt confirmation before executing chaos / resets
+                                            </p>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={copilotConfig?.requireConfirmation !== false}
+                                            onChange={async (e) => {
+                                                const val = e.target.checked;
+                                                try {
+                                                    const res = await fetch('/api/copilot/config', {
+                                                        method: 'POST',
+                                                        headers: authHeaders,
+                                                        body: JSON.stringify({ requireConfirmation: val })
+                                                    });
+                                                    if (res.ok) {
+                                                        const d = await res.json();
+                                                        setCopilotConfig(d);
+                                                        toast.success('Safety policy updated');
+                                                    }
+                                                } catch {}
+                                            }}
+                                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* ── MCP Server Card ── */}
                         <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
                             <div className="flex items-center gap-4 mb-6">
                                 <div className="p-3 bg-amber-500/10 rounded-xl">

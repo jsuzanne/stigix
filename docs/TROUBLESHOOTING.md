@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-02-27 | **Created:** 2025-11-28 (v1.0.0)
+
 # Troubleshooting Guide
 
 Common issues and their solutions.

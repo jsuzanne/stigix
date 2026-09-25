@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-05-12 | **Created:** 2026-02-15 (v1.2.1-patch.26)
+
 # 🐍 IoT Device Generator - Python Script
 
 ## Overview

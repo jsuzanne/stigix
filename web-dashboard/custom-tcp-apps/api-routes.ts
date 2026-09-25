@@ -288,27 +288,31 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
     // ─── Runtime Control Endpoints ────────────────────────────────────────────
 
     // POST /api/custom-tcp-apps/:id/listener/start — Start TCP Server Listener
-    router.post('/:id/listener/start', async (req: Request, res: Response) => {
+    const startListenerHandler = async (req: Request, res: Response) => {
         try {
             await tcpAppManager.startListener(req.params.id);
             res.json({ success: true, state: 'listening' });
         } catch (err: any) {
             res.status(400).json({ error: err.message });
         }
-    });
+    };
+    router.post('/:id/listener/start', startListenerHandler);
+    router.post('/:id/start-listener', startListenerHandler);
 
     // POST /api/custom-tcp-apps/:id/listener/stop — Stop TCP Server Listener
-    router.post('/:id/listener/stop', async (req: Request, res: Response) => {
+    const stopListenerHandler = async (req: Request, res: Response) => {
         try {
             await tcpAppManager.stopListener(req.params.id);
             res.json({ success: true, state: 'stopped' });
         } catch (err: any) {
             res.status(400).json({ error: err.message });
         }
-    });
+    };
+    router.post('/:id/listener/stop', stopListenerHandler);
+    router.post('/:id/stop-listener', stopListenerHandler);
 
     // POST /api/custom-tcp-apps/:id/client/start — Start Outgoing Client Workload
-    router.post('/:id/client/start', async (req: Request, res: Response) => {
+    const startClientHandler = async (req: Request, res: Response) => {
         try {
             const { peerIds } = req.body || {};
             await tcpAppManager.startClient(req.params.id, peerIds);
@@ -316,22 +320,31 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
         } catch (err: any) {
             res.status(400).json({ error: err.message });
         }
-    });
+    };
+    router.post('/:id/client/start', startClientHandler);
+    router.post('/:id/start-client', startClientHandler);
+    router.post('/:id/workload/start', startClientHandler);
+    router.post('/:id/start-workload', startClientHandler);
 
     // POST /api/custom-tcp-apps/:id/client/stop — Stop Outgoing Client Workload
-    router.post('/:id/client/stop', async (req: Request, res: Response) => {
+    const stopClientHandler = async (req: Request, res: Response) => {
         try {
             await tcpAppManager.stopClient(req.params.id);
             res.json({ success: true, clientRunning: false });
         } catch (err: any) {
             res.status(400).json({ error: err.message });
         }
-    });
+    };
+    router.post('/:id/client/stop', stopClientHandler);
+    router.post('/:id/stop-client', stopClientHandler);
+    router.post('/:id/workload/stop', stopClientHandler);
+    router.post('/:id/stop-workload', stopClientHandler);
 
     // POST /api/custom-tcp-apps/:id/peers/:peerId/test — Test single-shot handshake to peer
     const testPeerHandler = async (req: Request, res: Response) => {
         try {
-            const result = await tcpAppManager.testPeer(req.params.id, req.params.peerId);
+            const peerId = req.params.peerId || req.body?.peerId || req.body?.peer_id;
+            const result = await tcpAppManager.testPeer(req.params.id, peerId);
             res.json(result);
         } catch (err: any) {
             res.status(400).json({ success: false, error: err.message });
@@ -339,16 +352,57 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
     };
     router.post('/:id/peers/:peerId/test', testPeerHandler);
     router.post('/:id/test-peer/:peerId', testPeerHandler);
+    router.post('/:id/handshake-test', testPeerHandler);
+    router.post('/:id/test', testPeerHandler);
+
+    // POST /api/custom-tcp-apps/:id/peers — Add or update a peer in an application
+    router.post('/:id/peers', async (req: Request, res: Response) => {
+        try {
+            const file = tcpAppManager.getConfig();
+            const app = file.applications.find(a => a.id === req.params.id || a.name.toLowerCase() === req.params.id.toLowerCase());
+            if (!app) return res.status(404).json({ success: false, error: 'Application not found' });
+
+            const peerData = req.body;
+            if (!peerData.host) return res.status(400).json({ success: false, error: 'Peer host is required' });
+
+            if (!app.peers) app.peers = [];
+            const peerId = peerData.id || `peer-${peerData.name || peerData.host}`.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+            const newPeer = {
+                id: peerId,
+                name: peerData.name || peerData.host,
+                siteName: peerData.siteName || peerData.name || peerData.host,
+                host: peerData.host,
+                port: peerData.port || app.listener?.port || 8100,
+                enabled: peerData.enabled !== false,
+                role: peerData.role || 'branch',
+                connectionsOverride: peerData.connectionsOverride
+            };
+
+            const existingIdx = app.peers.findIndex(p => p.id === peerId || p.host === peerData.host);
+            if (existingIdx >= 0) {
+                app.peers[existingIdx] = { ...app.peers[existingIdx], ...newPeer };
+            } else {
+                app.peers.push(newPeer);
+            }
+
+            await tcpAppManager.saveApplication(app);
+            res.json({ success: true, application: app, peer: newPeer });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
 
     // POST /api/custom-tcp-apps/:id/metrics/reset — Reset runtime metrics
-    router.post('/:id/metrics/reset', (req: Request, res: Response) => {
+    const resetMetricsHandler = (req: Request, res: Response) => {
         try {
             tcpAppManager.resetMetrics(req.params.id);
             res.json({ success: true });
         } catch (err: any) {
             res.status(400).json({ success: false, error: err.message });
         }
-    });
+    };
+    router.post('/:id/metrics/reset', resetMetricsHandler);
+    router.post('/:id/reset', resetMetricsHandler);
 
     // GET /api/custom-tcp-apps/:id/status — Status & Metrics snapshot
     router.get('/:id/status', (req: Request, res: Response) => {
@@ -397,6 +451,28 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
             });
         } catch (err: any) {
             res.status(404).json({ success: false, error: err.message });
+        }
+    });
+
+    // GET /api/custom-tcp-apps/:id/sessions — All active incoming and outgoing sessions
+    router.get('/:id/sessions', (req: Request, res: Response) => {
+        try {
+            const incoming = tcpAppManager.getIncomingSessions(req.params.id) || [];
+            const outgoing = tcpAppManager.getOutgoingSessions(req.params.id) || [];
+            res.json({
+                success: true,
+                app_id: req.params.id,
+                total_incoming: incoming.length,
+                total_outgoing: outgoing.length,
+                incoming_sessions: incoming,
+                outgoing_sessions: outgoing,
+                sessions: [
+                    ...incoming.map(s => ({ ...s, direction: 'incoming' })),
+                    ...outgoing.map(s => ({ ...s, direction: 'outgoing' }))
+                ]
+            });
+        } catch (err: any) {
+            res.status(500).json({ success: false, error: err.message });
         }
     });
 

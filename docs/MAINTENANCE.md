@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-04-16 | **Created:** 2026-01-26 (v1.1.2-patch.2)
+
 # Maintenance & Update Guide
 
 Keeping your SD-WAN Traffic Generator up to date ensures you have the latest performance improvements, security patches, and features (like the Convergence Lab).

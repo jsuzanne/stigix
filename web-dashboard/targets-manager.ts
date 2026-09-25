@@ -392,7 +392,9 @@ export class TargetsManager {
                 registry: true,
                 location: p.location,
                 ip_public: p.ip_public,
-                last_seen: p.last_seen
+                last_seen: p.last_seen,
+                version: p.version || p.meta?.version,
+                build: p.build || p.meta?.build
             }
         }));
 
@@ -417,7 +419,9 @@ export class TargetsManager {
                 meta: {
                     registry: true,
                     self: true,
-                    last_seen: new Date().toISOString()
+                    last_seen: new Date().toISOString(),
+                    version: status?.version || status?.meta?.version,
+                    build: status?.build || status?.meta?.build
                 }
             };
         }

@@ -1,6 +1,22 @@
 import crypto from 'node:crypto';
 import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { log } from './utils/logger.js';
+
+const getAppVersion = (): string => {
+    if (process.env.STIGIX_VERSION) return process.env.STIGIX_VERSION.trim();
+    try {
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        const vPath = path.join(__dirname, 'VERSION');
+        if (fs.existsSync(vPath)) {
+            return fs.readFileSync(vPath, 'utf8').trim();
+        }
+    } catch {}
+    return '2.0.60';
+};
 
 /**
  * StigixRegistryClient — A standalone library to interface with the Stigix Registry (Cloudflare Worker).
@@ -162,7 +178,7 @@ export class StigixRegistryClient {
                 site: this.config.siteName,
                 region: this.config.region,
                 vendor: 'stigix',
-                version: '1.2.1'
+                version: getAppVersion()
             }
         };
 

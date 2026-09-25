@@ -4,12 +4,56 @@ import uuid
 import httpx
 import jwt
 import os
+import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from .registry import RegistryClient
-from ..types import TestRun, TestStatus, StigixEndpoint
+from ..types import TestRun, TestStatus, StigixEndpoint, ConvMetrics, compute_conv_verdict
 
 logger = logging.getLogger(__name__)
+
+def _compute_build_info() -> Dict[str, Any]:
+    git_hash = os.getenv("GIT_COMMIT") or os.getenv("STIGIX_BUILD") or ""
+    build_date = os.getenv("BUILD_DATE") or ""
+    version = os.getenv("STIGIX_VERSION", "")
+    if not version:
+        for p in ["/app/VERSION", "VERSION", os.path.join(os.path.dirname(__file__), "../../../VERSION")]:
+            if os.path.exists(p):
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        v = f.read().strip()
+                        if v:
+                            version = v
+                            break
+                except Exception:
+                    pass
+    if not version:
+        version = "2.0.64"
+
+    if not git_hash:
+        try:
+            import subprocess
+            res = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=1.0)
+            if res.returncode == 0:
+                git_hash = res.stdout.strip()
+        except Exception:
+            pass
+    if not build_date:
+        try:
+            import subprocess
+            res = subprocess.run(["git", "log", "-1", "--format=%ci"], capture_output=True, text=True, timeout=1.0)
+            if res.returncode == 0:
+                build_date = res.stdout.strip()
+        except Exception:
+            pass
+    return {
+        "version": version,
+        "git_commit": git_hash or "unknown",
+        "build_date": build_date or "unknown",
+    }
+
+_BUILD_INFO: Dict[str, Any] = _compute_build_info()
+
 
 class TestOrchestrator:
     """
@@ -20,12 +64,115 @@ class TestOrchestrator:
     def __init__(self):
         # Store for mapping global_test_id -> {source_base_url, local_id}
         self._test_mappings: Dict[str, Dict] = {}
-        self.jwt_secret = os.getenv("JWT_SECRET", "stigix-default-secret-2026")
+        self.jwt_secret = os.getenv("JWT_SECRET", "super-secret-key-change-this")
         self.registry = RegistryClient()
 
-    def _handle_exception(self, context: str, e: Exception) -> Dict[str, str]:
-        logger.error(f"{context} failed: {e}")
-        return {"error": str(e) or f"Operation failed: {type(e).__name__}"}
+    def _matches_test_id(self, query_id: str, record: Dict[str, Any]) -> bool:
+        """
+        Matches a query test ID against a test record:
+        - Global IDs (G-YYYYMMDD-XXXX)
+        - Local IDs (CONV-XXXX, XFR-XXXX)
+        - Composite format ('CONV-0248 (BR8-DC1-failover-demo-v3)')
+        """
+        if not query_id or not record or not isinstance(record, dict):
+            return False
+        
+        q = str(query_id).strip().lower()
+        q_base = q.split("(")[0].strip()
+
+        for key in ("global_id", "global_test_id", "test_id", "testId", "id", "sequence_id", "label"):
+            val = str(record.get(key) or "").strip().lower()
+            if not val:
+                continue
+            val_base = val.split("(")[0].strip()
+            if q == val or q == val_base or q_base == val or q_base == val_base:
+                return True
+            if q in val:
+                return True
+        return False
+
+    def _handle_exception(self, context: str, e: Exception) -> Dict[str, Any]:
+        err_msg = str(e) or repr(e) or type(e).__name__
+        logger.error(f"{context} failed: {err_msg}")
+        if isinstance(e, httpx.HTTPStatusError):
+            body_preview = e.response.text[:300] if e.response is not None else ""
+            status_code = e.response.status_code if e.response is not None else 500
+            url = str(e.request.url) if e.request else ""
+            return {
+                "success": False,
+                "status": "error",
+                "error": f"{context} failed with HTTP {status_code}: {err_msg}",
+                "status_code": status_code,
+                "url": url,
+                "body_preview": body_preview
+            }
+        return {
+            "success": False,
+            "status": "error",
+            "error": f"{context} failed: {err_msg}",
+            "status_code": 500,
+            "exception_type": type(e).__name__
+        }
+
+    def _extract_counter(self, val: Any) -> int:
+        if isinstance(val, (int, float)):
+            return int(val)
+        if isinstance(val, (list, dict)):
+            return len(val)
+        return 0
+
+    def _normalize_history_entry_counters(self, entry: Dict[str, Any]) -> None:
+        summary = entry.get("summary") if isinstance(entry.get("summary"), dict) else {}
+        diff = entry.get("diff") if isinstance(entry.get("diff"), dict) else {}
+
+        if "addedCount" not in entry or entry.get("addedCount") == 0:
+            added = self._extract_counter(summary.get("added")) or self._extract_counter(diff.get("added"))
+            if added > 0:
+                entry["addedCount"] = added
+        if "modifiedCount" not in entry or entry.get("modifiedCount") == 0:
+            mod = self._extract_counter(summary.get("modified")) or self._extract_counter(diff.get("modified"))
+            if mod > 0:
+                entry["modifiedCount"] = mod
+        if "deletedCount" not in entry or entry.get("deletedCount") == 0:
+            deleted = self._extract_counter(summary.get("removed")) or self._extract_counter(summary.get("deleted")) or self._extract_counter(diff.get("removed")) or self._extract_counter(diff.get("deleted"))
+            if deleted > 0:
+                entry["deletedCount"] = deleted
+
+    def _compact_history_entry(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+        summary = entry.get("summary") if isinstance(entry.get("summary"), dict) else {}
+        diff = entry.get("diff") if isinstance(entry.get("diff"), dict) else {}
+        added = self._extract_counter(summary.get("added")) or self._extract_counter(diff.get("added"))
+        modified = self._extract_counter(summary.get("modified")) or self._extract_counter(diff.get("modified"))
+        deleted = self._extract_counter(summary.get("removed")) or self._extract_counter(summary.get("deleted")) or self._extract_counter(diff.get("removed")) or self._extract_counter(diff.get("deleted"))
+
+        checksum = entry.get("checksum") or (entry.get("bundle", {}).get("checksum") if isinstance(entry.get("bundle"), dict) else None)
+        short_chk = f"{checksum[:8]}..." if checksum and isinstance(checksum, str) else None
+
+        return {
+            "timestamp": entry.get("timestamp") or entry.get("appliedAt"),
+            "action": entry.get("action") or "publish",
+            "type": entry.get("type"),
+            "revision": entry.get("revision"),
+            "checksum": short_chk,
+            "itemsCount": entry.get("itemsCount") or entry.get("count") or (len(entry.get("items", [])) if isinstance(entry.get("items"), list) else None),
+            "addedCount": added,
+            "modifiedCount": modified,
+            "deletedCount": deleted,
+            "status": entry.get("status") or "applied"
+        }
+    def _is_json_response(self, r: httpx.Response) -> bool:
+        """Check if an HTTP response is valid JSON and not an HTML SPA fallback."""
+        ct = r.headers.get("content-type", "")
+        if "text/html" in ct:
+            return False
+        text = r.text.strip()
+        if text.startswith("<!doctype") or text.startswith("<!DOCTYPE") or text.startswith("<html"):
+            return False
+        try:
+            r.json()
+            return True
+        except Exception:
+            return False
 
     def _generate_token(self) -> str:
         """Generates a JWT for agent authentication."""
@@ -79,10 +226,18 @@ class TestOrchestrator:
         if source.kind != "fabric":
             raise ValueError(f"Direct source must be 'fabric'. {source.id} is {source.kind}.")
         
-        # Determine test type
+        # Determine test type and port routing
         is_convergence_profile = any(k in profile.lower() for k in ["conv", "failover", "path", "probe"])
         is_xfr_profile = any(k in profile.lower() for k in ["xfr", "speedtest", "throughput"])
         is_voice_profile = "voice" in profile.lower()
+        is_iot_profile = "iot" in profile.lower()
+
+        if not (is_convergence_profile or is_xfr_profile or is_voice_profile or is_iot_profile):
+            raise ValueError(
+                f"Unknown test profile '{profile}'. Supported profiles are: "
+                f"'conv' / 'failover' (UDP port 6200), 'xfr' / 'speedtest' (Port 9000/5201), "
+                f"'voice' (UDP port 6100), 'iot' (Fleet simulation)."
+            )
 
         # Validate capabilities for ALL targets before starting any test
         for target in targets:
@@ -95,49 +250,65 @@ class TestOrchestrator:
         elif duration.endswith('m'):
             duration_sec = int(duration[:-1]) * 60
 
+        # --- XFR: dynamic timeout = test duration + 60s headroom ---
+        xfr_timeout = duration_sec + 60 if is_xfr_profile else 10
+
         test_runs = []
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=float(xfr_timeout)) as client:
             for target in targets:
                 target_ip = target.test_ip if target.kind == "fabric" else target.public_ip
                 if not target_ip:
                     logger.warning(f"Target {target.id} has no valid IP, skipping.")
                     continue
 
+                # Generate local global ID for tracking
+                global_id = f"G-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
+
                 if is_xfr_profile:
                     api_url = f"{source.api_base_url}/api/tests/xfr"
                     payload = {
                         "mode": "custom",
-                        "target": { "host": target_ip, "port": 9000 }, # XFR default port
+                        "target": { "host": target_ip, "port": 9000 }, # XFR multi-stream daemon port (9000)
                         "protocol": protocol.lower() if protocol else "tcp",
                         "direction": direction.lower() if direction else "client-to-server",
                         "duration_sec": duration_sec,
                         "bitrate": bitrate or "0", # 0 = max
-                        "parallel_streams": 4
+                        "parallel_streams": 4,
+                        "global_id": global_id,
+                        "global_test_id": global_id
                     }
                 elif is_convergence_profile:
                     api_url = f"{source.api_base_url}/api/convergence/start"
-                    # Auto-build a label from the target's registry name when the caller
-                    # did not provide one — avoids "Unknown" in the Failover dashboard.
                     effective_label = label or target.meta.get("site_name") or target.id
+                    conv_port = 6200
                     payload = {
                         "target": target_ip,
-                        "port": 6100, # Convergence probe port
-                        # Use pps directly if provided, else fallback to bitrate or 50
+                        "port": conv_port, # Convergence SLA probe port (UDP 6200)
                         "rate": pps if pps is not None else (int(bitrate.replace('M', '')) if bitrate and 'M' in bitrate else 50),
-                        "label": effective_label
+                        "label": effective_label,
+                        "global_id": global_id,
+                        "global_test_id": global_id
+                    }
+                elif is_voice_profile:
+                    api_url = f"{source.api_base_url}/api/voice/control"
+                    payload = {
+                        "enabled": True,
+                        "target": target_ip,
+                        "port": 6100, # VoIP RTP voice echo port (UDP 6100)
+                        "global_id": global_id,
+                        "global_test_id": global_id
+                    }
+                elif is_iot_profile:
+                    api_url = f"{source.api_base_url}/api/iot/control"
+                    payload = {
+                        "enabled": True,
+                        "global_id": global_id,
+                        "global_test_id": global_id
                     }
                 else:
-                    # Fallback for voice or other tests
-                    api_url = f"{source.api_base_url}/api/tests/xfr"
-                    payload = {
-                        "mode": "default",
-                        "target": { "host": target_ip, "port": 9000 }
-                    }
-
-                # Generate local global ID for tracking
-                global_id = f"G-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
+                    raise ValueError(f"Unresolved port routing for profile '{profile}'.")
                 
                 try:
                     logger.info(f"Triggering test on {api_url} with payload {payload}")
@@ -147,6 +318,31 @@ class TestOrchestrator:
                     
                     # Capture the native reference (sequence_id e.g. XFR-0007 / CONV-0001)
                     local_id = result.get("sequence_id") or result.get("testId") or result.get("id") or "CONV-000"
+
+                    # ── XFR: results are synchronous — extract them now ──────────────
+                    # The XFR daemon blocks until the test completes, then returns the
+                    # full summary inline. Capture it here so Claude never has to guess.
+                    xfr_inline_result: Optional[dict] = None
+                    if is_xfr_profile:
+                        # The response IS the completed job — extract metrics immediately
+                        summary = result.get("summary") or {}
+                        if summary or result.get("status") in ("completed", "finished", "success"):
+                            throughput = (
+                                summary.get("received_mbps") or summary.get("sent_mbps") or
+                                summary.get("throughput_mbps") or summary.get("avg_bandwidth_mbps") or 0
+                            )
+                            xfr_inline_result = {
+                                "throughput_mbps": float(throughput),
+                                "sent_mbps": float(summary.get("sent_mbps") or 0),
+                                "received_mbps": float(summary.get("received_mbps") or 0),
+                                "loss_percent": float(summary.get("loss_percent") or 0),
+                                "retransmits": int(summary.get("retransmits") or 0),
+                                "bytes_total": int(summary.get("bytes_total") or 0),
+                                "latency_ms": float(summary.get("rtt_ms_avg") or summary.get("rtt_ms") or 0),
+                                "status": result.get("status", "completed"),
+                                "started_at": result.get("started_at"),
+                                "finished_at": result.get("finished_at"),
+                            }
                     
                     # Store mapping for status checks
                     self._test_mappings[global_id] = {
@@ -157,6 +353,8 @@ class TestOrchestrator:
                         "is_convergence": is_convergence_profile
                     }
 
+                    display_bitrate = self._compute_display_bitrate(profile=profile, bitrate=bitrate, pps=pps)
+
                     test_runs.append(TestRun(
                         id=global_id,
                         local_id=local_id,
@@ -165,9 +363,11 @@ class TestOrchestrator:
                         target_id=target.id,
                         profile=profile,
                         duration=duration,
-                        bitrate=str(pps) + " pps" if pps else (bitrate or "50 pps"),
+                        bitrate=display_bitrate,
                         label=label,
-                        status="running"
+                        status="finished" if (is_xfr_profile and xfr_inline_result) else "running",
+                        # Carry inline XFR result so the MCP layer can expose it immediately
+                        **({"xfr_result": xfr_inline_result} if xfr_inline_result else {})
                     ))
                 except Exception as e:
                     logger.error(f"Failed to trigger test on agent {source.id} for target {target.id}: {e}")
@@ -190,18 +390,70 @@ class TestOrchestrator:
 
     async def get_status(self, test_id: str) -> TestStatus:
         """Fetch live status from the source agent."""
-        if test_id not in self._test_mappings:
+        mapping = None
+        if test_id in self._test_mappings:
+            mapping = self._test_mappings[test_id]
+        else:
+            # Check if test_id is a local_id / sequence_id in active mappings
+            mapping_key = next((k for k, v in self._test_mappings.items() if str(v.get("local_id", "")).lower() == test_id.lower()), None)
+            if mapping_key:
+                mapping = self._test_mappings[mapping_key]
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+
+        # If still not found, search across registered agents
+        if not mapping:
+            try:
+                endpoints = await self.registry.get_endpoints()
+                for ep in endpoints:
+                    async with httpx.AsyncClient(timeout=3.0) as scan_client:
+                        # 1. Try XFR
+                        try:
+                            xfr_res = await scan_client.get(f"{ep.api_base_url}/api/tests/xfr", headers=headers)
+                            if xfr_res.status_code == 200:
+                                xfr_data = xfr_res.json()
+                                jobs = xfr_data if isinstance(xfr_data, list) else xfr_data.get("jobs", [])
+                                matched = next((j for j in jobs if str(j.get("id", "")).lower() == test_id.lower() or str(j.get("sequence_id", "")).lower() == test_id.lower()), None)
+                                if matched:
+                                    mapping = {
+                                        "source_url": ep.api_base_url,
+                                        "local_id": matched.get("sequence_id") or matched.get("id"),
+                                        "source_id": ep.id,
+                                        "target_id": matched.get("params", {}).get("target", {}).get("host") or matched.get("params", {}).get("host", "unknown"),
+                                        "is_convergence": False
+                                    }
+                                    break
+                        except Exception:
+                            pass
+
+                        # 2. Try Convergence Status / History
+                        try:
+                            conv_res = await scan_client.get(f"{ep.api_base_url}/api/convergence/status", headers=headers)
+                            if conv_res.status_code == 200:
+                                conv_data = conv_res.json()
+                                c_jobs = conv_data if isinstance(conv_data, list) else []
+                                c_matched = next((c for c in c_jobs if self._matches_test_id(test_id, c)), None)
+                                if c_matched:
+                                    mapping = {
+                                        "source_url": ep.api_base_url,
+                                        "local_id": c_matched.get("testId") or c_matched.get("test_id"),
+                                        "source_id": ep.id,
+                                        "target_id": c_matched.get("target", "unknown"),
+                                        "is_convergence": True
+                                    }
+                                    break
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.warning(f"Error scanning endpoints for test {test_id}: {e}")
+
+        if not mapping:
             raise ValueError(f"Test {test_id} not found.")
         
-        mapping = self._test_mappings[test_id]
-        
         if mapping.get("is_convergence"):
-            # Convergence stats are often retrieved differently or just from the list
-            api_url = f"{mapping['source_url']}/api/convergence/status" # Or similar
+            api_url = f"{mapping['source_url']}/api/convergence/status"
         else:
             api_url = f"{mapping['source_url']}/api/tests/xfr"
-        
-        headers = {"Authorization": f"Bearer {self._generate_token()}"}
         
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
@@ -213,8 +465,7 @@ class TestOrchestrator:
                     # 1. Try status endpoint (active tests)
                     job = None
                     if isinstance(data, list):
-                        # Match by testId (from server.ts) or test_id (from python stats)
-                        job = next((j for j in data if j.get("testId") == mapping["local_id"] or j.get("test_id") == mapping["local_id"]), None)
+                        job = next((j for j in data if self._matches_test_id(test_id, j) or self._matches_test_id(mapping.get("local_id", ""), j)), None)
                     
                     # 2. If not found, try history endpoint (finished tests)
                     if not job:
@@ -224,10 +475,7 @@ class TestOrchestrator:
                                 h_resp = await history_client.get(history_url, headers=headers)
                                 if h_resp.status_code == 200:
                                     history = h_resp.json()
-                                    # Multiple entries might exist for the same test if it was restarted or appended.
-                                    # We want the LAST one in the history array that matches.
-                                    # Note: testId in history might be 'CONV-123 (Label)' so we use startswith
-                                    matching_jobs = [j for j in history if str(j.get("testId", "")).startswith(mapping["local_id"]) or str(j.get("test_id", "")).startswith(mapping["local_id"])]
+                                    matching_jobs = [j for j in history if self._matches_test_id(test_id, j) or self._matches_test_id(mapping.get("local_id", ""), j)]
                                     if matching_jobs:
                                         job = matching_jobs[-1]
                                         job["running"] = False # Mark as finished
@@ -237,14 +485,7 @@ class TestOrchestrator:
                     if not job:
                         logger.warning(f"Job {mapping['local_id']} not found in convergence status or history on {mapping['source_url']}")
                         return TestStatus(test_id=test_id, status="unknown", source_id=mapping["source_id"], target_id=mapping["target_id"])
-                    
-                    # Normalize metrics
-                    metrics = {
-                        "loss_percent": job.get("loss_pct", 0) or job.get("loss_percent", 0),
-                        "latency_ms": job.get("avg_rtt_ms", 0) or job.get("latency_ms", 0),
-                        "jitter_ms": job.get("jitter_ms", 0)
-                    }
-                    
+
                     # Derive status from 'running' boolean if present, else fallback to 'status' string
                     status_str = "running"
                     if "running" in job:
@@ -253,19 +494,19 @@ class TestOrchestrator:
                         status_str = job["status"]
 
                     return TestStatus(
-                        test_id=test_id, 
+                        test_id=test_id,
                         local_id=mapping["local_id"],
-                        status=status_str, 
-                        source_id=mapping["source_id"], 
-                        target_id=mapping["target_id"], 
-                        metrics=metrics
+                        status=status_str,
+                        source_id=mapping["source_id"],
+                        target_id=mapping["target_id"],
+                        metrics=ConvMetrics.from_daemon(job)
                     )
 
                 # Standard XFR jobs (from /api/tests/xfr)
                 job = None
                 if isinstance(data, list):
-                    # Match by the unique string ID first
-                    job = next((j for j in data if str(j.get("id")) == str(mapping["local_id"])), None)
+                    # Match by unique string ID or sequence_id
+                    job = next((j for j in data if str(j.get("id")) == str(mapping["local_id"]) or str(j.get("sequence_id")) == str(mapping["local_id"])), None)
                 
                 if not job:
                     return TestStatus(
@@ -282,14 +523,18 @@ class TestOrchestrator:
                 # Map Stigix job metrics to MCP status
                 summary = job.get("summary") or {}
                 
-                # In bidirectional or other modes, we might want to show both, 
-                # but received_mbps is the primary measure in the UI.
-                throughput = summary.get("received_mbps", 0) or summary.get("sent_mbps", 0)
+                throughput = summary.get("received_mbps", 0) or summary.get("sent_mbps", 0) or summary.get("throughput_mbps", 0) or summary.get("avg_bandwidth_mbps", 0)
                 
                 metrics = {
                     "throughput_mbps": float(throughput),
                     "loss_percent": float(summary.get("loss_percent", 0)),
-                    "latency_ms": float(summary.get("rtt_ms_avg", 0)) # Standardize with 'latency_ms'
+                    "latency_ms": float(summary.get("rtt_ms_avg", 0) or summary.get("rtt_ms", 0)),
+                    "sent_mbps": float(summary.get("sent_mbps", 0)),
+                    "received_mbps": float(summary.get("received_mbps", 0)),
+                    "retransmits": int(summary.get("retransmits", 0)),
+                    "bytes_total": int(summary.get("bytes_total", 0)),
+                    "started_at": job.get("started_at"),
+                    "finished_at": job.get("finished_at")
                 }
 
                 # Normalize status
@@ -320,10 +565,14 @@ class TestOrchestrator:
         
         async with httpx.AsyncClient(timeout=10.0) as client:
             logger.info(f"Setting traffic status on {source.id} to {enabled} via {api_url}")
-            # POST with empty body as per server.ts implementation for start/stop
-            response = await client.post(api_url, json={}, headers=headers)
-            response.raise_for_status()
-            return response.json()
+            try:
+                # POST with empty body as per server.ts implementation for start/stop
+                response = await client.post(api_url, json={}, headers=headers)
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                logger.error(f"Failed to set traffic status on {source.id}: {e}")
+                return {"error": str(e)}
 
     async def set_traffic_rate(self, source: StigixEndpoint, sleep_interval: float) -> dict:
         """Updates the traffic generation sleep interval (delay between requests)."""
@@ -390,18 +639,10 @@ class TestOrchestrator:
                         matching_jobs = [j for j in history if str(j.get("testId", "")).startswith(mapping["local_id"]) or str(j.get("test_id", "")).startswith(mapping["local_id"])]
                         if matching_jobs:
                             job = matching_jobs[-1]
-                            # Check if the metrics look somewhat final (not just 0s if it actually ran)
-                            # or just return it because we waited
                             return {
                                 "success": True,
                                 "message": "Test stopped and final metrics captured",
-                                "metrics": {
-                                    "sent": job.get("sent", 0),
-                                    "received": job.get("received", 0),
-                                    "loss_pct": job.get("loss_pct", 0) or job.get("loss_percent", 0),
-                                    "latency_ms": job.get("avg_rtt_ms", 0) or job.get("latency_ms", 0),
-                                    "jitter_ms": job.get("jitter_ms", 0)
-                                }
+                                "metrics": ConvMetrics.from_daemon(job).model_dump(),
                             }
                 except Exception as e:
                     logger.warning(f"Error polling history: {e}")
@@ -538,11 +779,11 @@ class TestOrchestrator:
                 logger.error(f"Security test {test_type} failed for {agent_id} on {target}: {e}")
                 return {"error": str(e), "target": target}
 
-    async def list_vyos_routers(self, agent_id: str) -> List[Dict[str, Any]]:
+    async def list_vyos_routers(self, agent_id: str) -> Dict[str, Any]:
         """List VyOS routers managed by a specific Stigix node."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return [{"error": f"Agent {agent_id} not found."}]
+            return {"error": f"Agent {agent_id} not found."}
             
         url = f"{agent.api_base_url}/api/vyos/routers"
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
@@ -550,16 +791,16 @@ class TestOrchestrator:
             try:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
-                return response.json()
+                return {"routers": response.json()}
             except Exception as e:
                 logger.error(f"Failed to list VyOS routers on {agent_id}: {e}")
-                return [{"error": str(e)}]
+                return {"error": str(e)}
 
-    async def list_vyos_sequences(self, agent_id: str) -> List[Dict[str, Any]]:
+    async def list_vyos_sequences(self, agent_id: str) -> Dict[str, Any]:
         """List available VyOS configuration sequences on a specific node."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return [{"error": f"Agent {agent_id} not found."}]
+            return {"error": f"Agent {agent_id} not found."}
             
         url = f"{agent.api_base_url}/api/vyos/sequences"
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
@@ -567,10 +808,10 @@ class TestOrchestrator:
             try:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
-                return response.json()
+                return {"scenarios": response.json()}
             except Exception as e:
                 logger.error(f"Failed to list VyOS sequences on {agent_id}: {e}")
-                return [{"error": str(e)}]
+                return {"error": str(e)}
 
     async def run_vyos_sequence(self, agent_id: str, sequence_id: str) -> Dict[str, Any]:
         """Trigger a VyOS sequence execution on a specific node."""
@@ -589,11 +830,11 @@ class TestOrchestrator:
                 logger.error(f"Failed to run VyOS sequence {sequence_id} on {agent_id}: {e}")
                 return {"error": str(e)}
 
-    async def get_vyos_history(self, agent_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    async def get_vyos_history(self, agent_id: str, limit: int = 50) -> Dict[str, Any]:
         """Fetch VyOS action history from a specific node."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return [{"error": f"Agent {agent_id} not found."}]
+            return {"error": f"Agent {agent_id} not found."}
             
         url = f"{agent.api_base_url}/api/vyos/history?limit={limit}"
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
@@ -601,10 +842,10 @@ class TestOrchestrator:
             try:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
-                return response.json()
+                return {"history": response.json()}
             except Exception as e:
                 logger.error(f"Failed to fetch VyOS history from {agent_id}: {e}")
-                return [{"error": str(e)}]
+                return {"error": str(e)}
 
     async def set_vyos_scenario_status(self, agent_id: str, sequence_id: str, enabled: bool) -> Dict[str, Any]:
         """Enable or disable a specific VyOS configuration sequence on a node."""
@@ -638,14 +879,14 @@ class TestOrchestrator:
                 logger.error(f"Failed to set status for sequence {sequence_id} on {agent_id}: {e}")
                 return {"error": str(e)}
 
-    async def get_vyos_interfaces(self, agent_id: str, router_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_vyos_interfaces(self, agent_id: str, router_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Return VyOS router interfaces with their descriptions.
         Used by Claude to identify which interface to target before executing an action.
         """
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return [{"error": f"Agent {agent_id} not found."}]
+            return {"error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         url = f"{agent.api_base_url}/api/vyos/routers"
@@ -653,6 +894,8 @@ class TestOrchestrator:
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
                 response = await client.get(url, headers=headers)
+                if response.status_code == 404 and self._is_json_response(response):
+                    return response.json()
                 response.raise_for_status()
                 routers = response.json()
 
@@ -675,10 +918,10 @@ class TestOrchestrator:
                             for iface in router.get("interfaces", [])
                         ]
                     })
-                return result
+                return {"routers": result}
             except Exception as e:
                 logger.error(f"Failed to fetch VyOS interfaces from {agent_id}: {e}")
-                return [{"error": str(e)}]
+                return {"error": str(e)}
 
     async def get_vyos_state(self, agent_id: str, router_id: str) -> Dict[str, Any]:
         """
@@ -796,16 +1039,28 @@ class TestOrchestrator:
                 # Without this, the history lookup can race and return 'Unknown'.
                 await asyncio.sleep(0.4)
 
-                # Step 3 — Fetch history to get CLI equivalent (last entry)
+                # Step 3 — Fetch history to get CLI equivalent and commit timestamp
                 history_resp = await client.get(
                     f"{base_url}/api/vyos/history?limit=1",
                     headers=headers
                 )
                 cli_equivalent = None
+                commit_ts = None
+                commit_ts_ms = None
                 if history_resp.status_code == 200:
                     history = history_resp.json()
-                    if history:
-                        cli_equivalent = history[0].get("cli_equivalent")
+                    if history and isinstance(history, list) and len(history) > 0:
+                        first_entry = history[0]
+                        cli_equivalent = first_entry.get("cli_equivalent")
+                        commit_ts = first_entry.get("timestamp") or first_entry.get("timestamp_iso") or first_entry.get("executed_at")
+                        commit_ts_ms = first_entry.get("timestamp_ms") or first_entry.get("time_ms")
+
+                if not commit_ts:
+                    import datetime
+                    import time
+                    now_dt = datetime.datetime.utcnow()
+                    commit_ts = now_dt.isoformat() + "Z"
+                    commit_ts_ms = int(time.time() * 1000)
 
                 # Step 4 — Delete the temp sequence
                 await client.delete(
@@ -820,6 +1075,8 @@ class TestOrchestrator:
                     "interface": interface,
                     "parameters": parameters,
                     "cli_equivalent": cli_equivalent,
+                    "commit_timestamp": commit_ts,
+                    "commit_timestamp_ms": commit_ts_ms,
                     "result": run_result
                 }
 
@@ -871,17 +1128,27 @@ class TestOrchestrator:
                 data = response.json()
                 last_results = data.get("lastResults", [])
                 
-                # Try exact match or fuzzy match by name/IP
-                probe_lower = probe_name.lower()
-                match = next((r for r in last_results if probe_lower in r.get("name", "").lower() or probe_lower in r.get("id", "").lower()), None)
+                # Match by endpointName, endpointId, name, or id (NEVER by url or target)
+                probe_lower = probe_name.strip().lower()
+                probe_slug = re.sub(r'\s+', '-', probe_lower)
+                match = next((
+                    r for r in last_results 
+                    if probe_lower == (r.get("endpointName") or r.get("name") or "").strip().lower()
+                    or probe_lower == (r.get("endpointId") or r.get("id") or "").strip().lower()
+                    or probe_slug == (r.get("endpointId") or r.get("id") or "").strip().lower()
+                    or probe_slug == re.sub(r'\s+', '-', (r.get("endpointName") or r.get("name") or "").strip().lower())
+                    or probe_lower in (r.get("endpointName") or r.get("name") or "").strip().lower()
+                ), None)
                 
                 if not match:
-                    return {"error": f"Probe '{probe_name}' not found in recent results. Available: {[r.get('name') for r in last_results[:10]]}"}
+                    available = [r.get("endpointName") or r.get("name") or r.get("endpointId") for r in last_results[:10]]
+                    return {"error": f"Probe '{probe_name}' not found in recent results. Available: {available}"}
                 
                 return match
             except Exception as e:
-                logger.error(f"Failed to fetch probe details for {agent_id}: {e}")
-                return {"error": str(e) or f"Connection failed: {type(e).__name__}"}
+                err_msg = str(e) or repr(e) or type(e).__name__
+                logger.error(f"Failed to fetch probe details for {agent_id}: {err_msg}")
+                return {"error": err_msg or f"Connection failed: {type(e).__name__}"}
 
     # -------------------------------------------------------------------------
     # Phase 1 Additions — Aligned with stigix-cli capabilities
@@ -991,36 +1258,45 @@ class TestOrchestrator:
 
         # --- Weighted posture scores (the real scores shown in the dashboard) ---
         if not isinstance(score_r, Exception) and score_r.status_code == 200:
-            entry = score_r.json()
-            scores = entry.get("scores", {})
-            result["posture_scores"] = {
-                "url_filter":        scores.get("url"),
-                "dns_security":      scores.get("dns"),
-                "threat_prevention": scores.get("threat"),
-                "_note": "Weighted % of malicious categories correctly blocked/sinkholed (out of 100). Matches the Security dashboard exactly."
-            }
+            try:
+                entry = score_r.json()
+                scores = entry.get("scores", {})
+                result["posture_scores"] = {
+                    "url_filter":        scores.get("url"),
+                    "dns_security":      scores.get("dns"),
+                    "threat_prevention": scores.get("threat"),
+                    "_note": "Weighted % of malicious categories correctly blocked/sinkholed (out of 100). Matches the Security dashboard exactly."
+                }
+            except Exception as e:
+                result["posture_scores"] = {"error": f"Invalid response body: {e}"}
         else:
             result["posture_scores"] = {"error": str(score_r)}
 
         # --- Score trend (last 24 runs, newest first) ---
         if not isinstance(hist_r, Exception) and hist_r.status_code == 200:
-            history = hist_r.json() if hist_r.content else []
-            trend = [
-                {
-                    "ts":      h.get("timestamp"),
-                    "type":    h.get("type"),
-                    "url":     h.get("scores", {}).get("url"),
-                    "dns":     h.get("scores", {}).get("dns"),
-                    "threat":  h.get("scores", {}).get("threat"),
-                    "trigger": h.get("trigger"),
-                }
-                for h in (history if isinstance(history, list) else [])
-            ]
-            result["score_trend"] = sorted(trend, key=lambda x: x.get("ts") or 0, reverse=True)[:24]
+            try:
+                history = hist_r.json() if hist_r.content else []
+                trend = [
+                    {
+                        "ts":      h.get("timestamp"),
+                        "type":    h.get("type"),
+                        "url":     h.get("scores", {}).get("url"),
+                        "dns":     h.get("scores", {}).get("dns"),
+                        "threat":  h.get("scores", {}).get("threat"),
+                        "trigger": h.get("trigger"),
+                    }
+                    for h in (history if isinstance(history, list) else [])
+                ]
+                result["score_trend"] = sorted(trend, key=lambda x: x.get("ts") or 0, reverse=True)[:24]
+            except Exception as e:
+                result["score_trend"] = []
+                result["score_trend_error"] = f"Invalid response body: {e}"
         else:
-            result["score_trend"] = {"error": str(hist_r)}
+            result["score_trend"] = []
+            result["score_trend_error"] = str(hist_r)
 
         return result
+
 
     async def get_security_config(self, agent_id: str) -> Dict[str, Any]:
         """Fetch the security policy configuration (enabled modules, profile) from a node."""
@@ -1132,11 +1408,194 @@ class TestOrchestrator:
                 results = data if isinstance(data, list) else data.get("results", [data])
                 return {"agent_id": agent_id, "probe_count": len(results), "results": results}
             except Exception as e:
-                logger.error(f"Failed to run probes for {agent_id}: {e}")
-                return {"error": str(e)}
+                err_msg = str(e) or repr(e) or type(e).__name__
+                logger.error(f"Failed to run probes for {agent_id}: {err_msg}")
+                return {"error": err_msg}
 
-    async def get_dem_probe_stats(self, agent_id: str) -> Dict[str, Any]:
-        """Fetch historical DEM probe stats (global health score, per-probe latency, reliability)."""
+    async def get_dem_probe_stats(
+        self,
+        agent_id: str,
+        probe_name_filter: Optional[str] = None,
+        window_minutes: Optional[int] = None,
+        aggregate: bool = True,
+        raw: bool = False
+    ) -> Dict[str, Any]:
+        """Fetch historical DEM probe stats with optional name filtering and automatic statistical aggregation (median, p95, success rate)."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        base = agent.api_base_url
+        time_range = f"{window_minutes}m" if window_minutes else "1h"
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                result: Dict[str, Any] = {"agent_id": agent_id, "time_range": time_range}
+                # Global stats: read the exact same source as get_dem_summary
+                stats_r = await client.get(f"{base}/api/connectivity/stats?range=1h", headers=headers)
+                if stats_r.status_code == 200:
+                    result["global_stats"] = stats_r.json()
+
+                # Recent results
+                results_r = await client.get(
+                    f"{base}/api/connectivity/results?timeRange={time_range}&limit=1000", headers=headers
+                )
+                raw_results = []
+                if results_r.status_code == 200:
+                    raw_data = results_r.json()
+                    raw_results = raw_data if isinstance(raw_data, list) else raw_data.get("results", [])
+
+                # Probe config for context
+                cfg_r = await client.get(f"{base}/api/connectivity/custom", headers=headers)
+                probes_cfg = []
+                if cfg_r.status_code == 200:
+                    data = cfg_r.json()
+                    probes_cfg = data if isinstance(data, list) else data.get("targets", [])
+
+                if aggregate:
+                    def _slug(text: str) -> str:
+                        return re.sub(r'\s+', '-', (text or '').strip().lower())
+
+                    cfg_by_name: Dict[str, Dict[str, Any]] = {}
+                    cfg_by_slug: Dict[str, Dict[str, Any]] = {}
+                    cfg_by_id: Dict[str, Dict[str, Any]] = {}
+
+                    for p in probes_cfg:
+                        if isinstance(p, dict) and p.get("name"):
+                            p_name = p.get("name")
+                            cfg_by_name[p_name] = p
+                            cfg_by_slug[_slug(p_name)] = p
+                            if p.get("id"):
+                                cfg_by_id[p.get("id").strip().lower()] = p
+
+                    # Group samples strictly by probe name / slug / id (NEVER by url or target)
+                    grouped: Dict[str, List[Dict[str, Any]]] = {}
+                    for item in raw_results:
+                        s_name = (item.get("endpointName") or item.get("name") or item.get("probe_name") or "").strip()
+                        s_id = (item.get("endpointId") or item.get("id") or "").strip().lower()
+                        s_slug = _slug(s_name)
+
+                        matched_cfg = None
+                        if s_name and s_name in cfg_by_name:
+                            matched_cfg = cfg_by_name[s_name]
+                        elif s_id and s_id in cfg_by_id:
+                            matched_cfg = cfg_by_id[s_id]
+                        elif s_id and s_id in cfg_by_slug:
+                            matched_cfg = cfg_by_slug[s_id]
+                        elif s_slug and s_slug in cfg_by_slug:
+                            matched_cfg = cfg_by_slug[s_slug]
+
+                        canonical_name = matched_cfg.get("name") if matched_cfg else (s_name or item.get("endpointId") or "unknown")
+                        grouped.setdefault(canonical_name, []).append(item)
+
+                    summary_list = []
+                    all_probe_names = set(grouped.keys()).union(cfg_by_name.keys())
+
+                    for name in sorted(all_probe_names):
+                        if probe_name_filter and probe_name_filter.lower() not in name.lower():
+                            continue
+
+                        samples = grouped.get(name, [])
+                        cfg = cfg_by_name.get(name, {})
+                        rtts: List[float] = []
+                        success_count = 0
+
+                        expected_codes = cfg.get("expectedStatusCodes") or [200, 201, 202, 204, 301, 302, 304, 307, 308]
+
+                        for s in samples:
+                            code = s.get("httpCode") or s.get("statusCode")
+                            is_code_ok = (code in expected_codes) if (code is not None and code > 0) else False
+                            is_success = (
+                                is_code_ok
+                                or (s.get("reachable") is True and (s.get("score") is None or s.get("score", 0) > 0))
+                                or s.get("success") is True
+                                or s.get("status") == "success"
+                            )
+                            if is_success:
+                                success_count += 1
+                            
+                            metrics = s.get("metrics")
+                            rtt = metrics.get("total_ms") if isinstance(metrics, dict) else (s.get("latency_ms") or s.get("rtt") or s.get("responseTime"))
+                            if rtt is not None:
+                                try:
+                                    rtts.append(float(rtt))
+                                except (ValueError, TypeError):
+                                    pass
+
+                        sample_count = len(samples)
+                        success_rate = round(100.0 * success_count / sample_count, 1) if sample_count > 0 else None
+
+                        sorted_rtts = sorted(rtts)
+                        p95_val = None
+                        median_val = None
+                        min_val = None
+                        max_val = None
+                        avg_val = None
+                        if sorted_rtts:
+                            min_val = round(sorted_rtts[0], 2)
+                            max_val = round(sorted_rtts[-1], 2)
+                            avg_val = round(sum(sorted_rtts) / len(sorted_rtts), 2)
+                            median_val = round(sorted_rtts[len(sorted_rtts) // 2], 2)
+                            p95_idx = int(len(sorted_rtts) * 0.95)
+                            p95_val = round(sorted_rtts[min(p95_idx, len(sorted_rtts) - 1)], 2)
+
+                        last_sample = samples[0] if samples else {}
+                        p_type = (cfg.get("type") or last_sample.get("endpointType") or last_sample.get("type") or "HTTP").upper()
+                        
+                        summary_entry: Dict[str, Any] = {
+                            "name": name,
+                            "type": p_type,
+                            "target": cfg.get("target") or cfg.get("url") or last_sample.get("url") or last_sample.get("target", ""),
+                            "samples_count": sample_count,
+                            "success_count": success_count,
+                            "success_rate_pct": success_rate,
+                            "min_rtt_ms": min_val,
+                            "max_rtt_ms": max_val,
+                            "avg_rtt_ms": avg_val,
+                            "median_rtt_ms": median_val,
+                            "p95_rtt_ms": p95_val,
+                            "last_status_code": last_sample.get("httpCode") or last_sample.get("statusCode"),
+                            "last_error": last_sample.get("error") or (last_sample.get("message") if last_sample.get("score") == 0 else None),
+                            "last_timestamp": last_sample.get("timestamp")
+                        }
+                        if p_type in ["HTTP", "HTTPS"]:
+                            summary_entry["expected_status_codes"] = cfg.get("expectedStatusCodes") or [200]
+
+                        summary_list.append(summary_entry)
+
+                    result["total_probes_configured"] = len(probes_cfg)
+                    result["probes_matched"] = len(summary_list)
+                    result["probes_summary"] = summary_list
+                    result["probes"] = summary_list
+                    result["results"] = summary_list
+
+                if raw:
+                    filtered_raw = raw_results
+                    if probe_name_filter:
+                        flt = probe_name_filter.lower()
+                        filtered_raw = [
+                            r for r in raw_results 
+                            if flt in (r.get("endpointName") or r.get("name") or "").lower()
+                            or flt in (r.get("endpointId") or r.get("id") or "").lower()
+                        ]
+                    result["recent_results"] = filtered_raw
+                return result
+            except Exception as e:
+                err_msg = str(e) or repr(e) or type(e).__name__
+                logger.error(f"Failed to fetch DEM probe stats for {agent_id}: {err_msg}")
+                return {"error": err_msg}
+
+    async def update_dem_probe(
+        self,
+        agent_id: str,
+        probe_name: str,
+        expected_status_codes: Optional[List[int]] = None,
+        timeout_ms: Optional[int] = None,
+        interval_sec: Optional[int] = None,
+        url: Optional[str] = None,
+        enabled: Optional[bool] = None
+    ) -> Dict[str, Any]:
+        """Update settings of an existing DEM probe (e.g. accepted status codes, timeout, interval) without losing historical telemetry."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"error": f"Agent {agent_id} not found."}
@@ -1145,26 +1604,63 @@ class TestOrchestrator:
         base = agent.api_base_url
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
-                result: Dict[str, Any] = {"agent_id": agent_id}
-                # Global stats
-                stats_r = await client.get(f"{base}/api/connectivity/stats?range=1h", headers=headers)
-                if stats_r.status_code == 200:
-                    result["global_stats"] = stats_r.json()
-                # Recent results
-                results_r = await client.get(
-                    f"{base}/api/connectivity/results?timeRange=1h&limit=500", headers=headers
-                )
-                if results_r.status_code == 200:
-                    result["recent_results"] = results_r.json()
-                # Probe config for context
                 cfg_r = await client.get(f"{base}/api/connectivity/custom", headers=headers)
-                if cfg_r.status_code == 200:
-                    data = cfg_r.json()
-                    result["probes_config"] = data if isinstance(data, list) else data.get("targets", [])
-                return result
+                if cfg_r.status_code != 200:
+                    return {"error": f"Failed to fetch probe configuration: HTTP {cfg_r.status_code}"}
+
+                data = cfg_r.json()
+                probes = data if isinstance(data, list) else data.get("targets", [])
+                target_name = probe_name.strip().lower()
+                matched_idx = -1
+
+                for idx, p in enumerate(probes):
+                    if isinstance(p, dict) and (p.get("name", "").strip().lower() == target_name or p.get("id", "").strip().lower() == target_name):
+                        matched_idx = idx
+                        break
+
+                if matched_idx == -1:
+                    return {
+                        "error": f"Probe '{probe_name}' not found on {agent_id}.",
+                        "available_probes": [p.get("name") for p in probes if isinstance(p, dict) and p.get("name")]
+                    }
+
+                current = probes[matched_idx]
+                if expected_status_codes is not None:
+                    current["expectedStatusCodes"] = expected_status_codes
+                if timeout_ms is not None:
+                    current["timeout"] = timeout_ms
+                if interval_sec is not None:
+                    current["interval"] = interval_sec
+                if url is not None:
+                    current["target"] = url
+                    current["url"] = url
+                if enabled is not None:
+                    current["enabled"] = enabled
+
+                probes[matched_idx] = current
+                save_r = await client.post(
+                    f"{base}/api/connectivity/custom",
+                    json={"endpoints": probes},
+                    headers=headers
+                )
+                if save_r.status_code not in [200, 201]:
+                    return {"error": f"Failed to save updated probe: HTTP {save_r.status_code} - {save_r.text}"}
+
+                layer = "local_override" if (current.get("_source") == "overridden" or current.get("_wasGlobal") is not None or current.get("_source") == "local") else "global"
+
+                return {
+                    "success": True,
+                    "agent_id": agent_id,
+                    "probe_name": current.get("name"),
+                    "layer": layer,
+                    "updated_settings": current,
+                    "message": f"DEM probe '{probe_name}' successfully updated in {layer} layer on {agent_id}."
+                }
             except Exception as e:
-                logger.error(f"Failed to fetch DEM probe stats for {agent_id}: {e}")
-                return {"error": str(e)}
+                err_msg = str(e) or repr(e) or type(e).__name__
+                logger.error(f"Failed to update DEM probe {probe_name} on {agent_id}: {err_msg}")
+                return {"error": err_msg}
+
 
     async def list_fabric_targets(self, agent_id: str) -> Dict[str, Any]:
         """List all manually-managed Stigix peer/fabric targets configured on a node."""
@@ -1185,7 +1681,7 @@ class TestOrchestrator:
                 return {"error": str(e)}
 
     async def list_speedtest_history(self, agent_id: str, limit: int = 20) -> Dict[str, Any]:
-        """Fetch the speedtest (XFR) history from a node."""
+        """Fetch the speedtest (XFR) history from a node, with normalised metrics."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"error": f"Agent {agent_id} not found."}
@@ -1196,11 +1692,85 @@ class TestOrchestrator:
                 r = await client.get(f"{agent.api_base_url}/api/tests/xfr", headers=headers)
                 r.raise_for_status()
                 data = r.json()
-                jobs = data if isinstance(data, list) else data.get("jobs", [])
-                return {"agent_id": agent_id, "count": len(jobs), "jobs": jobs[:limit]}
+                raw_jobs = data if isinstance(data, list) else data.get("jobs", [])
+                raw_jobs = raw_jobs[:limit]
+
+                normalized = []
+                for job in raw_jobs:
+                    summary = job.get("summary") or {}
+                    throughput = (
+                        summary.get("received_mbps") or summary.get("sent_mbps") or
+                        summary.get("throughput_mbps") or summary.get("avg_bandwidth_mbps") or 0
+                    )
+                    raw_status = job.get("status", "unknown").lower()
+                    status_str = "finished" if raw_status in ("completed", "finished", "success") else raw_status
+                    normalized.append({
+                        "sequence_id": job.get("sequence_id") or job.get("id"),
+                        "status": status_str,
+                        "source": job.get("source") or job.get("source_id") or agent_id,
+                        "target": self._extract_xfr_target(job),
+                        "protocol": (job.get("params") or {}).get("protocol") or job.get("protocol") or "tcp",
+                        "direction": (job.get("params") or {}).get("direction") or job.get("direction") or "client-to-server",
+                        "duration_s": (job.get("params") or {}).get("duration_sec") or job.get("duration_sec") or 0,
+                        "parallel_streams": (job.get("params") or {}).get("parallel_streams") or 4,
+                        # ── Normalised throughput metrics ─────────────────────
+                        "throughput_mbps": float(throughput),
+                        "sent_mbps": float(summary.get("sent_mbps") or 0),
+                        "received_mbps": float(summary.get("received_mbps") or 0),
+                        "loss_percent": float(summary.get("loss_percent") or 0),
+                        "retransmits": int(summary.get("retransmits") or 0),
+                        "bytes_total": int(summary.get("bytes_total") or 0),
+                        "latency_ms": float(summary.get("rtt_ms_avg") or summary.get("rtt_ms") or 0),
+                        # ── Timestamps ────────────────────────────────────────
+                        "started_at": job.get("started_at"),
+                        "finished_at": job.get("finished_at"),
+                    })
+
+                return {"agent_id": agent_id, "count": len(normalized), "jobs": normalized}
             except Exception as e:
                 logger.error(f"Failed to fetch speedtest history for {agent_id}: {e}")
                 return {"error": str(e)}
+
+    def _compute_display_bitrate(self, profile: str, bitrate: Optional[str] = None, pps: Optional[int] = None) -> str:
+        """Compute human-friendly bitrate display string depending on test profile."""
+        prof = (profile or "").lower()
+        if prof in ("xfr", "speedtest"):
+            if bitrate and str(bitrate).strip() not in ("0", ""):
+                return str(bitrate).strip()
+            return "max"
+        elif prof == "conv":
+            if pps:
+                return f"{pps} pps"
+            if bitrate:
+                b_str = str(bitrate).strip()
+                return b_str if "pps" in b_str else f"{b_str} pps"
+            return "50 pps"
+        elif prof == "voice":
+            return "64 kbps (G.711)"
+        elif prof == "iot":
+            return f"{pps or 10} pps"
+        return str(bitrate) if bitrate else "default"
+
+    def _extract_xfr_target(self, job: Dict[str, Any]) -> str:
+        """Extract target host/IP from an XFR job representation."""
+        if not isinstance(job, dict):
+            return "?"
+        params = job.get("params") or {}
+        if not isinstance(params, dict):
+            params = {}
+        target_obj = params.get("target") or job.get("target")
+        if isinstance(target_obj, dict):
+            host = target_obj.get("host") or target_obj.get("ip")
+            if host:
+                return str(host)
+        elif target_obj and str(target_obj).strip() not in ("?", ""):
+            return str(target_obj).strip()
+        
+        host_val = params.get("host") or job.get("host") or job.get("target_host")
+        if host_val and str(host_val).strip() not in ("?", ""):
+            return str(host_val).strip()
+        
+        return "?"
 
     # -------------------------------------------------------------------------
     # Phase 2 Additions
@@ -1876,8 +2446,108 @@ class TestOrchestrator:
     # -------------------------------------------------------------------------
 
 
-    async def get_convergence_history(self, agent_id: str, limit: int = 10) -> Dict[str, Any]:
-        """Fetch the convergence/failover test history for a node."""
+    async def get_convergence_history(
+        self,
+        agent_id: str,
+        limit: int = 10,
+        summary_only: bool = True,
+        test_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Fetch the convergence/failover test history for a node.
+
+        summary_only=True (default) returns only aggregated KPIs per test — NO raw packet arrays.
+        Enforces a 200 KB response guard-rail: if payload is still too large, truncates and sets
+        truncated=True. limit is applied before any processing to avoid building huge structures.
+        test_id filters to a single record by testId or local id (partial match tolerated).
+        """
+        import json as _json
+
+        # Heavy keys that exist at the record root level (common names from the convergence daemon)
+        _HEAVY_ROOT = frozenset({
+            "samples", "raw_samples", "packets", "packet_log",
+            "time_series", "telemetry", "metrics_series",
+            "packet_sequence", "seq", "rawPackets",
+            "pathHistory_raw", "events_raw",
+        })
+        # Heavy keys nested inside sub-dicts (e.g. stats.samples, result.packets)
+        _HEAVY_NESTED_KEYS = frozenset({
+            "samples", "packets", "raw", "rawPackets", "data",
+        })
+
+        # Compact whitelist when summary_only=True — only these top-level keys are kept
+        _SUMMARY_WHITELIST = {
+            "testId", "test_id", "id", "label", "target", "targetId",
+            "startTime", "endTime", "timestamp", "duration_s", "durationSec",
+            "sent", "received", "tx_total", "rx_total",
+            "loss_pct", "loss_percent", "uplink_loss_pct", "uplinkLoss",
+            "downlink_loss_pct", "downlinkLoss",
+            "max_blackout_ms", "maxBlackout", "blackout",
+            "blackout_count", "blackoutCount",
+            "avg_rtt_ms", "latency_ms", "min_rtt_ms", "max_rtt_ms",
+            "jitter_ms", "min_jitter_ms", "max_jitter_ms",
+            "egress_path", "egressPath",
+            "path_transitions", "pathTransitions",  # lightweight list of {ts, path} only
+            "status", "running",
+            # enriched fields added by this method
+            "verdict", "max_blackout_ms",
+        }
+
+        def _verdict(max_bo: Any) -> str:
+            if max_bo is None:
+                return "UNKNOWN"
+            try:
+                mb = float(max_bo)
+            except Exception:
+                return "UNKNOWN"
+            if mb == 0:
+                return "PERFECT"
+            if mb < 1000:
+                return "GOOD"
+            if mb < 5000:
+                return "DEGRADED"
+            if mb < 10000:
+                return "BAD"
+            return "CRITICAL"
+
+        def _compact_path_transitions(raw: Any) -> Any:
+            """Keep only {timestamp, path} from path_transitions to avoid huge objects."""
+            if not isinstance(raw, list):
+                return raw
+            out = []
+            for entry in raw:
+                if isinstance(entry, dict):
+                    out.append({
+                        "ts": entry.get("timestamp") or entry.get("ts") or entry.get("time"),
+                        "path": entry.get("path") or entry.get("chosen_path") or entry.get("egressPath"),
+                    })
+            return out
+
+        def _strip_record(row: dict) -> dict:
+            """Apply aggressive summary_only stripping to a single history record."""
+            item: dict = {}
+            for k, v in row.items():
+                # Skip any heavy root-level array
+                if k in _HEAVY_ROOT:
+                    continue
+                # Compact path transition objects
+                if k in ("path_transitions", "pathTransitions"):
+                    item[k] = _compact_path_transitions(v)
+                    continue
+                # Strip heavy nested sub-dicts (e.g. result.packets, stats.data)
+                if isinstance(v, dict):
+                    cleaned_sub = {sk: sv for sk, sv in v.items() if sk not in _HEAVY_NESTED_KEYS and not isinstance(sv, list)}
+                    item[k] = cleaned_sub
+                # Drop unknown large lists not in whitelist
+                elif isinstance(v, list) and k not in ("path_transitions", "pathTransitions"):
+                    # Keep only if it's a list of scalars / very short
+                    if len(v) <= 5 and all(not isinstance(i, (dict, list)) for i in v):
+                        item[k] = v
+                    # else: drop silently
+                else:
+                    item[k] = v
+            return item
+
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"error": f"Agent {agent_id} not found."}
@@ -1885,43 +2555,524 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
+                # Helper to parse identifiers & ports
+                def _parse_conv_ids(row: Dict[str, Any]) -> Dict[str, Any]:
+                    raw_id = str(row.get("test_id") or row.get("testId") or row.get("id") or "").strip()
+                    raw_label = str(row.get("label") or "").strip()
+                    
+                    local_id = None
+                    label = raw_label or None
+                    
+                    if "(" in raw_id and ")" in raw_id:
+                        parts = raw_id.split("(", 1)
+                        local_id = parts[0].strip()
+                        if not label:
+                            label = parts[1].split(")", 1)[0].strip()
+                    elif raw_id.startswith("CONV-"):
+                        local_id = raw_id
+                    elif raw_id.isdigit():
+                        local_id = f"CONV-{raw_id.zfill(4)}"
+                    else:
+                        local_id = raw_id or None
+
+                    if local_id and not local_id.startswith("CONV-") and raw_id.replace("CONV-", "").strip().isdigit():
+                        local_id = f"CONV-{raw_id.replace('CONV-', '').strip().zfill(4)}"
+
+                    if local_id and label and f"({label})" not in local_id:
+                        canonical_test_id = f"{local_id} ({label})"
+                    else:
+                        canonical_test_id = local_id or raw_id or "UNKNOWN"
+
+                    global_id = row.get("global_id") or row.get("global_test_id") or None
+                    
+                    sport = row.get("source_port") or row.get("src_port") or row.get("sourcePort")
+                    if sport is None and local_id and "CONV-" in local_id:
+                        num_part = re.sub(r"[^\d]", "", local_id)
+                        if num_part:
+                            sport = 30000 + (int(num_part) % 10000)
+
+                    return {
+                        "global_id": global_id,
+                        "local_id": local_id,
+                        "label": label,
+                        "test_id": canonical_test_id,
+                        "source_port": int(sport) if sport is not None else None,
+                    }
+
+                # 1. Query active / running convergence tests
+                status_rows = []
+                try:
+                    r_status = await client.get(f"{agent.api_base_url}/api/convergence/status", headers=headers)
+                    if r_status.status_code == 200:
+                        s_data = r_status.json()
+                        status_rows = s_data if isinstance(s_data, list) else s_data.get("results", [])
+                except Exception as e_status:
+                    logger.debug(f"Convergence status check failed: {e_status}")
+
+                # 2. Query completed history
                 r = await client.get(f"{agent.api_base_url}/api/convergence/history", headers=headers)
                 r.raise_for_status()
                 data = r.json()
-                rows = data if isinstance(data, list) else data.get("results", [])
+                history_rows: list = data if isinstance(data, list) else data.get("results", [])
+
+                # Combine running tests first, followed by history (deduplicated)
+                seen_ids = set()
+                combined_rows = []
+
+                for row in status_rows:
+                    if not isinstance(row, dict):
+                        continue
+                    parsed = _parse_conv_ids(row)
+                    key = (parsed["local_id"] or parsed["test_id"]).lower()
+                    if key and key not in seen_ids:
+                        seen_ids.add(key)
+                        row_copy = dict(row)
+                        row_copy["running"] = True
+                        row_copy["status"] = "running"
+                        combined_rows.append(row_copy)
+
+                for row in history_rows:
+                    if not isinstance(row, dict):
+                        continue
+                    parsed = _parse_conv_ids(row)
+                    key = (parsed["local_id"] or parsed["test_id"]).lower()
+                    if key and key not in seen_ids:
+                        seen_ids.add(key)
+                        combined_rows.append(row)
+
+                rows = combined_rows
+
+                # ── Apply test_id filter BEFORE limit ─────────────────────────
+                if test_id:
+                    rows = [row for row in rows if self._matches_test_id(test_id, row)]
+
+                # ── Apply limit BEFORE building any structures ─────────────────
                 rows = rows[:limit]
 
-                # Enrich each row with a human-readable verdict
-                def verdict(max_bo: Any) -> str:
-                    if max_bo is None:
-                        return "UNKNOWN"
-                    try:
-                        mb = float(max_bo)
-                    except Exception:
-                        return "UNKNOWN"
-                    if mb == 0:
-                        return "PERFECT"
-                    if mb < 1000:
-                        return "GOOD"
-                    if mb < 5000:
-                        return "DEGRADED"
-                    if mb < 10000:
-                        return "BAD"
-                    return "CRITICAL"
-
+                cleaned_rows = []
                 for row in rows:
-                    max_bo = None
-                    for key in ("max_blackout_ms", "maxBlackout", "blackout"):
-                        if key in row:
-                            max_bo = row[key]
-                            break
-                    row["verdict"] = verdict(max_bo)
-                    row["max_blackout_ms"] = max_bo
+                    parsed = _parse_conv_ids(row)
+                    metrics_dump = ConvMetrics.from_daemon(row).model_dump()
+                    item = {
+                        "global_id": parsed["global_id"],
+                        "local_id": parsed["local_id"],
+                        "label": parsed["label"],
+                        "test_id": parsed["test_id"],
+                        "target": row.get("target"),
+                        "source_port": parsed["source_port"],
+                        "timestamp": row.get("timestamp") or row.get("start_time"),
+                        "path_evolution": row.get("path_evolution"),
+                        "running": row.get("running", False),
+                        "status": row.get("status", "completed"),
+                        **metrics_dump
+                    }
+                    if not summary_only:
+                        # In full mode, keep non-heavy auxiliary fields from raw record
+                        for k, v in row.items():
+                            if k not in item and k not in _HEAVY_ROOT and k != "testId":
+                                item[k] = v
 
-                return {"agent_id": agent_id, "count": len(rows), "history": rows}
+                    cleaned_rows.append(item)
+
+                result = {"agent_id": agent_id, "count": len(cleaned_rows), "history": cleaned_rows}
+
+                # ── 200 KB guard-rail ─────────────────────────────────────────
+                serialized = _json.dumps(result)
+                MAX_BYTES = 200_000
+                if len(serialized) > MAX_BYTES:
+                    # Drop records from the end until we fit, flag truncation
+                    while len(cleaned_rows) > 0 and len(_json.dumps(result)) > MAX_BYTES:
+                        cleaned_rows.pop()
+                        result = {"agent_id": agent_id, "count": len(cleaned_rows), "history": cleaned_rows}
+                    result["truncated"] = True
+                    result["truncation_hint"] = (
+                        f"Response exceeded {MAX_BYTES // 1000} KB. "
+                        "Use summary_only=true, reduce limit, or call get_convergence_report(test_id=...) for a specific test."
+                    )
+
+                return result
             except Exception as e:
                 logger.error(f"Failed to fetch convergence history for {agent_id}: {e}")
                 return {"error": str(e)}
+
+    async def get_convergence_report(
+        self,
+        agent_id: str,
+        test_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Fetch a specific convergence test record and generate an SVG chart
+        reproducing the RTT, Jitter, Packet Loss curves and 100-packet sequence bar.
+        Returns the SVG as a base64 string suitable for embedding in reports or markdown.
+        """
+        import base64, math
+
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                r = await client.get(f"{agent.api_base_url}/api/convergence/history", headers=headers)
+                r.raise_for_status()
+                rows = r.json()
+                if not isinstance(rows, list):
+                    rows = rows.get("results", [])
+            except Exception as e:
+                return {"error": f"Failed to fetch history: {e}"}
+
+        # Find the matching record (by testId, partial match tolerated)
+        record = None
+        tid_lower = test_id.strip().lower()
+        for row in rows:
+            rid = str(row.get("testId", row.get("id", ""))).lower()
+            if tid_lower in rid or rid in tid_lower:
+                record = row
+                break
+
+        if record is None:
+            available = [str(r.get("testId", r.get("id", "?"))) for r in rows[:20]]
+            return {
+                "error": f"Test '{test_id}' not found in history.",
+                "available_test_ids": available
+            }
+
+        # Extract time-series data
+        series = record.get("metrics_series") or record.get("time_series") or []
+
+        # ── Compute summary stats ──────────────────────────────────────────────
+        def _vals(key: str) -> list:
+            return [float(p[key]) for p in series if key in p and p[key] is not None]
+
+        rtt_vals   = _vals("rtt_ms")
+        jitter_vals = _vals("jitter_ms")
+        loss_vals  = _vals("loss_percent")
+        # Packet sequence data (0=ok, 1=lost)
+        pkt_seq    = [p.get("lost", 0) for p in series] if series else []
+
+        avg_rtt    = sum(rtt_vals)    / len(rtt_vals)    if rtt_vals    else 0
+        avg_jitter = sum(jitter_vals) / len(jitter_vals) if jitter_vals else 0
+        peak_loss  = max(loss_vals)                       if loss_vals   else 0
+
+        max_blackout_ms = record.get("max_blackout_ms") or record.get("maxBlackout") or 0
+        verdict         = record.get("verdict", "UNKNOWN")
+        label           = record.get("label", record.get("testId", test_id))
+        target          = record.get("target", "")
+        start_time      = record.get("startTime", record.get("timestamp", ""))
+        duration_s      = record.get("duration_s", record.get("durationSec", 0))
+        uplink_loss     = record.get("uplink_loss_pct", record.get("uplinkLoss", 0)) or 0
+        downlink_loss   = record.get("downlink_loss_pct", record.get("downlinkLoss", 0)) or 0
+        egress_path     = record.get("egress_path", record.get("egressPath", ""))
+        tx_total        = record.get("tx_total", record.get("txTotal", 0)) or 0
+        rx_total        = record.get("rx_total", record.get("rxTotal", 0)) or 0
+
+        # ── SVG generation ─────────────────────────────────────────────────────
+        W, H = 1100, 580
+        CHART_H = 110      # height of each mini-chart
+        CHART_X = 20
+        CHART_W = W - 40
+        PAD_TOP = 130      # space for header
+
+        VERDICT_COLOR = {
+            "PERFECT": "#22c55e", "GOOD": "#4ade80", "DEGRADED": "#f59e0b",
+            "BAD": "#ef4444", "CRITICAL": "#dc2626", "UNKNOWN": "#94a3b8"
+        }
+        v_color = VERDICT_COLOR.get(verdict, "#94a3b8")
+
+        def _sparkline(vals: list, color: str, y_off: int, show_zero_line: bool = True) -> str:
+            if not vals:
+                return f'<text x="{CHART_X + CHART_W//2}" y="{y_off + CHART_H//2}" fill="#64748b" font-size="11" text-anchor="middle">No data</text>'
+            mn, mx = min(vals), max(vals)
+            span = mx - mn if mx != mn else 1.0
+            pts = []
+            n = len(vals)
+            for i, v in enumerate(vals):
+                x = CHART_X + int(i / (n - 1) * CHART_W) if n > 1 else CHART_X
+                y = y_off + CHART_H - 8 - int((v - mn) / span * (CHART_H - 16))
+                pts.append(f"{x},{y}")
+            path_d = "M " + " L ".join(pts)
+            # Fill area under curve
+            fill_pts = f"{CHART_X},{y_off+CHART_H-8} " + " ".join(pts) + f" {CHART_X+CHART_W},{y_off+CHART_H-8}"
+            svg = (
+                f'<polygon points="{fill_pts}" fill="{color}" fill-opacity="0.12"/>'
+                f'<path d="{path_d}" stroke="{color}" stroke-width="1.8" fill="none"/>'
+            )
+            # Zero-loss reference line
+            if show_zero_line and mn == 0:
+                zero_y = y_off + CHART_H - 8
+                svg += f'<line x1="{CHART_X}" y1="{zero_y}" x2="{CHART_X+CHART_W}" y2="{zero_y}" stroke="#334155" stroke-width="0.5" stroke-dasharray="3,3"/>'
+            return svg
+
+        def _seq_bar(seq: list, y_off: int) -> str:
+            if not seq:
+                return f'<rect x="{CHART_X}" y="{y_off}" width="{CHART_W}" height="22" fill="#1e293b" rx="3"/>'
+            n = len(seq)
+            bw = max(1, CHART_W // n)
+            rects = [f'<rect x="{CHART_X}" y="{y_off}" width="{CHART_W}" height="22" fill="#1e293b" rx="3"/>']
+            for i, lost in enumerate(seq):
+                x = CHART_X + int(i / n * CHART_W)
+                w = max(1, int((i+1)/n * CHART_W) - int(i/n * CHART_W))
+                fill = "#ef4444" if lost else "#3b82f6"
+                rects.append(f'<rect x="{x}" y="{y_off}" width="{w}" height="22" fill="{fill}"/>')
+            return "".join(rects)
+
+        # Y offsets for each panel
+        Y_RTT    = PAD_TOP
+        Y_JIT    = PAD_TOP + CHART_H + 36
+        Y_LOSS   = PAD_TOP + (CHART_H + 36) * 2
+        Y_SEQ    = PAD_TOP + (CHART_H + 36) * 3
+        Y_FOOTER = Y_SEQ + 40
+
+        svg_lines = [
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{Y_FOOTER + 90}" viewBox="0 0 {W} {Y_FOOTER + 90}" style="font-family:Inter,Segoe UI,sans-serif;background:#0f172a;">',
+            # ── Header ──
+            f'<rect x="0" y="0" width="{W}" height="{PAD_TOP - 6}" fill="#1e293b" rx="0"/>',
+            f'<text x="20" y="28" fill="#94a3b8" font-size="11">Date / ID / Label</text>',
+            f'<text x="20" y="50" fill="#38bdf8" font-size="13" font-weight="600">{record.get("testId", test_id)}</text>',
+            f'<text x="20" y="68" fill="#cbd5e1" font-size="12">{label}</text>',
+            f'<text x="20" y="86" fill="#64748b" font-size="10">{start_time}  ·  Target: {target}  ·  Duration: {duration_s}s</text>',
+            # Verdict badge
+            f'<rect x="{W - 130}" y="16" width="110" height="28" rx="6" fill="{v_color}" fill-opacity="0.2" stroke="{v_color}" stroke-width="1.5"/>',
+            f'<text x="{W - 75}" y="35" fill="{v_color}" font-size="13" font-weight="700" text-anchor="middle">{verdict}</text>',
+            # Max blackout
+            f'<text x="{W//2}" y="40" fill="{v_color}" font-size="20" font-weight="700" text-anchor="middle">{(max_blackout_ms/1000):.2f}s MAX BLACKOUT</text>',
+            f'<text x="{W//2}" y="58" fill="#94a3b8" font-size="10" text-anchor="middle">Failover Duration: {duration_s}s</text>',
+            # ── RTT panel ──
+            f'<text x="{CHART_X}" y="{Y_RTT - 8}" fill="#4ade80" font-size="11">↗ RTT LATENCY</text>',
+            f'<text x="{CHART_X + CHART_W}" y="{Y_RTT - 8}" fill="#4ade80" font-size="11" text-anchor="end">Avg: {avg_rtt:.2f}ms</text>',
+            f'<rect x="{CHART_X}" y="{Y_RTT}" width="{CHART_W}" height="{CHART_H}" fill="#0f172a" rx="4"/>',
+            _sparkline(rtt_vals, "#4ade80", Y_RTT),
+            # ── Jitter panel ──
+            f'<text x="{CHART_X}" y="{Y_JIT - 8}" fill="#f59e0b" font-size="11">≈ JITTER</text>',
+            f'<text x="{CHART_X + CHART_W}" y="{Y_JIT - 8}" fill="#f59e0b" font-size="11" text-anchor="end">Avg: {avg_jitter:.2f}ms</text>',
+            f'<rect x="{CHART_X}" y="{Y_JIT}" width="{CHART_W}" height="{CHART_H}" fill="#0f172a" rx="4"/>',
+            _sparkline(jitter_vals, "#f59e0b", Y_JIT),
+            # ── Packet Loss panel ──
+            f'<text x="{CHART_X}" y="{Y_LOSS - 8}" fill="#ef4444" font-size="11">⚡ PACKET LOSS SPIKE</text>',
+            f'<text x="{CHART_X + CHART_W}" y="{Y_LOSS - 8}" fill="#ef4444" font-size="11" text-anchor="end">Peak: {peak_loss:.0f}%</text>',
+            f'<rect x="{CHART_X}" y="{Y_LOSS}" width="{CHART_W}" height="{CHART_H}" fill="#0f172a" rx="4"/>',
+            _sparkline(loss_vals, "#ef4444", Y_LOSS, show_zero_line=False),
+            # ── 100-Packet sequence bar ──
+            f'<text x="{CHART_X}" y="{Y_SEQ - 6}" fill="#94a3b8" font-size="10">100-PACKET SEQUENCE / OUTAGE DETECTION</text>',
+            f'<text x="{CHART_X + CHART_W}" y="{Y_SEQ - 6}" fill="#94a3b8" font-size="10" text-anchor="end">{rx_total}/{tx_total} PACKETS ({uplink_loss:.1f}% TX LOSS)</text>',
+            _seq_bar(pkt_seq, Y_SEQ),
+            # ── Footer KPIs ──
+            f'<rect x="0" y="{Y_FOOTER}" width="{W}" height="80" fill="#1e293b"/>',
+            f'<text x="60"  y="{Y_FOOTER+22}" fill="#94a3b8" font-size="10">UPLINK LOSS</text>',
+            f'<text x="60"  y="{Y_FOOTER+42}" fill="#ef4444" font-size="16" font-weight="700">↑ {uplink_loss:.1f}%</text>',
+            f'<text x="220" y="{Y_FOOTER+22}" fill="#94a3b8" font-size="10">DOWNLINK LOSS</text>',
+            f'<text x="220" y="{Y_FOOTER+42}" fill="#ef4444" font-size="16" font-weight="700">↓ {downlink_loss:.1f}%</text>',
+            f'<text x="400" y="{Y_FOOTER+22}" fill="#94a3b8" font-size="10">AVG LATENCY</text>',
+            f'<text x="400" y="{Y_FOOTER+42}" fill="#e2e8f0" font-size="16" font-weight="700">{avg_rtt:.2f}ms</text>',
+            f'<text x="560" y="{Y_FOOTER+22}" fill="#94a3b8" font-size="10">JITTER (MS)</text>',
+            f'<text x="560" y="{Y_FOOTER+42}" fill="#e2e8f0" font-size="16" font-weight="700">{avg_jitter:.2f}ms</text>',
+            f'<text x="750" y="{Y_FOOTER+22}" fill="#94a3b8" font-size="10">☰ EGRESS PATH</text>',
+            f'<text x="750" y="{Y_FOOTER+42}" fill="#38bdf8" font-size="13" font-weight="600">{egress_path}</text>',
+            '</svg>'
+        ]
+
+        svg_str = "\n".join(svg_lines)
+        svg_b64 = base64.b64encode(svg_str.encode("utf-8")).decode("ascii")
+
+        return {
+            "agent_id": agent_id,
+            "test_id": record.get("testId", test_id),
+            "label": label,
+            "verdict": verdict,
+            "max_blackout_s": round(max_blackout_ms / 1000, 3) if max_blackout_ms else 0,
+            "avg_rtt_ms": round(avg_rtt, 2),
+            "avg_jitter_ms": round(avg_jitter, 2),
+            "peak_loss_pct": round(peak_loss, 1),
+            "uplink_loss_pct": uplink_loss,
+            "downlink_loss_pct": downlink_loss,
+            "egress_path": egress_path,
+            "duration_s": duration_s,
+            "data_points": len(series),
+            "chart_svg_base64": svg_b64,
+            "chart_embed_html": (
+                '<img src="data:image/svg+xml;base64,' + svg_b64 + '" '
+                'style="width:100%;max-width:1100px;" '
+                'alt="Convergence Report ' + str(record.get("testId", test_id)) + '"/>'
+            ),
+            "chart_markdown": (
+                "![Convergence Report " + str(record.get("testId", test_id)) + "]"
+                "(data:image/svg+xml;base64," + svg_b64 + ")"
+            ),
+            "usage_hint": (
+                "chart_svg_base64: save as .svg file or decode. "
+                "chart_embed_html: paste in HTML report. "
+                "chart_markdown: paste in Markdown/Notion."
+            )
+        }
+
+    async def run_path_trace(
+        self,
+        agent_id: str,
+        target: str,
+        max_hops: int = 15,
+        method: str = "udp",
+        port: int = 443,
+        timeout_sec: int = 10
+    ) -> Dict[str, Any]:
+        """Execute a live traceroute / path hop inspection from a specific Stigix node to identify where latency or packet drops occur."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        base_url = agent.api_base_url
+        node_build = getattr(agent, "build", None) or getattr(agent, "version", None) or agent.meta.get("build") or agent.meta.get("version") or "unknown"
+
+        async with httpx.AsyncClient(timeout=float(timeout_sec + 25)) as client:
+            try:
+                r = await client.get(
+                    f"{base_url}/api/network/traceroute",
+                    params={"target": target, "max_hops": max_hops, "method": method, "port": port},
+                    headers=headers
+                )
+                if r.status_code == 200 and self._is_json_response(r):
+                    return r.json()
+                elif r.status_code == 404 or not self._is_json_response(r):
+                    return {
+                        "success": False,
+                        "status": "unsupported",
+                        "error": f"Feature 'path_trace' is not supported on node '{agent_id}' (HTTP {r.status_code}: /api/network/traceroute not available). Please update the node container image to v2.0+.",
+                        "node": agent_id,
+                        "node_build": node_build,
+                        "url": str(r.url)
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "status": "error",
+                        "error": f"Traceroute returned HTTP {r.status_code}",
+                        "status_code": r.status_code,
+                        "node_build": node_build,
+                        "details": r.text[:300]
+                    }
+            except Exception as e:
+                return self._handle_exception(f"Path trace to {target} on {agent_id}", e)
+
+    async def list_active_impairments(self, agent_id: Optional[str] = None) -> Dict[str, Any]:
+        """Audit and list all active network impairments (injected latency, loss, throttling, disabled interfaces) across VyOS routers."""
+        agents_to_check = []
+        if agent_id:
+            agent = await self.registry.get_endpoint(agent_id)
+            if agent:
+                agents_to_check.append(agent)
+        else:
+            agents_to_check = await self.registry.list_endpoints()
+
+        active_impairments = []
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for ag in agents_to_check:
+                try:
+                    # 1. Get configured VyOS routers for this node
+                    r_routers = await client.get(f"{ag.api_base_url}/api/vyos/routers", headers=headers)
+                    if r_routers.status_code != 200:
+                        continue
+                    routers_data = r_routers.json()
+                    routers = routers_data if isinstance(routers_data, list) else routers_data.get("routers", [])
+
+                    for router in routers:
+                        r_id = router.get("id") or router.get("name")
+                        if not r_id:
+                            continue
+                        # Query live state
+                        r_state = await client.get(f"{ag.api_base_url}/api/vyos/routers/{r_id}/state", headers=headers)
+                        if r_state.status_code != 200:
+                            continue
+                        state_data = r_state.json()
+                        interfaces = state_data.get("interfaces", {})
+                        
+                        if isinstance(interfaces, dict):
+                            if_items = interfaces.items()
+                        elif isinstance(interfaces, list):
+                            if_items = [(item.get("name", f"iface-{i}"), item) for i, item in enumerate(interfaces)]
+                        else:
+                            if_items = []
+
+                        for if_name, if_info in if_items:
+                            if not isinstance(if_info, dict):
+                                continue
+                            
+                            # Check disabled / link down
+                            admin_status = str(if_info.get("admin_status") or if_info.get("status") or "").lower()
+                            oper_status = str(if_info.get("oper_status") or if_info.get("link") or "").lower()
+                            is_down = admin_status in ["down", "disable", "disabled", "shutdown"] or oper_status in ["down", "lowerlayerdown"]
+                            if is_down:
+                                active_impairments.append({
+                                    "agent_id": ag.id,
+                                    "agent_name": ag.site_name or ag.id,
+                                    "router_id": r_id,
+                                    "interface": if_name,
+                                    "type": "interface_down",
+                                    "severity": "CRITICAL",
+                                    "details": f"Interface {if_name} is administratively down / shut.",
+                                    "state": if_info
+                                })
+
+                            # Check QoS / Netem (latency, loss, corrupt, rate)
+                            qos = if_info.get("qos") or if_info.get("impairment") or if_info.get("traffic_control") or {}
+                            lat = qos.get("latency") or if_info.get("latency_ms") or if_info.get("latency")
+                            loss = qos.get("loss") or if_info.get("loss_pct") or if_info.get("loss")
+                            rate = qos.get("rate") or if_info.get("bandwidth_limit")
+                            
+                            has_lat = False
+                            if lat is not None:
+                                try:
+                                    has_lat = float(lat) > 0
+                                except Exception:
+                                    pass
+                            has_loss = False
+                            if loss is not None:
+                                try:
+                                    has_loss = float(loss) > 0
+                                except Exception:
+                                    pass
+                            has_rate = rate and str(rate).lower() not in ["0", "none", "unlimited", ""]
+                            
+                            if has_lat or has_loss or has_rate:
+                                details_parts = []
+                                if has_lat:
+                                    details_parts.append(f"+{lat}ms latency")
+                                if has_loss:
+                                    details_parts.append(f"{loss}% loss")
+                                if has_rate:
+                                    details_parts.append(f"rate {rate}")
+                                active_impairments.append({
+                                    "agent_id": ag.id,
+                                    "agent_name": ag.site_name or ag.id,
+                                    "router_id": r_id,
+                                    "interface": if_name,
+                                    "type": "traffic_impairment",
+                                    "severity": "WARNING",
+                                    "details": f"Interface {if_name} has active shaping: {', '.join(details_parts)}",
+                                    "parameters": {
+                                        "latency_ms": lat,
+                                        "loss_pct": loss,
+                                        "rate": rate
+                                    }
+                                })
+                except Exception as e:
+                    logger.debug(f"Error checking impairments for agent {ag.id}: {e}")
+
+        summary = (
+            f"Found {len(active_impairments)} active impairment(s) across the fabric."
+            if active_impairments
+            else "Clean state: No active network impairments or disabled interfaces detected on any VyOS router."
+        )
+
+        return {
+            "total_impairments": len(active_impairments),
+            "has_active_impairments": len(active_impairments) > 0,
+            "summary": summary,
+            "impairments": active_impairments
+        }
+
 
     async def list_security_results(self, agent_id: str, limit: int = 20) -> Dict[str, Any]:
         """Fetch the last N individual security test results from a node (all types)."""
@@ -2127,27 +3278,264 @@ class TestOrchestrator:
     async def query_prisma_flows(self, agent_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
         """
         Query the Prisma SD-WAN Flow Browser via the Stigix node's local API.
+
+        PATH NAME CACHE (bug-fix):
+        When fast=False (default), the backend resolves path IDs to human-readable names
+        (e.g. "BR8-INET1 to DC1-INET"). This method stores the resulting path_id→name
+        mapping in an in-process cache keyed by (agent_id, site_id) with a 5-minute TTL.
+        When fast=True, the cache is consulted first so already-resolved names are preserved.
+        If the cache is cold, fast=True silently falls back to "Path ID: <id>" only for
+        unknown IDs — already-seen IDs are always resolved.
+
+        SINGLE-PACKET FLOWS NOTE (informational):
+        For a convergence test on UDP 6200, the Flow Browser typically shows:
+        - Dozens of 1-packet flows with ephemeral source ports — these are probe-echo
+          reply bursts or retransmit artefacts captured by the SD-WAN telemetry engine.
+          Each appears as a distinct flow because the source port randomises per burst.
+        - One (or a few) long-lived flows carrying the actual sustained probe stream
+          (e.g. src_port=30246). This is the flow of interest for path analysis.
+        The aggregate_path_timeline option merges all matching flows into one timeline.
         """
+        import time as _time
+
+        # ── In-process path name cache ─────────────────────────────────────────
+        # Structure: { (agent_id, site_id): {"expires": float, "names": {str: str}} }
+        if not hasattr(self, "_path_name_cache"):
+            self._path_name_cache: Dict[tuple, Dict] = {}
+        _CACHE_TTL = 300  # 5 minutes
+
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
             return {"error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        fast: bool = body.get("fast", False)
+        aggregate: bool = body.get("aggregate_path_timeline", False)
+        include_single: bool = body.get("include_single_packet_flows", False)
+        # Remove our extra params before forwarding — backend doesn't know them
+        forward_body = {
+            k: v for k, v in body.items()
+            if k not in ("aggregate_path_timeline", "include_single_packet_flows")
+        }
+
+        # Determine cache key (site-level)
+        site_id_key = body.get("site_id") or body.get("site_name") or "default"
+        cache_key = (agent_id, site_id_key)
+
         async with httpx.AsyncClient(timeout=45.0) as client:
             try:
                 r = await client.post(
                     f"{agent.api_base_url}/api/prisma/flows",
-                    json=body,
+                    json=forward_body,
                     headers=headers
                 )
                 r.raise_for_status()
-                return r.json()
+                result = r.json()
+
+                # ── Populate / use path name cache ────────────────────────────
+                entry = self._path_name_cache.get(cache_key)
+                if entry and _time.time() < entry["expires"]:
+                    cached_names: Dict[str, str] = entry["names"]
+                else:
+                    cached_names = {}
+
+                # Harvest newly resolved names from this response (present when fast=False)
+                def _harvest_names(flows_data: Any) -> None:
+                    flows = flows_data if isinstance(flows_data, list) else (
+                        flows_data.get("flows") or flows_data.get("records") or []
+                    )
+                    for flow in flows:
+                        for field in ("egress_path", "egressPath", "path_name", "pathName"):
+                            val = flow.get(field, "")
+                            if val and not val.startswith("Path ID:"):
+                                # Also look for the raw path_id that may live alongside
+                                pid = flow.get("path_id") or flow.get("pathId") or flow.get("vpn_path_id")
+                                if pid:
+                                    cached_names[str(pid)] = val
+                        for ph in flow.get("path_history", flow.get("pathHistory", [])):
+                            path_val = (
+                                ph.get("path") or ph.get("chosen_path") or
+                                ph.get("chosenPath") or ph.get("egressPath") or ""
+                            )
+                            pid = ph.get("path_id") or ph.get("pathId")
+                            if pid and path_val and not path_val.startswith("Path ID:"):
+                                cached_names[str(pid)] = path_val
+
+                _harvest_names(result)
+
+                # Persist updated cache
+                if cached_names:
+                    self._path_name_cache[cache_key] = {
+                        "expires": _time.time() + _CACHE_TTL,
+                        "names": cached_names,
+                    }
+
+                # ── Resolve path ID placeholders using cache (fast=True fix) ──
+                def _resolve_name(val: str) -> str:
+                    if not val:
+                        return val
+                    if val.startswith("Path ID:"):
+                        pid = val.split("Path ID:")[-1].strip()
+                        return cached_names.get(pid, val)
+                    return val
+
+                def _fix_flow(flow: dict) -> dict:
+                    for field in ("egress_path", "egressPath", "path_name", "pathName"):
+                        if field in flow:
+                            flow[field] = _resolve_name(flow[field])
+                    for ph in flow.get("path_history", flow.get("pathHistory", [])):
+                        for pf in ("path", "chosen_path", "chosenPath", "preferred_path",
+                                   "preferredPath", "egressPath"):
+                            if pf in ph:
+                                ph[pf] = _resolve_name(ph[pf])
+                    return flow
+
+                # Apply resolution to all flows in the result
+                if isinstance(result, list):
+                    result = [_fix_flow(f) for f in result]
+                elif isinstance(result, dict):
+                    for key in ("flows", "records", "items"):
+                        if key in result and isinstance(result[key], list):
+                            result[key] = [_fix_flow(f) for f in result[key]]
+
+                # ── Aggregate path timeline across all matched flows ───────────
+                if aggregate:
+                    flows_list = (
+                        result if isinstance(result, list) else
+                        result.get("flows") or result.get("records") or []
+                    )
+                    timeline = self._build_aggregate_path_timeline(
+                        flows_list,
+                        include_single_packet_flows=include_single,
+                        resolve_fn=_resolve_name,
+                    )
+
+                    if isinstance(result, dict):
+                        result["aggregate_path_timeline"] = timeline
+                    else:
+                        result = {"flows": result, "aggregate_path_timeline": timeline}
+
+                # ── Add names_resolved indicator (P7) ──────────────────────────
+                names_resolved = self._compute_names_resolved(result, fast=fast)
+                if isinstance(result, dict):
+                    result["names_resolved"] = names_resolved
+
+                return result
             except Exception as e:
                 return self._handle_exception(f"Prisma flow query on {agent_id}", e)
+
+    def _compute_names_resolved(self, flows_data: Any, fast: bool = False) -> bool:
+        """
+        Determines whether all path IDs in the response were resolved to friendly names.
+        Calculates on the actual output in BOTH fast and non-fast modes:
+        returns False if any egress_path or path_history entry contains 'Path ID:', True otherwise.
+        """
+        flows = flows_data if isinstance(flows_data, list) else (
+            flows_data.get("flows") or flows_data.get("records") or flows_data.get("items") or []
+        )
+        if not flows and isinstance(flows_data, dict):
+            if "egress_path" in flows_data or "path_history" in flows_data or "flow_id" in flows_data:
+                flows = [flows_data]
+
+        for flow in flows:
+            if not isinstance(flow, dict):
+                continue
+            for field in ("egress_path", "egressPath", "path_name", "pathName"):
+                val = str(flow.get(field) or "")
+                if "Path ID:" in val:
+                    return False
+            for ph in flow.get("path_history", flow.get("pathHistory", [])):
+                if not isinstance(ph, dict):
+                    continue
+                val = str(ph.get("path") or ph.get("chosen_path") or ph.get("chosenPath") or "")
+                if "Path ID:" in val:
+                    return False
+                pref = str(ph.get("preferred_path") or ph.get("preferredPath") or "")
+                if "Path ID:" in pref:
+                    return False
+        return True
+
+    def _build_aggregate_path_timeline(
+        self,
+        flows_list: List[Dict[str, Any]],
+        include_single_packet_flows: bool = False,
+        resolve_fn: Optional[Any] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Merges path_history from matching flows into a single chronological timeline.
+        Preserves path transitions and oscillations across time.
+        Filters out reachability probe flows (packets_c2s <= 1) by default.
+        """
+        resolver = resolve_fn if resolve_fn else (lambda x: x)
+        filtered_flows = []
+        for f in flows_list:
+            if not isinstance(f, dict):
+                continue
+            c2s = f.get("packets_c2s")
+            if not include_single_packet_flows and c2s is not None:
+                try:
+                    if int(c2s) <= 1:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            filtered_flows.append(f)
+
+        all_events = []
+        for flow in filtered_flows:
+            for ph in flow.get("path_history", flow.get("pathHistory", [])):
+                if not isinstance(ph, dict):
+                    continue
+                time_ms = ph.get("time_ms") or ph.get("timestamp_ms")
+                ts_str = ph.get("time_iso") or ph.get("timestamp") or ph.get("ts") or ph.get("time") or ""
+                if time_ms is None and ts_str:
+                    try:
+                        dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        time_ms = int(dt.timestamp() * 1000)
+                    except Exception:
+                        time_ms = 0
+                elif time_ms is not None and not ts_str:
+                    try:
+                        ts_str = datetime.fromtimestamp(time_ms / 1000.0, timezone.utc).isoformat()
+                    except Exception:
+                        ts_str = ""
+
+                raw_path = (
+                    ph.get("path") or ph.get("chosen_path") or
+                    ph.get("chosenPath") or ph.get("egressPath") or ""
+                )
+                resolved_path = resolver(raw_path)
+                raw_pref = ph.get("preferred_path") or ph.get("preferredPath") or ""
+                resolved_pref = resolver(raw_pref) if raw_pref else None
+
+                all_events.append({
+                    "time_ms": time_ms or 0,
+                    "time_iso": ts_str,
+                    "path": resolved_path,
+                    "preferred_path": resolved_pref,
+                    "path_id": ph.get("path_id") or ph.get("pathId"),
+                })
+
+        # Sort chronologically by time_ms
+        all_events.sort(key=lambda x: x["time_ms"])
+
+        # Consecutive-only deduplication (preserves return-to-path failback / oscillations)
+        timeline = []
+        last_path = None
+        for e in all_events:
+            if e["path"] and e["path"] != last_path:
+                timeline.append(e)
+                last_path = e["path"]
+
+        return timeline
+
 
     # -------------------------------------------------------------------------
     # System Health Matrix & Diagnostics (Phase 1)
     # -------------------------------------------------------------------------
+
+    def get_build_info(self) -> Dict[str, Any]:
+        """Returns MCP server build metadata (git commit, build date, software version). Computed once at startup."""
+        return dict(_BUILD_INFO)
 
     async def get_health_matrix(self, agent_id: str) -> Dict[str, Any]:
         """Fetch the 360-degree system health matrix across all 9 subsystems."""
@@ -2160,7 +3548,10 @@ class TestOrchestrator:
             try:
                 r = await client.get(f"{agent.api_base_url}/api/system/health-matrix", headers=headers)
                 r.raise_for_status()
-                return r.json()
+                data = r.json()
+                if isinstance(data, dict):
+                    data["mcp_server_build"] = self.get_build_info()
+                return data
             except Exception as e:
                 return self._handle_exception(f"Health matrix fetch on {agent_id}", e)
 
@@ -2217,6 +3608,225 @@ class TestOrchestrator:
     # Custom TCP Applications (Phase 2)
     # -------------------------------------------------------------------------
 
+    async def _resolve_tcp_app_id(self, client: httpx.AsyncClient, base_url: str, headers: dict, app_id: str) -> str:
+        """Resolve a friendly app name (e.g. 'app-erp-tx') to its internal UUID."""
+        try:
+            r_list = await client.get(f"{base_url}/api/custom-tcp-apps", headers=headers)
+            if r_list.status_code == 200:
+                config = r_list.json()
+                apps = config.get("applications", []) if isinstance(config, dict) else (config if isinstance(config, list) else [])
+                matched = next((a for a in apps if a.get("id") == app_id or a.get("name", "").lower() == app_id.lower()), None)
+                if matched:
+                    return matched.get("id", app_id)
+        except Exception:
+            pass
+        return app_id
+
+    async def create_custom_tcp_app(
+        self, agent_id: str, name: str, port: int,
+        description: str = "",
+        protocol: str = "stigix_tcp",
+        server_behavior: str = "echo",
+        client_mode: str = "transactional",
+        payload_bytes: int = 1024,
+        interval_ms: int = 1000,
+        connections_per_peer: int = 2,
+        peers: Optional[List[Dict[str, Any]]] = None,
+        target_peers: Optional[str] = "all",
+        auto_start_listener: bool = True,
+        auto_start_workload: bool = True
+    ) -> Dict[str, Any]:
+        """Create and configure a new Custom TCP Application on a node."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        # Automatically populate peers if not explicitly provided
+        resolved_peers = list(peers) if peers else []
+        if not resolved_peers and target_peers and target_peers.lower() != "none":
+            try:
+                endpoints = await self.registry.list_endpoints()
+                if target_peers.lower() in ("all", "auto", "*"):
+                    for ep in endpoints:
+                        host = ep.test_ip or (ep.api_base_url.split("://")[1].split(":")[0] if "://" in ep.api_base_url else ep.api_base_url)
+                        if not host:
+                            continue
+                        site_name = ep.meta.get("site_name") or ep.id
+                        p_id = f"peer-{ep.id}".lower().replace(" ", "-")
+                        resolved_peers.append({
+                            "id": p_id,
+                            "name": site_name,
+                            "siteName": site_name,
+                            "host": host,
+                            "port": port,
+                            "enabled": True,
+                            "role": ep.role or "branch"
+                        })
+                else:
+                    targets = [t.strip().lower() for t in target_peers.split(",") if t.strip()]
+                    for t in targets:
+                        matched = next((ep for ep in endpoints if ep.id.lower() == t or (ep.meta.get("site_name") or "").lower() == t or ep.test_ip == t), None)
+                        if matched:
+                            host = matched.test_ip or (matched.api_base_url.split("://")[1].split(":")[0] if "://" in matched.api_base_url else matched.api_base_url)
+                            site_name = matched.meta.get("site_name") or matched.id
+                            resolved_peers.append({
+                                "id": f"peer-{matched.id}".lower().replace(" ", "-"),
+                                "name": site_name,
+                                "siteName": site_name,
+                                "host": host,
+                                "port": port,
+                                "enabled": True,
+                                "role": matched.role or "branch"
+                            })
+                        else:
+                            resolved_peers.append({
+                                "id": f"peer-{t}".replace(" ", "-"),
+                                "name": t,
+                                "siteName": t,
+                                "host": t,
+                                "port": port,
+                                "enabled": True,
+                                "role": "branch"
+                            })
+            except Exception as e:
+                logger.warning(f"Could not auto-populate peers for TCP app '{name}': {e}")
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        app_payload = {
+            "name": name,
+            "description": description or f"Custom TCP App {name}",
+            "enabled": True,
+            "protocol": protocol,
+            "listener": {
+                "bindAddress": "0.0.0.0",
+                "port": port,
+                "maxConnections": 100,
+                "idleTimeoutMs": 60000,
+                "maxPayloadBytes": 1048576,
+                "tcpKeepalive": True,
+                "allowCidrs": [],
+                "auth": {"enabled": False}
+            },
+            "serverBehavior": {
+                "mode": server_behavior,
+                "fixedDelayMs": 0,
+                "randomDelayMinMs": 0,
+                "randomDelayMaxMs": 0,
+                "loopingNormalSec": 10,
+                "loopingSlowSec": 5,
+                "loopingSlowDelayMs": 200,
+                "dropProbability": 0,
+                "errorProbability": 0
+            },
+            "clientDefaults": {
+                "mode": client_mode,
+                "connectionsPerPeer": connections_per_peer,
+                "intervalMs": interval_ms,
+                "payloadBytes": payload_bytes,
+                "requestTimeoutMs": 5000,
+                "connectTimeoutMs": 5000,
+                "autoReconnect": True,
+                "reconnectInitialMs": 1000,
+                "reconnectMaxMs": 30000,
+                "tcpKeepalive": True,
+                "sourceInterface": "auto"
+            },
+            "peers": resolved_peers,
+            "startup": {
+                "startListener": auto_start_listener,
+                "startClientWorkload": auto_start_workload
+            }
+        }
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps", json=app_payload, headers=headers)
+                r.raise_for_status()
+                data = r.json()
+                app_id = data.get("application", {}).get("id") or name
+                if auto_start_listener and app_id:
+                    try:
+                        await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/listener/start", headers=headers)
+                    except Exception:
+                        pass
+                if auto_start_workload and app_id:
+                    try:
+                        await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/client/start", headers=headers)
+                    except Exception:
+                        pass
+                return data
+            except Exception as e:
+                return self._handle_exception(f"Create Custom TCP App '{name}' on {agent_id}", e)
+
+    async def add_tcp_app_peer(
+        self, agent_id: str, app_id: str,
+        peer_name_or_host: str,
+        port: Optional[int] = None,
+        site_name: Optional[str] = None,
+        role: str = "branch",
+        enabled: bool = True
+    ) -> Dict[str, Any]:
+        """Add or attach a peer target to an existing Custom TCP Application."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        target_host = peer_name_or_host
+        target_name = site_name or peer_name_or_host
+        try:
+            endpoints = await self.registry.list_endpoints()
+            matched_ep = next((ep for ep in endpoints if ep.id.lower() == peer_name_or_host.lower() or (ep.meta.get("site_name") or "").lower() == peer_name_or_host.lower() or ep.test_ip == peer_name_or_host), None)
+            if matched_ep:
+                target_host = matched_ep.test_ip or (matched_ep.api_base_url.split("://")[1].split(":")[0] if "://" in matched_ep.api_base_url else matched_ep.api_base_url)
+                target_name = matched_ep.meta.get("site_name") or matched_ep.id
+        except Exception:
+            pass
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                target_port = port
+                if not target_port:
+                    try:
+                        r_app = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}", headers=headers)
+                        if r_app.status_code == 200:
+                            app_data = r_app.json().get("application", {})
+                            target_port = app_data.get("listener", {}).get("port") or 8100
+                    except Exception:
+                        target_port = 8100
+
+                peer_payload = {
+                    "name": target_name,
+                    "siteName": target_name,
+                    "host": target_host,
+                    "port": target_port or 8100,
+                    "enabled": enabled,
+                    "role": role
+                }
+
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/peers", json=peer_payload, headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Add TCP peer '{peer_name_or_host}' to '{app_id}' on {agent_id}", e)
+
+    async def delete_custom_tcp_app(self, agent_id: str, app_id: str) -> Dict[str, Any]:
+        """Delete a custom TCP application from a node."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                r = await client.delete(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}", headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Delete Custom TCP App {app_id} on {agent_id}", e)
+
     async def list_custom_tcp_apps(self, agent_id: str) -> Dict[str, Any]:
         """List configured Custom TCP Applications and their operational status."""
         agent = await self.registry.get_endpoint(agent_id)
@@ -2241,7 +3851,8 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/start-listener", headers=headers)
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/listener/start", headers=headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
@@ -2256,7 +3867,8 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/stop-listener", headers=headers)
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/listener/stop", headers=headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
@@ -2271,7 +3883,8 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/start-client", headers=headers)
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/client/start", headers=headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
@@ -2286,7 +3899,8 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/stop-client", headers=headers)
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/client/stop", headers=headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
@@ -2302,7 +3916,9 @@ class TestOrchestrator:
         body = {"peerId": peer_id} if peer_id else {}
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/test", json=body, headers=headers)
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                endpoint_url = f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/peers/{peer_id}/test" if peer_id else f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/test"
+                r = await client.post(endpoint_url, json=body, headers=headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
@@ -2317,9 +3933,52 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/sessions", headers=headers)
-                r.raise_for_status()
-                return r.json()
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                r = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/sessions", headers=headers)
+                if r.status_code == 200:
+                    try:
+                        return r.json()
+                    except Exception:
+                        pass
+
+                # Backward-compatible fallback for older nodes: query incoming and outgoing sub-routes
+                r_inc = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/sessions/incoming", headers=headers)
+                r_out = await client.get(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/sessions/outgoing", headers=headers)
+
+                incoming = []
+                outgoing = []
+                if r_inc.status_code == 200:
+                    try:
+                        incoming = r_inc.json().get("sessions", [])
+                    except Exception:
+                        pass
+                if r_out.status_code == 200:
+                    try:
+                        outgoing = r_out.json().get("sessions", [])
+                    except Exception:
+                        pass
+
+                if r_inc.status_code == 200 or r_out.status_code == 200:
+                    return {
+                        "success": True,
+                        "app_id": real_id,
+                        "total_incoming": len(incoming),
+                        "total_outgoing": len(outgoing),
+                        "incoming_sessions": incoming,
+                        "outgoing_sessions": outgoing,
+                        "sessions": [
+                            {**s, "direction": "incoming"} for s in incoming
+                        ] + [
+                            {**s, "direction": "outgoing"} for s in outgoing
+                        ]
+                    }
+
+                return {
+                    "error": f"HTTP {r.status_code} calling {r.url}",
+                    "status_code": r.status_code,
+                    "url": str(r.url),
+                    "body_preview": r.text[:300]
+                }
             except Exception as e:
                 return self._handle_exception(f"Get TCP sessions for {app_id} on {agent_id}", e)
 
@@ -2332,7 +3991,8 @@ class TestOrchestrator:
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{app_id}/reset", headers=headers)
+                real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/metrics/reset", headers=headers)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:
@@ -2342,7 +4002,7 @@ class TestOrchestrator:
     # Target Controller & Mesh Leader (Phase 2)
     # -------------------------------------------------------------------------
 
-    async def get_controller_status(self, agent_id: str) -> Dict[str, Any]:
+    async def get_controller_status(self, agent_id: str, summary_only: bool = True) -> Dict[str, Any]:
         """Fetch Target Controller role, site name, leader IP, and peer count."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
@@ -2353,7 +4013,46 @@ class TestOrchestrator:
             try:
                 r = await client.get(f"{agent.api_base_url}/api/registry/status", headers=headers)
                 r.raise_for_status()
-                return r.json()
+                data = r.json()
+                if summary_only and isinstance(data, dict):
+                    all_endpoints = await self.registry.list_endpoints()
+                    local_instances = data.get("local_instances", [])
+                    if isinstance(local_instances, list):
+                        summarized_instances = []
+                        for inst in local_instances:
+                            if isinstance(inst, dict):
+                                inst_copy = dict(inst)
+                                inst_name = (inst.get("node") or inst.get("node_id") or inst.get("name") or "").strip()
+                                matched_ep = next((
+                                    ep for ep in all_endpoints 
+                                    if ep.id == inst_name 
+                                    or ep.meta.get("site_name") == inst_name 
+                                    or ep.test_ip == inst_name 
+                                    or ep.id.lower() == inst_name.lower()
+                                ), None)
+
+                                ep_version = (matched_ep.version or matched_ep.meta.get("version")) if matched_ep else None
+                                ep_build = (matched_ep.build or matched_ep.meta.get("build")) if matched_ep else None
+
+                                if not inst_copy.get("version") and ep_version:
+                                    inst_copy["version"] = ep_version
+                                if not inst_copy.get("build") and ep_build:
+                                    inst_copy["build"] = ep_build
+
+                                ps = inst.get("provisioning_status")
+                                if isinstance(ps, dict):
+                                    inst_copy["provisioning_status"] = {
+                                        "appliedRevisions": ps.get("appliedRevisions", {}),
+                                        "pending": ps.get("pending", False),
+                                        "lastReportedAt": ps.get("lastReportedAt"),
+                                        "version": ps.get("version") or inst_copy.get("version") or ep_version,
+                                        "orphansCount": len(ps.get("orphans", {})) if isinstance(ps.get("orphans"), dict) else 0
+                                    }
+                                summarized_instances.append(inst_copy)
+                            else:
+                                summarized_instances.append(inst)
+                        data["local_instances"] = summarized_instances
+                return data
             except Exception as e:
                 return self._handle_exception(f"Controller status on {agent_id}", e)
 
@@ -2416,18 +4115,42 @@ class TestOrchestrator:
     # Global Configuration Provisioning (Phase 2)
     # -------------------------------------------------------------------------
 
-    async def get_provisioning_status(self, agent_id: str) -> Dict[str, Any]:
+    async def get_provisioning_status(self, agent_id: str, summary_only: bool = True) -> Dict[str, Any]:
         """Fetch Global Provisioning pull mode status, active bundle revisions, and pending changes."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return {"error": f"Agent {agent_id} not found."}
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                r = await client.get(f"{agent.api_base_url}/api/provisioning/config", headers=headers)
-                r.raise_for_status()
-                return r.json()
+                r = await client.get(
+                    f"{agent.api_base_url}/api/provisioning/status?summary={str(summary_only).lower()}",
+                    headers=headers
+                )
+                if r.status_code == 200 and self._is_json_response(r):
+                    data = r.json()
+                    if summary_only and isinstance(data, dict):
+                        if "state" in data and isinstance(data["state"], dict) and "history" in data["state"]:
+                            del data["state"]["history"]
+                    return data
+
+                # Fallback to /api/provisioning/config
+                r_cfg = await client.get(f"{agent.api_base_url}/api/provisioning/config", headers=headers)
+                if r_cfg.status_code == 200 and self._is_json_response(r_cfg):
+                    data = r_cfg.json()
+                    if summary_only and isinstance(data, dict):
+                        if "state" in data and isinstance(data["state"], dict) and "history" in data["state"]:
+                            del data["state"]["history"]
+                    return data
+                
+                return {
+                    "success": False,
+                    "status": "error",
+                    "error": f"HTTP {r.status_code} on provisioning status",
+                    "status_code": r.status_code,
+                    "url": str(r.url)
+                }
             except Exception as e:
                 return self._handle_exception(f"Provisioning status on {agent_id}", e)
 
@@ -2435,7 +4158,7 @@ class TestOrchestrator:
         """Enable or disable Global Provisioning pull daemon on a node."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return {"error": f"Agent {agent_id} not found."}
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -2450,43 +4173,149 @@ class TestOrchestrator:
         """Publish local configuration bundle(s) across the entire SD-WAN mesh."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return {"error": f"Agent {agent_id} not found."}
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
+
+        # Guard: check if node is leader
+        try:
+            ctrl = await self.get_controller_status(agent_id)
+            if isinstance(ctrl, dict) and ctrl.get("is_leader") is False:
+                leader_ip = ctrl.get("leader_ip") or "mesh leader"
+                return {
+                    "success": False,
+                    "status": "rejected",
+                    "error": f"Node '{agent_id}' is a member/branch node. Bundles can only be published from the active mesh Leader ({leader_ip}).",
+                    "agent_id": agent_id,
+                    "is_leader": False
+                }
+        except Exception as e:
+            logger.warning(f"Could not check leader status for {agent_id}: {e}")
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        valid_types = [
+            'applications', 'connectivity-probes', 'convergence-sla',
+            'prisma-sase', 'security-config', 'voice-config', 'iot-config',
+            'custom-tcp-apps', 'cloud-config'
+        ]
+
+        types_to_publish = valid_types if bundle_type.lower() in ["all", "*"] else [bundle_type]
+
+        results = []
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/provisioning/publish", json={"type": bundle_type}, headers=headers)
-                r.raise_for_status()
-                return r.json()
+                for b_type in types_to_publish:
+                    url = f"{agent.api_base_url}/api/provisioning/publish/{b_type}"
+                    r = await client.post(url, headers=headers)
+                    if r.status_code in [200, 201] and self._is_json_response(r):
+                        results.append(r.json())
+                    elif r.status_code == 404:
+                        fallback_r = await client.post(f"{agent.api_base_url}/api/provisioning/publish", json={"type": b_type, "bundle_type": b_type}, headers=headers)
+                        fallback_r.raise_for_status()
+                        results.append(fallback_r.json())
+                    else:
+                        r.raise_for_status()
+                return results[0] if len(results) == 1 else {"success": True, "published_bundles": results}
             except Exception as e:
                 return self._handle_exception(f"Publish bundle {bundle_type} on {agent_id}", e)
+
+    async def purge_stale_leader_state(self, agent_id: str, dry_run: bool = True) -> Dict[str, Any]:
+        """Purge stale local leader manifests and bundles on a non-leader branch node."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                r = await client.post(
+                    f"{agent.api_base_url}/api/provisioning/purge-stale-leader?dry_run={str(dry_run).lower()}",
+                    json={"dry_run": dry_run},
+                    headers=headers
+                )
+                if r.status_code in [200, 201] and self._is_json_response(r):
+                    return r.json()
+                return {
+                    "success": False,
+                    "status": "error",
+                    "error": f"Purge stale leader returned HTTP {r.status_code}",
+                    "details": r.text[:300]
+                }
+            except Exception as e:
+                return self._handle_exception(f"Purge stale leader on {agent_id}", e)
 
     async def rollback_configuration_bundle(self, agent_id: str, bundle_type: str, revision: str) -> Dict[str, Any]:
         """Rollback a specific configuration bundle to a prior revision hash."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return {"error": f"Agent {agent_id} not found."}
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
-                r = await client.post(f"{agent.api_base_url}/api/provisioning/rollback", json={"type": bundle_type, "revision": revision}, headers=headers)
-                r.raise_for_status()
-                return r.json()
+                url = f"{agent.api_base_url}/api/provisioning/rollback/{bundle_type}/{revision}"
+                r = await client.post(url, headers=headers)
+                if r.status_code in [200, 201]:
+                    return r.json()
+                elif r.status_code == 404:
+                    fallback_r = await client.post(f"{agent.api_base_url}/api/provisioning/rollback", json={"type": bundle_type, "revision": revision}, headers=headers)
+                    fallback_r.raise_for_status()
+                    return fallback_r.json()
+                else:
+                    r.raise_for_status()
+                    return r.json()
             except Exception as e:
                 return self._handle_exception(f"Rollback bundle {bundle_type} to rev {revision} on {agent_id}", e)
 
-    async def get_provisioning_history(self, agent_id: str, limit: int = 15) -> Dict[str, Any]:
-        """Fetch the audit trail of published configuration bundles and rollbacks."""
+    async def get_provisioning_history(self, agent_id: str, limit: int = 15, summary_only: bool = True) -> Dict[str, Any]:
+        """Fetch the audit trail of published configuration bundles and rollbacks with compact summary mode and backward fallback."""
         agent = await self.registry.get_endpoint(agent_id)
         if not agent:
-            return {"error": f"Agent {agent_id} not found."}
+            return {"success": False, "status": "error", "error": f"Agent {agent_id} not found."}
 
         headers = {"Authorization": f"Bearer {self._generate_token()}"}
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             try:
-                r = await client.get(f"{agent.api_base_url}/api/provisioning/history?limit={limit}", headers=headers)
-                r.raise_for_status()
-                return r.json()
+                r = await client.get(
+                    f"{agent.api_base_url}/api/provisioning/history?limit={limit}&summary={str(summary_only).lower()}",
+                    headers=headers
+                )
+                if r.status_code == 200 and self._is_json_response(r):
+                    data = r.json()
+                    if isinstance(data, dict) and "history" in data and isinstance(data["history"], list):
+                        for entry in data["history"]:
+                            if isinstance(entry, dict):
+                                self._normalize_history_entry_counters(entry)
+                    return data
+
+                # Fallback to /api/provisioning/config if node is running earlier release
+                r_cfg = await client.get(f"{agent.api_base_url}/api/provisioning/config", headers=headers)
+                if r_cfg.status_code == 200 and self._is_json_response(r_cfg):
+                    cfg_data = r_cfg.json()
+                    history_raw = cfg_data.get("state", {}).get("history", [])
+                    compact_entries = []
+                    for entry in history_raw[:limit]:
+                        if isinstance(entry, dict):
+                            if summary_only:
+                                compact_entries.append(self._compact_history_entry(entry))
+                            else:
+                                compact_entries.append(entry)
+                        else:
+                            compact_entries.append(entry)
+
+                    return {
+                        "success": True,
+                        "agent_id": agent_id,
+                        "total_records": len(history_raw),
+                        "count": len(compact_entries),
+                        "history": compact_entries
+                    }
+
+                return {
+                    "success": False,
+                    "status": "error",
+                    "error": f"HTTP {r.status_code} calling provisioning history on {agent_id}",
+                    "status_code": r.status_code,
+                    "url": str(r.url)
+                }
             except Exception as e:
                 return self._handle_exception(f"Provisioning history on {agent_id}", e)
+

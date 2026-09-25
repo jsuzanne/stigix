@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-03-16 | **Created:** 2026-03-16 (v1.2.1-patch.208)
+
 # Feasibility Study: Integrated AI Prompt Window for Stigix
 
 ## Overview

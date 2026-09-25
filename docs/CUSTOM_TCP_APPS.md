@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-08 | **Created:** 2026-09-02 (v1.4.1-patch.41)
+
 # Stigix Custom TCP Inter-Site Applications
 
 > 📘 **Looking for the practical step-by-step User Guide?**  

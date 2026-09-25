@@ -3,10 +3,12 @@
 node_modules/
 package-lock.json
 playwright.config.ts
-tests/
+/tests/
+!web-dashboard/tests/
 .github/workflows/playwright.yml
 
 *.pdf
+!docs/MCP Reports/*.pdf
 *.log
 *.log.*
 *.json
@@ -16,6 +18,7 @@ tests/
 !tsconfig.app.json
 !tsconfig.node.json
 !logs/stats.json
+!mcp-server/tests/fixtures/**
 
 # -------------------------------------------------------
 # Credentials & Secrets — NEVER commit these

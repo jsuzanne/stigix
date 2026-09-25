@@ -5,8 +5,7 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import dgram from 'dgram';
-//import { spawn, exec } from 'child_process';
-import { spawn, exec, execSync } from 'child_process';
+import { spawn, exec, execFile, execSync } from 'child_process';
 import crypto from 'crypto';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
@@ -34,6 +33,8 @@ import { TcpAppManager } from './custom-tcp-apps/tcp-app-manager.js';
 import { createCustomTcpApiRouter } from './custom-tcp-apps/api-routes.js';
 import { createApiStudioRouter } from './api-studio-routes.js';
 import { apiLogBuffer } from './api-logger.js';
+import { AiManager } from './ai-copilot/ai-manager.js';
+import { createAiCopilotRouter } from './ai-copilot/api-routes.js';
 
 import { Server } from 'socket.io';
 import multer from 'multer';
@@ -346,6 +347,7 @@ async function runGetflow(siteName: string, sourcePort: number, dstIp: string, m
                 resolve(null);
                 return;
             }
+            const region = process.env.PRISMA_SDWAN_REGION || 'de';
             const args = [
                 scriptPath,
                 '--site-name', siteName,
@@ -354,8 +356,19 @@ async function runGetflow(siteName: string, sourcePort: number, dstIp: string, m
                 '--minutes', String(minutes),
                 '--json'
             ];
+            if (region) {
+                args.push('--region', region === 'eu' || region === 'europe' || region === 'Germany' ? 'de' : 'us');
+            }
             dbg('CONV', `Spawning: python3 ${args.join(' ')}`);
-            const proc = spawn(PYTHON_PATH, args, { timeout: 45_000 });
+            const proc = spawn(PYTHON_PATH, args, {
+                cwd: path.join(PROJECT_ROOT, 'engines'),
+                timeout: 45_000,
+                env: {
+                    ...process.env,
+                    PYTHONUNBUFFERED: '1',
+                    PRISMA_SDWAN_TSG_ID: process.env.PRISMA_SDWAN_TSGID || process.env.PRISMA_SDWAN_TSG_ID
+                }
+            });
             let stdout = '';
             let stderr = '';
             proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
@@ -756,7 +769,8 @@ class XfrJobManager {
     }
 
     getJob(id: string): XfrJob | undefined {
-        return this.jobs.get(id);
+        if (!id) return undefined;
+        return this.jobs.get(id) || Array.from(this.jobs.values()).find(j => j.sequence_id === id || j.sequence_id.toLowerCase() === id.toLowerCase());
     }
 
     getAllJobs(): XfrJob[] {
@@ -3080,8 +3094,17 @@ app.post('/api/prisma/flows', authenticateToken, async (req, res) => {
 
         const args = [scriptPath, '--json'];
 
-        if (site_name) { args.push('--site-name', String(site_name)); }
-        if (site_id) { args.push('--site-id', String(site_id)); }
+        let effectiveSiteName = site_name;
+        let effectiveSiteId = site_id;
+        if (!effectiveSiteName && !effectiveSiteId) {
+            const detectedSite = siteManager.getSiteInfo()?.detected_site_name;
+            if (detectedSite) {
+                effectiveSiteName = detectedSite;
+            }
+        }
+
+        if (effectiveSiteName) { args.push('--site-name', String(effectiveSiteName)); }
+        else if (effectiveSiteId) { args.push('--site-id', String(effectiveSiteId)); }
         if (protocol) { args.push('--protocol', String(protocol)); }
         if (udp_src_port) { args.push('--udp-src-port', String(udp_src_port)); }
         if (udp_dst_port) { args.push('--udp-dst-port', String(udp_dst_port)); }
@@ -3089,8 +3112,11 @@ app.post('/api/prisma/flows', authenticateToken, async (req, res) => {
         if (tcp_dst_port) { args.push('--tcp-dst-port', String(tcp_dst_port)); }
         if (src_ip) { args.push('--src-ip', String(src_ip)); }
         if (dst_ip) { args.push('--dst-ip', String(dst_ip)); }
-        if (minutes) { args.push('--minutes', String(minutes)); }
-        if (hours) { args.push('--hours', String(hours)); }
+        if (hours) {
+            args.push('--hours', String(hours));
+        } else if (minutes) {
+            args.push('--minutes', String(minutes));
+        }
         if (fast) { args.push('--fast'); }
         if (page_size) { args.push('--page-size', String(page_size)); }
 
@@ -3165,7 +3191,7 @@ app.get('/api/version', (req, res) => {
 });
 
 // API: Speed Test (Public endpoint)
-app.get('/api/connectivity/speedtest', async (req, res) => {
+app.get('/api/connectivity/speedtest', authenticateToken, async (req, res) => {
     try {
         // exec already imported at top
         // util.promisify already imported as promisify
@@ -3205,7 +3231,7 @@ app.get('/api/connectivity/speedtest', async (req, res) => {
 });
 
 // API: Iperf Client
-app.post('/api/connectivity/iperf/client', async (req, res) => {
+app.post('/api/connectivity/iperf/client', authenticateToken, async (req, res) => {
     const { target, duration = 5, parallel = 1, reverse = false } = req.body;
 
     if (!target) {
@@ -3492,7 +3518,7 @@ app.get('/api/status', (req, res) => {
 
 // API: Traffic Control - Get Status
 // API: Traffic Control - Get Status
-app.get('/api/traffic/status', (req, res) => {
+app.get('/api/traffic/status', authenticateToken, (req, res) => {
     const defaultInterval = parseFloat(process.env.SLEEP_BETWEEN_REQUESTS || '1.0');
 
     if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
@@ -3943,9 +3969,26 @@ app.get('/api/config/apps', extractUserMiddleware, (req, res) => {
     res.json(categories);
 });
 // Helper for DEM scoring
-const calculateDEMScore = (type: string, reachable: boolean, httpCode: number | undefined, metrics: any): number => {
-    if (!reachable || (httpCode && httpCode >= 500)) return 0;
-    if (httpCode && httpCode >= 400) return 20;
+const calculateDEMScore = (
+    type: string,
+    reachable: boolean,
+    httpCode: number | undefined,
+    metrics: any,
+    expectedStatusCodes?: number[]
+): number => {
+    if (!reachable) return 0;
+
+    if (httpCode !== undefined && httpCode > 0) {
+        const allowed = (Array.isArray(expectedStatusCodes) && expectedStatusCodes.length > 0)
+            ? expectedStatusCodes
+            : [200, 201, 202, 204, 301, 302, 304, 307, 308];
+        const isExpected = allowed.includes(httpCode);
+        if (!isExpected) {
+            if (httpCode >= 500) return 0;
+            if (httpCode >= 400) return 20;
+            return 20;
+        }
+    }
 
     const lat = metrics.total_ms || 0;
 
@@ -4076,7 +4119,7 @@ const performConnectivityCheck = async (endpoint: any): Promise<ConnectivityResu
                         speed_bps: parseFloat(curlData.speed_download),
                         ssl_verify: parseInt(curlData.ssl_verify_result)
                     };
-                    const baseScore = calculateDEMScore(result.endpointType, result.reachable, result.httpCode, result.metrics);
+                    const baseScore = calculateDEMScore(result.endpointType, result.reachable, result.httpCode, result.metrics, endpoint.expectedStatusCodes || endpoint.expected_status_codes);
                     result.score = Math.max(0, baseScore - httpRetries * 20);
 
                     // ── Optional content match (separate bounded curl, timings unaffected) ──
@@ -4480,12 +4523,139 @@ app.get('/api/system/gateway-ip', authenticateToken, async (req, res) => {
     }
 });
 
-// API: Get Custom Connectivity Endpoints
-app.get('/api/connectivity/custom', authenticateToken, (req, res) => {
+// API: Run Path Trace (Traceroute / MTR)
+app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
+    const rawTarget = (req.query.target || req.body?.target) as string;
+    const maxHops = Math.min(Math.max(parseInt((req.query.max_hops || req.body?.max_hops || 15) as string, 10) || 15, 1), 20);
+    const rawMethod = String(req.query.method || req.body?.method || 'udp').toLowerCase().trim();
+    const method = (['udp', 'tcp', 'icmp'].includes(rawMethod) ? rawMethod : 'udp') as 'udp' | 'tcp' | 'icmp';
+    const rawPort = parseInt(String(req.query.port || req.body?.port || 443), 10);
+    const port = (!isNaN(rawPort) && rawPort >= 1 && rawPort <= 65535) ? rawPort : 443;
+
+    if (!rawTarget || typeof rawTarget !== 'string') {
+        return res.status(400).json({ success: false, error: 'Target IP or hostname is required' });
+    }
+
+    const target = rawTarget.trim();
+
+    // Strict validation: IPv4, IPv6, or valid RFC 1123 hostname (no command injection characters)
+    const ipv4Regex = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+    const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])$/;
+    const hostnameRegex = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z0-9-]{1,63})*$/;
+
+    if (!ipv4Regex.test(target) && !ipv6Regex.test(target) && !hostnameRegex.test(target)) {
+        return res.status(400).json({
+            success: false,
+            target,
+            error: 'Invalid target format. Target must be a valid IPv4, IPv6 address, or hostname without shell or special characters.'
+        });
+    }
+
+    const execFilePromise = promisify(execFile);
+    let rawOutput = '';
+
+    // Build argument array based on method
+    const tracerouteArgs = ['-n', '-m', String(maxHops), '-w', '2', '-q', '1'];
+    if (method === 'tcp') {
+        tracerouteArgs.push('-T', '-p', String(port));
+    } else if (method === 'icmp') {
+        tracerouteArgs.push('-I');
+    }
+    tracerouteArgs.push(target);
+
+    // Attempt 1: traceroute with safe argument array
+    try {
+        const { stdout, stderr } = await execFilePromise('traceroute', tracerouteArgs, { timeout: 30000 });
+        rawOutput = (stdout || stderr || '').trim();
+    } catch (errTraceroute: any) {
+        const errText = (errTraceroute.stdout || errTraceroute.stderr || errTraceroute.message || '').trim();
+        // Check for capability / raw socket errors
+        if (errText.includes('Operation not permitted') || errText.includes('Permission denied') || errText.includes('raw socket') || errText.includes('CAP_NET_RAW') || errText.includes('socket:')) {
+            return res.status(403).json({
+                success: false,
+                target,
+                method,
+                error: `Traceroute with method '${method.toUpperCase()}' requires CAP_NET_RAW capability or socket access in the container environment. Please use UDP or grant CAP_NET_RAW.`
+            });
+        }
+
+        // If traceroute binary not found and method is UDP, attempt tracepath fallback
+        if (errTraceroute.code === 'ENOENT' || (errTraceroute.message && errTraceroute.message.includes('ENOENT'))) {
+            if (method === 'udp') {
+                try {
+                    const tracepathArgs = ['-n', '-m', String(maxHops), target];
+                    const { stdout, stderr } = await execFilePromise('tracepath', tracepathArgs, { timeout: 30000 });
+                    rawOutput = (stdout || stderr || '').trim();
+                } catch (errTracepath: any) {
+                    if (errTracepath.code === 'ENOENT' || (errTracepath.message && errTracepath.message.includes('ENOENT'))) {
+                        return res.status(500).json({
+                            success: false,
+                            target,
+                            error: 'Neither traceroute nor tracepath binary is installed in this container environment. Please update the node container image.'
+                        });
+                    }
+                    rawOutput = (errTracepath.stdout || errTracepath.stderr || errTracepath.message || '').trim();
+                }
+            } else {
+                return res.status(500).json({
+                    success: false,
+                    target,
+                    method,
+                    error: `Traceroute binary not installed and method '${method.toUpperCase()}' is not supported by tracepath.`
+                });
+            }
+        } else {
+            rawOutput = errText;
+        }
+    }
+
+    // Parse hops
+    const lines = rawOutput.split('\n');
+    const hops: Array<{ hop: number; ip: string; rtt_ms: number | null; status: string }> = [];
+    let destReached = false;
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.includes('[LOCALHOST]')) continue;
+        // Match standard traceroute: " 1  192.168.1.1  1.234 ms" or tracepath: " 1:  192.168.1.1  1.234ms"
+        const match = trimmed.match(/^(\d+)[?:\s]+(?:no reply|([\d\.\*a-zA-Z:-]+))(?:\s+.*?([\d\.]+)\s*ms)?/i);
+        if (match) {
+            const hopNum = parseInt(match[1], 10);
+            const isNoReply = trimmed.toLowerCase().includes('no reply');
+            const hopIp = isNoReply ? '*' : (match[2] || '*');
+            const rtt = match[3] ? parseFloat(match[3]) : null;
+            const isTimeout = hopIp === '*' || isNoReply || rtt === null;
+            hops.push({
+                hop: hopNum,
+                ip: isTimeout ? '*' : hopIp,
+                rtt_ms: rtt,
+                status: isTimeout ? 'timeout' : 'ok'
+            });
+            if (!isTimeout && (hopIp === target || hopIp.includes(target) || trimmed.toLowerCase().includes('reached'))) {
+                destReached = true;
+            }
+        }
+    }
+
+    res.json({
+        success: true,
+        target,
+        method,
+        port: method === 'tcp' ? port : undefined,
+        max_hops: maxHops,
+        total_hops: hops.length,
+        destination_reached: destReached,
+        hops,
+        raw_output: rawOutput
+    });
+});
+
+
+const getFullEffectiveConnectivityProbes = () => {
     const envProbes = getEnvConnectivityEndpoints();
     const rawCustom = getCustomConnectivityEndpoints();
-    const custom = provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom);
-    const discovered = discoveryManager.getProbes();
+    const custom = provisioningManager ? provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom) : rawCustom;
+    const discovered = discoveryManager ? discoveryManager.getProbes() : [];
 
     // Merge custom state into env probes and serve them all
     const mergedEnvProbes = envProbes.map((p: any) => {
@@ -4495,13 +4665,16 @@ app.get('/api/connectivity/custom', authenticateToken, (req, res) => {
 
     const pureCustom = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
 
-    res.json([...mergedEnvProbes, ...pureCustom, ...discovered]);
+    return [...mergedEnvProbes, ...pureCustom, ...discovered];
+};
+
+// API: Get Custom Connectivity Endpoints
+app.get('/api/connectivity/custom', authenticateToken, (req, res) => {
+    res.json(getFullEffectiveConnectivityProbes());
 });
 
-// API: Update Custom Connectivity Endpoints
-app.post('/api/connectivity/custom', authenticateToken, (req, res) => {
-    const { endpoints } = req.body;
-    if (!Array.isArray(endpoints)) return res.status(400).json({ error: 'Invalid format, expected array' });
+const applyCustomConnectivityEndpoints = async (endpoints: any[]): Promise<boolean> => {
+    if (!Array.isArray(endpoints)) return false;
 
     // The UI sends back ALL endpoints (Env, Custom, Discovered).
     // We update Discovery directly, and save everything else to custom (which now acts as state store for Env probes)
@@ -4514,32 +4687,44 @@ app.post('/api/connectivity/custom', authenticateToken, (req, res) => {
     const newProbes = customAndEnvProbes.filter(p => !existingKeys.has(`${p.type}:${p.name}`) && p.enabled !== false);
 
     const customSuccess = saveCustomConnectivityEndpoints(customAndEnvProbes);
-    discoveryManager.updateProbesFromUI(discoveredProbes);
+    if (discoveryManager) {
+        discoveryManager.updateProbesFromUI(discoveredProbes);
+    }
 
     // Save field-level local overrides if global provisioning is active
-    provisioningManager.handleLocalSave('connectivity-probes', customAndEnvProbes);
+    if (provisioningManager) {
+        provisioningManager.handleLocalSave('connectivity-probes', customAndEnvProbes);
+    }
 
-    if (customSuccess) {
-        // Option B: trigger an immediate check for each newly added probe (async, non-blocking)
-        if (newProbes.length > 0) {
-            setImmediate(async () => {
-                for (const probe of newProbes) {
-                    const key = `${probe.type}:${probe.name}`;
-                    if (isRunning.has(key)) continue;
-                    try {
-                        console.log(`[DEM] Immediate trigger for new probe: ${key}`);
-                        isRunning.add(key);
-                        lastRunMap.set(key, Date.now()); // prevent double-run on next tick
-                        const checkResult = await performConnectivityCheck(probe);
-                        await connectivityLogger.logResult(checkResult);
-                    } catch (e) {
-                        console.error(`[DEM] Immediate trigger error for ${key}:`, e);
-                    } finally {
-                        isRunning.delete(key);
-                    }
+    if (customSuccess && newProbes.length > 0) {
+        setImmediate(async () => {
+            for (const probe of newProbes) {
+                const key = `${probe.type}:${probe.name}`;
+                if (isRunning.has(key)) continue;
+                try {
+                    log('DEM', `Immediate trigger for new probe: ${key}`);
+                    isRunning.add(key);
+                    lastRunMap.set(key, Date.now()); // prevent double-run on next tick
+                    const checkResult = await performConnectivityCheck(probe);
+                    await connectivityLogger.logResult(checkResult);
+                } catch (e) {
+                    console.error(`[DEM] Immediate trigger error for ${key}:`, e);
+                } finally {
+                    isRunning.delete(key);
                 }
-            });
-        }
+            }
+        });
+    }
+    return customSuccess;
+};
+
+// API: Update Custom Connectivity Endpoints
+app.post('/api/connectivity/custom', authenticateToken, async (req, res) => {
+    const { endpoints } = req.body;
+    if (!Array.isArray(endpoints)) return res.status(400).json({ error: 'Invalid format, expected array' });
+
+    const success = await applyCustomConnectivityEndpoints(endpoints);
+    if (success) {
         res.json({ success: true, count: endpoints.length });
     } else {
         res.status(500).json({ error: 'Failed to save custom endpoints' });
@@ -5107,11 +5292,12 @@ app.get('/api/icons', async (req, res) => {
 });
 
 app.post('/api/convergence/start', authenticateToken, (req, res) => {
-    const { target, port, rate, label } = req.body;
+    const { target, port, rate, label, global_id, global_test_id } = req.body;
+    const effectiveGlobalId = global_test_id || global_id || null;
     const timestamp = new Date().toLocaleTimeString('en-GB', { hour12: false });
     const testId = (req as any).testId || getNextFailoverTestId();
     (req as any).testId = testId; // Ensure it's available for subsequent logs
-    console.log(`[${testId}] [${timestamp}] 🚀 ${label || 'None'} - Incoming Start Request: Target=${target}:${port}, Rate=${rate}pps`);
+    console.log(`[${testId}] [${timestamp}] 🚀 ${label || 'None'} - Incoming Start Request: Target=${target}:${port}, Rate=${rate}pps, GlobalID=${effectiveGlobalId || 'none'}`);
 
     if (!target) return res.status(400).json({ error: 'Target IP required' });
 
@@ -5152,6 +5338,9 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
         const proc = spawn(PYTHON_PATH, args, { env: { ...process.env, PYTHONUNBUFFERED: '1' } });
         convergenceProcesses.set(testId, proc);
         convergencePPS.set(testId, requestedPPS);
+        if (effectiveGlobalId) {
+            (proc as any).globalTestId = effectiveGlobalId;
+        }
 
         proc.on('error', (err: any) => {
             console.error(`[CONVERGENCE-ERROR] Failed to start ${testId}: ${err.message}`);
@@ -5164,10 +5353,9 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
             const emoji = code === 0 || code === null ? '✅' : '❌';
             log(`CONV-${testId}`, `${emoji} Convergence test ended: ${status} (exit code: ${code})`);
 
+            const savedGlobalId = (proc as any).globalTestId || null;
             convergenceProcesses.delete(testId);
             convergencePPS.delete(testId);
-
-            // Finalize history entry
 
             // Finalize history entry
             if (fs.existsSync(statsFile)) {
@@ -5175,6 +5363,8 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
                     const finalStats = JSON.parse(fs.readFileSync(statsFile, 'utf8'));
                     fs.appendFileSync(CONVERGENCE_HISTORY_FILE, JSON.stringify({
                         ...finalStats,
+                        global_id: savedGlobalId || finalStats.global_id || finalStats.global_test_id || null,
+                        global_test_id: savedGlobalId || finalStats.global_test_id || finalStats.global_id || null,
                         timestamp: Date.now()
                     }) + '\n');
                     // Cleanup tmp file
@@ -5274,42 +5464,85 @@ app.post('/api/convergence/start', authenticateToken, (req, res) => {
 app.post('/api/convergence/stop', authenticateToken, (req, res) => {
     const { testId } = req.body;
     if (testId) {
-        const proc = convergenceProcesses.get(testId);
-        if (proc) {
-            proc.kill(); // Default is SIGTERM, which is usually fine. SIGINT is also an option.
-            convergenceProcesses.delete(testId);
-            convergencePPS.delete(testId);
-            const now = new Date().toLocaleTimeString('en-GB', { hour12: false });
-            console.log(`[${testId}] [${now}] 🛑 Stopped specific test`);
-            return res.json({ success: true });
+        const query = String(testId).trim().toLowerCase();
+        let foundKey: string | null = null;
+        for (const k of convergenceProcesses.keys()) {
+            const kLower = k.toLowerCase();
+            if (kLower === query || kLower.includes(query) || query.includes(kLower)) {
+                foundKey = k;
+                break;
+            }
         }
-        return res.status(404).json({ error: 'Test not found' });
+        if (foundKey) {
+            const proc = convergenceProcesses.get(foundKey);
+            if (proc) {
+                proc.kill();
+                convergenceProcesses.delete(foundKey);
+                convergencePPS.delete(foundKey);
+                const now = new Date().toLocaleTimeString('en-GB', { hour12: false });
+                console.log(`[${foundKey}] [${now}] 🛑 Stopped specific test`);
+            }
+            return res.json({ success: true, stopped_test: foundKey });
+        }
+        // Fallback: if only 1 test is currently running, stop that one
+        if (convergenceProcesses.size === 1) {
+            const singleKey = convergenceProcesses.keys().next().value;
+            if (singleKey) {
+                const proc = convergenceProcesses.get(singleKey);
+                if (proc) {
+                    proc.kill();
+                    convergenceProcesses.delete(singleKey);
+                    convergencePPS.delete(singleKey);
+                    console.log(`[${singleKey}] 🛑 Stopped single running test for query "${testId}"`);
+                }
+                return res.json({ success: true, stopped_test: singleKey, note: `Stopped running test ${singleKey}` });
+            }
+        }
+        return res.status(404).json({ error: `Test ${testId} not found among running tests (${Array.from(convergenceProcesses.keys()).join(', ')})` });
     } else {
         // Stop all
+        const stopped: string[] = [];
         for (const [id, proc] of convergenceProcesses.entries()) {
             proc.kill();
             convergencePPS.delete(id);
+            stopped.push(id);
         }
         convergenceProcesses.clear();
         console.log('[CONVERGENCE] Stopped all tests');
-        res.json({ success: true, count: convergenceProcesses.size });
+        res.json({ success: true, count: stopped.length, stopped_tests: stopped });
     }
 });
+
+const lastConvergenceStatsCache = new Map<string, any>();
 
 app.get('/api/convergence/status', authenticateToken, (req, res) => {
     const results: any[] = [];
     try {
-        const files = fs.readdirSync('/tmp').filter(f => f.startsWith('convergence_stats_') && f.endsWith('.json'));
+        const files = fs.readdirSync('/tmp').filter(f => f.startsWith('convergence_stats_') && f.endsWith('.json') && !f.includes('.tmp.'));
         for (const file of files) {
+            const testId = file.replace('convergence_stats_', '').replace('.json', '');
             try {
-                const stats = JSON.parse(fs.readFileSync(path.join('/tmp', file), 'utf8'));
-                const testId = file.replace('convergence_stats_', '').replace('.json', '');
+                const content = fs.readFileSync(path.join('/tmp', file), 'utf8');
+                if (content && content.trim()) {
+                    const stats = JSON.parse(content);
+                    lastConvergenceStatsCache.set(testId, stats);
+                    results.push({
+                        ...stats,
+                        testId,
+                        running: convergenceProcesses.has(testId)
+                    });
+                    continue;
+                }
+            } catch (e) { }
+
+            // Fallback to last known valid stats if reading/parsing raced with file write
+            if (lastConvergenceStatsCache.has(testId)) {
                 results.push({
-                    ...stats,
+                    ...lastConvergenceStatsCache.get(testId),
                     testId,
                     running: convergenceProcesses.has(testId)
                 });
-            } catch (e) { }
+            }
         }
     } catch (e) { }
 
@@ -8075,7 +8308,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
                 ...(mcp_source && { mcp_source })
             };
             const { previousStatus } = await addTestResult('url_filtering', category || url, result, testId);
-            return res.json({ ...result, previousStatus });
+            return res.json({ ...result, testId, previousStatus });
         }
 
         const { ifaceFlag } = getEgressConfig();
@@ -8132,7 +8365,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
             const { previousStatus, slsDiagnostic } = await addTestResult('url_filtering', category || url, result, testId, {
                 url, httpCode, srcPort, command: executedCommand, blockPageDetected: isBlockPage, testPageDetected: isTestPage
             });
-            res.json({ ...result, previousStatus, slsDiagnostic });
+            res.json({ ...result, testId, previousStatus, slsDiagnostic });
         } catch (curlError: any) {
             // Parse curl exit code for precise error classification
             const exitCode = parseCurlExitCode(curlError.message);
@@ -8162,7 +8395,7 @@ app.post('/api/security/url-test', authenticateToken, async (req, res) => {
                 url, error: errInfo.technicalDetail, errorType: errInfo.errorType, curlExitCode: exitCode,
                 likelyFirewallBlock: errInfo.likelyFirewallBlock, command: curlCmd, srcPort
             });
-            res.json({ ...result, previousStatus, slsDiagnostic });
+            res.json({ ...result, testId, previousStatus, slsDiagnostic });
         }
     } catch (e: any) {
         res.status(500).json({ error: 'Test execution failed', message: e.message });
@@ -11573,6 +11806,68 @@ app.post('/api/internal/log-event', (req, res) => {
 });
 log('SYSTEM', `⚡ API Studio & Real-Time Log Inspector mounted at /api/api-studio, /api/logs, /api/playground`);
 
+// --- Stigix In-App AI Copilot API ---
+const aiCopilotSystemToken = jwt.sign({ username: 'stigix-copilot-internal', role: 'admin' }, SECRET_KEY, { expiresIn: '365d' });
+const aiManager = new AiManager(APP_CONFIG.configDir);
+aiManager.setExecutionContext({
+    registryManager,
+    targetsManager,
+    vyosManager,
+    tcpAppManager,
+    xfrManager,
+    provisioningManager,
+    getSystemSettings,
+    systemToken: aiCopilotSystemToken,
+    serverPort: PORT,
+    getRecentApiLogs: (limit?: number) => apiLogBuffer.getRecentLogs(limit || 20),
+    testLogger,
+    connectivityLogger,
+    discoveryManager,
+    getTrafficStats: async () => {
+        let running = false;
+        let sleepInterval = 1.0;
+        let clientCount = 1;
+        let appsCount = 0;
+        if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+            try {
+                const config = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
+                const control = config.control || {};
+                running = Boolean(control.enabled);
+                sleepInterval = control.sleep_interval || 1.0;
+                clientCount = control.client_count || 1;
+                appsCount = Array.isArray(config.applications) ? config.applications.length : 0;
+            } catch {}
+        }
+        const logStats = await testLogger.getStats().catch(() => null);
+        return {
+            running,
+            status: running ? 'RUNNING' : 'STOPPED',
+            activeApplicationsCount: appsCount,
+            rateRequestsPerSec: sleepInterval > 0 ? Math.round((clientCount / sleepInterval) * 10) / 10 : clientCount,
+            clientCount,
+            totalRequests: logStats?.totalTests || 0,
+            successRate: logStats?.passRate !== undefined ? `${logStats.passRate}%` : '100%',
+            totalErrors: logStats?.failedTests || 0,
+            recentResults: logStats?.recentActivity || []
+        };
+    },
+    getEnvProbes: getEnvConnectivityEndpoints,
+    getCustomProbes: getCustomConnectivityEndpoints,
+    getAllProbes: getFullEffectiveConnectivityProbes,
+    saveCustomProbes: applyCustomConnectivityEndpoints,
+    performConnectivityCheck,
+    runCommand: async (cmd: string) => {
+        return new Promise<string>((resolve, reject) => {
+            exec(cmd, { timeout: 15000, cwd: PROJECT_ROOT }, (err, stdout, stderr) => {
+                if (err) return reject(new Error(stderr || err.message));
+                resolve(stdout);
+            });
+        });
+    }
+});
+app.use('/api/copilot', authenticateToken, createAiCopilotRouter(aiManager));
+log('COPILOT', `🤖 Stigix In-App AI Copilot mounted at /api/copilot`);
+
 // Hook Global Provisioning sync to hot-reload Custom TCP App runtimes on peers
 provisioningManager.onBundleApplied((type, payload) => {
     if (type === 'custom-tcp-apps') {
@@ -11640,6 +11935,114 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     });
 });
 
+// API: Provisioning Status Alias (for MCP & Copilot parity)
+app.get('/api/provisioning/status', authenticateToken, (req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
+    const summaryOnly = req.query.summary !== 'false';
+    const state = provisioningManager.getState();
+    const stateToReturn = summaryOnly ? { ...state, history: undefined } : state;
+    res.json({
+        success: true,
+        is_leader: isLeader,
+        pull_mode_enabled: state?.enabled ?? true,
+        state: stateToReturn,
+        manifest: provisioningManager.getManifest()
+    });
+});
+
+// API: Provisioning Audit History (for MCP & Copilot parity)
+app.get('/api/provisioning/history', authenticateToken, (req, res) => {
+    try {
+        const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '15', 10), 1), 100);
+        const summaryOnly = req.query.summary !== 'false';
+        const rawHistory = provisioningManager.getState()?.history || [];
+
+        const getCount = (val: any): number => {
+            if (typeof val === 'number') return val;
+            if (Array.isArray(val)) return val.length;
+            if (typeof val === 'object' && val !== null) return Object.keys(val).length;
+            return 0;
+        };
+
+        const entries = rawHistory.slice(0, limit).map((entry: any) => {
+            const added = getCount(entry.diff?.added) || getCount(entry.summary?.added);
+            const modified = getCount(entry.diff?.modified) || getCount(entry.summary?.modified);
+            const deleted = getCount(entry.diff?.deleted) || getCount(entry.diff?.removed) || getCount(entry.summary?.deleted) || getCount(entry.summary?.removed);
+
+            if (summaryOnly) {
+                return {
+                    timestamp: entry.timestamp,
+                    action: entry.action,
+                    type: entry.type,
+                    revision: entry.revision,
+                    checksum: entry.checksum ? `${entry.checksum.substring(0, 8)}...` : undefined,
+                    itemsCount: entry.itemsCount || (Array.isArray(entry.items) ? entry.items.length : undefined),
+                    addedCount: added,
+                    modifiedCount: modified,
+                    deletedCount: deleted,
+                    status: entry.status || 'applied'
+                };
+            }
+            return {
+                ...entry,
+                addedCount: added,
+                modifiedCount: modified,
+                deletedCount: deleted
+            };
+        });
+        res.json({
+            success: true,
+            total_records: rawHistory.length,
+            count: entries.length,
+            history: entries
+        });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// API: Purge Stale Leader State (on Member/Branch nodes)
+app.post('/api/provisioning/purge-stale-leader', authenticateToken, async (req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.current_mode === 'leader' || registryManager?.getStatus?.()?.mode === 'leader');
+    if (isLeader) {
+        return res.status(400).json({
+            success: false,
+            error: 'Cannot purge leader state on the active Leader node.'
+        });
+    }
+
+    const dryRun = req.query.dry_run !== 'false' && req.body?.dry_run !== false;
+
+    try {
+        const result = provisioningManager.purgeStaleLeaderState(dryRun);
+        if (!dryRun && registryManager) {
+            await registryManager.syncProvisioning();
+        }
+        res.json({
+            success: true,
+            dry_run: dryRun,
+            message: dryRun
+                ? `[DRY-RUN] Found ${result.cleared_bundles} stale bundles, ${result.to_delete_count} unreferenced stale revisions to delete (${result.kept_applied_count} applied revisions preserved). Set dry_run=false to execute.`
+                : `Stale local leader manifests and ${result.to_delete_count} artifacts purged successfully (${result.kept_applied_count} applied revisions preserved).`,
+            result
+        });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/provisioning/mode', authenticateToken, (req, res) => {
+    const enabled = typeof req.body?.enabled === 'boolean' 
+        ? req.body.enabled 
+        : (req.body?.mode === 'automatic' || req.body?.mode === 'auto' || req.body?.mode === 'pull');
+    const state = provisioningManager.setEnabled(enabled);
+    res.json({ success: true, pull_mode_enabled: enabled, state });
+});
+
 app.post('/api/provisioning/config', authenticateToken, (req, res) => {
     const { enabled } = req.body;
     if (typeof enabled !== 'boolean') {
@@ -11661,6 +12064,16 @@ app.post('/api/provisioning/sync', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
+    if (!isLeader) {
+        return res.status(403).json({
+            success: false,
+            error: 'Cannot publish bundle from a member node. Only the active mesh Leader can publish configuration bundles.'
+        });
+    }
+
     const type = req.params.type as GlobalBundleType;
     const validTypes: GlobalBundleType[] = [
         'applications', 'connectivity-probes', 'convergence-sla',
@@ -11670,6 +12083,18 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     if (!validTypes.includes(type)) {
         return res.status(400).json({ error: 'invalid_bundle_type' });
     }
+
+    const buildConnectivityProbesPayload = () => {
+        const envProbes = getEnvConnectivityEndpoints();
+        const rawCustom = getCustomConnectivityEndpoints();
+        const custom = provisioningManager ? provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom) : rawCustom;
+        const merged = envProbes.map((p: any) => {
+            const override = custom.find((cp: any) => cp.name === p.name);
+            return override ? { ...p, ...override } : p;
+        });
+        const pure = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+        return [...merged, ...pure];
+    };
 
     let payload: any = null;
     if (type === 'applications') {
@@ -11681,14 +12106,7 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
         }
         if (!payload) payload = [];
     } else if (type === 'connectivity-probes') {
-        const envProbes = getEnvConnectivityEndpoints();
-        const rawCustom = getCustomConnectivityEndpoints();
-        const mergedEnvProbes = envProbes.map((p: any) => {
-            const override = rawCustom.find((cp: any) => cp.name === p.name);
-            return override ? { ...p, ...override } : p;
-        });
-        const pureCustom = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-        payload = [...mergedEnvProbes, ...pureCustom];
+        payload = buildConnectivityProbesPayload();
     } else {
         const file = provisioningManager.getActiveConfigFile(type);
         if (fs.existsSync(file)) {
@@ -11701,9 +12119,85 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     res.json({ success: true, published: pub, manifest: provisioningManager.getManifest() });
 });
 
+app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
+    if (!isLeader) {
+        return res.status(403).json({
+            success: false,
+            error: 'Cannot publish bundle from a member node. Only the active mesh Leader can publish configuration bundles.'
+        });
+    }
+
+    const type = (req.body?.type || req.body?.bundle_type || 'all') as string;
+    const validTypes: GlobalBundleType[] = [
+        'applications', 'connectivity-probes', 'convergence-sla',
+        'prisma-sase', 'security-config', 'voice-config', 'iot-config',
+        'custom-tcp-apps', 'cloud-config'
+    ];
+
+    if (type === 'all') {
+        const publishedList: any[] = [];
+        for (const t of validTypes) {
+            let payload: any = null;
+            if (t === 'applications') {
+                if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+                    try { payload = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8')).applications || []; } catch {}
+                }
+            } else if (t === 'connectivity-probes') {
+                payload = buildConnectivityProbesPayload();
+            } else {
+                const file = provisioningManager.getActiveConfigFile(t);
+                if (fs.existsSync(file)) {
+                    try { payload = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+                }
+            }
+            if (!payload) payload = (t === 'applications' || t === 'connectivity-probes') ? [] : {};
+            publishedList.push(provisioningManager.publishBundle(t, payload));
+        }
+        return res.json({ success: true, published_bundles: publishedList, manifest: provisioningManager.getManifest() });
+    }
+
+    if (!validTypes.includes(type as GlobalBundleType)) {
+        return res.status(400).json({ error: 'invalid_bundle_type' });
+    }
+
+    let payload: any = null;
+    if (type === 'applications') {
+        if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+            try { payload = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8')).applications || []; } catch {}
+        }
+        if (!payload) payload = [];
+    } else if (type === 'connectivity-probes') {
+        payload = buildConnectivityProbesPayload();
+    } else {
+        const file = provisioningManager.getActiveConfigFile(type as GlobalBundleType);
+        if (fs.existsSync(file)) {
+            try { payload = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+        }
+        if (!payload) payload = {};
+    }
+
+    const pub = provisioningManager.publishBundle(type as GlobalBundleType, payload);
+    res.json({ success: true, published: pub, manifest: provisioningManager.getManifest() });
+});
+
 app.post('/api/provisioning/rollback/:type/:revision', authenticateToken, (req, res) => {
     const type = req.params.type as 'applications' | 'connectivity-probes';
     const revision = parseInt(req.params.revision, 10);
+    if (isNaN(revision)) return res.status(400).json({ error: 'invalid_revision' });
+
+    const bundle = provisioningManager.getPublishedBundle(type, revision);
+    if (!bundle) return res.status(404).json({ error: 'revision_not_found' });
+
+    const pub = provisioningManager.publishBundle(type, bundle);
+    res.json({ success: true, rolledBackTo: revision, newPublished: pub, manifest: provisioningManager.getManifest() });
+});
+
+app.post('/api/provisioning/rollback', authenticateToken, (req, res) => {
+    const type = (req.body?.type || req.body?.bundle_type) as 'applications' | 'connectivity-probes';
+    const revision = parseInt(req.body?.revision, 10);
     if (isNaN(revision)) return res.status(400).json({ error: 'invalid_revision' });
 
     const bundle = provisioningManager.getPublishedBundle(type, revision);

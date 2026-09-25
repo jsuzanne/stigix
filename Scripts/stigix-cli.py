@@ -4900,6 +4900,88 @@ def cmd_system(args):
         ])
 
 
+def cmd_trace(args):
+    """Execute a hop-by-hop path traceroute to a target IP or hostname.
+
+    trace <target> [--method udp|tcp|icmp] [--port N] [--max-hops N]
+    traceroute <target>
+    """
+    if not require_auth(): return
+    if not args or args[0] in ("-h", "--help", "help"):
+        _help_section("PATH TRACE / TRACEROUTE", [
+            ("trace <target>",                              "Run path trace to target IP or domain (UDP)"),
+            ("trace <target> --method tcp [--port 443]",    "Run TCP SYN traceroute (bypasses UDP filtering)"),
+            ("trace <target> --method icmp",                "Run ICMP echo traceroute"),
+            ("trace <target> --max-hops N",                 "Set maximum hop limit (default: 15)"),
+            ("traceroute <target>",                         "Alias for trace"),
+        ])
+        return
+
+    target = args[0].strip()
+    max_hops = 15
+    method = "udp"
+    port = 443
+
+    if "--max-hops" in args:
+        try:
+            idx = args.index("--max-hops")
+            max_hops = int(args[idx + 1])
+        except Exception:
+            max_hops = 15
+
+    if "--method" in args:
+        try:
+            idx = args.index("--method")
+            m = args[idx + 1].lower().strip()
+            if m in ("udp", "tcp", "icmp"):
+                method = m
+        except Exception:
+            method = "udp"
+
+    if "--port" in args:
+        try:
+            idx = args.index("--port")
+            port = int(args[idx + 1])
+        except Exception:
+            port = 443
+
+    hdr(f"━━ Hop-by-Hop Path Trace: {target} [{method.upper()}] ━━━━━━━━━━━━━━━━━━")
+    info(f"Tracing route to {target} via {method.upper()}" + (f":{port}" if method == "tcp" else "") + f" (max hops: {max_hops})...")
+
+    params = f"target={target}&max_hops={max_hops}&method={method}"
+    if method == "tcp":
+        params += f"&port={port}"
+
+    r = api_get(f"/api/network/traceroute?{params}")
+    if not r:
+        err("Failed to execute traceroute query on target node.")
+        return
+
+    if not r.get("success"):
+        err(f"Traceroute error: {r.get('error', 'Unknown error')}")
+        return
+
+    hops = r.get("hops", [])
+    if not hops:
+        warn(f"No hops returned for {target}.")
+        return
+
+    rows = []
+    for h in hops:
+        hop_num = f"#{h.get('hop')}"
+        ip = h.get("ip", "*")
+        rtt = f"{h.get('rtt_ms')} ms" if h.get("rtt_ms") is not None else "-"
+        status = status_badge("running" if h.get("status") == "ok" else "stopped")
+        rows.append([hop_num, ip, rtt, status])
+
+    table(["Hop", "IP Address", "RTT", "Status"], rows)
+    print()
+    if r.get("destination_reached"):
+        ok(f"Destination {target} reached in {len(hops)} hops.")
+    else:
+        warn(f"Trace completed ({len(hops)} hops). Destination reached flag: False.")
+
+
 def cmd_connect(args):
     """Connect to a Stigix instance by IP/URL or by saved profile name.
 
@@ -5453,6 +5535,9 @@ DISPATCH = {
     "app":            cmd_custom_tcp_app,
     "custom-apps":    cmd_custom_tcp_app,
     "system":         cmd_system,
+    "trace":          cmd_trace,
+    "traceroute":     cmd_trace,
+    "pathtrace":      cmd_trace,
     "connect":        cmd_connect,
     "history":        cmd_history,
     "autocomplete":   cmd_autocomplete,
@@ -5463,6 +5548,8 @@ DISPATCH = {
 
 COMPLETER_TREE = {
     "auth":        {"login": None, "logout": None, "status": None},
+    "trace":       {"--max-hops": None},
+    "traceroute":  {"--max-hops": None},
     "flows":       {"query": {
         "--site": None, "--protocol": {"tcp", "udp", "icmp"},
         "--src-ip": None, "--dst-ip": None,

@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-03-14 | **Created:** 2026-03-14 (v1.2.1-patch.200)
+
 # Stigix API Reference pour l'Orchestrateur MCP
 
 Ce document liste les routes API HTTP (`:3000` ou `:8080` selon la configuration) exposées par les instances "Target" (les agents Stigix) et consommées par le **Serveur MCP** pour orchestrer les tests (XFR, Convergence, Traffic, Voix).

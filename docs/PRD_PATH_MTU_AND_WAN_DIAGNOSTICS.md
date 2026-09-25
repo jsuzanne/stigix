@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-18 | **Created:** 2026-09-18 (v2.0.55)
+
 # PRD — Stigix On-Demand Path MTU Discovery, WAN Asymmetry & SD-WAN Flow Diagnostics
 
 **Document Status:** Draft / Specification  

@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-05 | **Created:** 2026-09-02 (v1.4.1-patch.41)
+
 # 📖 User Guide — Stigix Custom TCP Applications
 ## *East-West Enterprise Traffic Simulation & SD-WAN Chaos Injection*
 

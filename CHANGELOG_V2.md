@@ -2,7 +2,32 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2-dev] - 2026-09-16 — Voice Echo Server Ingress Export Race Condition Fix
+## [v2-dev] - 2026-09-23 — MCP Automated Test Harness (Phase 2)
+
+### Added
+- **mcp-server/tests/**: Full Phase 2 test harness — nominal, regression, and invalid_args suites driven by `tools_manifest.yaml`
+- **tests/tools_manifest.yaml**: Ground-truth YAML describing all 81 MCP tools (args, expected_keys, timeout class, size budget, skip flags)
+- **tests/mock_stigix_node.py**: FastAPI mock Stigix node (nominal + canary) with schema-compliant responses for all endpoints
+- **tests/test_mcp_nominal.py**: Happy-path contract tests — 79 passed, 2 skipped (state-dependent tools)
+- **tests/report_generator.py**: JSON scorecard + per-tool HTML report generated after each run
+- **skip_nominal / skip_reason**: Manifest flags to gracefully skip state-dependent tools (visible as SKIPPED in pytest output)
+- **docs/MCP_SERVER.md**: New 'Automated Test Harness' section documenting architecture, usage, and manifest field reference
+
+### Fixed
+- **server.py get_vyos_interfaces**: Iteration bug — loop was iterating over dict keys of the orchestrator's {'routers': [...]} wrapper instead of the router list, causing AttributeError
+
+## [v2-dev] - 2026-09-20 — In-App AI Copilot (BYOK Anthropic Claude) & Claude Sonnet 4.5 Integration
+
+### Added
+- **In-App AI Copilot with BYOK Architecture (Bring Your Own Key)** 🤖:
+  - **Dedicated AI Copilot Tab & Conversation Drawer**: Multi-session conversational interface with instant session creation, auto-titling, starter prompts, and persistent local storage (`config/ai-sessions.json`).
+  - **Zero-Log & Local Secure Key Storage**: User API key stored securely in `config/ai-config.json` (mode `0600`) with in-UI masking (`sk-ant-api••••••••••••xxxx`).
+  - **Direct Anthropic Messages API Streaming (SSE)**: Server-Sent Events endpoint (`POST /api/copilot/chat`) streaming incremental responses directly to the frontend.
+  - **Full MCP Parity & Tool Execution Engine**: AI Agent capabilities executing local diagnostics and configuration changes in complete parity with the MCP Server: `list_endpoints`, `get_mesh_status`, `get_traffic_stats`, `get_security_posture`, `get_digital_experience`, `add_dem_probe`, `remove_dem_probe`, `add_fabric_target`, `remove_fabric_target`, `vyos_chaos`, `run_security_url_test`, `run_security_dns_test`, `run_security_threat_test`, and `get_recent_logs`.
+  - **Frontier Model Support**: Integrated Anthropic active models catalog with **Claude Sonnet 4.5** (`claude-sonnet-4-5-20250929`), **Claude Haiku 4.5** (`claude-haiku-4-5-20251001`), **Claude Sonnet 4.6**, **Claude Sonnet 5**, and **Claude Opus 4.5**.
+  - **Settings Integration & Conditional UI Masking**: Dedicated **AI & Copilot** tab in Settings with 1-click API key validation test against Anthropic `/v1/models` and default model selector. When no key is configured, Copilot tabs, drawer trigger, and floating buttons are cleanly hidden from the UI until a key is added.
+
+---
 
 ### Fixed
 - **Voice Echo Ingress Session Export (`engines/echo_server.py`)** 🛡️:

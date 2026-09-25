@@ -350,12 +350,19 @@ def receiver_thread(sock, metrics: ConvergenceMetrics, stop_event):
             break
 
 
+def _atomic_write_json(file_path: str, data: dict):
+    """Write JSON atomically using a temporary file and os.replace to prevent readers from seeing empty/truncated files."""
+    tmp_path = f"{file_path}.tmp.{os.getpid()}"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    os.replace(tmp_path, file_path)
+
+
 def stats_writer_thread(metrics: ConvergenceMetrics, stats_file: str, stop_event):
     while not stop_event.is_set():
         stats = metrics.get_stats(is_running=True)
         try:
-            with open(stats_file, "w") as f:
-                json.dump(stats, f)
+            _atomic_write_json(stats_file, stats)
         except Exception:
             pass
         time.sleep(0.2)
@@ -568,8 +575,7 @@ if __name__ == "__main__":
 
         final_stats = metrics.get_stats(is_running=False)
         try:
-            with open(args.stats_file, "w") as f:
-                json.dump(final_stats, f)
+            _atomic_write_json(args.stats_file, final_stats)
         except Exception as e:
             debug_log(f"{log_id} STATS_WRITE_ERROR err={e}")
 

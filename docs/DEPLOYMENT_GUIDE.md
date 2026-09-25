@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-06-02 | **Created:** 2026-06-02 (v1.4.0-patch.145)
+
 # Stigix Network & System Deployment Guide
 
 This guide provides network and system engineers with a step-by-step blueprint for deploying **Stigix** across diverse infrastructure environments. Stigix is designed to test and validate SD-WAN path selection, security efficacy, application experience (DEM), and failover convergence.

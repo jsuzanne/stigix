@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-01-30 | **Created:** 2026-01-30 (v1.1.2-patch.33.7)
+
 # 📡 Smart Networking & Host Mode Architecture
 
 Learn how the SD-WAN Traffic Generator automatically adapts to your lab network.

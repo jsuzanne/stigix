@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-06-01 | **Created:** 2026-06-01 (v1.4.0-patch.138)
+
 # 🛣️ Prisma SD-WAN Flow Browser Query Engine (`getflow.py`)
 
 The `getflow.py` script (located in the `engines/` directory) is a high-performance Python CLI utility that connects to the **Palo Alto Networks Prisma SASE (SD-WAN) API** using the official Prisma SASE SDK. 

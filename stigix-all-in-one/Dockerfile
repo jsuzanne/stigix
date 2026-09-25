@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     iproute2 \
     iputils-ping \
+    iputils-tracepath \
+    traceroute \
     dnsutils \
     netcat-openbsd \
     iperf3 \
@@ -93,12 +95,18 @@ COPY web-dashboard/local-registry-server.ts ./
 COPY web-dashboard/provisioning-manager.ts ./
 COPY web-dashboard/underlay-topology-manager.ts ./
 COPY web-dashboard/custom-tcp-apps ./custom-tcp-apps
+COPY web-dashboard/ai-copilot ./ai-copilot
 COPY web-dashboard/shared ./shared
 COPY web-dashboard/utils ./utils
 COPY web-dashboard/src/types ./src/types
 COPY web-dashboard/tsconfig.json ./
 COPY --from=builder /app/VERSION ./VERSION
 ARG VERSION
+ARG GIT_COMMIT
+ARG BUILD_DATE
+ENV STIGIX_VERSION=${VERSION}
+ENV GIT_COMMIT=${GIT_COMMIT}
+ENV BUILD_DATE=${BUILD_DATE}
 RUN if [ -n "$VERSION" ]; then echo "$VERSION" > VERSION; fi
 
 # Copy components

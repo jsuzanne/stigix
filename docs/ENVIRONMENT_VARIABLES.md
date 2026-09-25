@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-04-23 | **Created:** 2026-03-17 (v1.2.1-patch.236)
+
 # Stigix Environment Variables Reference
 
 This document lists all environment variables supported by the Stigix All-in-One container.

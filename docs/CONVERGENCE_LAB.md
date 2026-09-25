@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-05 | **Created:** 2026-01-25 (v1.1.0-patch.94)
+
 # Convergence Lab: SD-WAN Failover & Performance Probing
 
 The **Convergence Lab (Failover Monitoring)** is a high-precision diagnostic and PoC validation engine designed to measure network failover times (convergence), sub-second blackouts, and directional packet loss. It is specifically optimized for validating SD-WAN tunnel steering, circuit transitions, and SASE policy failover.

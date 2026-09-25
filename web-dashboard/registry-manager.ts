@@ -203,6 +203,10 @@ export class RegistryManager {
         return process.env.STIGIX_SITE_NAME || os.hostname();
     }
 
+    public getCurrentIp(): string {
+        return this.currentIp || '127.0.0.1';
+    }
+
     private loadStats() {
         try {
             if (fs.existsSync(this.statsFile)) {
@@ -515,14 +519,25 @@ export class RegistryManager {
         const config = this.client.getConfig();
         const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
 
-        // 1. Peer Recovery: If using Remote, try to find a Local Leader
-        if (mode === 'peer' && config.registryUrl === config.remoteUrl && !this.staticLeaderUrl) {
-            const connected = await this.tryConnectToLocalLeader();
-            if (!connected) {
-                // Safeguard: If no leader is found, do NOT register (POST) to Cloudflare.
-                // This ensures Cloudflare is only contacted in READ ONLY mode (findLeader/fetchInstances).
-                log('REGISTRY', `No local leader found. Skipping registration to save Cloudflare KV Quota.`);
-                return;
+        // 1. Peer Recovery: If using Remote, try to reconnect to the leader
+        if (mode === 'peer' && config.registryUrl === config.remoteUrl) {
+            if (this.staticLeaderUrl) {
+                // Static leader configured: retry it directly instead of going through Cloudflare.
+                // This handles the case where a transient startup failure caused resetToRemote(),
+                // leaving the node stuck with no way back to the static leader.
+                log('REGISTRY', `Peer on remote fallback but staticLeaderUrl is set. Re-connecting to ${this.staticLeaderUrl}...`);
+                this.client.setLocalRegistryByUrl(this.staticLeaderUrl);
+                let displayName = 'static';
+                try { displayName = new URL(this.staticLeaderUrl).hostname; } catch {}
+                this.leaderInfo = { ip: displayName, id: displayName };
+            } else {
+                const connected = await this.tryConnectToLocalLeader();
+                if (!connected) {
+                    // Safeguard: If no leader is found, do NOT register (POST) to Cloudflare.
+                    // This ensures Cloudflare is only contacted in READ ONLY mode (findLeader/fetchInstances).
+                    log('REGISTRY', `No local leader found. Skipping registration to save Cloudflare KV Quota.`);
+                    return;
+                }
             }
         }
 
@@ -575,9 +590,18 @@ export class RegistryManager {
         const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
 
         // 1. Recovery Check: If on Fallback, try to find the Leader in the discovery phase
-        // (Discovery is 30s vs Heartbeat 300s, so this makes recovery much faster)
+        // (Discovery is 30s/120s vs Heartbeat 300s, so this makes recovery much faster)
         if (mode === 'peer' && config.registryUrl === config.remoteUrl) {
-            await this.tryConnectToLocalLeader();
+            if (this.staticLeaderUrl) {
+                // Static URL configured: bypass Cloudflare findLeader() and reconnect directly.
+                log('REGISTRY', `Discovery: peer on remote fallback with staticLeaderUrl. Reconnecting directly...`);
+                this.client.setLocalRegistryByUrl(this.staticLeaderUrl);
+                let displayName = 'static';
+                try { displayName = new URL(this.staticLeaderUrl).hostname; } catch {}
+                this.leaderInfo = { ip: displayName, id: displayName };
+            } else {
+                await this.tryConnectToLocalLeader();
+            }
         }
 
         const instances = await this.client.fetchInstances();

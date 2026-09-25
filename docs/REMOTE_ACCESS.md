@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-04-16 | **Created:** 2026-01-26 (v1.1.2-patch.2)
+
 # Remote Access Guidelines
 
 Accessing your SD-WAN Traffic Generator dashboard securely is critical, especially when deploying in lab environments, branches, or behind corporate firewalls.

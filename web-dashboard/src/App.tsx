@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { LineChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
+import { AreaChart, LineChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Statistics from './Statistics';
 import Security from './Security';
 import Voice from './Voice';
@@ -13,9 +13,10 @@ import Speedtest from './Speedtest';
 import Topology from './Topology';
 import LiveEvents from './LiveEvents';
 import { CustomApps } from './CustomApps';
+import Copilot from './Copilot';
 import { SystemHealthBadge } from './components/health/SystemHealthBadge';
 import { SystemHealthModal } from './components/health/SystemHealthModal';
-import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code } from 'lucide-react';
+import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Toaster } from 'react-hot-toast';
@@ -58,12 +59,40 @@ interface SiteInfo {
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
-  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'api_studio'>(
+  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'api_studio' | 'copilot'>(
     (localStorage.getItem('activeView') as any) || 'performance'
   );
 
   const [features, setFeatures] = useState<{ xfr_enabled: boolean }>({ xfr_enabled: false });
   const [initialSettingsTab, setInitialSettingsTab] = useState<any>(null);
+  const [copilotDrawerOpen, setCopilotDrawerOpen] = useState(false);
+  const [copilotConfig, setCopilotConfig] = useState<{ enabled: boolean; featureEnabled?: boolean; hasKey: boolean } | null>(null);
+
+  const fetchCopilotConfig = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/copilot/config', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setCopilotConfig(data);
+      }
+    } catch (e) { }
+  };
+
+  // Global shortcut to toggle AI Copilot drawer (Cmd+J / Ctrl+J or Escape to close)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
+        if (!copilotConfig?.featureEnabled || !copilotConfig?.hasKey) return; // Only toggle if feature is enabled and key is configured
+        e.preventDefault();
+        setCopilotDrawerOpen(prev => !prev);
+      } else if (e.key === 'Escape' && copilotDrawerOpen) {
+        setCopilotDrawerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [copilotDrawerOpen, copilotConfig?.featureEnabled, copilotConfig?.hasKey]);
 
   // --- Theme Management ---
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -161,6 +190,17 @@ export default function App() {
       return parseFloat(localStorage.getItem('stigix_rpm_cache') || '0');
     } catch { return 0; }
   });
+
+  const trafficMetrics = useMemo(() => {
+    if (!history || history.length === 0) {
+      return { avg: 0, peak: 0, current: Math.round(currentRpm) || 0 };
+    }
+    const values = history.map((h: any) => Number(h.requests) || 0);
+    const peak = values.length > 0 ? Math.max(...values) : 0;
+    const nonZero = values.filter((v: number) => v > 0);
+    const avg = nonZero.length > 0 ? Math.round(nonZero.reduce((a: number, b: number) => a + b, 0) / nonZero.length) : 0;
+    return { avg, peak, current: Math.round(currentRpm) || 0 };
+  }, [history, currentRpm]);
 
   const addUser = async () => {
     if (!token) return;
@@ -639,6 +679,7 @@ export default function App() {
     fetchHistory();
     fetchFeatures();
     fetchHealthMatrix();
+    fetchCopilotConfig();
 
     // Core 3s polling — always on, not restarted on tab changes
     const interval = setInterval(() => {
@@ -754,7 +795,25 @@ export default function App() {
 
 
 
-        <div className="flex gap-4 items-center">
+        <div className="flex gap-3 items-center">
+          {/* Quick Copilot Trigger Button (only visible if feature enabled and Anthropic API key is configured) */}
+          {copilotConfig?.featureEnabled && copilotConfig?.hasKey && (
+            <button
+              onClick={() => setCopilotDrawerOpen(prev => !prev)}
+              title="Toggle Stigix AI Copilot (⌘J)"
+              className={cn(
+                "px-3 py-1.5 rounded-xl border flex items-center gap-2 text-xs font-black transition-all shadow-sm",
+                copilotDrawerOpen
+                  ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-transparent shadow-blue-500/20"
+                  : "bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border-border"
+              )}
+            >
+              <Bot size={15} className={copilotDrawerOpen ? "text-white" : "text-indigo-400"} />
+              <span className="hidden md:inline">AI Copilot</span>
+              <span className="px-1 py-0.2 rounded text-[8px] font-mono bg-black/20 text-text-muted border border-white/10">⌘J</span>
+            </button>
+          )}
+
           <SystemHealthBadge
             healthData={healthData}
             isLoading={isHealthLoading}
@@ -1027,6 +1086,18 @@ export default function App() {
           <Terminal size={18} /> Live Events
           <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Stream live real-time network and security events</span>
         </button>
+        {copilotConfig?.featureEnabled && copilotConfig?.hasKey && (
+          <button
+            onClick={() => setView('copilot')}
+            className={cn(
+              "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
+              view === 'copilot' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
+            )}
+          >
+            <Bot size={18} /> AI Copilot <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">AI</span>
+            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Interactive Conversational Assistant (BYOK Claude) with multi-tool orchestration</span>
+          </button>
+        )}
         {/* SRT Tab hidden in v1.1.2-patch.28 */}
         {username === 'admin' && (
           <button
@@ -1082,12 +1153,12 @@ export default function App() {
                       {trafficRate < 1 ? `${Math.round(trafficRate * 1000)}ms` : `${trafficRate}s`} delay · x{trafficClientCount} parallel
                     </span>
                   </div>
-                  <div className="w-full grid grid-cols-4 gap-1 bg-card rounded-md border border-border p-1">
+                  <div className="w-full grid grid-cols-4 gap-1.5 bg-card/60 rounded-xl border border-border p-1.5 backdrop-blur-sm">
                     {([
-                      { id: 'minimal', label: 'Minimal', sub: '~1 req/s', rate: 1.0, clients: 1 },
-                      { id: 'moderate', label: 'Moderate', sub: '~7 req/s', rate: 0.3, clients: 2 },
-                      { id: 'high', label: 'High Load', sub: '~40 req/s', rate: 0.1, clients: 4 },
-                      { id: 'stress', label: 'Stress', sub: '~160 req/s', rate: 0.05, clients: 8 },
+                      { id: 'minimal', label: 'Minimal', sub: '~1 req/s', rate: 1.0, clients: 1, activeClass: 'bg-blue-600 text-white shadow-md shadow-blue-500/30 ring-1 ring-blue-400', hoverClass: 'hover:bg-blue-500/10 hover:text-blue-400' },
+                      { id: 'moderate', label: 'Moderate', sub: '~7 req/s', rate: 0.3, clients: 2, activeClass: 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30 ring-1 ring-indigo-400', hoverClass: 'hover:bg-indigo-500/10 hover:text-indigo-400' },
+                      { id: 'high', label: 'High Load', sub: '~40 req/s', rate: 0.1, clients: 4, activeClass: 'bg-amber-600 text-white shadow-md shadow-amber-500/30 ring-1 ring-amber-400', hoverClass: 'hover:bg-amber-500/10 hover:text-amber-400' },
+                      { id: 'stress', label: 'Stress ⚡', sub: '~160 req/s', rate: 0.05, clients: 8, activeClass: 'bg-gradient-to-r from-rose-600 to-red-600 text-white shadow-lg shadow-rose-500/40 ring-1 ring-rose-400 animate-pulse', hoverClass: 'hover:bg-rose-500/10 hover:text-rose-400' },
                     ] as const).map((preset) => {
                       const presets = [
                         { id: 'minimal', rate: 1.0, clients: 1 },
@@ -1108,14 +1179,14 @@ export default function App() {
                           disabled={updatingRate}
                           onClick={() => updateTrafficSettings(preset.rate, preset.clients)}
                           className={cn(
-                            'flex flex-col items-center justify-center py-1.5 px-2 rounded text-center transition-all disabled:cursor-not-allowed',
+                            'flex flex-col items-center justify-center py-2 px-2.5 rounded-lg text-center transition-all disabled:cursor-not-allowed border border-transparent',
                             isClosest
-                              ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400/50'
-                              : 'text-text-muted hover:text-text-primary hover:bg-card-secondary/60'
+                              ? preset.activeClass
+                              : cn('text-text-muted hover:text-text-primary hover:bg-card-secondary/60', preset.hoverClass)
                           )}
                         >
                           <span className="text-[10px] font-black tracking-tight leading-tight">{preset.label}</span>
-                          <span className={cn('text-[8px] font-mono leading-tight', isClosest ? 'text-blue-100' : 'text-text-muted/60')}>
+                          <span className={cn('text-[8px] font-mono leading-tight mt-0.5', isClosest ? 'text-white/80' : 'text-text-muted/70')}>
                             {preset.sub}
                           </span>
                         </button>
@@ -1129,13 +1200,24 @@ export default function App() {
                   onClick={handleTrafficToggle}
                   disabled={!configValid}
                   className={cn(
-                    "px-6 py-3 rounded-lg font-black tracking-widest text-xs transition-all shadow-lg flex items-center gap-2 min-w-[170px] justify-center",
+                    "px-6 py-3 rounded-xl font-black tracking-widest text-xs transition-all shadow-lg flex items-center gap-2.5 min-w-[170px] justify-center group",
                     trafficRunning
-                      ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/30 ring-2 ring-red-500/40 ring-offset-2 ring-offset-card animate-pulse'
-                      : 'bg-green-600 hover:bg-green-500 text-white shadow-green-500/20 border-transparent disabled:bg-card-secondary disabled:text-text-muted disabled:border-border disabled:shadow-none disabled:cursor-not-allowed opacity-80 disabled:opacity-50'
+                      ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-red-500/30 ring-2 ring-red-500/40 ring-offset-2 ring-offset-card'
+                      : 'bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white shadow-emerald-500/20 disabled:from-card-secondary disabled:to-card-secondary disabled:text-text-muted disabled:border-border disabled:shadow-none disabled:cursor-not-allowed opacity-90 disabled:opacity-50'
                   )}
                 >
-                  {trafficRunning ? <><Pause size={18} fill="currentColor" /> Stop Traffic</> : <><Play size={18} fill="currentColor" /> Start Traffic</>}
+                  {trafficRunning ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-white animate-ping mr-1" />
+                      <Pause size={16} fill="currentColor" />
+                      Stop Traffic
+                    </>
+                  ) : (
+                    <>
+                      <Play size={16} fill="currentColor" className="group-hover:translate-x-0.5 transition-transform" />
+                      Start Traffic
+                    </>
+                  )}
                 </button>
               </div>
 
@@ -1180,26 +1262,26 @@ export default function App() {
                     </div>
                   )}
                 </h3>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5">
                   <button
                     onClick={runSpeedtest}
                     disabled={runningSpeedtest}
                     className={cn(
                       "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all shadow-sm border",
                       runningSpeedtest
-                        ? "bg-blue-500/5 text-blue-400 border-blue-500/20 cursor-not-allowed"
-                        : "bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary border-border"
+                        ? "bg-blue-500/10 text-blue-400 border-blue-500/30 cursor-not-allowed"
+                        : "bg-card-secondary hover:bg-card-hover hover:border-blue-500/30 text-text-muted hover:text-text-primary border-border"
                     )}
                   >
-                    <Globe size={14} className={runningSpeedtest ? "animate-spin" : ""} />
+                    <Gauge size={13} className={cn("text-blue-400", runningSpeedtest ? "animate-spin" : "")} />
                     {runningSpeedtest ? 'Testing...' : 'Internet Speedtest'}
                   </button>
 
                   <button
                     onClick={() => setShowIperfModal(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary border border-border transition-all shadow-sm"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest bg-card-secondary hover:bg-card-hover hover:border-purple-500/30 text-text-muted hover:text-text-primary border border-border transition-all shadow-sm"
                   >
-                    <Activity size={14} />
+                    <Activity size={13} className="text-purple-400" />
                     Iperf Client
                   </button>
 
@@ -1207,13 +1289,13 @@ export default function App() {
                     onClick={() => setView('settings')}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest bg-blue-600/10 hover:bg-blue-600/20 text-blue-700 dark:text-blue-300 border border-blue-500/20 transition-all shadow-sm"
                   >
-                    <Plus size={14} />
+                    <Sliders size={13} />
                     Manage
                   </button>
 
                   <button
                     onClick={() => setNetworkExpanded(!networkExpanded)}
-                    className="text-text-muted hover:text-text-primary transition-colors ml-2"
+                    className="text-text-muted hover:text-text-primary transition-colors ml-1 p-1 hover:bg-card-secondary rounded-lg"
                   >
                     <ChevronDown size={18} className={`transform transition-transform ${networkExpanded ? 'rotate-180' : ''}`} />
                   </button>
@@ -1417,41 +1499,74 @@ export default function App() {
                 title="Traffic Rate"
                 value={`${Math.round(currentRpm)}`}
                 icon={<Activity />}
-                subValue="req/min"
+                subValue="req/min · live rate"
+                accentColor="cyan"
               />
               <Card
                 title="Success Rate"
                 value={`${successRate}%`}
                 icon={<CheckCircle />}
-                subValue={`${totalErrors} errors`}
+                subValue={totalErrors === 0 ? "100% operational" : `${totalErrors} errors logged`}
+                accentColor={parseFloat(successRate) >= 95 ? "emerald" : parseFloat(successRate) >= 85 ? "amber" : "rose"}
+                progress={parseFloat(successRate) || 0}
               />
               <Card
                 title="Active Apps"
                 value={stats ? Object.keys(stats.requests_by_app).length : 0}
                 icon={<LayoutDashboard />}
+                subValue="endpoints active"
+                accentColor="purple"
+                progress={stats ? Math.min(100, (Object.keys(stats.requests_by_app).length / 68) * 100) : 0}
               />
               <Card
                 title="Total Requests"
                 value={stats?.total_requests?.toLocaleString() || 0}
                 icon={<Server />}
+                subValue="session cumulative"
+                accentColor="blue"
               />
               <Card
                 title="Total Errors"
                 value={totalErrors.toLocaleString()}
                 icon={<AlertCircle />}
+                subValue={totalErrors === 0 ? "0 dropped streams" : "attention required"}
+                accentColor={totalErrors === 0 ? "emerald" : "rose"}
               />
             </div>
 
             {/* Main Chart */}
             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-center mb-6">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
-                    <BarChart3 size={20} />
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
+                      <BarChart3 size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-text-primary tracking-tight">Traffic Volume</h3>
+                      <p className="text-[10px] text-text-muted font-bold uppercase tracking-wider">SaaS & WAN Real-Time Monitor</p>
+                    </div>
                   </div>
-                  <h3 className="text-lg font-black text-text-primary tracking-tight">Traffic Volume</h3>
+
+                  {/* Summary Metric Pills */}
+                  <div className="flex items-center gap-2 sm:ml-3 sm:pl-3 sm:border-l sm:border-border/50">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                      <span className="text-[10px] uppercase font-black text-blue-400 tracking-wider">Rate:</span>
+                      <span className="font-mono font-black text-blue-300">{Math.round(currentRpm)} <span className="text-[9px] font-normal text-text-muted">req/min</span></span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card-secondary/50 border border-border text-xs">
+                      <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Avg:</span>
+                      <span className="font-mono font-bold text-text-primary">{trafficMetrics.avg} <span className="text-[9px] font-normal text-text-muted">req/min</span></span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card-secondary/50 border border-border text-xs">
+                      <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Peak:</span>
+                      <span className="font-mono font-bold text-amber-400">{trafficMetrics.peak} <span className="text-[9px] font-normal text-text-muted">req/min</span></span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex bg-card-secondary/20 p-1 rounded-xl border border-border">
+
+                <div className="flex bg-card-secondary/20 p-1 rounded-xl border border-border self-end sm:self-auto">
                   {(['1h', '6h', '24h'] as const).map((range) => (
                     <button
                       key={range}
@@ -1468,6 +1583,7 @@ export default function App() {
                   ))}
                 </div>
               </div>
+
               <div className="h-[300px] w-full relative">
                 {isHistoryLoading && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm z-10 rounded-xl">
@@ -1478,14 +1594,15 @@ export default function App() {
                   </div>
                 )}
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={history}>
+                  <AreaChart data={history}>
                     <defs>
-                      <linearGradient id="colorRequests" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                      <linearGradient id="colorRequestsGlow" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.38} />
+                        <stop offset="60%" stopColor="#3b82f6" stopOpacity={0.08} />
+                        <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
                     <XAxis
                       dataKey="time"
                       tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }}
@@ -1509,36 +1626,48 @@ export default function App() {
                       }}
                     />
                     <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        borderRadius: '12px',
-                        fontSize: '11px',
-                        color: '#fff',
-                        backdropFilter: 'blur(8px)',
-                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)'
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          const reqs = payload[0].value;
+                          return (
+                            <div className="bg-slate-950/95 border border-blue-500/30 backdrop-blur-xl rounded-xl p-3 shadow-2xl shadow-blue-950/50 text-xs min-w-[170px]">
+                              <div className="flex items-center justify-between gap-3 pb-2 mb-2 border-b border-white/10">
+                                <span className="text-slate-400 font-mono text-[11px] font-semibold">{label || data.time}</span>
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-500/20 text-blue-400 text-[9px] font-black uppercase tracking-wider">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                                  Live
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-4 py-1">
+                                <span className="text-slate-300 font-medium text-[11px]">Traffic Rate:</span>
+                                <span className="text-blue-400 font-mono font-black text-sm">{reqs} <span className="text-[10px] text-slate-400 font-normal">req/min</span></span>
+                              </div>
+                              {data.total !== undefined && (
+                                <div className="flex items-center justify-between gap-4 pt-1 border-t border-white/5 text-[11px] text-slate-400">
+                                  <span>Cumulative:</span>
+                                  <span className="font-mono font-bold text-slate-200">{Number(data.total).toLocaleString()} reqs</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
                       }}
-                      itemStyle={{ color: '#3b82f6', fontWeight: 'bold' }}
                       cursor={{ stroke: '#3b82f6', strokeWidth: 1, strokeDasharray: '4 4' }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="requests"
-                      stroke="#3b82f6"
-                      strokeWidth={3}
-                      dot={false}
-                      activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: '#3b82f6' }}
-                      name="Requests/Min"
-                      isAnimationActive={false}
                     />
                     <Area
                       type="monotone"
                       dataKey="requests"
-                      stroke="none"
-                      fill="url(#colorRequests)"
+                      stroke="#3b82f6"
+                      strokeWidth={2.5}
                       fillOpacity={1}
+                      fill="url(#colorRequestsGlow)"
+                      activeDot={{ r: 5, stroke: '#93c5fd', strokeWidth: 2, fill: '#1d4ed8' }}
+                      name="Traffic Rate"
+                      isAnimationActive={false}
                     />
-                  </LineChart>
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
             </div>
@@ -1593,10 +1722,58 @@ export default function App() {
       {view === 'iot' && <Iot token={token!} />}
       {view === 'voice' && <Voice token={token!} externalStatus={globalVoiceStatus} />}
       {(view === 'failover' || view === 'convergence') && <Failover token={token!} externalStatus={globalConvStatus} />}
-      {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} initialTab={initialSettingsTab} />}
+      {view === 'settings' && <SettingsComponent token={token!} uiConfig={uiConfig} onUpdateUIConfig={fetchConfigUi} onUpdateCopilotConfig={fetchCopilotConfig} initialTab={initialSettingsTab} />}
       {view === 'custom_apps' && <CustomApps token={token!} />}
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
+      {copilotConfig?.featureEnabled && copilotConfig?.hasKey && view === 'copilot' && <Copilot token={token!} onOpenSettings={() => { setInitialSettingsTab('mcp'); setView('settings'); }} />}
+
+      {/* ── Global Floating Copilot Trigger Button (Visible on all tabs only when feature enabled & API key configured) ── */}
+      {copilotConfig?.featureEnabled && copilotConfig?.hasKey && view !== 'copilot' && !copilotDrawerOpen && (
+        <button
+          onClick={() => setCopilotDrawerOpen(true)}
+          title="Open Stigix AI Copilot Assistant (⌘J)"
+          className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-2xl shadow-indigo-600/30 border border-white/20 rounded-full px-4 py-2.5 flex items-center gap-2.5 text-xs font-black tracking-wider transition-all duration-300 hover:scale-105 active:scale-95 group backdrop-blur-md"
+        >
+          <div className="relative">
+            <Bot size={18} className="text-white group-hover:rotate-12 transition-transform" />
+            <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
+            <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full" />
+          </div>
+          <span>AI Copilot</span>
+          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/20 text-white/90 border border-white/20">⌘J</span>
+        </button>
+      )}
+
+      {/* ── Slide-Over AI Copilot Drawer (Side Panel) ── */}
+      {copilotConfig?.featureEnabled && copilotConfig?.hasKey && copilotDrawerOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden">
+          {/* Semi-transparent Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+            onClick={() => setCopilotDrawerOpen(false)}
+          />
+          {/* Slide-Over Side Panel */}
+          <div className="absolute inset-y-0 right-0 max-w-full flex pl-4 sm:pl-10">
+            <div className="w-screen max-w-3xl md:max-w-4xl lg:max-w-5xl bg-card border-l border-border shadow-2xl flex flex-col">
+              <Copilot
+                token={token!}
+                isDrawer={true}
+                onClose={() => setCopilotDrawerOpen(false)}
+                onExpandFullscreen={() => {
+                  setCopilotDrawerOpen(false);
+                  setView('copilot');
+                }}
+                onOpenSettings={() => {
+                  setCopilotDrawerOpen(false);
+                  setInitialSettingsTab('mcp');
+                  setView('settings');
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       <SystemHealthModal
         isOpen={showHealthModal}
@@ -1613,23 +1790,111 @@ export default function App() {
   );
 }
 
-function Card({ title, value, icon, subValue }: { title: string, value: string | number, icon: React.ReactNode, subValue?: string }) {
+function Card({
+  title,
+  value,
+  icon,
+  subValue,
+  accentColor = 'blue',
+  progress
+}: {
+  title: string;
+  value: string | number;
+  icon: React.ReactNode;
+  subValue?: string;
+  accentColor?: 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'cyan';
+  progress?: number;
+}) {
+  const colorMap = {
+    blue: {
+      border: 'hover:border-blue-500/40',
+      iconBg: 'bg-blue-500/10 text-blue-400',
+      glow: 'from-blue-500/5',
+      text: 'text-blue-400',
+      bar: 'bg-blue-500'
+    },
+    cyan: {
+      border: 'hover:border-cyan-500/40',
+      iconBg: 'bg-cyan-500/10 text-cyan-400',
+      glow: 'from-cyan-500/5',
+      text: 'text-cyan-400',
+      bar: 'bg-cyan-500'
+    },
+    emerald: {
+      border: 'hover:border-emerald-500/40',
+      iconBg: 'bg-emerald-500/10 text-emerald-400',
+      glow: 'from-emerald-500/5',
+      text: 'text-emerald-400',
+      bar: 'bg-emerald-500'
+    },
+    amber: {
+      border: 'hover:border-amber-500/40',
+      iconBg: 'bg-amber-500/10 text-amber-400',
+      glow: 'from-amber-500/5',
+      text: 'text-amber-400',
+      bar: 'bg-amber-500'
+    },
+    rose: {
+      border: 'hover:border-rose-500/40',
+      iconBg: 'bg-rose-500/10 text-rose-400',
+      glow: 'from-rose-500/5',
+      text: 'text-rose-400',
+      bar: 'bg-rose-500'
+    },
+    purple: {
+      border: 'hover:border-purple-500/40',
+      iconBg: 'bg-purple-500/10 text-purple-400',
+      glow: 'from-purple-500/5',
+      text: 'text-purple-400',
+      bar: 'bg-purple-500'
+    }
+  };
+
+  const theme = colorMap[accentColor] || colorMap.blue;
+
   return (
-    <div className="bg-card border border-border p-6 rounded-xl relative overflow-hidden group shadow-sm hover:shadow-md transition-shadow">
-      <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity transform scale-150">
+    <div className={cn(
+      "bg-card border border-border p-5 rounded-2xl relative overflow-hidden group shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between",
+      theme.border
+    )}>
+      {/* Background Top Gradient Glow */}
+      <div className={cn("absolute inset-0 bg-gradient-to-b to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none", theme.glow)} />
+
+      {/* Large Background Watermark Icon */}
+      <div className="absolute -top-1 -right-1 p-4 opacity-5 group-hover:opacity-15 transition-all duration-500 transform group-hover:scale-110 pointer-events-none text-text-primary">
         {/* @ts-ignore */}
-        {React.cloneElement(icon as React.ReactElement, { size: 48 })}
+        {React.cloneElement(icon as React.ReactElement, { size: 64 })}
       </div>
-      <div className="flex items-center gap-3 mb-2 text-text-muted">
-        {icon}
-        <span className="font-medium text-sm text-text-muted">{title}</span>
+
+      <div>
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <div className={cn("p-1.5 rounded-lg transition-colors duration-300", theme.iconBg)}>
+              {/* @ts-ignore */}
+              {React.cloneElement(icon as React.ReactElement, { size: 16 })}
+            </div>
+            <span className="font-bold text-xs uppercase tracking-wider text-text-muted">{title}</span>
+          </div>
+        </div>
+
+        <div className="text-3xl font-black text-text-primary tracking-tight font-mono">
+          {value}
+        </div>
       </div>
-      <div className="text-3xl font-bold text-text-primary">
-        {value}
+
+      <div className="mt-3 pt-2 border-t border-border/40 flex items-center justify-between text-xs">
+        {subValue && (
+          <span className="text-[11px] font-semibold text-text-muted">{subValue}</span>
+        )}
+        {progress !== undefined && (
+          <div className="w-20 h-1.5 bg-card-secondary rounded-full overflow-hidden ml-auto border border-border/40">
+            <div
+              className={cn("h-full transition-all duration-500 rounded-full", theme.bar)}
+              style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+            />
+          </div>
+        )}
       </div>
-      {subValue && (
-        <div className="text-sm text-text-muted mt-1">{subValue}</div>
-      )}
     </div>
   );
 }

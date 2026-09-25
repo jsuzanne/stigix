@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil } from 'lucide-react';
+import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine, ReferenceArea } from 'recharts';
 import { twMerge } from 'tailwind-merge';
+import { TracerouteModal } from './components/TracerouteModal';
 
 // ── Inline SVG sparkline (no recharts dependency) ───────────────────────────
 const Sparkline = ({ data, color, width = 80, height = 20 }: { data: number[]; color: string; width?: number; height?: number }) => {
@@ -43,6 +44,91 @@ const DonutRing = ({ pct, size = 34 }: { pct: number; size?: number }) => {
                 {pct}%
             </text>
         </svg>
+    );
+};
+
+// ── Circular Score Gauge for Global Experience ────────────────────────────
+const GlobalExperienceGauge = ({ score }: { score: number }) => {
+    const isOptimal = score >= 80;
+    const isGood = score >= 65 && score < 80;
+    const isDegraded = score >= 50 && score < 65;
+
+    const strokeColor = isOptimal 
+        ? '#10b981' // emerald-500
+        : isGood 
+        ? '#06b6d4' // cyan-500
+        : isDegraded 
+        ? '#f59e0b' // amber-500
+        : '#ef4444'; // red-500
+
+    const statusLabel = isOptimal 
+        ? 'OPTIMAL' 
+        : isGood 
+        ? 'GOOD' 
+        : isDegraded 
+        ? 'DEGRADED' 
+        : 'CRITICAL';
+
+    const statusBadgeClass = isOptimal 
+        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+        : isGood 
+        ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' 
+        : isDegraded 
+        ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' 
+        : 'bg-red-500/10 text-red-400 border-red-500/20';
+
+    const size = 132;
+    const stroke = 9;
+    const r = (size - stroke) / 2;
+    const circ = 2 * Math.PI * r;
+    const dash = (Math.max(0, Math.min(100, score)) / 100) * circ;
+    const cx = size / 2;
+    const cy = size / 2;
+
+    return (
+        <div className="flex flex-col items-center justify-center my-auto py-1">
+            <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+                <svg width={size} height={size} className="transform -rotate-90">
+                    <circle
+                        cx={cx}
+                        cy={cy}
+                        r={r}
+                        fill="none"
+                        stroke="rgba(255, 255, 255, 0.08)"
+                        strokeWidth={stroke}
+                    />
+                    <circle
+                        cx={cx}
+                        cy={cy}
+                        r={r}
+                        fill="none"
+                        stroke={strokeColor}
+                        strokeWidth={stroke}
+                        strokeDasharray={`${dash.toFixed(2)} ${circ.toFixed(2)}`}
+                        strokeLinecap="round"
+                        style={{
+                            transition: 'stroke-dasharray 0.8s ease-in-out, stroke 0.4s ease',
+                            filter: `drop-shadow(0 0 8px ${strokeColor}66)`
+                        }}
+                    />
+                </svg>
+
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
+                    <div className="flex items-baseline justify-center">
+                        <span className="text-4xl font-black font-mono tracking-normal text-text-primary">
+                            {score}
+                        </span>
+                        <span className="text-xs font-bold text-text-muted ml-1 opacity-60">/100</span>
+                    </div>
+                </div>
+            </div>
+
+            <div className="mt-3 flex items-center gap-1.5">
+                <span className={cn("px-3 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border", statusBadgeClass)}>
+                    {statusLabel}
+                </span>
+            </div>
+        </div>
     );
 };
 
@@ -181,21 +267,22 @@ function GlobalScoreTrendChart({ results, timeRange }: { results: any[]; timeRan
     }, [chartData]);
 
     if (!chartData.length) return (
-        <div className="h-[130px] flex items-center justify-center text-text-muted text-xs italic opacity-60">No data for this period</div>
+        <div className="h-full min-h-[160px] flex items-center justify-center text-text-muted text-xs italic opacity-60">No data for this period</div>
     );
     return (
-        <div className="h-[130px] w-full">
+        <div className="h-full w-full min-h-[170px] flex-1">
             <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 8, bottom: 0, left: -28 }}>
+                <AreaChart data={chartData} margin={{ top: 12, right: 12, bottom: 0, left: -24 }}>
                     <defs>
                         <linearGradient id="globalScoreGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                            <stop offset="0%" stopColor="#6366f1" stopOpacity={0.45} />
+                            <stop offset="60%" stopColor="#6366f1" stopOpacity={0.12} />
+                            <stop offset="100%" stopColor="#6366f1" stopOpacity={0.0} />
                         </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.4} vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} vertical={false} />
                     <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={9} tickLine={false} axisLine={false} />
-                    <YAxis domain={[0, 100]} stroke="var(--text-muted)" fontSize={9} tickLine={false} axisLine={false} width={32} />
+                    <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} stroke="var(--text-muted)" fontSize={9} tickLine={false} axisLine={false} width={30} />
                     <ReTooltip
                         contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.15)' }}
                         itemStyle={{ color: 'var(--text-primary)', fontSize: '11px', fontWeight: 'bold' }}
@@ -236,11 +323,11 @@ function GlobalScoreTrendChart({ results, timeRange }: { results: any[]; timeRan
                     <Area 
                         type="monotone" 
                         dataKey="score" 
-                        stroke="#6366f1" 
-                        strokeWidth={2} 
+                        stroke="#818cf8" 
+                        strokeWidth={2.5} 
                         fillOpacity={1} 
                         fill="url(#globalScoreGrad)" 
-                        dot={{ r: 3.5, stroke: '#6366f1', strokeWidth: 1.5, fill: 'var(--card)' }} 
+                        dot={{ r: 3.5, stroke: '#818cf8', strokeWidth: 1.5, fill: 'var(--card)' }} 
                         activeDot={{ r: 6, fill: '#6366f1', stroke: '#fff', strokeWidth: 2 }} 
                     />
                 </AreaChart>
@@ -315,6 +402,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
     const [editingProbe, setEditingProbe] = useState<any>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isSavingProbe, setIsSavingProbe] = useState(false);
+    const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
 
     const formatDisplayUrl = (endpoint: any) => {
         const target = endpoint.lastResult?.url || '';
@@ -576,6 +664,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 checks: endpointResults.length,
                 successRate: Math.round((reachable.length / endpointResults.length) * 100),
                 lastResult: last,
+                target: config?.target || last?.url || '',
                 enabled,
                 source: config?.source,
                 stale: config?.stale,
@@ -725,21 +814,19 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden flex flex-col xl:flex-row">
                     
                     {/* Left: Global Experience */}
-                    <div className="flex flex-col border-b xl:border-b-0 xl:border-r border-border bg-card-secondary/10 w-full xl:w-[250px] shrink-0">
+                    <div className="flex flex-col border-b xl:border-b-0 xl:border-r border-border bg-card-secondary/10 w-full xl:w-[275px] shrink-0">
                         <div className="flex items-center justify-center px-6 py-3 border-b border-border bg-card-secondary/40 h-[49px]">
                             <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
                                 <Gauge size={14} className="text-blue-500" /> Global Experience
                             </div>
                         </div>
-                        <div className="flex-1 p-6 flex flex-col items-center justify-center text-center">
+                        <div className="flex-1 p-5 flex flex-col items-center justify-center text-center">
                             {loadingStats ? (
-                                <div className="h-12 w-24 bg-card-secondary animate-pulse rounded-lg mb-1" />
+                                <div className="h-28 w-28 rounded-full bg-card-secondary animate-pulse my-auto" />
                             ) : (
-                                <div className={cn("text-5xl font-black mb-1 tracking-tighter", stats?.globalHealth >= 80 ? "text-green-600 dark:text-green-400" : stats?.globalHealth >= 50 ? "text-orange-500" : "text-red-500")}>
-                                    {stats?.globalHealth || 0}<span className="text-xl text-text-muted">/100</span>
-                                </div>
+                                <GlobalExperienceGauge score={stats?.globalHealth || 0} />
                             )}
-                            <div className="text-[10px] text-text-muted font-bold tracking-tight opacity-70 mt-1">Avg. Scoring across all probes</div>
+                            <div className="text-[10px] text-text-muted font-bold tracking-tight opacity-70 mt-2">Avg. Scoring across all probes</div>
                         </div>
                     </div>
 
@@ -759,29 +846,32 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 ))}
                             </div>
                         </div>
-                        <div className="px-6 pt-4 pb-3 flex-1 flex flex-col justify-end">
+                        <div className="p-4 flex-1 flex flex-col min-h-[195px]">
                             {loadingStats ? (
-                                <div className="h-[140px] flex items-center justify-center"><div className="w-full h-full bg-card-secondary animate-pulse rounded-xl" /></div>
+                                <div className="flex-1 flex items-center justify-center"><div className="w-full h-full bg-card-secondary animate-pulse rounded-xl" /></div>
                             ) : (
-                                <div className="h-[140px] w-full">
-                                    <GlobalScoreTrendChart results={results} timeRange={timeRange} />
-                                </div>
+                                <GlobalScoreTrendChart results={results} timeRange={timeRange} />
                             )}
                         </div>
                     </div>
 
                     {/* Right: Flaky Probes */}
-                    <div className="w-full xl:w-[320px] shrink-0 flex flex-col min-w-0">
+                    <div className="w-full xl:w-[340px] shrink-0 flex flex-col min-w-0">
                         <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-card-secondary/40 h-[49px]">
                             <div className="text-[10px] font-black text-text-muted uppercase tracking-widest flex items-center gap-2">
-                                <Flame size={14} className="text-orange-500" /> Flaky Probes
+                                <Flame size={14} className="text-orange-500" /> Unstable & Down Probes
                             </div>
+                            {stats?.flakyEndpoints?.length > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 text-[9px] font-mono font-bold">
+                                    {stats.flakyEndpoints.length}
+                                </span>
+                            )}
                         </div>
-                        <div className="p-5 space-y-2 overflow-y-auto flex-1 max-h-[250px] xl:max-h-none bg-card-secondary/5">
+                        <div className="p-3 space-y-2 overflow-y-auto flex-1 max-h-[250px] xl:max-h-none bg-card-secondary/5 scrollbar-thin">
                             {loadingStats ? (
                                 <>
-                                    <div className="h-8 bg-card-secondary animate-pulse rounded border border-border" />
-                                    <div className="h-8 bg-card-secondary animate-pulse rounded border border-border opacity-60" />
+                                    <div className="h-10 bg-card-secondary animate-pulse rounded-lg border border-border" />
+                                    <div className="h-10 bg-card-secondary animate-pulse rounded-lg border border-border opacity-60" />
                                 </>
                             ) : stats?.flakyEndpoints?.filter((e: any) => {
                                 if (activeProbes.length > 0 && !activeProbes.includes(e.id)) return false;
@@ -791,15 +881,64 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                     if (activeProbes.length > 0 && !activeProbes.includes(e.id)) return false;
                                     return true;
                                 })
-                                .map((e: any) => (
-                                    <div key={e.id} className="flex items-center justify-between gap-2 text-[11px] bg-red-500/5 border border-red-500/20 p-2 rounded-lg transition-colors hover:bg-red-500/10">
-                                        <span className="text-text-primary font-bold min-w-0 flex-1 truncate pr-2">{e.name}</span>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                            <span className="text-red-600 dark:text-red-400 font-black font-mono">{e.reliability}%</span>
+                                .map((e: any) => {
+                                    const isOffline = e.reliability === 0 || e.isDown;
+                                    const typeColor = e.type === 'PING' || e.type === 'ICMP' 
+                                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' 
+                                        : e.type === 'DNS' 
+                                        ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
+                                        : 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+
+                                    return (
+                                        <div 
+                                            key={e.id} 
+                                            onClick={() => {
+                                                const found = (endpoints || []).find((ep: any) => ep.id === e.id || ep.name === e.name);
+                                                if (found) {
+                                                    setSelectedEndpoint(found);
+                                                    setShowDetailModal(true);
+                                                }
+                                            }}
+                                            className={cn(
+                                                "p-2.5 rounded-xl border transition-all cursor-pointer group flex flex-col gap-1.5 shadow-sm",
+                                                isOffline 
+                                                    ? "bg-red-500/5 border-red-500/20 hover:border-red-500/40 hover:bg-red-500/10" 
+                                                    : "bg-amber-500/5 border-amber-500/20 hover:border-amber-500/40 hover:bg-amber-500/10"
+                                            )}
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                                    <span className={cn("px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border", typeColor)}>
+                                                        {e.type || 'HTTP'}
+                                                    </span>
+                                                    <span className="text-text-primary font-bold text-xs truncate group-hover:text-blue-400 transition-colors">
+                                                        {e.name}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                    <span className={cn(
+                                                        "px-1.5 py-0.5 rounded text-[9px] font-black font-mono uppercase tracking-wider border",
+                                                        isOffline 
+                                                            ? "bg-red-500/20 text-red-400 border-red-500/30" 
+                                                            : "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                                                    )}>
+                                                        {isOffline ? 'DOWN (0%)' : `${e.reliability}%`}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            {e.lastError && (
+                                                <div className="flex items-center gap-1 text-[10px] text-text-muted truncate font-mono pl-0.5">
+                                                    <AlertCircle size={10} className={isOffline ? "text-red-400 flex-shrink-0" : "text-amber-400 flex-shrink-0"} />
+                                                    <span className="truncate opacity-85">{e.lastError}</span>
+                                                </div>
+                                            )}
                                         </div>
-                                    </div>
-                                )) : (
-                                <div className="text-xs text-text-muted italic py-4 text-center">All probes stable</div>
+                                    );
+                                }) : (
+                                <div className="text-xs text-text-muted italic py-6 text-center flex flex-col items-center gap-2">
+                                    <CheckCircle size={20} className="text-emerald-500 opacity-70" />
+                                    <span className="text-[11px] font-medium text-emerald-400/80">All monitored probes stable</span>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -928,6 +1067,14 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                     </div>
 
 
+                    <button
+                        onClick={() => setTracerouteTarget('')}
+                        className="flex items-center gap-1.5 bg-card-secondary hover:bg-card-secondary/80 border border-border text-text-muted hover:text-text-primary px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
+                        title="Trace network path (Layer-3 traceroute)"
+                    >
+                        <Route size={14} className="text-blue-500" /> Trace Path
+                    </button>
+
                     {onManage && (
                         <button
                             onClick={onManage}
@@ -1022,6 +1169,16 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 </td>
                                 <td className="px-6 py-4 px-8">
                                     <div className="flex justify-end items-center gap-2">
+                                        <button
+                                            onClick={(ev) => {
+                                                ev.stopPropagation();
+                                                setTracerouteTarget(e.target);
+                                            }}
+                                            className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-blue-500/10 hover:text-blue-500 hover:border-blue-500/20"
+                                            title="Trace Path (Traceroute)"
+                                        >
+                                            <Route size={16} />
+                                        </button>
                                         <button
                                             onClick={(ev) => {
                                                 ev.stopPropagation();
@@ -1149,6 +1306,16 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                         <button
                                             onClick={(ev) => {
                                                 ev.stopPropagation();
+                                                setTracerouteTarget(e.target || e.lastResult?.url || '');
+                                            }}
+                                            className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-blue-500/10 hover:text-blue-500 hover:border-blue-500/20"
+                                            title="Trace Path (Traceroute)"
+                                        >
+                                            <Route size={16} />
+                                        </button>
+                                        <button
+                                            onClick={(ev) => {
+                                                ev.stopPropagation();
                                                 startEditProbe(e);
                                             }}
                                             className="p-2 rounded-lg transition-all border border-transparent flex items-center justify-center text-text-muted hover:bg-blue-500/10 hover:text-blue-500 hover:border-blue-500/20"
@@ -1201,9 +1368,18 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                     <p className="text-[10px] text-text-muted font-mono font-bold break-all max-w-[700px] mt-1">{formatDisplayUrl(selectedEndpoint)}</p>
                                 </div>
                             </div>
-                            <button onClick={() => setShowDetailModal(false)} className="p-2 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors">
-                                <XCircle size={24} />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setTracerouteTarget(selectedEndpoint.target || selectedEndpoint.lastResult?.url || '')}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 dark:text-blue-400 border border-blue-500/20 text-xs font-semibold transition-all"
+                                    title="Trace path to this endpoint"
+                                >
+                                    <Route size={14} /> Trace Path
+                                </button>
+                                <button onClick={() => setShowDetailModal(false)} className="p-2 hover:bg-card-secondary rounded-lg text-text-muted hover:text-text-primary transition-colors">
+                                    <XCircle size={24} />
+                                </button>
+                            </div>
                         </div>
 
                         {/* ── Content Match Info Banner (visible when enabled) ── */}
@@ -1657,6 +1833,15 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                     </div>
                 </div>
             )}
+
+            {/* Traceroute Modal */}
+            <TracerouteModal
+                isOpen={tracerouteTarget !== null}
+                onClose={() => setTracerouteTarget(null)}
+                initialTarget={tracerouteTarget || ''}
+                token={token}
+                title="Network Path Trace"
+            />
         </div>
     );
 }

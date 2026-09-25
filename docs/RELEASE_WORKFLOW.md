@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-02 | **Created:** 2026-09-02 (v1.4.1-patch.41)
+
 # Stigix GitFlow, Docker & Release Workflow
 
 This document outlines the official Git branching strategy, Docker image release pipeline, tag lifecycle, and rollback procedures for **Stigix**.

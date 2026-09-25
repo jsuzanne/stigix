@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-04-18 | **Created:** 2026-02-19 (v1.2.1-patch.97)
+
 # XFR Speedtest & Throughput Testing
 
 [![XFR Engine](https://img.shields.io/badge/Engine-XFR-6366F1)](https://github.com/lance0/xfr)

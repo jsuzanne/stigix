@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-01-27 | **Created:** 2026-01-27 (v1.1.2-patch.5)
+
 # SD-WAN Architecture Overview
 
 ![SD-WAN Overlay Communication](/Users/jsuzanne/.gemini/antigravity/brain/1270a119-0515-441c-82fb-b82e64adc6ed/sdwan_hero_banner_1769465414075.png)

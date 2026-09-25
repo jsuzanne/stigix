@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-23 | **Created:** 2026-02-05 (v1.1.2-patch.33.80)
+
 # Stigix MCP Server
 
 **Model Context Protocol (MCP) Server for Distributed Natural Language Orchestration**
@@ -13,8 +15,9 @@ The Stigix MCP Server provides a **natural language interface** to orchestrate y
 ✅ **Mesh-Ready Orchestration** - Control any node in the mesh from any other node via distributed discovery.  
 ✅ **Natural Language** - Command your infrastructure in plain English or French.  
 ✅ **Distributed Control** - The MCP server runs on every Stigix instance, providing total redundancy.  
-✅ **Full Toolset** - 53 tools covering 100% of stigix-cli capabilities: traffic, security, DEM probes, fabric targets, VyOS, config clone, and analytics.  
+✅ **Full Toolset** - 80 tools covering 100% of stigix-cli capabilities: traffic, security, DEM probes, custom TCP apps, voice ingress, mesh controller & provisioning, system health matrix, fabric targets, VyOS, config clone, and analytics.  
 ✅ **SSE Transport** - Native support for Server-Sent Events (SSE) for easy remote access.  
+✅ **Interactive Enterprise Demo Script** - See [MCP Demo Scenario](file:///Users/jsuzanne/Github/stigix/docs/MCP_DEMO_SCENARIO.md) for a step-by-step 360° validation walkthrough and [MCP Failover Live Prompt](file:///Users/jsuzanne/Github/stigix/docs/MCP_FAILOVER_PROMPT.md) for automated live SD-WAN failover simulation.  
 
 ---
 
@@ -261,12 +264,12 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 
 
 
-## 🛠️ Available MCP Tools (53 tools)
+## 🛠️ Available MCP Tools (80 tools)
 
 > [!TIP]
 > All tools that target a specific node accept an `agent_id` parameter — this is the node's name as shown in `list_endpoints` (e.g., `"BR8"`, `"Paris"`, `"Hetzner"`).
 
-### Discovery & Status
+### Discovery & Status (5 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -276,7 +279,7 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `generate_report` | Fabric-wide report across all (or specified) nodes in parallel | *"Give me an overview of all nodes"* |
 | `compare_nodes` | Side-by-side comparison of two nodes | *"Compare BR8 and Hetzner"* |
 
-### Traffic Generation
+### Traffic Generation (9 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -290,7 +293,14 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `export_app_config` | Export app config as JSON (for backup or cloning) | *"Export BR8's app config"* |
 | `import_app_config` | Import app config to a node (overwrites current) | *"Copy Paris app config to BR8"* |
 
-### Test Orchestration
+### Voice Simulation & Ingress Monitoring (2 tools)
+
+| Tool | Description | Example |
+|---|---|---|
+| `get_voice_stats` | Deep voice metrics (MOS, jitter, packet loss, active calls) | *"Voice quality stats on BR8"* |
+| `get_voice_ingress_calls` | Ingress RTP audio streams, NAT-proof tagging, peer breakdown | *"List active incoming voice streams on DC1"* |
+
+### Test Orchestration (3 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -298,19 +308,19 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `get_test_status` | Get metrics for a running or completed test | *"Status of test CONV-1234?"* |
 | `stop_test` | Stop a running test | *"Stop the convergence test"* |
 
-### XFR Speedtest
+### XFR Speedtest (1 tool)
 
 | Tool | Description | Example |
 |---|---|---|
 | `list_speedtest_history` | Past XFR speedtest results with throughput, RTT, status | *"Last speedtests from BR8?"* |
 
-### Convergence / Failover
+### Convergence / Failover (1 tool)
 
 | Tool | Description | Example |
 |---|---|---|
 | `get_convergence_history` | Past failover tests with max blackout (ms) and verdict | *"Convergence history for BR8?"* |
 
-### Security Testing
+### Security Testing (10 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -325,7 +335,7 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `run_eicar_test` | EICAR threat prevention test (cloud URL or custom) | *"EICAR test on BR8"* |
 | `run_full_security_audit` | Complete suite: URL batch + DNS batch + EICAR | *"Full security audit on BR8"* |
 
-### DEM / Experience Probes
+### DEM / Experience Probes (8 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -333,11 +343,69 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `get_probe_details` | Detailed metrics for one probe by name | *"Details for Google DNS probe on BR8"* |
 | `list_dem_probes` | List all configured DEM probes | *"What probes are on BR8?"* |
 | `run_dem_probes_now` | Trigger immediate probe run, return results | *"Run probes now on BR8"* |
-| `get_dem_probe_stats` | Historical DEM stats (1h): health score, latency, reliability | *"DEM stats for BR8 last hour"* |
+| `get_dem_probe_stats` | Historical DEM stats: median, p95, success rate with name filter & aggregation | *"DEM stats for BR8 filtering 'MS -'"* |
+| `update_dem_probe` | Update probe settings (status codes, timeout, interval) without losing history | *"Update Office 365 probe to accept 200,204,401"* |
 | `add_dem_probe` | Add a new DEM probe (HTTP/HTTPS/PING/TCP/UDP/DNS) | *"Add a PING probe to 8.8.8.8 on BR8"* |
 | `remove_dem_probe` | Remove a probe by name | *"Remove 'Google DNS' probe from BR8"* |
 
-### Fabric Target Management
+### Custom TCP Applications & Workloads (11 tools)
+
+| Tool | Description | Example |
+|---|---|---|
+| `create_custom_tcp_app` | Create and deploy custom TCP application (POS, CRM, ERP, etc.) with auto-peering | *"Deploy POS app on port 9000"* |
+| `list_custom_tcp_apps` | List all custom TCP apps, listening ports, traffic status, and peer assignments | *"List custom TCP apps on DC1"* |
+| `add_tcp_app_peer` | Attach a target mesh peer to an existing custom TCP app | *"Add BR8 as peer to app-pos"* |
+| `delete_custom_tcp_app` | Delete a custom TCP application and release ports | *"Delete app-pos on DC1"* |
+| `start_tcp_app_listener` | Start TCP server daemon listening on a specific port | *"Start listener for app-pos on DC1"* |
+| `stop_tcp_app_listener` | Stop TCP server daemon on a specific port | *"Stop listener for app-pos on DC1"* |
+| `start_tcp_app_workload` | Start periodic simulated client traffic generator | *"Start workload for app-pos on BR8"* |
+| `stop_tcp_app_workload` | Stop periodic simulated client traffic generator | *"Stop workload for app-pos on BR8"* |
+| `test_tcp_app_handshake` | Execute instant one-shot SYN/ACK 3-way handshake round-trip probe | *"Test TCP handshake to DC1:9000 from BR8"* |
+| `get_tcp_app_sessions` | Retrieve active TCP connections, states, and byte counters | *"Show active sessions for app-pos"* |
+| `reset_tcp_app_metrics` | Reset session, handshake, and throughput counters for an app | *"Reset metrics for app-pos on BR8"* |
+
+### Multi-Instance Controller & Mesh Management (4 tools)
+
+| Tool | Description | Example |
+|---|---|---|
+| `get_controller_status` | Controller operational mode (Leader vs Member), sync state, and active leader IP | *"Is DC1 the mesh leader?"* |
+| `list_controller_peers` | List all connected mesh peers, sync health, and heartbeat latency | *"Show all mesh peers on DC1"* |
+| `set_controller_leader` | Promote or designate node as the active configuration Leader | *"Set DC1 as the Leader"* |
+| `generate_peer_onboard_command` | Generate zero-touch Docker CLI / curl onboarding snippet to attach a new peer | *"Generate onboard command for new branch"* |
+
+### Global Mesh Provisioning & Central Distribution (5 tools)
+
+| Tool | Description | Example |
+|---|---|---|
+| `get_provisioning_status` | Global provisioning status, bundle version (e.g. rev 22), published bundles | *"Provisioning status on DC1"* |
+| `set_provisioning_mode` | Toggle provisioning synchronization mode (`automatic` vs `manual`) | *"Set provisioning to automatic"* |
+| `publish_configuration_bundle` | Publish configuration bundle (`connectivity-probes`, `custom-tcp-apps`, `traffic-profiles`) to mesh | *"Publish custom TCP apps to all peers"* |
+| `rollback_configuration_bundle` | Rollback a configuration bundle to previous revision | *"Rollback custom-tcp-apps to rev 21"* |
+| `get_provisioning_history` | Audit trail of all published revisions, timestamps, and target peers | *"Show provisioning history on DC1"* |
+
+### System Health Matrix & Live Diagnostics (2 tools)
+
+| Tool | Description | Example |
+|---|---|---|
+| `get_health_matrix` | 360° System Health Matrix across all 9 subsystems (operational score 0-100%) | *"Show health matrix for BR8"* |
+| `run_system_diagnostics` | Run deep diagnostic checks across all subsystems on demand | *"Run full system diagnostics on BR8"* |
+
+### Diagnostics & Analytics (4 tools)
+
+| Tool | Description | Example |
+|---|---|---|
+| `get_diagnostics` | Full node dashboard: CPU, bitrate, app stats, voice, peers | *"Health of BR8", "CPU/RAM Paris"* |
+| `get_app_score` | Success rate for a specific application | *"Teams score on BR8?"* |
+| `get_prisma_flows` | Query Prisma SD-WAN Flow Browser for path/session details | *"Query Prisma flows on BR8 for UDP port 30075"* |
+| `run_path_trace` | Live traceroute / hop-by-hop latency and drop inspection | *"Traceroute from BR8 to 192.168.203.100"* |
+
+### Configuration Synchronization (1 tool)
+
+| Tool | Description | Example |
+|---|---|---|
+| `clone_node_config` | Clone configuration (apps, DEM probes, security profile, VyOS) between nodes | *"Clone DEM probes from BR8 to BR5"* |
+
+### Fabric Target Management (4 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -346,15 +414,7 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `remove_fabric_target` | Remove a peer by name, host, or ID | *"Remove Hetzner target from BR8"* |
 | `set_fabric_target_enabled` | Enable or disable a peer target | *"Disable Paris target on BR8"* |
 
-### Diagnostics & Analytics
-
-| Tool | Description | Example |
-|---|---|---|
-| `get_diagnostics` | Full node dashboard: CPU, bitrate, app stats, voice, peers | *"Health of BR8", "CPU/RAM Paris"* |
-| `get_app_score` | Success rate for a specific application | *"Teams score on BR8?"* |
-| `get_prisma_flows` | Query Prisma SD-WAN Flow Browser for path/session details | *"Query Prisma flows on BR8 for UDP port 30075"* |
-
-### VyOS Router Management
+### VyOS Router Management (10 tools)
 
 | Tool | Description | Example |
 |---|---|---|
@@ -366,6 +426,7 @@ docker compose -f docker-compose-latest-beta.bridge.yml restart
 | `get_vyos_interfaces` | List VyOS router interfaces with descriptions and up/down status — required first step before ad-hoc actions | *"Show interfaces of the router on BR8"* |
 | `vyos_execute_action` | Execute any VyOS action via natural language: shut/enable interface, add latency/loss/rate, block/unblock IP | *"Shut MPLS on BR1"*, *"Add 150ms latency on WAN"*, *"Block 10.0.0.5"* |
 | `get_vyos_router_state` | **Live state audit**: per-interface admin status (🟢/🔴), active QoS params (delay/loss/rate), and all tag-999 IP blocks in one call | *"What is the current state of vyosrouter?"* |
+| `list_active_impairments` | **Fabric Impairment Audit**: check all VyOS routers for active shaping, injected latency/loss, or shut links | *"Are there any active impairments left across the fabric?"* |
 | `vyos_bulk_reset` | **Bulk reset**: clear all active QoS, remove all IP blocks, and/or unshut all down interfaces — scope: `all-qos`, `all-blocks`, `unshut-all`, `full-reset` | *"Reset everything on BR8"* |
 
 > [!TIP]
@@ -481,11 +542,18 @@ List all DEM probes configured on node <NODE_ID>.
 ```
 → `list_dem_probes(agent_id="<NODE_ID>")` — Name, type (HTTP/PING/DNS/TCP/UDP), target, enabled status.
 
-**Historical probe stats (last hour):**
+**Historical probe stats (filtered & aggregated with median / p95):**
 ```
-Show me historical DEM probe stats for node <NODE_ID> over the last hour.
+Show me DEM probe stats for node <NODE_ID> filtering only "MS -" probes over the last 60 minutes.
 ```
-→ `get_dem_probe_stats(agent_id="<NODE_ID>")` — Global score, average latency, reliability per probe.
+→ `get_dem_probe_stats(agent_id="<NODE_ID>", probe_name_filter="MS -", window_minutes=60, aggregate=True)`  
+*Returns calculated median RTT, p95 RTT, min/max/avg latency, and success rates per probe, avoiding massive raw data payloads.*
+
+**Update an existing probe (without losing historical data):**
+```
+Update the "Office 365" probe on node <NODE_ID> to accept HTTP status codes 200, 204, 301, 302, 401, 403 and set timeout to 5000ms.
+```
+→ `update_dem_probe(agent_id="<NODE_ID>", probe_name="Office 365", expected_status_codes=[200, 204, 301, 302, 401, 403], timeout_ms=5000)`
 
 **Details for a specific probe:**
 ```
@@ -511,6 +579,7 @@ Valid types: `HTTP`, `HTTPS`, `PING`, `TCP`, `UDP`, `DNS`.
 Remove the "Google DNS Test" probe from node <NODE_ID>.
 ```
 → `remove_dem_probe(agent_id="<NODE_ID>", probe_name="Google DNS Test")`
+
 
 ---
 
@@ -688,6 +757,12 @@ Interface eth7 (BR2-INET-226): 🔴 down  (admin disabled)
 IP Blocks: 192.168.1.100/32 (tag-999)
 ```
 
+**Fabric Impairment & Cleanup Audit (Across all nodes / routers):**
+```
+Audit all active network impairments, injected latencies, or disabled links across the fabric.
+```
+→ `list_active_impairments()` — Checks every managed VyOS router across the mesh and reports active `tc netem` shaping or shut links. Perfect for pre-test baseline validation and post-test cleanup verification.
+
 **Add latency (NL → confirmation → execute):**
 ```
 Add 100ms of latency on the MPLS link of BR1 via node <NODE_ID>.
@@ -817,7 +892,89 @@ Query the Prisma Flow Browser on BR8 for TCP port 8082 sessions to 192.168.203.1
 
 ---
 
-### 12. Edge Cases & Error Handling
+### 12. Custom TCP Applications & Enterprise Workloads
+
+**Deploy custom enterprise app (e.g. POS on port 9000):**
+```
+Create a custom TCP app "app-pos" on DC1 on port 9000 and attach all mesh peers.
+```
+→ `create_custom_tcp_app(agent_id="DC1", name="app-pos", port=9000, target_peers="all", auto_start_workload=True)`
+
+**Test instant round-trip TCP 3-way handshake:**
+```
+Test TCP 3-way handshake from BR8 to DC1 on port 9000.
+```
+→ `test_tcp_app_handshake(agent_id="BR8", target_host="192.168.203.100", target_port=9000)`
+
+**List all custom TCP applications:**
+```
+List all custom TCP apps on DC1.
+```
+→ `list_custom_tcp_apps(agent_id="DC1")`
+
+---
+
+### 13. Mesh Controller & Global Provisioning
+
+**Check mesh leader and peers:**
+```
+What is the controller status of DC1? Show all connected peers.
+```
+→ `get_controller_status(agent_id="DC1")` / `list_controller_peers(agent_id="DC1")`
+
+**Publish configuration bundle to entire mesh:**
+```
+Publish the custom-tcp-apps configuration bundle to all mesh nodes.
+```
+→ `publish_configuration_bundle(agent_id="DC1", bundle_type="custom-tcp-apps")`
+
+**Audit provisioning history:**
+```
+Show the last 5 provisioning bundle deployments on DC1 in compact summary mode.
+```
+→ `get_provisioning_history(agent_id="DC1", limit=5, summary_only=True)`
+
+**Generate zero-touch onboarding command:**
+```
+Generate an onboarding command for a new branch node.
+```
+→ `generate_peer_onboard_command(agent_id="DC1", peer_name="BR9-Lyon")`
+
+---
+
+### 14. System Health Matrix & Live Diagnostics
+
+**360° System Health Matrix:**
+```
+Show the 360-degree System Health Matrix for BR8.
+```
+→ `get_health_matrix(agent_id="BR8")` — Returns operational score (0-100%) across all 9 subsystems.
+
+**Deep on-demand diagnostics:**
+```
+Run full system diagnostics on BR8.
+```
+→ `run_system_diagnostics(agent_id="BR8")`
+
+**Hop-by-hop Path Trace / Traceroute:**
+```
+Run a path trace from BR8 to 192.168.203.100 with a max of 15 hops to locate packet loss or latency.
+```
+→ `run_path_trace(agent_id="BR8", target="192.168.203.100", max_hops=15, timeout_sec=2)`
+
+---
+
+### 15. Voice Ingress & RTP Quality
+
+**Inspect live voice streams:**
+```
+Show live voice stats and ingress RTP audio streams on DC1.
+```
+→ `get_voice_stats(agent_id="DC1")` / `get_voice_ingress_calls(agent_id="DC1")`
+
+---
+
+### 16. Edge Cases & Error Handling
 
 **Non-existent node (expected clean error):**
 ```
@@ -932,3 +1089,76 @@ This also means:
 *Last Updated: v1.4.0-patch.142 — 2026-06-01*
 
 
+
+---
+
+## Automated Test Harness
+
+The MCP server ships with a self-contained test harness that validates every tool's contract against a lightweight mock Stigix node — no live infrastructure required.
+
+### Architecture
+
+```
+tests/
+├── conftest.py              # pytest fixtures: starts mock server + MCP process
+├── mcp_harness.py           # ToolCallResult wrapper, timeout helpers
+├── mock_stigix_node.py      # FastAPI mock (nominal + canary nodes on random ports)
+├── report_generator.py      # JSON scorecard + per-tool report
+├── tools_manifest.yaml      # Ground truth: args, expected keys, categories, budgets
+├── test_mcp_nominal.py      # Happy-path contract tests (one per tool with nominal_args)
+├── test_mcp_regression.py   # Edge-case & regression tests
+└── test_mcp_invalid_args.py # Injection / boundary / type-error tests
+```
+
+### Running the tests
+
+```bash
+cd mcp-server
+# Install dev dependencies (first time only)
+uv pip install -e ".[dev]"
+
+# Run the full nominal suite
+pytest tests/test_mcp_nominal.py -v
+
+# Run a single tool
+pytest tests/test_mcp_nominal.py -k get_security_results_stats -v
+
+# Run all suites
+pytest tests/ -v --timeout=300
+```
+
+Expected result: **79 passed, 2 skipped** (`get_test_status` and `stop_test` are skipped — they require ephemeral in-memory state created by `run_test`).
+
+### tools_manifest.yaml
+
+Every MCP tool is described in `tests/tools_manifest.yaml`. Key fields per tool:
+
+| Field | Purpose |
+|-------|---------|
+| `category` | `read` / `write` / `action` — gates which test suites run |
+| `scope` | `node` / `vyos` / `security` — groups related tools |
+| `nominal_args` | Arguments for the happy-path call |
+| `expected_keys` | At least one of these must appear in the response |
+| `timeout_class` | `fast` (2 s) / `medium` (10 s) / `slow` (30 s) |
+| `size_budget_kb` | Maximum response size |
+| `skip_nominal` | `true` to skip the nominal test (state-dependent tools) |
+| `skip_reason` | Human-readable explanation for `skip_nominal` |
+| `invalid_args` | List of malformed arg sets for the invalid_args suite |
+
+### Adding a new tool to the harness
+
+1. Add an entry to `tools_manifest.yaml` under `tools:`.
+2. Add a `nominal_args` block that resolves to a real mock endpoint.
+3. Verify that `mock_stigix_node.py` handles the new endpoint path.
+4. Run `pytest tests/test_mcp_nominal.py -k <tool_name> -v` to confirm.
+
+If the tool is state-dependent (requires a prior call to create state), set `skip_nominal: true` and document the reason in `skip_reason`.
+
+### Mock node
+
+The mock starts two FastAPI instances on random ports:
+
+- **mock-primary** — returns nominal responses for all endpoints
+- **mock-canary** — identical, used for multi-node tests
+
+The mock is session-scoped: it starts once per `pytest` run and is shared across all tests.

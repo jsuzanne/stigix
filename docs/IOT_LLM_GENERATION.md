@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-02-27 | **Created:** 2026-02-15 (v1.2.1-patch.26)
+
 # 🤖 Generate IoT Device Profiles with LLM
 
 ## Overview

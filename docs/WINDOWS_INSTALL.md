@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-05-10 | **Created:** 2026-01-21 (v1.1.0-patch.8)
+
 # Windows Installation Guide
 
 Complete step-by-step guide to install and run SD-WAN Traffic Generator on Windows 10/11.

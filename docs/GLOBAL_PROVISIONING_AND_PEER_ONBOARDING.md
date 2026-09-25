@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-09-01 | **Created:** 2026-09-01 (v1.4.1-patch.41)
+
 # 📖 User Guide — Central Configuration Provisioning & Peer Onboarding
 
 Welcome to the **Stigix Multi-Node User Guide**! This guide explains how to connect remote branch sites in 30 seconds and centrally manage SaaS applications and synthetic connectivity probes across your entire SD-WAN / SASE lab environment.

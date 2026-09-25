@@ -5,6 +5,106 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.65] - 2026-09-25
+
+### Added / Changed
+- **Digital Experience Monitoring & Score Gauge (`ConnectivityPerformance.tsx`)** 🌟:
+  - Upgraded the Global Experience Score widget to a high-contrast glowing circular gauge (Donut Arc, 132px) with explicit status badge (`OPTIMAL`, `GOOD`, `DEGRADED`, `CRITICAL`) to eliminate character kerning ambiguity.
+  - Stretched the Score Trend area chart to fill 100% of panel height with dynamic Y-axis ticks and smooth gradient fill.
+  - Overhauled the Unstable & Down Probes widget with protocol chips (`[HTTP]`, `[DNS]`, `[PING]`), clear `DOWN (0%)` vs flaky status badges, and root-cause error diagnostics.
+- **Bandwidth Speedtest Chart Glowing Area Gradients (`Speedtest.tsx`)** ⚡:
+  - Added modern emerald green (`#10b981`) and electric blue (`#3b82f6`) neon gradient fills under the Sent and Received throughput curves with multi-layered depth.
+- **Failover Monitoring Resilience & Atomic JSON State (`server.ts`, `convergence_orchestrator.py`)** 🛡️:
+  - Implemented atomic POSIX JSON file writes (`_atomic_write_json` with `os.replace`) to eliminate transient UI card disappearance during heavy failover testing.
+  - Added Node.js fallback caching in `server.ts` (`lastConvergenceStatsCache`).
+- **Comprehensive SD-WAN Failure & MCP Reports (`docs/MCP Reports/`)** 📄:
+  - Added full executive white paper and PDF reports analyzing Prisma SD-WAN Application Unreachability Detection during DC internet breakout failures.
+
+---
+
+## [2.0.64] - 2026-09-24
+
+### Fixed / Improved
+- **FastMCP Server Tools Parity & Speedtest Telemetry (`mcp-server/`)** 🚀:
+  - Unified convergence metrics and test status in `get_test_status`, `list_speedtest_history`, and `run_test`.
+  - Added full 64-bit Prisma ID support, single-packet probe filtering in timeline, dynamic `path_history_complete` computation, and dual-mode site/IP name resolution.
+  - Added `get_convergence_report` tool generating visual SVG timeline charts.
+- **In-App AI Copilot Enhancements (`web-dashboard/ai-copilot/`)** 🤖:
+  - Corrected XFR test duration parsing, throughput metrics extraction, and VyOS execution safety.
+
+---
+
+## [2.0.63] - 2026-09-24
+
+### Fixed
+- **Registry Peer Sync — Static Leader Recovery (`registry-manager.ts`)** 🔧:
+  - Fixed a critical bug where a transient startup failure (e.g., leader not yet ready) caused `resetToRemote()` to be called, permanently locking the peer node in Cloudflare fallback mode.
+  - Previously, `performHeartbeat()` and `performDiscovery()` would skip reconnecting to the configured `staticLeaderUrl` after a reset, causing nodes like BR8 to remain `NOT CONNECTED` indefinitely until a manual toggle.
+  - Both recovery paths now detect a configured `staticLeaderUrl` and reconnect directly to it on every cycle, bypassing Cloudflare `findLeader()`. This ensures the node self-heals automatically within the next discovery interval (max 2 min) without any manual intervention.
+
+---
+
+## [2.0.62] - 2026-09-23
+
+### Added / Changed
+- **DEM Scoring Engine & Expected Status Codes (`calculateDEMScore`)** 🎯:
+  - Fixed scoring engine bug where HTTP responses $\ge 400$ were hard-clamped to a score of 20 regardless of probe configuration.
+  - Probes with explicitly configured `expectedStatusCodes` (e.g. `[403]` for Azure Portal / Entra ID or auth-gated endpoints) now correctly evaluate as successful and compute full latency-based scores (> 20).
+  - **⚠️ Score Impact Notice**: Added standard HTTP redirect and cache status codes (`301`, `302`, `304`, `307`, `308`) to default success status codes across the fabric. Probes returning valid redirects are now scored as successful based on latency rather than failing, which may positively adjust historical health scores.
+- **DEM Probe Matching & Statistical Aggregation (`get_dem_probe_stats`)** 📊:
+  - Telemetry samples are now grouped strictly by `endpointName`, name slug, or exact probe `id` — **never** by `url` or `target`. This prevents telemetry contamination between distinct probes sharing a common destination URL (e.g., "Microsoft 365 Login" vs "MS - Entra ID").
+  - `success_rate_pct` returns `None` (null) when sample count is 0 instead of defaulting to 0%.
+  - `expected_status_codes` field is omitted from non-HTTP/HTTPS probes (DNS, ICMP, TCP).
+  - Aligned `global_stats` query directly with `get_dem_summary` (`/api/connectivity/stats?range=1h`) to ensure consistent global health reporting.
+- **Leader Provisioning & Local Overrides (`buildConnectivityProbesPayload`)** ⚙️:
+  - Fixed probe customization loss when publishing from Leader: `buildConnectivityProbesPayload` bundles enriched effective probe configurations including local overrides into the global distribution bundle.
+  - `update_dem_probe` tool accurately reports the active storage layer written (`"local_override"` vs `"global"`).
+  - Enhanced provisioning `computeDiff` to detect changes across `expectedStatusCodes`, `content_match`, `interval`, `timeout`, and probe types.
+- **FastMCP Robustness & Diagnostics** 🛡️:
+  - Guaranteed bounded 10-second timeout on MCP connection bridge (`bridge.py`) with clean stack teardown to prevent Claude Desktop hangs.
+  - Error returns across orchestrator tools now guarantee informative non-empty messages.
+  - Added synthesized `version` and `build` metadata to targets and controller status peers.
+  - Fixed `purgeStaleLeaderState` applied revision parsing to correctly classify active leader bundles into `kept_applied`.
+
+---
+
+## [2.0.61] - 2026-09-22
+
+### Fixed
+- **Core Stability** 🛡️:
+  - Improved `purgeStaleLeaderState` safety with dry-run and backup mechanisms.
+  - Hardened bridge reconnect logic for more resilient MCP connections.
+  - Enhanced traceroute protocol support and output parsing for both `traceroute` and `tracepath` (Linux).
+  - Improved fabric rollout visibility in provisioning status reporting.
+
+---
+
+## [2.0.60] - 2026-09-22
+
+### Added / Fixed
+- **MCP Server Hardening** 🛡️:
+  - Hardened output schemas across all tool responses for strict type conformance.
+  - Added traceroute support inside Docker container with `execFile` security enforcement.
+  - Normalized flow history counters; added stale leader purge utility.
+  - Added per-tool bridge timeouts to prevent indefinite hangs on slow nodes.
+  - Added `path_trace`, active impairments audit, DEM probe update, and aggregated statistics tools.
+  - Fixed `stdio` stdout hijack in FastMCP server; added provisioning API routes.
+
+---
+
+## [2.0.59] - 2026-09-20
+
+### Added
+- **In-App AI Copilot** 🤖:
+  - New dedicated AI Copilot tab with BYOK (Bring Your Own Key) Claude integration and dual-mode architecture (in-app + MCP).
+  - Full 1:1 tool parity with Python FastMCP server (speedtest, convergence, voice, mesh, security probes, DEM management, TCP apps).
+  - Rich Markdown table renderer with zebra striping and list badges.
+  - Global slide-over drawer, floating quick-action button, and Cmd+J keyboard shortcut.
+  - Copilot and Anthropic key UI gated behind `ENABLE_AI_COPILOT` environment variable.
+  - Phase 2 automated test harness (79/81 nominal tests passing).
+
+---
+
 ## [2.0.58] - 2026-09-19
 
 ### Added / Changed

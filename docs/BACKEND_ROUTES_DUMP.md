@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-03-16 | **Created:** 2026-03-16 (v1.2.1-patch.200)
+
 # Stigix Backend API - Full Route Dump
 
 Ce document liste de manière exhaustive toutes les routes API exposées par le backend `server.ts` (Target/Agent Stigix).

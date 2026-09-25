@@ -1,3 +1,5 @@
+> **Last Updated:** 2026-05-19 | **Created:** 2026-01-30 (v1.1.2-patch.33.7)
+
 # 🤖 IoT Simulation & Device Management
 
 ## 📑 Table of Contents
