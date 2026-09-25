@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.65] - 2026-09-25
+
+### Added / Changed
+- **Digital Experience Monitoring & Score Gauge (`ConnectivityPerformance.tsx`)** 🌟:
+  - Upgraded the Global Experience Score widget to a high-contrast glowing circular gauge (Donut Arc, 132px) with explicit status badge (`OPTIMAL`, `GOOD`, `DEGRADED`, `CRITICAL`) to eliminate character kerning ambiguity.
+  - Stretched the Score Trend area chart to fill 100% of panel height with dynamic Y-axis ticks and smooth gradient fill.
+  - Overhauled the Unstable & Down Probes widget with protocol chips (`[HTTP]`, `[DNS]`, `[PING]`), clear `DOWN (0%)` vs flaky status badges, and root-cause error diagnostics.
+- **Bandwidth Speedtest Chart Glowing Area Gradients (`Speedtest.tsx`)** ⚡:
+  - Added modern emerald green (`#10b981`) and electric blue (`#3b82f6`) neon gradient fills under the Sent and Received throughput curves with multi-layered depth.
+- **Failover Monitoring Resilience & Atomic JSON State (`server.ts`, `convergence_orchestrator.py`)** 🛡️:
+  - Implemented atomic POSIX JSON file writes (`_atomic_write_json` with `os.replace`) to eliminate transient UI card disappearance during heavy failover testing.
+  - Added Node.js fallback caching in `server.ts` (`lastConvergenceStatsCache`).
+- **Comprehensive SD-WAN Failure & MCP Reports (`docs/MCP Reports/`)** 📄:
+  - Added full executive white paper and PDF reports analyzing Prisma SD-WAN Application Unreachability Detection during DC internet breakout failures.
+
+---
+
+## [2.0.64] - 2026-09-24
+
+### Fixed / Improved
+- **FastMCP Server Tools Parity & Speedtest Telemetry (`mcp-server/`)** 🚀:
+  - Unified convergence metrics and test status in `get_test_status`, `list_speedtest_history`, and `run_test`.
+  - Added full 64-bit Prisma ID support, single-packet probe filtering in timeline, dynamic `path_history_complete` computation, and dual-mode site/IP name resolution.
+  - Added `get_convergence_report` tool generating visual SVG timeline charts.
+- **In-App AI Copilot Enhancements (`web-dashboard/ai-copilot/`)** 🤖:
+  - Corrected XFR test duration parsing, throughput metrics extraction, and VyOS execution safety.
+
+---
+
 ## [2.0.63] - 2026-09-24
 
 ### Fixed
