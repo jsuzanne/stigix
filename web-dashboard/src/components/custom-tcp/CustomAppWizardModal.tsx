@@ -2,7 +2,7 @@
  * Stigix Custom TCP Inter-Site Applications — 4-Step Creation & Edition Wizard Modal
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component, type ErrorInfo, type ReactNode } from 'react';
 import {
     X, Server, Play, Shield, Globe, Plus, Trash2, CheckCircle2,
     AlertTriangle, RefreshCw, Cpu, Layers, HelpCircle, Zap
@@ -18,6 +18,61 @@ import type {
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
+}
+
+interface ErrorBoundaryProps {
+    children: ReactNode;
+    onClose?: () => void;
+}
+
+interface ErrorBoundaryState {
+    hasError: boolean;
+    error: Error | null;
+}
+
+class WizardErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+    constructor(props: ErrorBoundaryProps) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+
+    static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+        return { hasError: true, error };
+    }
+
+    componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+        console.error('WizardModal Error:', error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-card border border-rose-500/30 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+                        <div className="flex items-center gap-3 text-rose-500">
+                            <AlertTriangle size={24} />
+                            <h3 className="font-bold text-base text-text-primary">Wizard Display Error</h3>
+                        </div>
+                        <p className="text-xs text-text-muted leading-relaxed">
+                            An error occurred while loading this application configuration: {this.state.error?.message || 'Unknown error'}
+                        </p>
+                        <div className="flex justify-end gap-2 pt-2">
+                            <button
+                                onClick={() => {
+                                    this.setState({ hasError: false, error: null });
+                                    this.props.onClose?.();
+                                }}
+                                className="px-4 py-2 bg-card-secondary hover:bg-card-hover text-text-primary text-xs font-semibold rounded-xl border border-border"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
 }
 
 const SERVER_BEHAVIOR_INFO: Record<ServerBehaviorMode, { title: string; explanation: string; example: string }> = {
@@ -101,6 +156,78 @@ const CLIENT_WORKLOAD_INFO: Record<ClientWorkloadMode, { title: string; explanat
     }
 };
 
+export function normalizeCustomTcpApp(app?: Partial<CustomTcpApplicationConfig> | null): CustomTcpApplicationConfig {
+    const raw: any = app || {};
+    const rawListener: any = raw.listener || {};
+    const rawServerBehavior: any = raw.serverBehavior || {};
+    const rawClientDefaults: any = raw.clientDefaults || {};
+    const rawStartup: any = raw.startup || {};
+
+    return {
+        id: raw.id || `app-${Date.now().toString(36)}`,
+        name: raw.name || '',
+        description: raw.description || '',
+        enabled: raw.enabled !== false,
+        protocol: raw.protocol === 'http_1_1' ? 'http_1_1' : 'stigix_tcp',
+        listener: {
+            bindAddress: rawListener.bindAddress || '0.0.0.0',
+            port: Number(rawListener.port) || 8443,
+            maxConnections: Number(rawListener.maxConnections) || 100,
+            idleTimeoutMs: Number(rawListener.idleTimeoutMs) || 60000,
+            maxPayloadBytes: Number(rawListener.maxPayloadBytes) || 1048576,
+            tcpKeepalive: rawListener.tcpKeepalive !== false,
+            allowCidrs: Array.isArray(rawListener.allowCidrs) ? rawListener.allowCidrs : [],
+            auth: {
+                enabled: rawListener.auth?.enabled === true,
+                token: rawListener.auth?.token
+            }
+        },
+        serverBehavior: {
+            mode: (rawServerBehavior.mode || 'echo') as ServerBehaviorMode,
+            fixedDelayMs: Number(rawServerBehavior.fixedDelayMs) || 500,
+            randomDelayMinMs: Number(rawServerBehavior.randomDelayMinMs) || 100,
+            randomDelayMaxMs: Number(rawServerBehavior.randomDelayMaxMs) || 1000,
+            loopingNormalSec: Number(rawServerBehavior.loopingNormalSec) || 60,
+            loopingSlowSec: Number(rawServerBehavior.loopingSlowSec) || 60,
+            loopingSlowDelayMs: Number(rawServerBehavior.loopingSlowDelayMs) || 1000,
+            dropProbability: Number(rawServerBehavior.dropProbability) || 0,
+            errorProbability: Number(rawServerBehavior.errorProbability) || 0,
+            errorCode: rawServerBehavior.errorCode || 'SIMULATED_DB_ERROR',
+            closeAfterRequests: rawServerBehavior.closeAfterRequests ? Number(rawServerBehavior.closeAfterRequests) : undefined,
+            closeAfterDurationSec: rawServerBehavior.closeAfterDurationSec ? Number(rawServerBehavior.closeAfterDurationSec) : undefined
+        },
+        clientDefaults: {
+            mode: (rawClientDefaults.mode || 'persistent_request_reply') as ClientWorkloadMode,
+            connectionsPerPeer: Number(rawClientDefaults.connectionsPerPeer) || 2,
+            intervalMs: Number(rawClientDefaults.intervalMs) || 1000,
+            payloadBytes: Number(rawClientDefaults.payloadBytes) || 1024,
+            requestTimeoutMs: Number(rawClientDefaults.requestTimeoutMs) || 5000,
+            connectTimeoutMs: Number(rawClientDefaults.connectTimeoutMs) || 5000,
+            autoReconnect: rawClientDefaults.autoReconnect !== false,
+            reconnectInitialMs: Number(rawClientDefaults.reconnectInitialMs) || 1000,
+            reconnectMaxMs: Number(rawClientDefaults.reconnectMaxMs) || 30000,
+            tcpKeepalive: rawClientDefaults.tcpKeepalive !== false,
+            sourceInterface: rawClientDefaults.sourceInterface || 'auto'
+        },
+        peers: Array.isArray(raw.peers) ? raw.peers.map((p: any) => ({
+            id: p.id || p.peerId || `peer-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+            name: p.name || p.host || 'Peer',
+            siteName: p.siteName || p.name || p.host || 'Peer',
+            host: p.host || '127.0.0.1',
+            port: Number(p.port) || Number(rawListener.port) || 8443,
+            enabled: p.enabled !== false,
+            connectionsOverride: p.connectionsOverride ? Number(p.connectionsOverride) : undefined,
+            intervalOverrideMs: p.intervalOverrideMs ? Number(p.intervalOverrideMs) : undefined,
+            token: p.token,
+            tags: Array.isArray(p.tags) ? p.tags : []
+        })) : [],
+        startup: {
+            startListener: rawStartup.startListener !== false,
+            startClientWorkload: rawStartup.startClientWorkload === true
+        }
+    };
+}
+
 interface CustomAppWizardModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -125,63 +252,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
     const [portAvailable, setPortAvailable] = useState<boolean | null>(null);
 
     // Form State
-    const [formData, setFormData] = useState<CustomTcpApplicationConfig>(() => {
-        if (editingApp) {
-            const cloned = JSON.parse(JSON.stringify(editingApp));
-            cloned.protocol = cloned.protocol || 'stigix_tcp';
-            cloned.startup = {
-                startListener: cloned.startup?.startListener !== false,
-                startClientWorkload: cloned.startup?.startClientWorkload ?? false
-            };
-            return cloned;
-        }
-        return {
-            id: `app-${Date.now().toString(36)}`,
-            name: '',
-            description: '',
-            enabled: true,
-            protocol: 'stigix_tcp',
-            listener: {
-                bindAddress: '0.0.0.0',
-                port: 8443,
-                maxConnections: 100,
-                idleTimeoutMs: 60000,
-                maxPayloadBytes: 1048576,
-                tcpKeepalive: true,
-                allowCidrs: [],
-                auth: { enabled: false }
-            },
-            serverBehavior: {
-                mode: 'echo',
-                fixedDelayMs: 500,
-                randomDelayMinMs: 100,
-                randomDelayMaxMs: 1000,
-                loopingNormalSec: 60,
-                loopingSlowSec: 60,
-                loopingSlowDelayMs: 1000,
-                dropProbability: 0,
-                errorProbability: 0
-            },
-            clientDefaults: {
-                mode: 'persistent_request_reply',
-                connectionsPerPeer: 2,
-                intervalMs: 1000,
-                payloadBytes: 1024,
-                requestTimeoutMs: 5000,
-                connectTimeoutMs: 5000,
-                autoReconnect: true,
-                reconnectInitialMs: 1000,
-                reconnectMaxMs: 30000,
-                tcpKeepalive: true,
-                sourceInterface: 'auto'
-            },
-            peers: [],
-            startup: {
-                startListener: true,
-                startClientWorkload: false
-            }
-        };
-    });
+    const [formData, setFormData] = useState<CustomTcpApplicationConfig>(() => normalizeCustomTcpApp(editingApp));
 
     const [allowCidrsInput, setAllowCidrsInput] = useState('');
     const [discoveredTargets, setDiscoveredTargets] = useState<Array<{ id: string; name: string; host: string; isLocal?: boolean; capabilities?: any }>>([]);
@@ -250,62 +321,9 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
     };
 
     useEffect(() => {
-        if (editingApp) {
-            const cloned = JSON.parse(JSON.stringify(editingApp));
-            cloned.startup = {
-                startListener: cloned.startup?.startListener !== false,
-                startClientWorkload: cloned.startup?.startClientWorkload ?? false
-            };
-            setFormData(cloned);
-            setAllowCidrsInput((editingApp.listener?.allowCidrs || []).join(', '));
-        } else {
-            setFormData({
-                id: `app-${Date.now().toString(36)}`,
-                name: '',
-                description: '',
-                enabled: true,
-                listener: {
-                    bindAddress: '0.0.0.0',
-                    port: 8443,
-                    maxConnections: 100,
-                    idleTimeoutMs: 60000,
-                    maxPayloadBytes: 1048576,
-                    tcpKeepalive: true,
-                    allowCidrs: [],
-                    auth: { enabled: false }
-                },
-                serverBehavior: {
-                    mode: 'echo',
-                    fixedDelayMs: 500,
-                    randomDelayMinMs: 100,
-                    randomDelayMaxMs: 1000,
-                    loopingNormalSec: 60,
-                    loopingSlowSec: 60,
-                    loopingSlowDelayMs: 1000,
-                    dropProbability: 0,
-                    errorProbability: 0
-                },
-                clientDefaults: {
-                    mode: 'persistent_request_reply',
-                    connectionsPerPeer: 2,
-                    intervalMs: 1000,
-                    payloadBytes: 1024,
-                    requestTimeoutMs: 5000,
-                    connectTimeoutMs: 5000,
-                    autoReconnect: true,
-                    reconnectInitialMs: 1000,
-                    reconnectMaxMs: 30000,
-                    tcpKeepalive: true,
-                    sourceInterface: 'auto'
-                },
-                peers: [],
-                startup: {
-                    startListener: true,
-                    startClientWorkload: false
-                }
-            });
-            setAllowCidrsInput('');
-        }
+        const normalized = normalizeCustomTcpApp(editingApp);
+        setFormData(normalized);
+        setAllowCidrsInput((normalized.listener.allowCidrs || []).join(', '));
         setStep(1);
         setValidationErrors([]);
         setValidationWarnings([]);
@@ -384,8 +402,9 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
             setIsSaving(false);
         }
     };    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-            <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden text-text-primary">
+        <WizardErrorBoundary onClose={onClose}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+                <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden text-text-primary">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-card-secondary/50">
                     <div className="flex items-center gap-3">
@@ -1206,5 +1225,6 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                 </div>
             </div>
         </div>
+    </WizardErrorBoundary>
     );
 };

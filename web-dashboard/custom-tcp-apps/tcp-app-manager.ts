@@ -167,6 +167,167 @@ export class TcpAppManager extends EventEmitter {
         this.emit('app_deleted', appId);
     }
 
+    /**
+     * Imports an array of application configurations with merge or replace semantics.
+     */
+    public async importApplications(
+        rawApps: any[],
+        mode: 'merge' | 'replace' = 'merge'
+    ): Promise<{
+        importedCount: number;
+        addedCount: number;
+        updatedCount: number;
+        mode: string;
+        applications: string[];
+    }> {
+        if (!Array.isArray(rawApps) || rawApps.length === 0) {
+            throw new Error('No applications provided for import');
+        }
+
+        const file = this.getConfig();
+        const validApps: CustomTcpApplicationConfig[] = [];
+
+        for (const raw of rawApps) {
+            if (!raw || typeof raw !== 'object' || !raw.name) {
+                continue;
+            }
+            const rawListener = raw.listener || {};
+            const rawServerBehavior = raw.serverBehavior || {};
+            const rawClientDefaults = raw.clientDefaults || {};
+            const rawStartup = raw.startup || {};
+
+            const app: CustomTcpApplicationConfig = {
+                id: raw.id || `app-${crypto.randomUUID().substring(0, 8)}`,
+                name: String(raw.name).trim(),
+                description: raw.description || '',
+                protocol: raw.protocol === 'http_1_1' ? 'http_1_1' : 'stigix_tcp',
+                enabled: raw.enabled !== false,
+                listener: {
+                    bindAddress: rawListener.bindAddress || '0.0.0.0',
+                    port: Number(rawListener.port) || 8443,
+                    maxConnections: Number(rawListener.maxConnections) || 100,
+                    idleTimeoutMs: Number(rawListener.idleTimeoutMs) || 60000,
+                    maxPayloadBytes: Number(rawListener.maxPayloadBytes) || 1048576,
+                    tcpKeepalive: rawListener.tcpKeepalive !== false,
+                    allowCidrs: Array.isArray(rawListener.allowCidrs) ? rawListener.allowCidrs : [],
+                    auth: {
+                        enabled: rawListener.auth?.enabled === true,
+                        token: rawListener.auth?.token
+                    }
+                },
+                serverBehavior: {
+                    mode: (rawServerBehavior.mode || 'echo') as any,
+                    fixedDelayMs: Number(rawServerBehavior.fixedDelayMs) || 500,
+                    randomDelayMinMs: Number(rawServerBehavior.randomDelayMinMs) || 100,
+                    randomDelayMaxMs: Number(rawServerBehavior.randomDelayMaxMs) || 1000,
+                    loopingNormalSec: Number(rawServerBehavior.loopingNormalSec) || 60,
+                    loopingSlowSec: Number(rawServerBehavior.loopingSlowSec) || 60,
+                    loopingSlowDelayMs: Number(rawServerBehavior.loopingSlowDelayMs) || 1000,
+                    dropProbability: Number(rawServerBehavior.dropProbability) || 0,
+                    errorProbability: Number(rawServerBehavior.errorProbability) || 0,
+                    errorCode: rawServerBehavior.errorCode || 'SIMULATED_DB_ERROR',
+                    closeAfterRequests: rawServerBehavior.closeAfterRequests ? Number(rawServerBehavior.closeAfterRequests) : undefined,
+                    closeAfterDurationSec: rawServerBehavior.closeAfterDurationSec ? Number(rawServerBehavior.closeAfterDurationSec) : undefined
+                },
+                clientDefaults: {
+                    mode: (rawClientDefaults.mode || 'persistent_request_reply') as any,
+                    connectionsPerPeer: Number(rawClientDefaults.connectionsPerPeer) || 2,
+                    intervalMs: Number(rawClientDefaults.intervalMs) || 1000,
+                    payloadBytes: Number(rawClientDefaults.payloadBytes) || 1024,
+                    requestTimeoutMs: Number(rawClientDefaults.requestTimeoutMs) || 5000,
+                    connectTimeoutMs: Number(rawClientDefaults.connectTimeoutMs) || 5000,
+                    autoReconnect: rawClientDefaults.autoReconnect !== false,
+                    reconnectInitialMs: Number(rawClientDefaults.reconnectInitialMs) || 1000,
+                    reconnectMaxMs: Number(rawClientDefaults.reconnectMaxMs) || 30000,
+                    tcpKeepalive: rawClientDefaults.tcpKeepalive !== false,
+                    sourceInterface: rawClientDefaults.sourceInterface || 'auto'
+                },
+                peers: Array.isArray(raw.peers) ? raw.peers.map((p: any) => ({
+                    id: p.id || p.peerId || `peer-${crypto.randomUUID().substring(0, 8)}`,
+                    name: p.name || p.host || 'Peer',
+                    siteName: p.siteName || p.name || p.host || 'Peer',
+                    host: p.host || '127.0.0.1',
+                    port: Number(p.port) || Number(rawListener.port) || 8443,
+                    enabled: p.enabled !== false,
+                    connectionsOverride: p.connectionsOverride ? Number(p.connectionsOverride) : undefined,
+                    intervalOverrideMs: p.intervalOverrideMs ? Number(p.intervalOverrideMs) : undefined,
+                    token: p.token,
+                    tags: Array.isArray(p.tags) ? p.tags : []
+                })) : [],
+                startup: {
+                    startListener: rawStartup.startListener !== false,
+                    startClientWorkload: rawStartup.startClientWorkload === true
+                }
+            };
+
+            validApps.push(app);
+        }
+
+        if (validApps.length === 0) {
+            throw new Error('None of the items in the import payload were valid Custom TCP Applications');
+        }
+
+        let addedCount = 0;
+        let updatedCount = 0;
+
+        if (mode === 'replace') {
+            // Stop and delete existing runtimes
+            for (const existingApp of file.applications) {
+                const ctx = this.appInstances.get(existingApp.id);
+                if (ctx) {
+                    await ctx.clientRuntime.stop().catch(() => {});
+                    await ctx.serverRuntime.stop().catch(() => {});
+                }
+            }
+            this.appInstances.clear();
+            file.applications = validApps;
+
+            for (const app of validApps) {
+                this.registerAppInstance(app, file.instance);
+                if (app.enabled && app.startup?.startListener !== false) {
+                    await this.startListener(app.id, false).catch(() => {});
+                }
+                addedCount++;
+            }
+        } else {
+            // Merge mode: match by ID or Name
+            for (const app of validApps) {
+                const existingById = file.applications.findIndex(a => a.id === app.id);
+                const existingByName = file.applications.findIndex(a => a.name.toLowerCase() === app.name.toLowerCase());
+
+                if (existingById >= 0) {
+                    file.applications[existingById] = app;
+                    await this.saveApplication(app);
+                    updatedCount++;
+                } else if (existingByName >= 0) {
+                    // Keep existing ID so we don't break references
+                    app.id = file.applications[existingByName].id;
+                    file.applications[existingByName] = app;
+                    await this.saveApplication(app);
+                    updatedCount++;
+                } else {
+                    file.applications.push(app);
+                    this.registerAppInstance(app, file.instance);
+                    if (app.enabled && app.startup?.startListener !== false) {
+                        await this.startListener(app.id, false).catch(() => {});
+                    }
+                    addedCount++;
+                }
+            }
+        }
+
+        await this.configStore.save(file);
+        this.emit('config_reloaded', file);
+
+        return {
+            importedCount: validApps.length,
+            addedCount,
+            updatedCount,
+            mode,
+            applications: validApps.map(a => a.name)
+        };
+    }
+
     public getAppContext(appIdOrName: string) {
         if (!appIdOrName) return undefined;
         let ctx = this.appInstances.get(appIdOrName);

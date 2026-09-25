@@ -37,6 +37,10 @@ tools:
     category: read
     size_budget_kb: 20
     timeout_class: fast
+  export_custom_tcp_apps:
+    category: read
+    size_budget_kb: 20
+    timeout_class: fast
   generate_peer_onboard_command:
     category: read
     size_budget_kb: 20
@@ -159,6 +163,10 @@ tools:
     timeout_class: fast
   import_app_config:
     category: write
+    size_budget_kb: 20
+    timeout_class: fast
+  import_custom_tcp_apps:
+    category: read
     size_budget_kb: 20
     timeout_class: fast
   list_active_impairments:

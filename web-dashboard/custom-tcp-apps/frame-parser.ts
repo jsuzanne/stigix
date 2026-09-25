@@ -18,6 +18,7 @@ export class FrameParser extends EventEmitter {
 
     constructor(maxPayloadBytes: number = 1048576) { // 1 MiB default cap
         super();
+        this.setMaxListeners(100);
         this.maxPayloadBytes = maxPayloadBytes;
     }
 

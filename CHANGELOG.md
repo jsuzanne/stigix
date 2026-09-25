@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.66] - 2026-09-25
+
+### Added / Improved
+- **Custom TCP Applications Export & Import Lifecycle (`CustomApps.tsx`, `CustomAppImportModal.tsx`, `CustomTcpSettingsTab.tsx`)** 📦:
+  - Added full bundle and single-profile JSON Export for Custom TCP Inter-Site Applications directly from the UI header and Settings.
+  - Added dedicated `CustomAppImportModal` supporting drag & drop JSON upload or clipboard paste with live schema inspection, port collision detection, and preview.
+  - Implemented dual import strategy: **Merge & Update (Recommended)** (preserves other configurations and updates matching apps) and **Replace All Existing** (clean overwrite).
+  - Added backend REST endpoints `GET /api/custom-tcp-apps/export`, `GET /api/custom-tcp-apps/:id/export`, and `POST /api/custom-tcp-apps/import`.
+  - Added FastMCP tools `export_custom_tcp_apps` and `import_custom_tcp_apps` for programmatic and AI Copilot automation.
+  - Ensured 100% schema fidelity during import/export roundtrips (persisting `serverBehavior`, detailed `listener` security policies, and `clientDefaults`).
+  - Added React `WizardErrorBoundary` and `CustomAppsErrorBoundary` with auto-healing `normalizeCustomTcpApp` for robust UI crash prevention.
+- **FastMCP Server Stability & FrameParser Optimization (`server.py`, `frame-parser.ts`)** ⚡:
+  - Fixed missing `Union` typing import in `server.py` and synchronized tools manifest.
+  - Optimized `FrameParser` max listeners to eliminate Node.js EventEmitter memory leak warnings during high-concurrency custom TCP workloads.
+
+---
+
 ## [2.0.65] - 2026-09-25
 
 ### Added / Changed

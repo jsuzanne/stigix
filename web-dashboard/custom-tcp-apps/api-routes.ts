@@ -86,6 +86,82 @@ export function createCustomTcpApiRouter(tcpAppManager: TcpAppManager): Router {
         }
     });
 
+    // GET /api/custom-tcp-apps/export — Export all applications config as JSON bundle
+    router.get('/export', (_req: Request, res: Response) => {
+        try {
+            const config = tcpAppManager.getConfig();
+            const exportData = {
+                version: config.version || 1,
+                exportedAt: new Date().toISOString(),
+                exportedFromSite: config.instance?.siteName || 'unknown',
+                instance: {
+                    siteName: config.instance?.siteName,
+                    hostname: config.instance?.hostname
+                },
+                applications: config.applications
+            };
+            const filename = `stigix-custom-apps-${config.instance?.siteName || 'bundle'}-${new Date().toISOString().slice(0, 10)}.json`;
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.send(JSON.stringify(exportData, null, 2));
+        } catch (err: any) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // GET /api/custom-tcp-apps/:id/export — Export a single application config
+    router.get('/:id/export', (req: Request, res: Response) => {
+        try {
+            const config = tcpAppManager.getConfig();
+            const app = config.applications.find(a => a.id === req.params.id);
+            if (!app) {
+                return res.status(404).json({ error: `Application ${req.params.id} not found` });
+            }
+            const exportData = {
+                version: config.version || 1,
+                exportedAt: new Date().toISOString(),
+                exportedFromSite: config.instance?.siteName || 'unknown',
+                application: app
+            };
+            const safeName = app.name.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+            const filename = `stigix-app-${safeName}.json`;
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.send(JSON.stringify(exportData, null, 2));
+        } catch (err: any) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // POST /api/custom-tcp-apps/import — Import applications bundle (mode: 'merge' | 'replace')
+    router.post('/import', async (req: Request, res: Response) => {
+        try {
+            const { mode = 'merge', applications, application, data } = req.body;
+            let appsToImport: any[] = [];
+            if (Array.isArray(applications)) {
+                appsToImport = applications;
+            } else if (application && typeof application === 'object') {
+                appsToImport = [application];
+            } else if (Array.isArray(data)) {
+                appsToImport = data;
+            } else if (data && typeof data === 'object') {
+                if (Array.isArray(data.applications)) appsToImport = data.applications;
+                else if (data.application) appsToImport = [data.application];
+            } else if (Array.isArray(req.body)) {
+                appsToImport = req.body;
+            }
+
+            if (!appsToImport || appsToImport.length === 0) {
+                return res.status(400).json({ error: 'No valid application profiles found in payload' });
+            }
+
+            const result = await tcpAppManager.importApplications(appsToImport, mode === 'replace' ? 'replace' : 'merge');
+            res.json({ success: true, ...result });
+        } catch (err: any) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
+
     // ─── Batch / Fleet Appliance Operations ──────────────────────────────────
 
     // POST /api/custom-tcp-apps/actions/start-all — Start all listeners and clients (with peers)

@@ -2,17 +2,67 @@
  * Stigix Custom TCP Inter-Site Applications — Operational Control Center
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component, type ErrorInfo, type ReactNode } from 'react';
 import {
     Play, Square, RefreshCw, Server, Globe, Activity, Plus,
     Copy, Trash2, Edit3, Shield, AlertTriangle, CheckCircle2,
     Clock, Cpu, ArrowDownRight, ArrowUpRight, Zap, ExternalLink,
-    Layers, Cloud, Search, X, Info, ChevronDown
+    Layers, Cloud, Search, X, Info, ChevronDown, Upload, Download, FileJson
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return inputs.filter(Boolean).join(' ');
+}
+
+interface ErrorBoundaryProps {
+    children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+    hasError: boolean;
+    error: Error | null;
+}
+
+class CustomAppsErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+    constructor(props: ErrorBoundaryProps) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+
+    static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+        return { hasError: true, error };
+    }
+
+    componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+        console.error('CustomApps component crashed:', error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="p-8 max-w-2xl mx-auto my-12 bg-card border border-rose-500/30 rounded-3xl p-8 shadow-2xl space-y-4 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center mx-auto">
+                        <AlertTriangle size={28} />
+                    </div>
+                    <h2 className="text-lg font-bold text-text-primary">Custom Applications Error</h2>
+                    <p className="text-xs text-text-muted leading-relaxed">
+                        An error occurred while displaying Custom Applications: {this.state.error?.message || 'Unknown error'}
+                    </p>
+                    <button
+                        onClick={() => {
+                            this.setState({ hasError: false, error: null });
+                            window.location.reload();
+                        }}
+                        className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl shadow-sm cursor-pointer"
+                    >
+                        Reload Page
+                    </button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
 }
 import type {
     CustomTcpApplicationConfig,
@@ -21,6 +71,7 @@ import type {
     OutgoingSessionState
 } from '../custom-tcp-apps/types.js';
 import { CustomAppWizardModal } from './components/custom-tcp/CustomAppWizardModal';
+import { CustomAppImportModal } from './components/custom-tcp/CustomAppImportModal';
 import { PrismaAppSyncModal } from './components/custom-tcp/PrismaAppSyncModal';
 import { MicroSparkline } from './components/custom-tcp/MicroSparkline';
 import { SessionDeepDiveDrawer } from './components/custom-tcp/SessionDeepDiveDrawer';
@@ -46,12 +97,14 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
 
     // Modals
     const [isWizardOpen, setIsWizardOpen] = useState(false);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isPrismaModalOpen, setIsPrismaModalOpen] = useState(false);
     const [editingApp, setEditingApp] = useState<CustomTcpApplicationConfig | null>(null);
     const [peerTestModal, setPeerTestModal] = useState<{ isOpen: boolean; peerId: string; peerName: string; host: string; port: number } | null>(null);
     const [peerTestResult, setPeerTestResult] = useState<{ loading: boolean; success?: boolean; rttMs?: number; error?: string } | null>(null);
     const [startMenuOpen, setStartMenuOpen] = useState(false);
     const [stopMenuOpen, setStopMenuOpen] = useState(false);
+    const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
     // Auto-refresh interval (1.5s)
     useEffect(() => {
@@ -379,6 +432,50 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         }
     };
 
+    const handleExportAll = async () => {
+        try {
+            const res = await fetch('/api/custom-tcp-apps/export', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Export request failed');
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `stigix-custom-apps-${instanceInfo?.siteName || 'fleet'}-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            toast.success('Custom Applications bundle exported successfully!', { icon: '📥' });
+        } catch (err: any) {
+            toast.error(`Export failed: ${err.message}`);
+        }
+    };
+
+    const handleExportCurrent = async () => {
+        if (!selectedAppId) return;
+        try {
+            const res = await fetch(`/api/custom-tcp-apps/${selectedAppId}/export`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Export request failed');
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const currentName = currentApp?.name ? currentApp.name.toLowerCase().replace(/[^a-z0-9_-]/g, '-') : selectedAppId;
+            a.download = `stigix-app-${currentName}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            toast.success(`Exported "${currentApp?.name || 'app'}" profile!`, { icon: '📥' });
+        } catch (err: any) {
+            toast.error(`Export failed: ${err.message}`);
+        }
+    };
+
     const currentApp = applications.find(a => a.id === selectedAppId);
 
     const formatBytes = (bytes: number) => {
@@ -686,15 +783,74 @@ const secs = seconds % 60;
                         );
                     })}
                 </div>
-                <button
-                    onClick={() => {
-                        setEditingApp(null);
-                        setIsWizardOpen(true);
-                    }}
-                    className="h-[32px] px-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer shrink-0"
-                >
-                    <Plus size={14} /> New App
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                    {/* Export Dropdown Button */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                            className="h-[32px] px-3 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            title="Export Custom TCP applications as JSON"
+                        >
+                            <Download size={13} />
+                            <span>Export</span>
+                            <ChevronDown size={11} className={cn("transition-transform duration-200", exportMenuOpen && "rotate-180")} />
+                        </button>
+
+                        {exportMenuOpen && (
+                            <div
+                                className="absolute right-0 mt-1.5 w-64 bg-card border border-border rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100"
+                                onMouseLeave={() => setExportMenuOpen(false)}
+                            >
+                                <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
+                                    Export Options
+                                </div>
+                                <button
+                                    onClick={() => { setExportMenuOpen(false); handleExportAll(); }}
+                                    className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
+                                >
+                                    <FileJson size={14} className="text-indigo-500" />
+                                    <div>
+                                        <div className="font-bold">Export All Applications</div>
+                                        <div className="text-[10px] text-text-muted">Download full fleet bundle ({applications.length} apps)</div>
+                                    </div>
+                                </button>
+                                {currentApp && (
+                                    <button
+                                        onClick={() => { setExportMenuOpen(false); handleExportCurrent(); }}
+                                        className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-card-secondary flex items-center gap-2.5 transition-colors cursor-pointer"
+                                    >
+                                        <Download size={14} className="text-emerald-500" />
+                                        <div>
+                                            <div className="font-bold">Export "{currentApp.name}" Only</div>
+                                            <div className="text-[10px] text-text-muted">Download single profile JSON</div>
+                                        </div>
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Import Button */}
+                    <button
+                        onClick={() => setIsImportModalOpen(true)}
+                        className="h-[32px] px-3 bg-card-secondary hover:bg-card-hover text-text-secondary hover:text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                        title="Import Custom TCP applications from JSON"
+                    >
+                        <Upload size={13} />
+                        <span>Import</span>
+                    </button>
+
+                    {/* New App Button */}
+                    <button
+                        onClick={() => {
+                            setEditingApp(null);
+                            setIsWizardOpen(true);
+                        }}
+                        className="h-[32px] px-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                    >
+                        <Plus size={14} /> New App
+                    </button>
+                </div>
             </div>
 
             {/* Application Toolbar & Primary Controls */}
@@ -891,7 +1047,7 @@ const secs = seconds % 60;
                                 </div>
                             </div>
                             <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
-                                <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.serverBehavior?.mode.replace('_', ' ')}</strong></span>
+                                <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.serverBehavior?.mode ? currentApp.serverBehavior.mode.replace(/_/g, ' ') : 'echo'}</strong></span>
                                 <span>Handled: <strong className="text-text-secondary">{serverHandled}</strong> {liveServerTps > 0 && incomingSessions.length > 0 && <span className="text-indigo-500 font-mono text-[10px]">({liveServerTps} tps)</span>}</span>
                             </div>
                         </div>
@@ -1324,6 +1480,18 @@ const secs = seconds % 60;
                     </div>
                 </div>
             )}
+
+            {/* Import Modal */}
+            <CustomAppImportModal
+                isOpen={isImportModalOpen}
+                onClose={() => setIsImportModalOpen(false)}
+                token={token}
+                onSuccess={() => {
+                    loadConfig();
+                    if (selectedAppId) loadAppStatus(selectedAppId);
+                }}
+                existingApps={applications}
+            />
 
             {/* Creation / Edition Wizard Modal */}
             <CustomAppWizardModal

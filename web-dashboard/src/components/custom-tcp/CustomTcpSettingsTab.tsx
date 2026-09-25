@@ -13,6 +13,7 @@ import type {
     CustomTcpApplicationsFile
 } from '../../../custom-tcp-apps/types.js';
 import { CustomAppWizardModal } from './CustomAppWizardModal';
+import { CustomAppImportModal } from './CustomAppImportModal';
 
 interface CustomTcpSettingsTabProps {
     token: string | null;
@@ -24,6 +25,7 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
     const [appStatuses, setAppStatuses] = useState<Record<string, any>>({});
     const [isLoading, setIsLoading] = useState(false);
     const [isWizardOpen, setIsWizardOpen] = useState(false);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [editingApp, setEditingApp] = useState<CustomTcpApplicationConfig | null>(null);
 
     useEffect(() => {
@@ -135,19 +137,25 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
         }
     };
 
-    const handleExportJson = () => {
-        const exportData = {
-            version: 1,
-            instance: instanceInfo,
-            applications
-        };
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `stigix-custom-tcp-apps-${Date.now()}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
+    const handleExportJson = async () => {
+        try {
+            const res = await fetch('/api/custom-tcp-apps/export', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Export failed');
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `stigix-custom-apps-${instanceInfo?.siteName || 'fleet'}-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            toast.success('Applications exported successfully!', { icon: '📥' });
+        } catch (err: any) {
+            toast.error(err.message);
+        }
     };
 
     return (
@@ -169,6 +177,13 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
                         className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-tertiary text-text-secondary rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors border border-border"
                     >
                         <Download size={14} /> Export JSON
+                    </button>
+
+                    <button
+                        onClick={() => setIsImportModalOpen(true)}
+                        className="px-3 py-1.5 bg-bg-secondary hover:bg-bg-tertiary text-text-secondary rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors border border-border"
+                    >
+                        <Upload size={14} /> Import JSON
                     </button>
 
                     <button
@@ -237,10 +252,10 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
                                                 </button>
                                             </td>
                                             <td className="py-3 px-4 text-text-secondary capitalize">
-                                                {app.serverBehavior?.mode.replace('_', ' ')}
+                                                {app.serverBehavior?.mode ? app.serverBehavior.mode.replace(/_/g, ' ') : 'echo'}
                                             </td>
                                             <td className="py-3 px-4 text-text-secondary capitalize">
-                                                {app.clientDefaults?.mode.replace(/_/g, ' ')}
+                                                {app.clientDefaults?.mode ? app.clientDefaults.mode.replace(/_/g, ' ') : 'persistent request reply'}
                                             </td>
                                             <td className="py-3 px-4 font-semibold text-text-primary">
                                                 {app.peers?.length || 0} nodes
@@ -281,6 +296,15 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
                     </div>
                 )}
             </div>
+
+            {/* Import Modal */}
+            <CustomAppImportModal
+                isOpen={isImportModalOpen}
+                onClose={() => setIsImportModalOpen(false)}
+                token={token}
+                onSuccess={loadData}
+                existingApps={applications}
+            />
 
             {/* Creation / Edition Wizard */}
             <CustomAppWizardModal

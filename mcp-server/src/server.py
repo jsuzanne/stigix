@@ -16,7 +16,7 @@ import inspect
 import functools
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Union, Dict, Any
 
 # CRITICAL: All logs to stderr to avoid polluting stdio JSON-RPC transport
 logging.basicConfig(
@@ -1830,6 +1830,31 @@ async def list_custom_tcp_apps(agent_id: str) -> dict:
         agent_id: ID of the Stigix node.
     """
     return await orchestrator.list_custom_tcp_apps(agent_id)
+
+
+@mcp.tool()
+async def export_custom_tcp_apps(agent_id: str, app_id: Optional[str] = None) -> dict:
+    """
+    Export all or a specific Custom TCP Application configuration from a Stigix node as portable JSON.
+
+    Args:
+        agent_id: ID of the Stigix node.
+        app_id: Optional specific application ID or name to export only that profile.
+    """
+    return await orchestrator.export_custom_tcp_apps(agent_id, app_id)
+
+
+@mcp.tool()
+async def import_custom_tcp_apps(agent_id: str, data: Union[dict, list], mode: str = "merge") -> dict:
+    """
+    Import Custom TCP Application configurations onto a Stigix node.
+
+    Args:
+        agent_id: ID of the Stigix node.
+        data: JSON object containing application bundle or list of application profiles.
+        mode: Import mode: 'merge' (default, add new and update existing) or 'replace' (overwrite all).
+    """
+    return await orchestrator.import_custom_tcp_apps(agent_id, data, mode)
 
 
 @mcp.tool()
