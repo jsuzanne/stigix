@@ -8,6 +8,7 @@ playwright.config.ts
 .github/workflows/playwright.yml
 
 *.pdf
+!docs/MCP Reports/*.pdf
 *.log
 *.log.*
 *.json
