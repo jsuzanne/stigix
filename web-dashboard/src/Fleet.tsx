@@ -68,11 +68,21 @@ interface FleetOverviewResponse {
     generated_at: string;
 }
 
+// Standard Stigix capability color coding and labels matching Edit Target modal
+const CAPABILITIES_CONFIG = [
+    { key: 'voice', label: 'Voice', activeClass: 'bg-blue-600/15 text-blue-400 border-blue-500/40 ring-1 ring-blue-500/20', dotClass: 'bg-blue-500' },
+    { key: 'convergence', label: 'Failover', activeClass: 'bg-purple-600/15 text-purple-400 border-purple-500/40 ring-1 ring-purple-500/20', dotClass: 'bg-purple-500' },
+    { key: 'custom_app', label: 'Custom Apps', activeClass: 'bg-teal-600/15 text-teal-400 border-teal-500/40 ring-1 ring-teal-500/20', dotClass: 'bg-teal-500' },
+    { key: 'xfr', label: 'Speedtest', activeClass: 'bg-cyan-600/15 text-cyan-400 border-cyan-500/40 ring-1 ring-cyan-500/20', dotClass: 'bg-cyan-500' },
+    { key: 'security', label: 'Security', activeClass: 'bg-rose-600/15 text-rose-400 border-rose-500/40 ring-1 ring-rose-500/20', dotClass: 'bg-rose-500' },
+    { key: 'connectivity', label: 'Connectivity', activeClass: 'bg-emerald-600/15 text-emerald-400 border-emerald-500/40 ring-1 ring-emerald-500/20', dotClass: 'bg-emerald-500' },
+];
+
 // Mini Badge for Global Experience Score (DEM Health)
 function ScoreMiniBadge({ score, isStale, isOnline }: { score?: number | null; isStale?: boolean; isOnline?: boolean }) {
     if (isStale || !isOnline) {
         return (
-            <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-neutral-800 text-neutral-500 border border-neutral-700">
+            <span className="px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-neutral-800 text-neutral-500 border border-neutral-700 whitespace-nowrap">
                 — Offline
             </span>
         );
@@ -80,7 +90,7 @@ function ScoreMiniBadge({ score, isStale, isOnline }: { score?: number | null; i
 
     if (score === undefined || score === null) {
         return (
-            <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-neutral-800/80 text-neutral-400 border border-neutral-700/60" title="No probe telemetry reported">
+            <span className="px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-neutral-800/80 text-neutral-400 border border-neutral-700/60 whitespace-nowrap" title="No probe telemetry reported">
                 — N/A
             </span>
         );
@@ -101,9 +111,9 @@ function ScoreMiniBadge({ score, isStale, isOnline }: { score?: number | null; i
     const label = isOptimal ? 'Optimal' : isGood ? 'Good' : isDegraded ? 'Degraded' : 'Critical';
 
     return (
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold font-mono border ${badgeClass}`}>
+        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold font-mono border whitespace-nowrap ${badgeClass}`}>
             <span className="text-sm font-black">{score}</span>
-            <span className="text-[10px] uppercase tracking-wider opacity-85">/100 · {label}</span>
+            <span className="text-[10px] uppercase tracking-wider opacity-85 whitespace-nowrap">/ 100 · {label}</span>
         </span>
     );
 }
@@ -363,7 +373,6 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                 <th className="px-6 py-4">Probes</th>
                                 <th className="px-6 py-4">Traffic</th>
                                 <th className="px-6 py-4">Voice MOS</th>
-                                <th className="px-6 py-4">Config Rev</th>
                                 <th className="px-6 py-4">Last Update</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
@@ -371,7 +380,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         <tbody className="divide-y divide-border">
                             {filteredInstances.length === 0 ? (
                                 <tr>
-                                    <td colSpan={9} className="px-6 py-12 text-center text-text-muted">
+                                    <td colSpan={8} className="px-6 py-12 text-center text-text-muted">
                                         {loading ? (
                                             <div className="flex items-center justify-center gap-2">
                                                 <RefreshCw size={16} className="animate-spin text-blue-400" />
@@ -388,14 +397,6 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                     const isLeader = peer.is_leader || peer.type === 'leader' || peer.instance_id.toLowerCase().includes('leader');
                                     const version = peer.meta?.version || '—';
 
-                                    // Safe parsing of applied revision numbers (prevent rNaN)
-                                    const revVals = peer.provisioning_status?.appliedRevisions 
-                                        ? Object.values(peer.provisioning_status.appliedRevisions)
-                                            .map((v: any) => typeof v === 'number' ? v : parseInt(v, 10))
-                                            .filter((n: number) => !isNaN(n))
-                                        : [];
-                                    const revNumber = revVals.length > 0 ? Math.max(...revVals) : null;
-
                                     const { rel, timeStr } = formatLastSeen(peer.last_seen_seconds_ago, peer.last_seen);
                                     
                                     // Management URL vs Traffic IP determination
@@ -411,7 +412,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 isLeader ? 'bg-purple-950/10' : ''
                                             }`}
                                         >
-                                            {/* Site & ID */}
+                                            {/* Site & ID with capability indicator dots */}
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className={`w-9 h-9 rounded-lg border flex items-center justify-center font-bold transition-all ${
@@ -443,6 +444,22 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                             <span>·</span>
                                                             <span className="text-[11px] opacity-75">{version}</span>
                                                         </div>
+
+                                                        {/* Colored Capability Dots (Voice, Failover, Custom Apps, Speedtest, Security, Connectivity) */}
+                                                        <div className="flex items-center gap-1.5 mt-1.5">
+                                                            {CAPABILITIES_CONFIG.map(cap => {
+                                                                const enabled = !!peer.capabilities?.[cap.key];
+                                                                return (
+                                                                    <span
+                                                                        key={cap.key}
+                                                                        title={`${cap.label}: ${enabled ? 'Enabled' : 'Disabled'}`}
+                                                                        className={`w-2 h-2 rounded-full transition-all ${
+                                                                            enabled ? cap.dotClass : 'bg-neutral-700/40'
+                                                                        }`}
+                                                                    />
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </td>
@@ -462,7 +479,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 )}
                                             </td>
 
-                                            {/* Global Experience Score */}
+                                            {/* Global Experience Score (Single line, no wrap) */}
                                             <td className="px-6 py-4">
                                                 <ScoreMiniBadge 
                                                     score={peer.summary?.probes_global_health} 
@@ -471,7 +488,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 />
                                             </td>
 
-                                            {/* Probes Summary */}
+                                            {/* Probes Summary with descriptive tooltip */}
                                             <td className="px-6 py-4">
                                                 {peer.is_stale || peer.summary?.probes_total === undefined ? (
                                                     <span className="text-xs text-neutral-500 font-mono">—</span>
@@ -523,17 +540,6 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                     <span className="text-xs font-bold font-mono text-cyan-400">
                                                         {peer.summary.voice_mos.toFixed(2)}
                                                     </span>
-                                                )}
-                                            </td>
-
-                                            {/* Config Revision */}
-                                            <td className="px-6 py-4">
-                                                {revNumber !== null ? (
-                                                    <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-neutral-800 text-neutral-300 border border-neutral-700">
-                                                        r{revNumber}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-xs text-neutral-500 font-mono">—</span>
                                                 )}
                                             </td>
 
@@ -671,11 +677,11 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                             </p>
                         </div>
 
-                        {/* Top Telemetry Highlight */}
+                        {/* Top Telemetry Highlight (Clean, no 2-line wrap) */}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-neutral-900/40 p-4 rounded-xl border border-border">
-                            <div>
+                            <div className="min-w-0">
                                 <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Global Exp.</div>
-                                <div className="mt-1">
+                                <div className="mt-1.5">
                                     <ScoreMiniBadge 
                                         score={selectedPeer.summary?.probes_global_health} 
                                         isStale={selectedPeer.is_stale}
@@ -705,31 +711,24 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                             </div>
                         </div>
 
-                        {/* Node Capabilities */}
+                        {/* Node Capabilities matching standard Stigix color coding */}
                         <div className="space-y-2">
                             <h3 className="text-xs uppercase font-mono tracking-wider text-text-muted font-bold">
                                 Enabled Capabilities
                             </h3>
                             <div className="flex flex-wrap gap-2">
-                                {[
-                                    { key: 'connectivity', label: 'Probes (DEM)' },
-                                    { key: 'voice', label: 'Voice Simulation' },
-                                    { key: 'convergence', label: 'Convergence Failover' },
-                                    { key: 'xfr', label: 'XFR Bandwidth' },
-                                    { key: 'custom_app', label: 'Custom TCP/HTTP' },
-                                    { key: 'security', label: 'Security Enforcement' }
-                                ].map(cap => {
+                                {CAPABILITIES_CONFIG.map(cap => {
                                     const enabled = !!selectedPeer.capabilities?.[cap.key];
                                     return (
                                         <span 
                                             key={cap.key}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 ${
+                                            className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-2 transition-all shadow-sm ${
                                                 enabled 
-                                                    ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' 
-                                                    : 'bg-neutral-800/40 text-neutral-500 border-neutral-800'
+                                                    ? cap.activeClass 
+                                                    : 'bg-neutral-900/60 text-neutral-500 border-neutral-800'
                                             }`}
                                         >
-                                            {enabled ? <Check size={12} className="text-blue-400" /> : <X size={12} className="text-neutral-600" />}
+                                            <span className={`w-2 h-2 rounded-full ${enabled ? cap.dotClass : 'bg-neutral-600'}`} />
                                             {cap.label}
                                         </span>
                                     );
@@ -737,17 +736,17 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                             </div>
                         </div>
 
-                        {/* Provisioning Revisions */}
+                        {/* Provisioning Revisions by Use Case */}
                         {selectedPeer.provisioning_status?.appliedRevisions && (
                             <div className="space-y-2">
                                 <h3 className="text-xs uppercase font-mono tracking-wider text-text-muted font-bold">
-                                    Provisioned Configuration Revisions
+                                    Provisioned Configuration Revisions (by Use Case)
                                 </h3>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                     {Object.entries(selectedPeer.provisioning_status.appliedRevisions).map(([bundle, rev]) => (
                                         <div key={bundle} className="p-2.5 rounded-lg bg-neutral-900/50 border border-neutral-800 text-xs font-mono flex items-center justify-between">
-                                            <span className="text-neutral-400">{bundle}</span>
-                                            <span className="font-bold text-neutral-200">r{String(rev)}</span>
+                                            <span className="text-neutral-400 capitalize">{bundle.replace(/_/g, ' ')}</span>
+                                            <span className="font-bold text-blue-400">r{String(rev)}</span>
                                         </div>
                                     ))}
                                 </div>
