@@ -3842,6 +3842,44 @@ class TestOrchestrator:
             except Exception as e:
                 return self._handle_exception(f"List Custom TCP Apps on {agent_id}", e)
 
+    async def export_custom_tcp_apps(self, agent_id: str, app_id: Optional[str] = None) -> Dict[str, Any]:
+        """Export all or a specific Custom TCP Application configuration as portable JSON."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                if app_id:
+                    real_id = await self._resolve_tcp_app_id(client, agent.api_base_url, headers, app_id)
+                    url = f"{agent.api_base_url}/api/custom-tcp-apps/{real_id}/export"
+                else:
+                    url = f"{agent.api_base_url}/api/custom-tcp-apps/export"
+                r = await client.get(url, headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Export Custom TCP Apps on {agent_id}", e)
+
+    async def import_custom_tcp_apps(
+        self, agent_id: str, data: Any, mode: str = "merge"
+    ) -> Dict[str, Any]:
+        """Import Custom TCP Application configurations (mode: 'merge' or 'replace')."""
+        agent = await self.registry.get_endpoint(agent_id)
+        if not agent:
+            return {"error": f"Agent {agent_id} not found."}
+
+        headers = {"Authorization": f"Bearer {self._generate_token()}"}
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                payload = {"mode": mode, "data": data}
+                r = await client.post(f"{agent.api_base_url}/api/custom-tcp-apps/import", json=payload, headers=headers)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                return self._handle_exception(f"Import Custom TCP Apps on {agent_id}", e)
+
     async def start_tcp_app_listener(self, agent_id: str, app_id: str) -> Dict[str, Any]:
         """Start the local host TCP listener for a custom TCP application."""
         agent = await self.registry.get_endpoint(agent_id)

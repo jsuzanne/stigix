@@ -167,6 +167,140 @@ export class TcpAppManager extends EventEmitter {
         this.emit('app_deleted', appId);
     }
 
+    /**
+     * Imports an array of application configurations with merge or replace semantics.
+     */
+    public async importApplications(
+        rawApps: any[],
+        mode: 'merge' | 'replace' = 'merge'
+    ): Promise<{
+        importedCount: number;
+        addedCount: number;
+        updatedCount: number;
+        mode: string;
+        applications: string[];
+    }> {
+        if (!Array.isArray(rawApps) || rawApps.length === 0) {
+            throw new Error('No applications provided for import');
+        }
+
+        const file = this.getConfig();
+        const validApps: CustomTcpApplicationConfig[] = [];
+
+        for (const raw of rawApps) {
+            if (!raw || typeof raw !== 'object' || !raw.name) {
+                continue;
+            }
+            const app: CustomTcpApplicationConfig = {
+                id: raw.id || `app-${crypto.randomUUID().substring(0, 6)}`,
+                name: String(raw.name).trim(),
+                description: raw.description || '',
+                protocol: raw.protocol === 'http_1_1' ? 'http_1_1' : 'tcp_raw',
+                enabled: raw.enabled !== false,
+                listener: {
+                    bindAddress: raw.listener?.bindAddress || '0.0.0.0',
+                    port: Number(raw.listener?.port) || 9000,
+                    behavior: raw.listener?.behavior || 'echo',
+                    maxConcurrentSessions: raw.listener?.maxConcurrentSessions || 100,
+                    idleTimeoutSec: raw.listener?.idleTimeoutSec || 300,
+                    responseDelayMs: raw.listener?.responseDelayMs || 0,
+                    httpResponseCode: raw.listener?.httpResponseCode || 200,
+                    httpResponseBody: raw.listener?.httpResponseBody || '{"status":"ok"}'
+                },
+                clientDefaults: {
+                    mode: raw.clientDefaults?.mode || 'request_reply',
+                    connectionsPerPeer: raw.clientDefaults?.connectionsPerPeer || 1,
+                    connectTimeoutMs: raw.clientDefaults?.connectTimeoutMs || 3000,
+                    reconnectDelayMs: raw.clientDefaults?.reconnectDelayMs || 2000,
+                    requestRatePerSec: raw.clientDefaults?.requestRatePerSec || 1,
+                    requestPayloadSizeBytes: raw.clientDefaults?.requestPayloadSizeBytes || 64,
+                    responseTimeoutMs: raw.clientDefaults?.responseTimeoutMs || 5000,
+                    httpRequestPath: raw.clientDefaults?.httpRequestPath || '/api/health',
+                    httpMethod: raw.clientDefaults?.httpMethod || 'GET'
+                },
+                peers: Array.isArray(raw.peers) ? raw.peers.map((p: any) => ({
+                    peerId: p.peerId || `peer-${crypto.randomUUID().substring(0, 6)}`,
+                    name: p.name || 'Remote Peer',
+                    host: p.host || '127.0.0.1',
+                    port: Number(p.port) || Number(raw.listener?.port) || 9000,
+                    enabled: p.enabled !== false,
+                    connectionsOverride: p.connectionsOverride,
+                    rateOverride: p.rateOverride
+                })) : [],
+                startup: {
+                    startListener: raw.startup?.startListener !== false,
+                    startClientWorkload: raw.startup?.startClientWorkload === true
+                }
+            };
+
+            validApps.push(app);
+        }
+
+        if (validApps.length === 0) {
+            throw new Error('None of the items in the import payload were valid Custom TCP Applications');
+        }
+
+        let addedCount = 0;
+        let updatedCount = 0;
+
+        if (mode === 'replace') {
+            // Stop and delete existing runtimes
+            for (const existingApp of file.applications) {
+                const ctx = this.appInstances.get(existingApp.id);
+                if (ctx) {
+                    await ctx.clientRuntime.stop().catch(() => {});
+                    await ctx.serverRuntime.stop().catch(() => {});
+                }
+            }
+            this.appInstances.clear();
+            file.applications = validApps;
+
+            for (const app of validApps) {
+                this.registerAppInstance(app, file.instance);
+                if (app.enabled && app.startup?.startListener !== false) {
+                    await this.startListener(app.id, false).catch(() => {});
+                }
+                addedCount++;
+            }
+        } else {
+            // Merge mode: match by ID or Name
+            for (const app of validApps) {
+                const existingById = file.applications.findIndex(a => a.id === app.id);
+                const existingByName = file.applications.findIndex(a => a.name.toLowerCase() === app.name.toLowerCase());
+
+                if (existingById >= 0) {
+                    file.applications[existingById] = app;
+                    await this.saveApplication(app);
+                    updatedCount++;
+                } else if (existingByName >= 0) {
+                    // Keep existing ID so we don't break references
+                    app.id = file.applications[existingByName].id;
+                    file.applications[existingByName] = app;
+                    await this.saveApplication(app);
+                    updatedCount++;
+                } else {
+                    file.applications.push(app);
+                    this.registerAppInstance(app, file.instance);
+                    if (app.enabled && app.startup?.startListener !== false) {
+                        await this.startListener(app.id, false).catch(() => {});
+                    }
+                    addedCount++;
+                }
+            }
+        }
+
+        await this.configStore.save(file);
+        this.emit('config_reloaded', file);
+
+        return {
+            importedCount: validApps.length,
+            addedCount,
+            updatedCount,
+            mode,
+            applications: validApps.map(a => a.name)
+        };
+    }
+
     public getAppContext(appIdOrName: string) {
         if (!appIdOrName) return undefined;
         let ctx = this.appInstances.get(appIdOrName);
