@@ -168,7 +168,7 @@ export class LocalRegistryServer {
         return router;
     }
 
-    getFleetOverview() {
+    getFleetOverview(localLeaderId?: string) {
         const now = Date.now();
         const instances = Array.from(this.instances.values());
         
@@ -176,9 +176,12 @@ export class LocalRegistryServer {
         let offlineCount = 0;
 
         const enrichedInstances = instances.map(inst => {
-            const isLeader = inst.type === 'leader' || (inst.instance_id && inst.instance_id.toLowerCase().includes('leader'));
+            const isLeader = (localLeaderId && inst.instance_id === localLeaderId)
+                || inst.type === 'leader'
+                || (inst.instance_id && inst.instance_id.toLowerCase().includes('leader'));
+            
             const lastSeenMs = inst.last_seen ? new Date(inst.last_seen).getTime() : 0;
-            const diffSeconds = Math.round((now - lastSeenMs) / 1000);
+            const diffSeconds = lastSeenMs > 0 ? Math.max(0, Math.round((now - lastSeenMs) / 1000)) : 999999;
             
             // If the instance is the local Leader hosting this registry server, it's always online
             const isStale = isLeader ? false : (diffSeconds > 90);

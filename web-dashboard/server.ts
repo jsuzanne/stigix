@@ -11898,7 +11898,8 @@ app.get('/api/fleet/overview', authenticateToken, (req, res) => {
             message: 'Fleet Control Plane is only accessible on the Leader instance.'
         });
     }
-    const overview = localRegistryServer.getFleetOverview();
+    const localLeaderId = registryManager.getInstanceId();
+    const overview = localRegistryServer.getFleetOverview(localLeaderId);
     res.json(overview);
 });
 log('FLEET', `🏢 Fleet Control Plane mounted at /api/fleet/overview (Leader only)`);

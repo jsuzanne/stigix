@@ -475,18 +475,27 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             <td className="px-6 py-4">
                                                 {peer.is_stale || peer.summary?.probes_total === undefined ? (
                                                     <span className="text-xs text-neutral-500 font-mono">—</span>
-                                                ) : (
-                                                    <div className="text-xs font-mono">
-                                                        <span className="font-bold text-text">
-                                                            {peer.summary.probes_passing ?? peer.summary.probes_total}/{peer.summary.probes_total}
-                                                        </span>
-                                                        {(peer.summary.probes_passing ?? peer.summary.probes_total) === peer.summary.probes_total ? (
-                                                            <span className="ml-1 text-emerald-400">✅</span>
-                                                        ) : (
-                                                            <span className="ml-1 text-amber-400">⚠️</span>
-                                                        )}
-                                                    </div>
-                                                )}
+                                                ) : (() => {
+                                                    const total = peer.summary.probes_total;
+                                                    const passing = peer.summary.probes_passing ?? total;
+                                                    const failing = total - passing;
+                                                    const isAllPassing = passing === total;
+                                                    const tooltip = isAllPassing 
+                                                        ? `${total} probes active (all 100% passing)`
+                                                        : `${passing} passing / ${total} active (${failing} probe${failing > 1 ? 's' : ''} failing/unreachable)`;
+                                                    return (
+                                                        <div className="text-xs font-mono cursor-help" title={tooltip}>
+                                                            <span className="font-bold text-text">
+                                                                {passing}/{total}
+                                                            </span>
+                                                            {isAllPassing ? (
+                                                                <span className="ml-1 text-emerald-400">✅</span>
+                                                            ) : (
+                                                                <span className="ml-1 text-amber-400">⚠️</span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </td>
 
                                             {/* Traffic State */}

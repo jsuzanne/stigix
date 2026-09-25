@@ -465,6 +465,10 @@ export class RegistryManager {
         this.setupIntervals();
     }
 
+    public getInstanceId(): string {
+        return this.client.getConfig().instanceId;
+    }
+
     private setupIntervals() {
         const config = this.client.getConfig();
         const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || 'peer';
@@ -477,13 +481,15 @@ export class RegistryManager {
         const discoveryMs = (config.discoveryIntervalSec || 30) * 1000;
         this.discoveryInterval = setInterval(() => this.performDiscovery(), discoveryMs);
 
-        // If we are using a LOCAL Leader/Registry (either as a local Peer or as the Leader itself),
-        // we heartbeat every 30s since there is zero Cloudflare quota impact.
-        if (config.registryUrl !== config.remoteUrl) {
-            heartbeatMs = 30000; // 30s local heartbeat
-            log('REGISTRY', `Local registry mode detected (${mode}). Heartbeat set to 30s.`);
+        // Heartbeat interval:
+        // - Local mode (Leader or Peer talking to local Leader): 30 seconds
+        // - Cloudflare remote fallback: configured interval (default 60s)
+        let heartbeatMs = 30000;
+        if (config.registryUrl === config.remoteUrl) {
+            heartbeatMs = (config.heartbeatIntervalSec || 60) * 1000;
         }
 
+        log('REGISTRY', `Heartbeat interval set to ${heartbeatMs / 1000}s (mode: ${mode}, target: ${config.registryUrl})`);
         this.heartbeatInterval = setInterval(() => this.performHeartbeat(), heartbeatMs);
     }
 
