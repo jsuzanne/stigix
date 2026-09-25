@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Implemented dual import strategy: **Merge & Update (Recommended)** (preserves other configurations and updates matching apps) and **Replace All Existing** (clean overwrite).
   - Added backend REST endpoints `GET /api/custom-tcp-apps/export`, `GET /api/custom-tcp-apps/:id/export`, and `POST /api/custom-tcp-apps/import`.
   - Added FastMCP tools `export_custom_tcp_apps` and `import_custom_tcp_apps` for programmatic and AI Copilot automation.
+  - Ensured 100% schema fidelity during import/export roundtrips (persisting `serverBehavior`, detailed `listener` security policies, and `clientDefaults`).
+  - Added React `WizardErrorBoundary` and `CustomAppsErrorBoundary` with auto-healing `normalizeCustomTcpApp` for robust UI crash prevention.
+- **FastMCP Server Stability & FrameParser Optimization (`server.py`, `frame-parser.ts`)** ⚡:
+  - Fixed missing `Union` typing import in `server.py` and synchronized tools manifest.
+  - Optimized `FrameParser` max listeners to eliminate Node.js EventEmitter memory leak warnings during high-concurrency custom TCP workloads.
 
 ---
 
