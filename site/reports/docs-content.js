@@ -210,5 +210,69 @@ Six of the seven services respond quickly and consistently; SharePoint is the on
 | Ping Hetzner server (ms) | 32 | 29 |
 | Google Search, TCP connection (ms) | 7 | 149 |
 | Salesforce, TCP connection (ms) | 6 | 152 |
+`,
+
+  "Making-of How Stigix Powered the Prisma SD-WAN Failover Tests.md": `# Making-of: How Stigix Powered the Prisma SD-WAN Failover Tests
+
+Sep 25, 2026 · Jean-Louis SUZANNE, Technical Sales Manager, Palo Alto Networks
+
+## Why a test platform
+
+The white paper *When Routing Can't See the Failure* shows that Prisma SD-WAN fails over when a data center's internet breakout dies, even though every route and tunnel stays up. This making-of explains how those results were produced, and what [Stigix](https://github.com/jsuzanne/stigix) did at each step.
+
+Failover testing is easy to do badly. Pull a cable, refresh a web page, and you learn almost nothing: not when the failure started, not which path the traffic took, not what users actually felt. A useful test needs four things:
+
+- **Realistic traffic** running before, during and after the failure, so there is something to fail over.
+- **Controlled, repeatable failures**, injected at a known point and a known time.
+- **Measurements from several angles**: packets, application sessions, voice quality, and the SD-WAN's own path decisions.
+- **A timeline** that ties all of these together to the second.
+
+Stigix provided all four from one place. And because it exposes its functions through the Model Context Protocol (MCP), the whole campaign could be driven by an AI assistant, Claude, under an engineer's supervision.
+
+## The lab as Stigix sees it
+
+Stigix runs as a small agent on a Linux host at each site. The agents form a mesh, with DC1's node acting as leader, and each can generate traffic toward the others. On top of the SD-WAN itself, three Stigix integrations did the heavy lifting.
+
+**Stigix nodes (traffic endpoints):**
+
+| Node | Address | Role in the tests |
+| --- | --- | --- |
+| BR8-Ubuntu | 192.168.219.1 | Test source: all traffic, probes and measurements start here |
+| DC1-Ubuntu | 192.168.203.100 | Target in DC1 for convergence probes, speed tests and TCP apps; mesh leader |
+| BR1, BR2, BR5 nodes | 192.168.207.10, 192.168.206.10, 192.168.217.5 | Control targets: voice calls and TCP sessions that should not be affected |
+
+**VyOS routers (failure injection):**
+
+| Router | What it emulates | Interfaces used in the tests |
+| --- | --- | --- |
+| vyosrouter | The underlay: every site's internet and MPLS circuits | eth10, DC1-INET-221 (DC1's internet circuit, carrying the SD-WAN tunnels) |
+| vyoslandc1 | DC1's LAN and central internet breakout | eth3, DC1 INTERNET EXIT (the breakout behind DC1) |
+
+## The Stigix toolbox used in the tests
+
+| Stigix capability | What it did | What it proved |
+| --- | --- | --- |
+| Application traffic generator | Continuous simulated SaaS traffic from BR8 (Microsoft 365, Google, Salesforce, Dropbox), logged with HTTP codes | Backhauled apps failing during outage, recovering after failover |
+| Convergence probes | A UDP flow at 50 pps from BR8 to DC1, echoed back | Maximum blackout, loss per direction (in % and ms), verdict |
+| Voice simulation | 30-second G.711 calls from BR8 to DC1, BR1 and BR2 | Loss, jitter and MOS per call (e.g. MOS 1.48 during cut) |
+| Custom TCP applications | Persistent TCP sessions from BR8 to DC1, BR2 and BR5 | Sessions to DC1 break on failover, survive failback |
+| Speed tests | TCP and UDP throughput tests, upstream and downstream | Link capacity baseline, up to ~200 Mbit/s upstream |
+| VyOS control | Interface shutdown/restore, latency/loss injection | Failure start and end times, to the millisecond |
+| Prisma SD-WAN Flow Browser | Flows filtered by address/port with path decisions | Which path the SD-WAN chose, and exactly when it changed |
+
+## The earlier campaign: when the tunnel itself fails
+
+| Measurement | Stigix source | Result |
+| --- | --- | --- |
+| Maximum blackout | Convergence probe | 7.7 to 9.3 s over eight runs, 8.6 s on average |
+| First path decision after cut | VyOS commit timestamp + Flow Browser | 0.9 to 1.8 s (two runs with exact timestamps) |
+| Loss per direction | Convergence probe (echo) | ~3 s upstream, ~5 s downstream |
+| Voice call caught by cut | Voice simulation | 26% loss, MOS 1.48 |
+| Voice call during outage via DC2 | Voice simulation | No loss, MOS 4.4 |
+| TCP sessions to DC1 | Custom TCP apps | Dropped at cut, reconnected in ~3 s via DC2 |
+
+## Stigix MCP interface
+
+Stigix exposes more than 80 MCP tools, covering every function used in these tests. The MCP interface makes Stigix **orchestratable in natural language**. An engineer describes a scenario and an AI assistant chains the exact Stigix calls, reads results, and builds the timeline.
 `
 };
