@@ -16,7 +16,7 @@ import inspect
 import functools
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Union, Dict, Any
 
 # CRITICAL: All logs to stderr to avoid polluting stdio JSON-RPC transport
 logging.basicConfig(
