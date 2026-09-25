@@ -2,6 +2,27 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2-dev] - 2026-09-25 — Fleet Control Plane: Telemetry Enriched Heartbeat & Fleet Observability (Phase 3A)
+
+### Added
+- **Fleet Control Plane Observability (Phase 3A)** 🏢:
+  - **Enriched Heartbeat Telemetry**: Extended peer heartbeats (30s) to include an aggregated `summary` object:
+    - `probes_global_health`: Real-time Global Experience score (0–100) computed from synthetic probes.
+    - `probes_total` & `probes_passing`: Count of active vs healthy DEM probes.
+    - `traffic_state` & `traffic_rate_mbps`: Live SaaS traffic generation state and combined throughput.
+    - `voice_active` & `voice_mos`: Active voice simulation status and average MOS quality.
+    - `convergence_active` & `xfr_active`: Millisecond failover testing and high-bandwidth validation activity flags.
+    - `uptime_seconds`: Node container uptime.
+  - **Leader Fleet Aggregator API (`/api/fleet/overview`)**:
+    - Aggregates peer instances with real-time status (`online`, `degraded`, `offline`), stale heartbeat detection (>90s), and fleet-wide average Global Experience score.
+    - Protected route accessible exclusively when the current node is acting as Leader.
+  - **Dynamic Fleet UI Dashboard (`Fleet.tsx`)**:
+    - **Conditional Leader-Only Menu**: The "Fleet" navigation button is strictly rendered on the Leader instance; invisible on peers/spokes.
+    - **KPI Metrics Bar**: Total nodes, Online, Degraded (score < 80), Offline, and Fleet Average Global Experience score.
+    - **Peers Table**: Site name, status badge, Global Experience mini-score gauge, probe counts, traffic status, voice MOS, provisioning revision, and direct UI links.
+    - **Peer Detail Drawer**: Quick inspection modal with capability matrix, detailed telemetry, configuration revisions, and 1-click external dashboard navigation.
+    - **Auto-Refresh**: 15-second background polling with pause toggle and instant manual refresh.
+
 ## [v2-dev] - 2026-09-23 — MCP Automated Test Harness (Phase 2)
 
 ### Added

@@ -11786,6 +11786,123 @@ app.use('/api/registry', (req, res, next) => {
 });
 log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry (Dynamic Mode)`);
 
+// --- Stigix Fleet Telemetry Provider (Phase 3A) ---
+registryManager.setTelemetryProvider(async () => {
+    let probesGlobalHealth = 0;
+    let probesTotal = 0;
+    let probesPassing = 0;
+
+    try {
+        const envProbes = getEnvConnectivityEndpoints();
+        const customProbes = getCustomConnectivityEndpoints();
+        const discoveredProbes = discoveryManager.getProbes();
+
+        const mergedEnvProbes = envProbes.map((p: any) => {
+            const override = customProbes.find((cp: any) => cp.name === p.name);
+            return override ? { ...p, enabled: override.enabled } : p;
+        });
+        const pureCustom = customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+        const allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes];
+        const activeProbeIds = allProbes.filter((p: any) => p.enabled !== false).map((p: any) => p.name.toLowerCase().replace(/\s+/g, '-'));
+        probesTotal = activeProbeIds.length;
+
+        let globalScoreTypes: string[] | undefined;
+        try {
+            if (fs.existsSync(UI_CONFIG_FILE)) {
+                const uiCfg = JSON.parse(fs.readFileSync(UI_CONFIG_FILE, 'utf8'));
+                if (Array.isArray(uiCfg.globalScoreTypes) && uiCfg.globalScoreTypes.length > 0) {
+                    globalScoreTypes = uiCfg.globalScoreTypes;
+                }
+            }
+        } catch {}
+
+        const stats = await connectivityLogger.getStats({ timeRange: '1h', activeProbeIds, globalScoreTypes });
+        if (stats && typeof stats.globalHealth === 'number') {
+            probesGlobalHealth = stats.globalHealth;
+        }
+        if (stats && stats.flakyEndpoints) {
+            const downCount = stats.flakyEndpoints.filter((f: any) => f.isDown).length;
+            probesPassing = Math.max(0, probesTotal - downCount);
+        } else {
+            probesPassing = probesTotal;
+        }
+    } catch (e) {
+        log('REGISTRY', `Telemetry probe calculation error: ${e}`, 'warn');
+    }
+
+    // Traffic state & rate
+    let trafficState: 'RUNNING' | 'STOPPED' | 'IDLE' = 'STOPPED';
+    let trafficRateMbps = 0;
+    try {
+        if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+            const cfg = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
+            if (cfg.control?.enabled) {
+                trafficState = 'RUNNING';
+            }
+        }
+        const stigixStats = containerStatsMap.get('stigix');
+        if (stigixStats?.currentBitrate) {
+            const tx = parseFloat(stigixStats.currentBitrate.tx_mbps || '0') || 0;
+            const rx = parseFloat(stigixStats.currentBitrate.rx_mbps || '0') || 0;
+            trafficRateMbps = Math.round((tx + rx) * 100) / 100;
+        }
+    } catch {}
+
+    // Voice state & MOS
+    let voiceActive = false;
+    let voiceMos: number | undefined = undefined;
+    try {
+        if (fs.existsSync(VOICE_CONFIG_FILE)) {
+            const vCfg = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
+            voiceActive = !!vCfg.control?.enabled;
+        }
+        if (fs.existsSync(VOICE_STATS_FILE)) {
+            const out = execSync(`tail -n 20 ${VOICE_STATS_FILE}`, { encoding: 'utf8' });
+            const lines = out.trim().split('\n').filter(l => l.trim());
+            const stats = lines.map(l => JSON.parse(l));
+            const mosCalls = stats.filter((c: any) => (c.mos_score ?? 0) > 0);
+            if (mosCalls.length > 0) {
+                voiceMos = parseFloat((mosCalls.reduce((s: number, c: any) => s + c.mos_score, 0) / mosCalls.length).toFixed(2));
+            }
+        }
+    } catch {}
+
+    // Convergence state
+    const convergenceActive = convergenceProcesses.size > 0;
+
+    // XFR (iperf) state
+    let xfrActive = false;
+    try {
+        xfrActive = Array.from((xfrManager as any).jobs.values()).some((j: any) => j.status === 'running');
+    } catch {}
+
+    return {
+        probes_global_health: probesGlobalHealth,
+        probes_total: probesTotal,
+        probes_passing: probesPassing,
+        traffic_state: trafficState,
+        traffic_rate_mbps: trafficRateMbps,
+        voice_active: voiceActive,
+        voice_mos: voiceMos,
+        convergence_active: convergenceActive,
+        xfr_active: xfrActive,
+        uptime_seconds: Math.floor(process.uptime())
+    };
+});
+
+// --- Stigix Fleet Control Plane API (Phase 3A - Leader Only) ---
+app.get('/api/fleet/overview', authenticateToken, (req, res) => {
+    if (!registryManager.isLeader()) {
+        return res.status(403).json({
+            error: 'not_leader',
+            message: 'Fleet Control Plane is only accessible on the Leader instance.'
+        });
+    }
+    const overview = localRegistryServer.getFleetOverview();
+    res.json(overview);
+});
+log('FLEET', `🏢 Fleet Control Plane mounted at /api/fleet/overview (Leader only)`);
+
 // --- Custom TCP Inter-Site Applications API ---
 app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
 log('CUSTOM_TCP', `🖧 Custom TCP Applications API mounted at /api/custom-tcp-apps`);

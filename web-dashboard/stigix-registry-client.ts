@@ -66,7 +66,22 @@ export interface RegistryInstance {
         version?: string;
         [key: string]: any;
     };
+    summary?: RegistryInstanceSummary;
     last_seen?: string;
+}
+
+export interface RegistryInstanceSummary {
+    probes_global_health?: number; // 0-100 Global Experience score
+    probes_total?: number;
+    probes_passing?: number;
+    traffic_state?: 'RUNNING' | 'STOPPED' | 'IDLE';
+    traffic_rate_mbps?: number;
+    voice_active?: boolean;
+    voice_mos?: number;
+    convergence_active?: boolean;
+    xfr_active?: boolean;
+    uptime_seconds?: number;
+    [key: string]: any;
 }
 
 export class StigixRegistryClient {
@@ -165,15 +180,20 @@ export class StigixRegistryClient {
         return headers;
     }
 
-    async register(ipPrivate: string, capabilities: RegistryInstance["capabilities"] = {}): Promise<any | null> {
+    async register(
+        ipPrivate: string,
+        capabilities: RegistryInstance["capabilities"] = {},
+        summary?: RegistryInstanceSummary
+    ): Promise<any | null> {
         if (!this.config.enabled || !this.config.pocId) return null;
 
-        const payload = {
+        const payload: any = {
             poc_id: this.config.pocId,
             instance_id: this.config.instanceId,
             type: this.config.instanceType,
             ip_private: ipPrivate,
             capabilities,
+            summary,
             meta: {
                 site: this.config.siteName,
                 region: this.config.region,

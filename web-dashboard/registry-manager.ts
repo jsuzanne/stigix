@@ -4,7 +4,7 @@ import fs from 'fs';
 import net from 'net';
 import { spawn } from 'child_process';
 import { log } from './utils/logger.js';
-import { StigixRegistryClient, RegistryInstance } from './stigix-registry-client.js';
+import { StigixRegistryClient, RegistryInstance, RegistryInstanceSummary } from './stigix-registry-client.js';
 import type { LocalRegistryServer } from './local-registry-server.js';
 
 /**
@@ -15,6 +15,7 @@ export class RegistryManager {
     private client: StigixRegistryClient;
     private localRegistryServer: LocalRegistryServer | null = null;
     private targetsManager: any = null;
+    private telemetryProvider: (() => Promise<RegistryInstanceSummary> | RegistryInstanceSummary) | null = null;
     private heartbeatInterval: NodeJS.Timeout | null = null;
     private discoveryInterval: NodeJS.Timeout | null = null;
     private peerCache: Map<string, { instance: RegistryInstance, lastSeen: number }> = new Map();
@@ -36,6 +37,10 @@ export class RegistryManager {
 
     public setTargetsManager(mgr: any) {
         this.targetsManager = mgr;
+    }
+
+    public setTelemetryProvider(provider: () => Promise<RegistryInstanceSummary> | RegistryInstanceSummary) {
+        this.telemetryProvider = provider;
     }
 
     /**
@@ -554,7 +559,16 @@ export class RegistryManager {
         // Build capabilities based on configured node capabilities
         const capabilities = this.getNodeCapabilities();
 
-        const result = await this.client.register(this.currentIp, capabilities);
+        let summary: RegistryInstanceSummary | undefined;
+        if (this.telemetryProvider) {
+            try {
+                summary = await this.telemetryProvider();
+            } catch (err) {
+                log('REGISTRY', `Error collecting telemetry summary: ${err}`, 'warn');
+            }
+        }
+
+        const result = await this.client.register(this.currentIp, capabilities, summary);
         if (result && result.status === 'ok') {
             // Heartbeat successful
         } else if (mode === 'peer' && config.registryUrl !== config.remoteUrl && !this.directMode) {

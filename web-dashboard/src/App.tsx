@@ -14,6 +14,7 @@ import Topology from './Topology';
 import LiveEvents from './LiveEvents';
 import { CustomApps } from './CustomApps';
 import Copilot from './Copilot';
+import Fleet from './Fleet';
 import { SystemHealthBadge } from './components/health/SystemHealthBadge';
 import { SystemHealthModal } from './components/health/SystemHealthModal';
 import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot } from 'lucide-react';
@@ -59,7 +60,7 @@ interface SiteInfo {
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('username'));
-  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'api_studio' | 'copilot'>(
+  const [view, setView] = useState<'dashboard' | 'settings' | 'statistics' | 'security' | 'voice' | 'performance' | 'failover' | 'srt' | 'iot' | 'vyos' | 'speedtest' | 'topology' | 'convergence' | 'events' | 'custom_apps' | 'api_studio' | 'copilot' | 'fleet'>(
     (localStorage.getItem('activeView') as any) || 'performance'
   );
 
@@ -67,6 +68,18 @@ export default function App() {
   const [initialSettingsTab, setInitialSettingsTab] = useState<any>(null);
   const [copilotDrawerOpen, setCopilotDrawerOpen] = useState(false);
   const [copilotConfig, setCopilotConfig] = useState<{ enabled: boolean; featureEnabled?: boolean; hasKey: boolean } | null>(null);
+  const [isLeader, setIsLeader] = useState<boolean>(false);
+
+  const fetchRegistryLeaderStatus = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/registry/status', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setIsLeader(data.mode === 'leader' || data.current_mode === 'leader' || data.local_registry_active === true);
+      }
+    } catch (e) { }
+  };
 
   const fetchCopilotConfig = async () => {
     if (!token) return;
@@ -680,6 +693,7 @@ export default function App() {
     fetchFeatures();
     fetchHealthMatrix();
     fetchCopilotConfig();
+    fetchRegistryLeaderStatus();
 
     // Core 3s polling — always on, not restarted on tab changes
     const interval = setInterval(() => {
@@ -690,6 +704,7 @@ export default function App() {
     // Health Matrix polling every 10s
     const healthInterval = setInterval(() => {
       fetchHealthMatrix();
+      fetchRegistryLeaderStatus();
     }, 10000);
 
     // History refresh every 60s silently (no spinner, no chart flash)
@@ -1096,6 +1111,18 @@ export default function App() {
           >
             <Bot size={18} /> AI Copilot <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 ml-1">AI</span>
             <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Interactive Conversational Assistant (BYOK Claude) with multi-tool orchestration</span>
+          </button>
+        )}
+        {isLeader && (
+          <button
+            onClick={() => setView('fleet')}
+            className={cn(
+              "group relative px-4 py-3 flex items-center gap-2 font-bold tracking-wider text-sm border-b-2 transition-all",
+              view === 'fleet' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
+            )}
+          >
+            <Globe size={18} /> Fleet <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 ml-1">Leader</span>
+            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Centralized multi-instance fleet observability & peer metrics</span>
           </button>
         )}
         {/* SRT Tab hidden in v1.1.2-patch.28 */}
@@ -1727,6 +1754,7 @@ export default function App() {
       {view === 'speedtest' && features.xfr_enabled && <Speedtest token={token!} />}
       {view === 'events' && <LiveEvents token={token!} />}
       {copilotConfig?.featureEnabled && copilotConfig?.hasKey && view === 'copilot' && <Copilot token={token!} onOpenSettings={() => { setInitialSettingsTab('mcp'); setView('settings'); }} />}
+      {view === 'fleet' && isLeader && <Fleet token={token!} onNavigate={setView} />}
 
       {/* ── Global Floating Copilot Trigger Button (Visible on all tabs only when feature enabled & API key configured) ── */}
       {copilotConfig?.featureEnabled && copilotConfig?.hasKey && view !== 'copilot' && !copilotDrawerOpen && (

@@ -160,6 +160,65 @@ export class LocalRegistryServer {
             return res.json({ status: 'ok' });
         });
 
+        // GET /fleet/overview (Federated Fleet Overview)
+        router.get('/fleet/overview', (req, res) => {
+            return res.json(this.getFleetOverview());
+        });
+
         return router;
+    }
+
+    getFleetOverview() {
+        const now = Date.now();
+        const instances = Array.from(this.instances.values());
+        
+        let onlineCount = 0;
+        let degradedCount = 0;
+        let offlineCount = 0;
+
+        const enrichedInstances = instances.map(inst => {
+            const lastSeenMs = inst.last_seen ? new Date(inst.last_seen).getTime() : 0;
+            const diffSeconds = Math.round((now - lastSeenMs) / 1000);
+            const isStale = diffSeconds > 90; // missed ~3 heartbeats
+
+            const globalHealth = inst.summary?.probes_global_health ?? null;
+            let status: 'online' | 'degraded' | 'offline';
+
+            if (isStale) {
+                status = 'offline';
+                offlineCount++;
+            } else if (globalHealth !== null && globalHealth < 80) {
+                status = 'degraded';
+                degradedCount++;
+            } else {
+                status = 'online';
+                onlineCount++;
+            }
+
+            return {
+                ...inst,
+                status,
+                is_stale: isStale,
+                last_seen_seconds_ago: diffSeconds
+            };
+        });
+
+        const scoresWithValues = enrichedInstances
+            .map(i => i.summary?.probes_global_health)
+            .filter((s): s is number => typeof s === 'number' && !isNaN(s));
+            
+        const avgGlobalExperience = scoresWithValues.length > 0
+            ? Math.round(scoresWithValues.reduce((a, b) => a + b, 0) / scoresWithValues.length)
+            : null;
+
+        return {
+            total_instances: enrichedInstances.length,
+            online_count: onlineCount,
+            degraded_count: degradedCount,
+            offline_count: offlineCount,
+            avg_global_experience: avgGlobalExperience,
+            instances: enrichedInstances,
+            generated_at: new Date().toISOString()
+        };
     }
 }
