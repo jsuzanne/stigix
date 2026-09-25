@@ -198,7 +198,9 @@ export class StigixRegistryClient {
                 site: this.config.siteName,
                 region: this.config.region,
                 vendor: 'stigix',
-                version: getAppVersion()
+                version: getAppVersion(),
+                management_url: process.env.STIGIX_MANAGEMENT_URL || process.env.MANAGEMENT_URL || undefined,
+                management_ip: process.env.STIGIX_MANAGEMENT_IP || process.env.MANAGEMENT_IP || undefined
             }
         };
 

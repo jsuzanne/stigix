@@ -14,13 +14,17 @@ All notable changes made specifically on the `v2` branch are documented in this 
     - `convergence_active` & `xfr_active`: Millisecond failover testing and high-bandwidth validation activity flags.
     - `uptime_seconds`: Node container uptime.
   - **Leader Fleet Aggregator API (`/api/fleet/overview`)**:
-    - Aggregates peer instances with real-time status (`online`, `degraded`, `offline`), stale heartbeat detection (>90s), and fleet-wide average Global Experience score.
+    - Clean separation between node connectivity status (strictly 🟢 `online` / 🔴 `offline`) and network performance (Global Experience score).
+    - Leader pinned at the top with `👑 Leader (This Node)` badge and 30s local heartbeat interval.
+    - Stale heartbeat detection (>90s) and fleet-wide average Global Experience score.
     - Protected route accessible exclusively when the current node is acting as Leader.
-  - **Dynamic Fleet UI Dashboard (`Fleet.tsx`)**:
+  - **Refined Fleet UI Dashboard (`Fleet.tsx`)**:
+    - **Pure Node Status**: Clear distinction between node liveness (🟢 Online / 🔴 Offline) and DEM quality badges (Optimal ≥80, Good 65–79, Degraded 50–64, Critical <50).
+    - **Dual Timestamps**: Displays both relative duration (e.g. `30s ago`) and exact time of last update (`22:50:02`).
+    - **1-Click IP Copy & Management URL**: Fast clipboard copy for traffic IPs (`📋`) and support for dedicated management URLs (`STIGIX_MANAGEMENT_URL` / `STIGIX_MANAGEMENT_IP`).
+    - **Provisioning Revision Fix**: Corrected number parsing to eliminate `rNaN` badges.
+    - **Legacy Node Support**: Displays `— N/A` for online legacy peers without telemetry instead of confusing `— Stale`.
     - **Conditional Leader-Only Menu**: The "Fleet" navigation button is strictly rendered on the Leader instance; invisible on peers/spokes.
-    - **KPI Metrics Bar**: Total nodes, Online, Degraded (score < 80), Offline, and Fleet Average Global Experience score.
-    - **Peers Table**: Site name, status badge, Global Experience mini-score gauge, probe counts, traffic status, voice MOS, provisioning revision, and direct UI links.
-    - **Peer Detail Drawer**: Quick inspection modal with capability matrix, detailed telemetry, configuration revisions, and 1-click external dashboard navigation.
     - **Auto-Refresh**: 15-second background polling with pause toggle and instant manual refresh.
 
 ## [v2-dev] - 2026-09-23 — MCP Automated Test Harness (Phase 2)

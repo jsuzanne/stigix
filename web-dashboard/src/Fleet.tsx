@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Globe, RefreshCw, Search, Server, Gauge, 
-    CheckCircle2, AlertTriangle, XCircle, ExternalLink, 
-    Check, X, Filter
+    CheckCircle2, XCircle, ExternalLink, 
+    Check, X, Filter, Copy, Clock, AlertTriangle, ShieldCheck
 } from 'lucide-react';
 
 interface FleetProps {
@@ -16,7 +16,8 @@ interface PeerInstance {
     type: string;
     ip_private: string;
     ip_public?: string;
-    status: 'online' | 'degraded' | 'offline';
+    is_leader?: boolean;
+    status: 'online' | 'offline';
     is_stale: boolean;
     last_seen_seconds_ago: number;
     last_seen?: string;
@@ -34,6 +35,8 @@ interface PeerInstance {
         region?: string;
         vendor?: string;
         version?: string;
+        management_url?: string;
+        management_ip?: string;
         [key: string]: any;
     };
     summary?: {
@@ -50,7 +53,7 @@ interface PeerInstance {
         [key: string]: any;
     };
     provisioning_status?: {
-        appliedRevisions?: Record<string, number>;
+        appliedRevisions?: Record<string, any>;
         lastReportedAt?: string;
         [key: string]: any;
     };
@@ -59,19 +62,26 @@ interface PeerInstance {
 interface FleetOverviewResponse {
     total_instances: number;
     online_count: number;
-    degraded_count: number;
     offline_count: number;
     avg_global_experience: number | null;
     instances: PeerInstance[];
     generated_at: string;
 }
 
-// Mini Gauge for Global Experience Score
-function ScoreMiniBadge({ score, isStale }: { score?: number | null; isStale?: boolean }) {
-    if (isStale || score === undefined || score === null) {
+// Mini Badge for Global Experience Score (DEM Health)
+function ScoreMiniBadge({ score, isStale, isOnline }: { score?: number | null; isStale?: boolean; isOnline?: boolean }) {
+    if (isStale || !isOnline) {
         return (
             <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-neutral-800 text-neutral-500 border border-neutral-700">
-                — Stale
+                — Offline
+            </span>
+        );
+    }
+
+    if (score === undefined || score === null) {
+        return (
+            <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-neutral-800/80 text-neutral-400 border border-neutral-700/60" title="No probe telemetry reported">
+                — N/A
             </span>
         );
     }
@@ -93,7 +103,7 @@ function ScoreMiniBadge({ score, isStale }: { score?: number | null; isStale?: b
     return (
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold font-mono border ${badgeClass}`}>
             <span className="text-sm font-black">{score}</span>
-            <span className="text-[10px] uppercase tracking-wider opacity-80">/100 · {label}</span>
+            <span className="text-[10px] uppercase tracking-wider opacity-85">/100 · {label}</span>
         </span>
     );
 }
@@ -108,12 +118,25 @@ function formatUptime(seconds?: number) {
     return `${m}m`;
 }
 
-function formatSecondsAgo(seconds: number) {
-    if (seconds < 60) return `${seconds}s ago`;
-    const m = Math.floor(seconds / 60);
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    return `${h}h ago`;
+function formatLastSeen(secondsAgo: number, lastSeenIso?: string) {
+    let timeStr = '';
+    if (lastSeenIso) {
+        try {
+            const date = new Date(lastSeenIso);
+            const now = new Date();
+            const isToday = date.toDateString() === now.toDateString();
+            timeStr = isToday
+                ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                : `${date.toLocaleDateString([], { day: '2-digit', month: '2-digit' })} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        } catch { }
+    }
+
+    let rel = '';
+    if (secondsAgo < 60) rel = `${secondsAgo}s ago`;
+    else if (secondsAgo < 3600) rel = `${Math.floor(secondsAgo / 60)}m ago`;
+    else rel = `${Math.floor(secondsAgo / 3600)}h ago`;
+
+    return { rel, timeStr };
 }
 
 export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
@@ -121,10 +144,18 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'degraded' | 'offline'>('all');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
     const [autoRefresh, setAutoRefresh] = useState(true);
     const [selectedPeer, setSelectedPeer] = useState<PeerInstance | null>(null);
     const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
+    const [copiedIp, setCopiedIp] = useState<string | null>(null);
+
+    const handleCopy = (e: React.MouseEvent, text: string) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text);
+        setCopiedIp(text);
+        setTimeout(() => setCopiedIp(null), 2000);
+    };
 
     const fetchFleetOverview = async (isManual = false) => {
         if (isManual) setLoading(true);
@@ -175,7 +206,8 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
             const matchesSearch = !query || 
                 (inst.meta?.site || '').toLowerCase().includes(query) ||
                 inst.instance_id.toLowerCase().includes(query) ||
-                inst.ip_private.toLowerCase().includes(query);
+                inst.ip_private.toLowerCase().includes(query) ||
+                (inst.meta?.management_ip || '').toLowerCase().includes(query);
             return matchesStatus && matchesSearch;
         });
     }, [data, statusFilter, searchQuery]);
@@ -191,7 +223,8 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                     <div>
                         <div className="flex items-center gap-3">
                             <h1 className="text-2xl font-black tracking-tight text-text">Fleet Control Plane</h1>
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
+                                <ShieldCheck size={12} />
                                 Leader Active
                             </span>
                         </div>
@@ -239,7 +272,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
             )}
 
             {/* KPI Metrics Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-card/50 backdrop-blur-md p-4 rounded-xl border border-border flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-neutral-800 flex items-center justify-center text-neutral-400">
                         <Server size={20} />
@@ -261,16 +294,6 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                 </div>
 
                 <div className="bg-card/50 backdrop-blur-md p-4 rounded-xl border border-border flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
-                        <AlertTriangle size={20} />
-                    </div>
-                    <div>
-                        <div className="text-xs text-amber-400/80 font-bold uppercase tracking-wider">Degraded</div>
-                        <div className="text-2xl font-black text-amber-400">{data?.degraded_count ?? '—'}</div>
-                    </div>
-                </div>
-
-                <div className="bg-card/50 backdrop-blur-md p-4 rounded-xl border border-border flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center text-red-400">
                         <XCircle size={20} />
                     </div>
@@ -280,7 +303,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                     </div>
                 </div>
 
-                <div className="col-span-2 md:col-span-1 bg-gradient-to-br from-blue-950/20 to-indigo-950/20 backdrop-blur-md p-4 rounded-xl border border-blue-500/20 flex items-center gap-3">
+                <div className="bg-gradient-to-br from-blue-950/20 to-indigo-950/20 backdrop-blur-md p-4 rounded-xl border border-blue-500/20 flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400">
                         <Gauge size={20} />
                     </div>
@@ -312,7 +335,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                     <span className="text-xs text-text-muted flex items-center gap-1 mr-1">
                         <Filter size={12} /> Status:
                     </span>
-                    {(['all', 'online', 'degraded', 'offline'] as const).map(f => (
+                    {(['all', 'online', 'offline'] as const).map(f => (
                         <button
                             key={f}
                             onClick={() => setStatusFilter(f)}
@@ -341,7 +364,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                 <th className="px-6 py-4">Traffic</th>
                                 <th className="px-6 py-4">Voice MOS</th>
                                 <th className="px-6 py-4">Config Rev</th>
-                                <th className="px-6 py-4">Last Seen</th>
+                                <th className="px-6 py-4">Last Update</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
                         </thead>
@@ -362,35 +385,61 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                             ) : (
                                 filteredInstances.map(peer => {
                                     const siteName = peer.meta?.site || peer.instance_id;
-                                    const isLeader = peer.type === 'leader' || peer.instance_id.includes('leader');
+                                    const isLeader = peer.is_leader || peer.type === 'leader' || peer.instance_id.toLowerCase().includes('leader');
                                     const version = peer.meta?.version || '—';
-                                    const revNumber = peer.provisioning_status?.appliedRevisions 
-                                        ? Math.max(0, ...Object.values(peer.provisioning_status.appliedRevisions))
-                                        : null;
+
+                                    // Safe parsing of applied revision numbers (prevent rNaN)
+                                    const revVals = peer.provisioning_status?.appliedRevisions 
+                                        ? Object.values(peer.provisioning_status.appliedRevisions)
+                                            .map((v: any) => typeof v === 'number' ? v : parseInt(v, 10))
+                                            .filter((n: number) => !isNaN(n))
+                                        : [];
+                                    const revNumber = revVals.length > 0 ? Math.max(...revVals) : null;
+
+                                    const { rel, timeStr } = formatLastSeen(peer.last_seen_seconds_ago, peer.last_seen);
+                                    
+                                    // Management URL vs Traffic IP determination
+                                    const mgmtUrl = peer.meta?.management_url 
+                                        || (peer.meta?.management_ip ? `http://${peer.meta.management_ip}:8080` : null);
+                                    const effectiveUrl = mgmtUrl || `http://${peer.ip_private}:8080`;
 
                                     return (
                                         <tr 
                                             key={peer.instance_id}
                                             onClick={() => setSelectedPeer(peer)}
-                                            className="hover:bg-blue-500/5 transition-colors cursor-pointer group"
+                                            className={`hover:bg-blue-500/5 transition-colors cursor-pointer group ${
+                                                isLeader ? 'bg-purple-950/10' : ''
+                                            }`}
                                         >
                                             {/* Site & ID */}
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-9 h-9 rounded-lg bg-neutral-800/80 border border-neutral-700 flex items-center justify-center text-neutral-300 font-bold group-hover:border-blue-500/40 group-hover:text-blue-400 transition-all">
-                                                        {siteName.slice(0, 3).toUpperCase()}
+                                                    <div className={`w-9 h-9 rounded-lg border flex items-center justify-center font-bold transition-all ${
+                                                        isLeader 
+                                                            ? 'bg-purple-500/10 border-purple-500/30 text-purple-400' 
+                                                            : 'bg-neutral-800/80 border-neutral-700 text-neutral-300 group-hover:border-blue-500/40 group-hover:text-blue-400'
+                                                    }`}>
+                                                        {isLeader ? '👑' : siteName.slice(0, 3).toUpperCase()}
                                                     </div>
                                                     <div>
                                                         <div className="font-bold text-text flex items-center gap-2">
                                                             {siteName}
                                                             {isLeader && (
                                                                 <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                                                                    Leader
+                                                                    Leader (This Node)
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <div className="text-xs text-text-muted font-mono flex items-center gap-2">
-                                                            <span>{peer.ip_private}</span>
+                                                        <div className="text-xs text-text-muted font-mono flex items-center gap-2 mt-0.5">
+                                                            {/* Traffic IP with 1-click copy */}
+                                                            <span 
+                                                                onClick={(e) => handleCopy(e, peer.ip_private)}
+                                                                className="hover:text-blue-400 flex items-center gap-1 cursor-copy"
+                                                                title="Traffic IP (Click to copy)"
+                                                            >
+                                                                <span>{peer.ip_private}</span>
+                                                                {copiedIp === peer.ip_private ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} className="opacity-40 hover:opacity-100" />}
+                                                            </span>
                                                             <span>·</span>
                                                             <span className="text-[11px] opacity-75">{version}</span>
                                                         </div>
@@ -398,17 +447,12 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 </div>
                                             </td>
 
-                                            {/* Status Badge */}
+                                            {/* Status Badge (Pure Online / Offline) */}
                                             <td className="px-6 py-4">
                                                 {peer.status === 'online' ? (
                                                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                                                         Online
-                                                    </span>
-                                                ) : peer.status === 'degraded' ? (
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                                        <AlertTriangle size={12} />
-                                                        Degraded
                                                     </span>
                                                 ) : (
                                                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-500/10 text-red-400 border border-red-500/20">
@@ -423,6 +467,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 <ScoreMiniBadge 
                                                     score={peer.summary?.probes_global_health} 
                                                     isStale={peer.is_stale}
+                                                    isOnline={peer.status === 'online'}
                                                 />
                                             </td>
 
@@ -483,23 +528,36 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 )}
                                             </td>
 
-                                            {/* Last Seen */}
-                                            <td className="px-6 py-4 text-xs font-mono text-text-muted">
-                                                {formatSecondsAgo(peer.last_seen_seconds_ago)}
+                                            {/* Last Update: Relative + Absolute Timestamp */}
+                                            <td className="px-6 py-4 text-xs font-mono text-text-muted" title={peer.last_seen || ''}>
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-text/80">{rel}</span>
+                                                    {timeStr && <span className="text-[11px] opacity-60">{timeStr}</span>}
+                                                </div>
                                             </td>
 
-                                            {/* Open Dashboard Link */}
+                                            {/* Actions: Open UI & Copy IP */}
                                             <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
-                                                <a
-                                                    href={`http://${peer.ip_private}:8080`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 hover:border-neutral-600 transition-all shadow-sm"
-                                                    title={`Open ${siteName} Dashboard`}
-                                                >
-                                                    <span>Open UI</span>
-                                                    <ExternalLink size={12} />
-                                                </a>
+                                                <div className="inline-flex items-center gap-1.5">
+                                                    <button
+                                                        onClick={(e) => handleCopy(e, peer.ip_private)}
+                                                        className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 transition-all"
+                                                        title="Copy Traffic IP"
+                                                    >
+                                                        {copiedIp === peer.ip_private ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                                                    </button>
+
+                                                    <a
+                                                        href={effectiveUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 hover:border-neutral-600 transition-all shadow-sm"
+                                                        title={`Open UI: ${effectiveUrl}`}
+                                                    >
+                                                        <span>Open UI</span>
+                                                        <ExternalLink size={12} />
+                                                    </a>
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -535,18 +593,19 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                                 Online
                                             </span>
-                                        ) : selectedPeer.status === 'degraded' ? (
-                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                                Degraded
-                                            </span>
                                         ) : (
                                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">
                                                 Offline
                                             </span>
                                         )}
+                                        {(selectedPeer.is_leader || selectedPeer.type === 'leader') && (
+                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                                Leader
+                                            </span>
+                                        )}
                                     </div>
                                     <p className="text-xs text-text-muted font-mono mt-0.5">
-                                        ID: {selectedPeer.instance_id} · IP: {selectedPeer.ip_private}
+                                        ID: {selectedPeer.instance_id} · Version: {selectedPeer.meta?.version || '—'}
                                     </p>
                                 </div>
                             </div>
@@ -559,6 +618,50 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                             </button>
                         </div>
 
+                        {/* Network & Access Addresses */}
+                        <div className="space-y-2">
+                            <h3 className="text-xs uppercase font-mono tracking-wider text-text-muted font-bold">
+                                Network & Management Addresses
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="p-3 rounded-xl bg-neutral-900/60 border border-border flex items-center justify-between">
+                                    <div>
+                                        <div className="text-[10px] uppercase font-bold text-text-muted">Traffic IP (Data Plane)</div>
+                                        <div className="text-sm font-mono font-bold text-text mt-0.5">{selectedPeer.ip_private}</div>
+                                    </div>
+                                    <button
+                                        onClick={(e) => handleCopy(e, selectedPeer.ip_private)}
+                                        className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
+                                        title="Copy IP"
+                                    >
+                                        {copiedIp === selectedPeer.ip_private ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                                    </button>
+                                </div>
+
+                                <div className="p-3 rounded-xl bg-neutral-900/60 border border-border flex items-center justify-between">
+                                    <div>
+                                        <div className="text-[10px] uppercase font-bold text-text-muted">Management URL</div>
+                                        <div className="text-sm font-mono font-bold text-text mt-0.5 truncate max-w-[180px]">
+                                            {selectedPeer.meta?.management_url 
+                                                || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}
+                                        </div>
+                                    </div>
+                                    <a
+                                        href={selectedPeer.meta?.management_url || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
+                                        title="Open UI"
+                                    >
+                                        <ExternalLink size={14} />
+                                    </a>
+                                </div>
+                            </div>
+                            <p className="text-[11px] text-text-muted italic">
+                                💡 Tip: The Traffic IP used for WAN packet generation can differ from the Management IP. You can set <code className="text-blue-400">STIGIX_MANAGEMENT_URL=http://&lt;mgmt-ip&gt;:8080</code> in the peer's environment to customize the direct UI link.
+                            </p>
+                        </div>
+
                         {/* Top Telemetry Highlight */}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-neutral-900/40 p-4 rounded-xl border border-border">
                             <div>
@@ -567,6 +670,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                     <ScoreMiniBadge 
                                         score={selectedPeer.summary?.probes_global_health} 
                                         isStale={selectedPeer.is_stale}
+                                        isOnline={selectedPeer.status === 'online'}
                                     />
                                 </div>
                             </div>
@@ -634,7 +738,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                     {Object.entries(selectedPeer.provisioning_status.appliedRevisions).map(([bundle, rev]) => (
                                         <div key={bundle} className="p-2.5 rounded-lg bg-neutral-900/50 border border-neutral-800 text-xs font-mono flex items-center justify-between">
                                             <span className="text-neutral-400">{bundle}</span>
-                                            <span className="font-bold text-neutral-200">r{rev}</span>
+                                            <span className="font-bold text-neutral-200">r{String(rev)}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -643,11 +747,12 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
 
                         {/* Direct Action Footer */}
                         <div className="flex items-center justify-between pt-4 border-t border-border">
-                            <span className="text-xs font-mono text-text-muted">
-                                Last seen {formatSecondsAgo(selectedPeer.last_seen_seconds_ago)}
+                            <span className="text-xs font-mono text-text-muted flex items-center gap-1.5">
+                                <Clock size={12} />
+                                Last heartbeat received: {selectedPeer.last_seen ? new Date(selectedPeer.last_seen).toLocaleString() : '—'}
                             </span>
                             <a
-                                href={`http://${selectedPeer.ip_private}:8080`}
+                                href={selectedPeer.meta?.management_url || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-lg active:scale-95"

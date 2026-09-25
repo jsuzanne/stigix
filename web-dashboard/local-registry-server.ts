@@ -173,34 +173,39 @@ export class LocalRegistryServer {
         const instances = Array.from(this.instances.values());
         
         let onlineCount = 0;
-        let degradedCount = 0;
         let offlineCount = 0;
 
         const enrichedInstances = instances.map(inst => {
+            const isLeader = inst.type === 'leader' || (inst.instance_id && inst.instance_id.toLowerCase().includes('leader'));
             const lastSeenMs = inst.last_seen ? new Date(inst.last_seen).getTime() : 0;
             const diffSeconds = Math.round((now - lastSeenMs) / 1000);
-            const isStale = diffSeconds > 90; // missed ~3 heartbeats
+            
+            // If the instance is the local Leader hosting this registry server, it's always online
+            const isStale = isLeader ? false : (diffSeconds > 90);
+            const status: 'online' | 'offline' = isStale ? 'offline' : 'online';
 
-            const globalHealth = inst.summary?.probes_global_health ?? null;
-            let status: 'online' | 'degraded' | 'offline';
-
-            if (isStale) {
-                status = 'offline';
-                offlineCount++;
-            } else if (globalHealth !== null && globalHealth < 80) {
-                status = 'degraded';
-                degradedCount++;
-            } else {
-                status = 'online';
+            if (status === 'online') {
                 onlineCount++;
+            } else {
+                offlineCount++;
             }
 
             return {
                 ...inst,
+                is_leader: isLeader,
                 status,
                 is_stale: isStale,
-                last_seen_seconds_ago: diffSeconds
+                last_seen_seconds_ago: isLeader ? 0 : diffSeconds
             };
+        });
+
+        // Sort: Leader first, then alphabetically by site/instance_id
+        enrichedInstances.sort((a, b) => {
+            if (a.is_leader && !b.is_leader) return -1;
+            if (!a.is_leader && b.is_leader) return 1;
+            const nameA = a.meta?.site || a.instance_id;
+            const nameB = b.meta?.site || b.instance_id;
+            return nameA.localeCompare(nameB);
         });
 
         const scoresWithValues = enrichedInstances
@@ -214,7 +219,6 @@ export class LocalRegistryServer {
         return {
             total_instances: enrichedInstances.length,
             online_count: onlineCount,
-            degraded_count: degradedCount,
             offline_count: offlineCount,
             avg_global_experience: avgGlobalExperience,
             instances: enrichedInstances,

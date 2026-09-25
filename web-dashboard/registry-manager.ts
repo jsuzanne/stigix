@@ -477,14 +477,11 @@ export class RegistryManager {
         const discoveryMs = (config.discoveryIntervalSec || 30) * 1000;
         this.discoveryInterval = setInterval(() => this.performDiscovery(), discoveryMs);
 
-        // Heartbeat is adaptive
-        let heartbeatMs = (config.heartbeatIntervalSec || 300) * 1000;
-
-        // If we are a Peer using a LOCAL Leader, we can go faster (no Cloudflare quota impact)
-        // If we are the Leader, we still heartbeat slow to Cloudflare to save quota
-        if (mode === 'peer' && config.registryUrl !== config.remoteUrl) {
-            heartbeatMs = 60000; // 1 minute
-            log('REGISTRY', `Local mode detected. Heartbeat increased to 60s.`);
+        // If we are using a LOCAL Leader/Registry (either as a local Peer or as the Leader itself),
+        // we heartbeat every 30s since there is zero Cloudflare quota impact.
+        if (config.registryUrl !== config.remoteUrl) {
+            heartbeatMs = 30000; // 30s local heartbeat
+            log('REGISTRY', `Local registry mode detected (${mode}). Heartbeat set to 30s.`);
         }
 
         this.heartbeatInterval = setInterval(() => this.performHeartbeat(), heartbeatMs);
