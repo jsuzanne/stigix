@@ -780,9 +780,17 @@ export default function Speedtest({ token }: Props) {
                             <ResponsiveContainer width="100%" height="100%">
                                 <ComposedChart data={chartData}>
                                     <defs>
-                                        <linearGradient id="colorMain" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                        {/* Emerald green gradient for Sent / Upload throughput */}
+                                        <linearGradient id="colorSent" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
+                                            <stop offset="60%" stopColor="#10b981" stopOpacity={0.12} />
+                                            <stop offset="100%" stopColor="#10b981" stopOpacity={0.0} />
+                                        </linearGradient>
+                                        {/* Electric blue gradient for Received / Download throughput */}
+                                        <linearGradient id="colorReceived" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} />
+                                            <stop offset="60%" stopColor="#3b82f6" stopOpacity={0.12} />
+                                            <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.0} />
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(128,128,128,0.1)" />
@@ -839,12 +847,34 @@ export default function Speedtest({ token }: Props) {
                                             return null;
                                         }}
                                     />
-                                    <Area yAxisId="left" type="monotone" dataKey="received_mbps" name="Received Mbps" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorMain)" />
-                                    <Area yAxisId="left" type="monotone" dataKey="sent_mbps" name="Sent Mbps" stroke="#10b981" strokeWidth={3} fill="transparent" />
+                                    <Area 
+                                        yAxisId="left" 
+                                        type="monotone" 
+                                        dataKey="sent_mbps" 
+                                        name="Sent Mbps" 
+                                        stroke="#10b981" 
+                                        strokeWidth={2.5} 
+                                        fillOpacity={1} 
+                                        fill="url(#colorSent)" 
+                                        dot={false}
+                                        activeDot={{ r: 5, fill: '#10b981', stroke: '#fff', strokeWidth: 2 }}
+                                    />
+                                    <Area 
+                                        yAxisId="left" 
+                                        type="monotone" 
+                                        dataKey="received_mbps" 
+                                        name="Received Mbps" 
+                                        stroke="#3b82f6" 
+                                        strokeWidth={2.5} 
+                                        fillOpacity={1} 
+                                        fill="url(#colorReceived)" 
+                                        dot={false}
+                                        activeDot={{ r: 5, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
+                                    />
                                     {activeJob?.params.protocol === 'tcp' && (
                                         <Line yAxisId="right" type="monotone" dataKey="rtt_ms" name="RTT" stroke="#8b5cf6" strokeWidth={2} dot={false} strokeDasharray="3 3" />
                                     )}
-                                    <Bar yAxisId="right" dataKey={activeJob?.params.protocol === 'udp' ? 'lost' : 'retransmits'} name={activeJob?.params.protocol === 'udp' ? 'Packets Lost' : 'Retransmits'} fill="#f97316" radius={[4, 4, 0, 0]} maxBarSize={20} />
+                                    <Bar yAxisId="right" dataKey={activeJob?.params.protocol === 'udp' ? 'lost' : 'retransmits'} name={activeJob?.params.protocol === 'udp' ? 'Packets Lost' : 'Retransmits'} fill="#f97316" radius={[4, 4, 0, 0]} maxBarSize={16} />
                                 </ComposedChart>
                             </ResponsiveContainer>
                         </div>
