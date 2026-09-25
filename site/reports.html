@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- ── Primary SEO ── -->
+  <title>Reports & Research – Stigix SASE / SD-WAN Validation Platform</title>
+  <meta name="description" content="Technical white papers, live lab failover benchmarks, and SD-WAN resilience reports generated and validated with Stigix.">
+  <meta name="keywords" content="SD-WAN failover report, Prisma SD-WAN white paper, SASE benchmark, grey failure analysis, network resilience, Stigix reports">
+  <meta name="author" content="jsuzanne">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://stigix.io/reports.html">
+
+  <!-- ── Open Graph ── -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://stigix.io/reports.html">
+  <meta property="og:title" content="Reports & Research – Stigix SASE / SD-WAN Validation Platform">
+  <meta property="og:description" content="Technical white papers, live lab failover benchmarks, and SD-WAN resilience reports generated and validated with Stigix.">
+  <meta property="og:image" content="https://stigix.io/assets/screenshots/dashboard.png">
+  <meta property="og:site_name" content="Stigix">
+
+  <link rel="icon" type="image/png" href="assets/logo/stigix-favicon.png">
+  <link rel="stylesheet" href="style.css">
+
+  <!-- ── Marked.js for full GitHub-Flavored Markdown rendering ── -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <style>
+    /* ── Reports Hero ── */
+    .rep-hero {
+      padding: 72px 0 48px;
+      text-align: center;
+      border-bottom: 1px solid var(--stroke);
+      position: relative;
+      overflow: hidden;
+    }
+    .rep-hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 70% 60% at 50% 0%, rgba(24,201,174,.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .rep-hero .label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+    .rep-hero h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 700;
+      color: var(--white);
+      letter-spacing: -.03em;
+      line-height: 1.15;
+      margin-bottom: 16px;
+    }
+    .rep-hero h1 span { color: var(--teal); }
+    .rep-hero p {
+      font-size: 1.05rem;
+      color: var(--muted);
+      max-width: 620px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* ── Filter Bar ── */
+    .rep-controls {
+      max-width: 1140px;
+      margin: 36px auto 0;
+      padding: 0 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .rep-search {
+      position: relative;
+      max-width: 560px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .rep-search input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--stroke);
+      border-radius: 99px;
+      padding: 12px 20px 12px 44px;
+      color: var(--white);
+      font-family: var(--sans);
+      font-size: .92rem;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .rep-search input:focus {
+      outline: none;
+      border-color: var(--teal);
+      box-shadow: 0 0 0 3px rgba(24, 201, 174, 0.15);
+    }
+    .rep-search svg {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+    }
+    .rep-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+    }
+    .rep-filter-btn {
+      font-family: var(--sans);
+      font-size: .82rem;
+      font-weight: 500;
+      padding: 7px 18px;
+      border-radius: 99px;
+      border: 1px solid var(--stroke-hi);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all .2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .rep-filter-btn:hover {
+      color: var(--white);
+      border-color: var(--teal-dim);
+    }
+    .rep-filter-btn.is-active {
+      color: #0b0d10;
+      border-color: var(--teal);
+      background: var(--teal);
+      font-weight: 600;
+    }
+    .rep-filter-btn .count {
+      font-size: .72rem;
+      opacity: .8;
+      background: rgba(0,0,0,.15);
+      padding: 1px 6px;
+      border-radius: 99px;
+    }
+
+    /* ── Reports Grid ── */
+    .rep-grid {
+      max-width: 1140px;
+      margin: 40px auto 80px;
+      padding: 0 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 24px;
+    }
+    @media (min-width: 900px) {
+      .rep-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    /* ── Report Card ── */
+    .rep-card {
+      background: var(--bg-card);
+      border: 1px solid var(--stroke);
+      border-radius: var(--rl, 16px);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease;
+      overflow: hidden;
+    }
+    .rep-card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(24, 201, 174, 0.4);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(24, 201, 174, 0.2);
+    }
+    .rep-card.is-featured::after {
+      content: '★ FEATURED';
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      font-family: var(--mono);
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      color: #f59e0b;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      padding: 2px 8px;
+      border-radius: 99px;
+    }
+    .rep-card__header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .rep-badge {
+      font-family: var(--mono);
+      font-size: .68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      padding: 3px 9px;
+      border-radius: 6px;
+    }
+    .rep-badge--white-paper {
+      background: rgba(24, 201, 174, 0.12);
+      color: var(--teal);
+      border: 1px solid rgba(24, 201, 174, 0.3);
+    }
+    .rep-badge--lab-benchmark {
+      background: rgba(99, 102, 241, 0.12);
+      color: #818cf8;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+    .rep-badge--technical-brief {
+      background: rgba(245, 158, 11, 0.12);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .rep-card__date {
+      font-size: .78rem;
+      color: var(--muted);
+      font-family: var(--mono);
+    }
+    .rep-card__title {
+      font-size: 1.22rem;
+      font-weight: 700;
+      color: var(--white);
+      line-height: 1.35;
+      margin-bottom: 12px;
+      letter-spacing: -.01em;
+    }
+    .rep-card__author {
+      font-size: .8rem;
+      color: var(--muted);
+      margin-bottom: 14px;
+      font-style: italic;
+    }
+    .rep-card__summary {
+      font-size: .88rem;
+      color: var(--mid, #94a3b8);
+      line-height: 1.6;
+      margin-bottom: 18px;
+    }
+    .rep-card__highlights {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 20px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .rep-card__highlights li {
+      font-size: .82rem;
+      color: var(--muted);
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      line-height: 1.4;
+    }
+    .rep-card__highlights li::before {
+      content: '✓';
+      color: var(--teal);
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+    .rep-card__tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 24px;
+      margin-top: auto;
+    }
+    .rep-tag {
+      font-size: .72rem;
+      font-family: var(--mono);
+      background: var(--bg-raised, rgba(255,255,255,.04));
+      color: var(--muted);
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--stroke);
+    }
+    .rep-card__actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-top: 18px;
+      border-top: 1px solid var(--stroke);
+    }
+    .rep-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 16px;
+      border-radius: 8px;
+      font-family: var(--sans);
+      font-size: .84rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all .2s ease;
+      cursor: pointer;
+    }
+    .rep-btn--primary {
+      background: var(--teal);
+      color: #0b0d10;
+      border: 1px solid var(--teal);
+      flex: 1;
+    }
+    .rep-btn--primary:hover {
+      background: #15b59d;
+      box-shadow: 0 4px 14px rgba(24, 201, 174, 0.35);
+    }
+    .rep-btn--secondary {
+      background: var(--bg-raised, rgba(255,255,255,.05));
+      color: var(--white);
+      border: 1px solid var(--stroke-hi);
+    }
+    .rep-btn--secondary:hover {
+      border-color: var(--teal);
+      color: var(--teal);
+    }
+
+    /* ── Empty State ── */
+    .rep-empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+
+    /* ── Markdown Modal Viewer ── */
+    .rep-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.88);
+      backdrop-filter: blur(10px);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .rep-modal.is-open { display: flex; }
+    .rep-modal__box {
+      background: #0d1117;
+      border: 1px solid var(--stroke-hi);
+      border-radius: 18px;
+      width: 100%;
+      max-width: 920px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 24px 70px rgba(0,0,0,0.8), 0 0 0 1px rgba(24, 201, 174, 0.15);
+      overflow: hidden;
+      animation: modalZoom .25s ease-out;
+    }
+    @keyframes modalZoom {
+      from { opacity: 0; transform: scale(0.96) translateY(10px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .rep-modal__header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--stroke);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: #111722;
+    }
+    .rep-modal__title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--white);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .rep-modal__actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .rep-modal__close {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--stroke);
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 6px 14px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: .84rem;
+      transition: all .2s;
+    }
+    .rep-modal__close:hover {
+      color: var(--white);
+      border-color: var(--teal);
+      background: rgba(24, 201, 174, 0.1);
+    }
+    .rep-modal__body {
+      padding: 32px 36px;
+      overflow-y: auto;
+      font-size: .94rem;
+      color: #cbd5e1;
+      line-height: 1.75;
+    }
+    .rep-modal__body h1 {
+      color: var(--white);
+      font-size: 1.55rem;
+      font-weight: 700;
+      letter-spacing: -.02em;
+      margin: 0 0 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--stroke);
+    }
+    .rep-modal__body h2 {
+      color: var(--white);
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin: 28px 0 14px;
+      letter-spacing: -.01em;
+    }
+    .rep-modal__body h3 {
+      color: var(--teal);
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin: 22px 0 10px;
+    }
+    .rep-modal__body p {
+      margin-bottom: 14px;
+    }
+    .rep-modal__body ul, .rep-modal__body ol {
+      padding-left: 24px;
+      margin-bottom: 16px;
+    }
+    .rep-modal__body li {
+      margin-bottom: 6px;
+    }
+    .rep-modal__body table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 22px 0;
+      font-size: .84rem;
+      background: #090d13;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--stroke);
+    }
+    .rep-modal__body th, .rep-modal__body td {
+      border: 1px solid var(--stroke);
+      padding: 10px 14px;
+      text-align: left;
+    }
+    .rep-modal__body th {
+      background: rgba(24, 201, 174, 0.08);
+      color: var(--teal);
+      font-weight: 600;
+      font-family: var(--mono);
+      font-size: .78rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .rep-modal__body tr:nth-child(even) td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .rep-modal__body blockquote {
+      border-left: 3px solid var(--teal);
+      background: rgba(24, 201, 174, 0.05);
+      padding: 12px 18px;
+      border-radius: 0 8px 8px 0;
+      color: var(--muted);
+      margin: 18px 0;
+      font-style: italic;
+    }
+    .rep-modal__body code {
+      font-family: var(--mono);
+      font-size: .85em;
+      color: var(--teal);
+      background: rgba(24, 201, 174, 0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(24, 201, 174, 0.15);
+    }
+    .rep-modal__body pre {
+      background: #05080c;
+      padding: 16px;
+      border-radius: 10px;
+      border: 1px solid var(--stroke);
+      overflow-x: auto;
+      margin: 18px 0;
+    }
+    .rep-modal__body pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      color: #e2e8f0;
+      font-size: .82rem;
+    }
+    .rep-modal__body a {
+      color: var(--teal);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     NAV
+══════════════════════════════════════════════════════════ -->
+<nav class="nav">
+  <div class="wrap nav__inner">
+    <a href="index.html" class="nav__logo" aria-label="Stigix">
+      <img src="assets/logo/stigix-dark.png" alt="Stigix">
+    </a>
+    <ul class="nav__links">
+      <li><a href="index.html#why">Origin</a></li>
+      <li><a href="index.html#capabilities">Capabilities</a></li>
+      <li><a href="index.html#use-cases">Use Cases</a></li>
+      <li><a href="index.html#quickstart">Quick Start</a></li>
+      <li><a href="index.html#stigix-cli">CLI</a></li>
+      <li><a href="faq.html">FAQ</a></li>
+      <li><a href="reports.html" style="color:var(--teal)">Reports</a></li>
+    </ul>
+    <a href="https://github.com/jsuzanne/stigix" target="_blank" rel="noopener noreferrer" class="nav__gh" id="nav-github-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+      GitHub
+    </a>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════════
+     HERO
+══════════════════════════════════════════════════════════ -->
+<header class="rep-hero">
+  <div class="wrap">
+    <div class="label">
+      <span class="badge badge--teal">🔬 LAB REPORTS & RESEARCH</span>
+    </div>
+    <h1>Technical Papers & <span>Lab Benchmarks</span></h1>
+    <p>
+      Executive summaries, SD-WAN failover benchmarks, and technical white papers generated and validated with Stigix in live SASE lab environments.
+    </p>
+
+    <!-- Search & Filters -->
+    <div class="rep-controls">
+      <div class="rep-search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="reportSearch" placeholder="Search by keyword, protocol, failover, author...">
+      </div>
+
+      <div class="rep-filters" id="categoryFilters">
+        <button class="rep-filter-btn is-active" data-cat="all">All <span class="count" id="count-all">0</span></button>
+        <button class="rep-filter-btn" data-cat="White Paper">White Papers <span class="count" id="count-white-paper">0</span></button>
+        <button class="rep-filter-btn" data-cat="Lab Benchmark">Lab Benchmarks <span class="count" id="count-lab-benchmark">0</span></button>
+        <button class="rep-filter-btn" data-cat="Technical Brief">Technical Briefs <span class="count" id="count-technical-brief">0</span></button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════
+     REPORTS GRID
+══════════════════════════════════════════════════════════ -->
+<main class="wrap">
+  <div class="rep-grid" id="reportsGrid">
+    <!-- Rendered dynamically from manifest.json -->
+  </div>
+</main>
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL VIEWER (ONLINE MARKDOWN WITH MARKED.JS)
+══════════════════════════════════════════════════════════ -->
+<div class="rep-modal" id="docModal">
+  <div class="rep-modal__box">
+    <div class="rep-modal__header">
+      <div class="rep-modal__title" id="modalDocTitle">Document Title</div>
+      <div class="rep-modal__actions">
+        <span id="modalPdfBtnSlot"></span>
+        <button class="rep-modal__close" id="modalDocClose">Close ✕</button>
+      </div>
+    </div>
+    <div class="rep-modal__body" id="modalDocBody">
+      <!-- Rich formatted HTML inserted here -->
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     FOOTER
+══════════════════════════════════════════════════════════ -->
+<footer class="footer">
+  <div class="wrap footer__inner">
+    <div class="footer__brand">
+      <img src="assets/logo/stigix-dark.png" alt="Stigix" class="footer__logo">
+      <p class="footer__tagline">The Open-Source SASE & SD-WAN Validation Platform</p>
+    </div>
+    <div class="footer__links">
+      <a href="index.html">Home</a>
+      <a href="faq.html">FAQ</a>
+      <a href="reports.html">Reports & White Papers</a>
+      <a href="https://github.com/jsuzanne/stigix" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ══════════════════════════════════════════════════════════
+     SCRIPTS
+══════════════════════════════════════════════════════════ -->
+<script>
+// ── Embedded Fallback Data (allows opening directly via file:// in Finder) ──
+const FALLBACK_REPORTS_DATA = [
+  {
+    "id": "prisma-sdwan-grey-failure",
+    "title": "When Routing Can't See the Failure: Application-Aware Failover with Prisma SD-WAN",
+    "category": "White Paper",
+    "tags": ["Prisma SD-WAN", "Failover", "Grey Failure", "Application Unreachability", "SASE"],
+    "date": "2026-09-25",
+    "author": "Jean-Louis SUZANNE, Technical Sales Manager, Palo Alto Networks",
+    "summary": "Prisma SD-WAN rerouted a branch's backhauled internet traffic to a backup data center in ~3 minutes during a silent internet breakout failure where Layer 3 routing remained completely blind.",
+    "highlights": [
+      "~3 min automatic failover during dead internet breakout behind active next hop",
+      "End-to-end TCP session tracking vs blind Layer 3 BFD / tunnel keepalives",
+      "Automatic probe-driven failback once primary DC breakout is repaired",
+      "Tested and validated in live lab environment using Stigix"
+    ],
+    "pdf_file": "When_Routing_Cant_See_the_Failure_Prisma_SD-WAN.pdf",
+    "markdown_file": "When Routing Can't See the Failure Application-Aware Failover with Prisma SD-WAN.md",
+    "featured": true,
+    "size": "575 KB"
+  },
+  {
+    "id": "sdwan-resilience-br8-dc1",
+    "title": "SD-WAN Convergence & Grey-Failure Resilience Report (BR8 → DC1)",
+    "category": "Lab Benchmark",
+    "tags": ["Convergence Lab", "Failover", "Packet Loss", "Path Evolution", "Dual-WAN"],
+    "date": "2026-09-24",
+    "author": "Jean-Louis SUZANNE",
+    "summary": "Comprehensive failover testing and path evolution analysis between branch office BR8 and primary datacenter DC1 under induced link impairments.",
+    "highlights": [
+      "Sub-second packet loss measurement during active failover",
+      "Path evolution telemetry: BR8-INET2 → DC1-INET ➔ BR8-INET1 → DC2-INET",
+      "Full flow session continuity audit"
+    ],
+    "pdf_file": "SDWAN_Resilience_Report_BR8_DC1.pdf",
+    "markdown_file": "SDWAN_Failover_Executive_Report.docx.md",
+    "featured": true,
+    "size": "79 KB"
+  },
+  {
+    "id": "br8-br5-dc1-parallel-convergence",
+    "title": "Multi-Branch Parallel Convergence Benchmark (BR8 + BR5 → DC1)",
+    "category": "Lab Benchmark",
+    "tags": ["Multi-Site", "Mesh", "Parallel Testing", "Orchestration"],
+    "date": "2026-09-23",
+    "author": "Stigix Testing Lab",
+    "summary": "Simultaneous dual-branch failover validation assessing central DC controller resilience under concurrent branch rerouting events.",
+    "highlights": [
+      "Zero cross-branch interference during simultaneous WAN switches",
+      "Distributed telemetry collection across multiple Stigix mesh nodes"
+    ],
+    "pdf_file": "BR8-BR5-DC1_Parallel_Convergence_Report.pdf",
+    "featured": false,
+    "size": "59 KB"
+  },
+  {
+    "id": "br8-dc1-convergence-test",
+    "title": "Single-Path WAN Degradation & Failover Test Report",
+    "category": "Lab Benchmark",
+    "tags": ["Failover", "VyOS", "Bandwidth", "RTT"],
+    "date": "2026-09-22",
+    "author": "Stigix Testing Lab",
+    "summary": "Automated network impairment validation with packet injection and VyOS router state telemetry.",
+    "highlights": [
+      "VyOS routing policy trigger analysis",
+      "Continuous UDP probe stream loss profiling"
+    ],
+    "pdf_file": "BR8-DC1_Convergence_Test_Report.pdf",
+    "featured": false,
+    "size": "57 KB"
+  },
+  {
+    "id": "m365-dem-probe-analysis",
+    "title": "Microsoft 365 & Azure Entra ID Digital Experience Monitoring Audit",
+    "category": "Technical Brief",
+    "tags": ["DEM", "Microsoft 365", "Latency", "HTTP Codes"],
+    "date": "2026-09-24",
+    "author": "Jean-Louis SUZANNE",
+    "summary": "Analysis of synthetic HTTP probe telemetry and status code scoring rules across Microsoft cloud authentication and SaaS endpoints.",
+    "highlights": [
+      "Custom status code handling (HTTP 403 / 401 on auth-gated portals)",
+      "TTFB, TLS handshake, and TCP connect latency decomposition"
+    ],
+    "markdown_file": "Microsoft Probe analysis Report Report (EN).md",
+    "featured": false,
+    "size": "7 KB"
+  }
+];
+
+let allReports = [];
+let activeCategory = 'all';
+
+async function initReports() {
+  try {
+    const res = await fetch('reports/manifest.json');
+    if (!res.ok) throw new Error('Could not load reports manifest');
+    allReports = await res.json();
+  } catch (err) {
+    // Graceful fallback for file:// protocol or offline mode
+    allReports = FALLBACK_REPORTS_DATA;
+  }
+  updateCategoryCounts();
+  renderReports();
+}
+
+function updateCategoryCounts() {
+  document.getElementById('count-all').textContent = allReports.length;
+  
+  const whitePapers = allReports.filter(r => r.category === 'White Paper').length;
+  const benchmarks = allReports.filter(r => r.category === 'Lab Benchmark').length;
+  const briefs = allReports.filter(r => r.category === 'Technical Brief').length;
+
+  const countWp = document.getElementById('count-white-paper');
+  if (countWp) countWp.textContent = whitePapers;
+
+  const countBm = document.getElementById('count-lab-benchmark');
+  if (countBm) countBm.textContent = benchmarks;
+
+  const countTb = document.getElementById('count-technical-brief');
+  if (countTb) countTb.textContent = briefs;
+}
+
+function getBadgeClass(category) {
+  if (category === 'White Paper') return 'rep-badge--white-paper';
+  if (category === 'Lab Benchmark') return 'rep-badge--lab-benchmark';
+  return 'rep-badge--technical-brief';
+}
+
+function renderReports() {
+  const container = document.getElementById('reportsGrid');
+  const query = document.getElementById('reportSearch').value.toLowerCase().trim();
+
+  const filtered = allReports.filter(rep => {
+    const matchesCat = activeCategory === 'all' || rep.category === activeCategory;
+    const matchesSearch = !query || 
+      rep.title.toLowerCase().includes(query) ||
+      rep.summary.toLowerCase().includes(query) ||
+      (rep.author && rep.author.toLowerCase().includes(query)) ||
+      (rep.tags && rep.tags.some(t => t.toLowerCase().includes(query)));
+    return matchesCat && matchesSearch;
+  });
+
+  if (!filtered.length) {
+    container.innerHTML = `
+      <div class="rep-empty">
+        <p>No reports found matching your criteria.</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map(rep => {
+    const badgeClass = getBadgeClass(rep.category);
+    const highlightsHtml = rep.highlights && rep.highlights.length ? `
+      <ul class="rep-card__highlights">
+        ${rep.highlights.map(h => `<li>${h}</li>`).join('')}
+      </ul>` : '';
+
+    const tagsHtml = rep.tags && rep.tags.length ? `
+      <div class="rep-card__tags">
+        ${rep.tags.map(t => `<span class="rep-tag">${t}</span>`).join('')}
+      </div>` : '';
+
+    const pdfBtn = rep.pdf_file ? `
+      <a href="reports/${encodeURIComponent(rep.pdf_file)}" download class="rep-btn rep-btn--primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download PDF ${rep.size ? `<span style="font-size:0.75em;opacity:0.8">(${rep.size})</span>` : ''}
+      </a>` : '';
+
+    const readBtn = rep.markdown_file ? `
+      <button class="rep-btn rep-btn--secondary" onclick="openDocModal('${encodeURIComponent(rep.markdown_file)}', '${rep.title.replace(/'/g, "\\'")}', '${rep.pdf_file ? encodeURIComponent(rep.pdf_file) : ''}')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        Read Online
+      </button>` : '';
+
+    return `
+      <article class="rep-card ${rep.featured ? 'is-featured' : ''}">
+        <div class="rep-card__header">
+          <span class="rep-badge ${badgeClass}">${rep.category}</span>
+          <span class="rep-card__date">${rep.date || ''}</span>
+        </div>
+        <h2 class="rep-card__title">${rep.title}</h2>
+        ${rep.author ? `<div class="rep-card__author">By ${rep.author}</div>` : ''}
+        <p class="rep-card__summary">${rep.summary}</p>
+        ${highlightsHtml}
+        ${tagsHtml}
+        <div class="rep-card__actions">
+          ${pdfBtn}
+          ${readBtn}
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+// ── Search & Filter Listeners ──
+document.getElementById('reportSearch').addEventListener('input', renderReports);
+
+document.querySelectorAll('.rep-filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.rep-filter-btn').forEach(b => b.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    activeCategory = btn.dataset.cat;
+    renderReports();
+  });
+});
+
+// ── Modal Viewer with Marked.js ──
+async function openDocModal(mdFile, title, pdfFile) {
+  const modal = document.getElementById('docModal');
+  const body = document.getElementById('modalDocBody');
+  const pdfSlot = document.getElementById('modalPdfBtnSlot');
+  
+  document.getElementById('modalDocTitle').innerHTML = `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    <span>${title}</span>
+  `;
+  
+  if (pdfFile) {
+    pdfSlot.innerHTML = `
+      <a href="reports/${pdfFile}" download class="rep-btn rep-btn--primary" style="padding:5px 12px;font-size:0.78rem;">
+        📥 Download PDF
+      </a>`;
+  } else {
+    pdfSlot.innerHTML = '';
+  }
+
+  body.innerHTML = '<p style="color:var(--muted);text-align:center;padding:50px 0;">Loading document...</p>';
+  modal.classList.add('is-open');
+
+  try {
+    const res = await fetch(`reports/${mdFile}`);
+    if (!res.ok) throw new Error('Document could not be loaded');
+    const text = await res.text();
+    
+    // Configure marked options
+    if (window.marked) {
+      marked.setOptions({
+        gfm: true,
+        breaks: true
+      });
+      body.innerHTML = marked.parse(text);
+    } else {
+      body.innerHTML = `<pre style="white-space:pre-wrap;">${text}</pre>`;
+    }
+  } catch (err) {
+    body.innerHTML = `<p style="color:#ef4444;">Failed to load markdown content.</p>`;
+  }
+}
+
+document.getElementById('modalDocClose').addEventListener('click', () => {
+  document.getElementById('docModal').classList.remove('is-open');
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.getElementById('docModal').classList.remove('is-open');
+  }
+});
+
+initReports();
+</script>
+</body>
+</html>
