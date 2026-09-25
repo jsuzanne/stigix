@@ -1,6 +1,9 @@
+> **Last Updated:** 2026-09-25 | **Created:** 2026-01-25 (v1.0.0)
+
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
 [![Version](https://img.shields.io/badge/Version-2.0.66-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--09--25-brightgreen.svg)](CHANGELOG.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -130,37 +133,31 @@ This project is my way to turn all that lab and demo experience into an open-sou
 
 The project is evolving rapidly with major features, engines, and UX refinements in every release.
 
-### ⚡ Failover Engine 2.0 & PoC Export Cards *(v2.0.7)*
-- **Multi-Path Stepper Timeline (T0 / T1 / T2)** ⏱️ — Real-time chronological progression with explicit path deltas, eliminating misleading static timestamps and clearly tracking tunnel failover handoffs.
-- **Historical Loss & Latency Metric Curves** 📈 — Native persistence of test metrics with adaptive Y-axis scaling, baseline latency markers, and rolling packet loss indicators.
-- **Interactive Time Scrubber & Zoom Presets** 🔍 — Scrub through live and historical convergence runs with instant presets (`1m`, `5m`, `15m`, `ALL`) and synchronized tooltip metrics.
-- **Dynamic SCM Egress Path Inspection** ☁️ — On-demand re-query button and lookback window for Strata Cloud Manager / Prisma SD-WAN flow sequence correlation.
-- **1-Click PoC Card HD PNG Export** 📋 — Export executive-ready, high-resolution test summary cards with convergence deltas, path progression, and outage analysis for customer presentations.
-- **Streamlined Test History & Hover Tooltips** 🎯 — Full-width searchable test history with hover threshold explanations replacing bloated sidebar widgets.
+### 📦 Custom TCP Applications Export/Import Lifecycle & Resilience *(v2.0.66)*
+- **Full Bundle & Single-Profile JSON Export/Import** 🔄 — Export individual profiles or entire multi-application meshes directly from the UI header and Settings tab.
+- **Merge & Update vs. Replace All Import Modes** ⚙️ — Dedicated modal with live JSON schema validation, port collision detection, and instant configuration preview.
+- **100% Roundtrip Schema Fidelity** 🛡️ — Full preservation of `serverBehavior` chaos modes, detailed `listener` security policies (CIDR ACLs, token authentication), and `clientDefaults`.
+- **FastMCP Stability & Error Boundaries** 🤖 — Fully typed FastMCP tools (`export_custom_tcp_apps`, `import_custom_tcp_apps`) and React Error Boundaries preventing UI blank screens on partial profile imports.
 
-### 🔄 Custom TCP Inter-Site Applications & Prisma SD-WAN AppDefs *(v2.0.5)*
-- **Dual Server / Client Architecture** 🔌 — Multi-application engine with simultaneous host TCP listeners and outbound client workload generators.
-- **8 Server Simulation & Chaos Modes** 💥 — Fixed delay, jitter, looping degradation (SLA testing without cable pulls), drop response, connection reset, error codes, and `eicar_response` for inline Next-Gen Firewall / SASE malware inspection.
-- **HTTP/1.1 REST Wire Protocol & SD-WAN SRT** 🌐 — RFC-compliant HTTP framing with `X-Stigix-Request-Id` correlation, enabling Prisma SD-WAN App-ID classification and Server Response Time (SRT) metrics in Flow Browser.
-- **1-Click Prisma SD-WAN AppDef Sync** ☁️ — Automatic registration of `STX_<AppName>` definitions on Prisma SD-WAN tenants with delta sync and 1-click lab teardown.
-- **Central Global Provisioning 8th Bundle** 🌐 — Automated distribution of custom application profiles across all branch peers with zero-downtime hot reload.
-- **Responsive Compact Session Tables** 📊 — Real-time rolling RTT percentiles ($p50/p95/\text{avg}$), jitter, live Kbps bitrate, and zero-overflow layout. [Read docs](docs/CUSTOM_TCP_APPS.md)
+### 🌟 Digital Experience Monitoring & Speedtest Glow *(v2.0.65)*
+- **High-Contrast DEM Global Score Gauge** 📊 — Upgraded experience score indicator to a 132px glowing donut arc with explicit status badges (`OPTIMAL`, `GOOD`, `DEGRADED`, `CRITICAL`) and full-height trend area chart.
+- **Failover Engine POSIX Atomic State** ⚡ — Atomic POSIX file writes (`_atomic_write_json`) and Node.js fallback caching eliminating transient UI card disappearance during high-rate failover testing.
+- **Multi-Layer Neon Speedtest Glow** 📈 — Emerald green (`#10b981`) and electric blue (`#3b82f6`) neon gradients under Speedtest sent/received bandwidth curves.
+- **SD-WAN Failover Research & Making-Of White Papers** 📄 — Interactive HTML & PDF reports catalog in `site/reports.html` and `docs/MCP Reports/`.
+
+### 🚀 FastMCP Server Parity & Speedtest Telemetry *(v2.0.64)*
+- **Unified Convergence & Speedtest Metrics** ⚡ — Aligned real-time throughput and convergence metrics across `get_test_status`, `list_speedtest_history`, and `run_test`.
+- **64-bit Prisma ID & Dual-Mode Name Resolution** ☁️ — Full support for real Prisma SD-WAN 64-bit flow identifiers, probe filtering, and automatic DNS/site resolution.
 
 ### 🖧 Underlay Router Topology & Port-Level Diagnostics *(v2.0.0)*
 - **Unified Underlay / Overlay Mapping** 🖧 — Visual representation of active VyOS backbone routers mapped directly to Prisma SD-WAN circuits with port-level resolution (`ethX`).
 - **Direct 1:1 Port Cable Wiring** 🔌 — Animated amber connections between Prisma SD-WAN circuit handles and exact `ethX` router ports.
-- **Floating Link Trace Drawer** 🔍 — Real-time comparison drawer showing Prisma ION circuit parameters, transit CIDR subnet, and VyOS next-hop IP.
 - **Direct Topology Chaos Actions** ⚡ — Instant Shut / No-Shut port toggle, Netem latency/loss impairment injection, and persistent canvas badges (`⏱️ +120ms`). [Read docs](docs/UNDERLAY_TOPOLOGY.md)
 
 ### 🤖 MCP Server & Claude Desktop Integration *(v1.4.1)*
 - **Natural Language Network Control** 🤖 — Control the entire Stigix mesh from Claude Desktop: run tests, simulate failures, check posture across any node.
 - **VyOS Chaos Engineering via Claude** ⚡ — Plain-English impairment triggers with automatic router discovery and propose-and-confirm safety flow.
 - **MCP Live Interaction Feed & Logging** ✨ — Real-time color-coded tool feed in Settings → MCP Server with duration bars, LIVE pulse, and server-side logging to `mcp-history.jsonl`. [Read docs](docs/MCP_SERVER.md)
-
-### 🌐 Central Global Provisioning & Direct Controller Onboarding *(v1.4.0)*
-- **8 Configuration Bundles** 📦 — Centralized pull-mode distribution (`30s` cycle) of Applications, Probes, SLA, Security Policies, Voice, IoT, Prisma SASE, and Custom TCP Apps from the Leader.
-- **Single-Command Remote Onboarding** 🚀 — `curl -sSL ... | sudo bash -s -- --controller <URL>` to instantly join remote Linux nodes, branch servers, and Raspberry Pis.
-- **Dynamic Target Synthesis & Self-Filtering** 🎯 — Learned peers automatically populate as active targets on the Leader with instant ghost target cleanup on site rename.
 
 [View full changelog with all version details →](CHANGELOG.md)
 
@@ -915,6 +912,10 @@ Comprehensive guides organized by your journey with the Stigix.
 - **[MCP Demo Scenario](docs/MCP_DEMO_SCENARIO.md)** - End-to-end enterprise 360° validation walkthrough
 - **[Architecture Overview](docs/ARCHITECTURE_OVERVIEW.md)** - System architecture and design
 - **[Technical Diagram](docs/TECHNICAL_DIAGRAM.md)** - Visual architecture diagrams
+
+### 📑 Research & White Papers
+- **[Making-of: How Stigix Powered Prisma SD-WAN Failover Tests](docs/MCP%20Reports/Making-of%20How%20Stigix%20Powered%20the%20Prisma%20SD-WAN%20Failover%20Tests.md)** - Deep dive into multi-path convergence automation, VyOS chaos triggers, and Strata Cloud Manager correlation.
+- **[Interactive Research Center & Reports Catalog](site/reports.html)** - Interactive web catalog with offline Markdown reader and executive summary downloads.
 
 ---
 
