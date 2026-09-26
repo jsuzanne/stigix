@@ -133,11 +133,17 @@ All detailed engineering specifications, wireframes, and architectural audits fo
 
 ---
 
-## 6. Implementation Readiness Checklist
+## 6. Delivery Status & Implementation Timeline
 
-- [x] Phase 1 (Direct Controller & Registry) — Implemented and validated in Lab.
-- [x] Phase 2 (Global Provisioning) — Implemented and active.
-- [x] Phase 3A (Fleet Observability UI & Backend) — Implemented on `v2` (Overview table, capability dots, metrics).
-- [ ] Phase 3B (Remote Action Store & Peer Job Polling) — Spec v0.5 ready for development.
-- [ ] Phase 3C (XFR Port 9000 & Security Test Suites) — Spec v0.5 ready.
-- [ ] Phase 3D (Fleet Gateway & Reverse WebSocket Tunnel) — Spec v0.1 ready.
+| Phase / Feature | Delivery Date | Commit / Tag | Status | Detailed Accomplishments |
+|---|---|---|---|---|
+| **Phase 1: Direct Controller & Local Registry** | 2026-09-24 | `v2.0.66` | ✅ **Live in Lab** | `STIGIX_CONTROLLER_URL` one-line peer bootstrap, local SQLite registry on leader, presence without Cloudflare. |
+| **Phase 2: Global Configuration Provisioning** | 2026-09-25 | `v2.0.66` | ✅ **Live in Lab** | Leader-published bundles, spoke-pull synchronization (`r17`), local override preservation. |
+| **Phase 3A: Fleet Observability (Core)** | 2026-09-25 | `555f8c5`, `13c6b14` | ✅ **Live in Lab** | Central Fleet table in navbar, enriched heartbeat telemetry, MOS, failing probes count, modal traffic line wrap fix. |
+| **Fleet Upgrade Automation** | 2026-09-26 10:20 | `ee44db5` | ✅ **Operational** | Automated SSH rollout skill (`stigix-fleet-upgrade`) upgrading all 5 nodes (`DC1`, `BR1`, `BR2`, `BR5`, `BR8`) in 1 command. |
+| **Phase 3A: High-Density Layout (Option A)** | 2026-09-26 10:45 | `879a5c1` | ✅ **Live on v2** | Inlined capability dots on Line 2 (`IP · Version · Dots`) with `py-3` row padding for compact multi-node monitoring. |
+| **Phase 3A: Live Bidirectional TX/RX Telemetry** | 2026-09-26 12:21 | `d3e4141` | ✅ **Implemented on v2** | Independent sampling of `traffic_tx_mbps` and `traffic_rx_mbps` from `/proc/net/dev`, dual display `▲ TX · ▼ RX` in Fleet table & modal. |
+| **Control Plane Spec Hardening (v0.5)** | 2026-09-26 12:12 | `8d6f762`, `af8f237` | ✅ **Approved** | 3-Tier ACK lifecycle, `STALLED` sentinel (15s drop alert), NTP drift guardrails, XFR Receiver-First sequence, SASE correlation ID. |
+| **Phase 3D: Fleet Gateway & Context Switcher Spec** | 2026-09-26 11:38 | `ea2380f` | 📝 **Spec Ready** | Navbar context switcher (`?context=BR8`), BFF reverse-proxy, and outbound WebSocket Reverse Tunnel architecture. |
+| **Phase 3B: Remote Actions Engine** | *Upcoming* | *Pending* | ⏳ **Next Milestone** | Job store on leader, peer pull endpoint (`GET /api/fleet/peer-jobs`), confirmation modal, and telemetry result reporting. |
+| **Phase 3C: XFR Port 9000 & Security Suites** | *Upcoming* | *Pending* | 📅 **Planned** | Native XFR speedtest on port 9000 and modular security test suites (URL filtering, DNS, EICAR). |
