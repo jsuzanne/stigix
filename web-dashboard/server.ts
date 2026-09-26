@@ -11820,9 +11820,17 @@ registryManager.setTelemetryProvider(async () => {
         if (stats && typeof stats.globalHealth === 'number') {
             probesGlobalHealth = stats.globalHealth;
         }
+        let failingProbes: Array<{ name: string; type: string; target: string; error: string; reliability: number }> = [];
         if (stats && stats.flakyEndpoints) {
             const downCount = stats.flakyEndpoints.filter((f: any) => f.isDown).length;
             probesPassing = Math.max(0, probesTotal - downCount);
+            failingProbes = stats.flakyEndpoints.slice(0, 6).map((f: any) => ({
+                name: f.name || f.id,
+                type: (f.type || 'HTTP').toUpperCase(),
+                target: f.target || '',
+                error: f.lastError || (f.isDown ? 'Probe Down (100% loss)' : 'Unstable / High Latency'),
+                reliability: f.reliability ?? 0
+            }));
         } else {
             probesPassing = probesTotal;
         }
@@ -11834,17 +11842,50 @@ registryManager.setTelemetryProvider(async () => {
     let trafficState: 'RUNNING' | 'STOPPED' | 'IDLE' = 'STOPPED';
     let trafficRateMbps = 0;
     try {
+        let configuredRateMbps = 0;
         if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
             const cfg = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
             if (cfg.control?.enabled) {
                 trafficState = 'RUNNING';
+                if (Array.isArray(cfg.applications)) {
+                    for (const app of cfg.applications) {
+                        if (app.enabled !== false) {
+                            const bw = app.bandwidth_mbps || (app.rate_kbps ? app.rate_kbps / 1000 : 0) || 0;
+                            configuredRateMbps += bw;
+                        }
+                    }
+                }
             }
         }
-        const stigixStats = containerStatsMap.get('stigix');
-        if (stigixStats?.currentBitrate) {
-            const tx = parseFloat(stigixStats.currentBitrate.tx_mbps || '0') || 0;
-            const rx = parseFloat(stigixStats.currentBitrate.rx_mbps || '0') || 0;
-            trafficRateMbps = Math.round((tx + rx) * 100) / 100;
+
+        // Live network I/O bitrate sampling from /proc/net/dev
+        let sampledLiveMbps = 0;
+        if (fs.existsSync('/proc/net/dev')) {
+            try {
+                const iface = getInterface();
+                const netDev = fs.readFileSync('/proc/net/dev', 'utf8');
+                const line = netDev.split('\n').find(l => l.trim().startsWith(iface + ':'));
+                if (line) {
+                    const parts = line.split(':')[1].trim().split(/\s+/);
+                    const rx = parseInt(parts[0], 10);
+                    const tx = parseInt(parts[8], 10);
+                    const now = Date.now();
+                    const prev = (global as any).__stigixLastNetSample;
+                    if (prev) {
+                        const deltaRx = rx - prev.rx;
+                        const deltaTx = tx - prev.tx;
+                        const deltaSec = (now - prev.time) / 1000;
+                        if (deltaSec > 0 && deltaRx >= 0 && deltaTx >= 0) {
+                            sampledLiveMbps = Math.round((((deltaRx + deltaTx) * 8) / (deltaSec * 1000000)) * 100) / 100;
+                        }
+                    }
+                    (global as any).__stigixLastNetSample = { rx, tx, time: now };
+                }
+            } catch {}
+        }
+
+        if (trafficState === 'RUNNING') {
+            trafficRateMbps = sampledLiveMbps > 0 ? sampledLiveMbps : (Math.round(configuredRateMbps * 100) / 100);
         }
     } catch {}
 
@@ -11880,12 +11921,14 @@ registryManager.setTelemetryProvider(async () => {
         probes_global_health: probesGlobalHealth,
         probes_total: probesTotal,
         probes_passing: probesPassing,
+        failing_probes: failingProbes,
         traffic_state: trafficState,
         traffic_rate_mbps: trafficRateMbps,
         voice_active: voiceActive,
         voice_mos: voiceMos,
         convergence_active: convergenceActive,
         xfr_active: xfrActive,
+        provisioning_status: provisioningManager?.getState(),
         uptime_seconds: Math.floor(process.uptime())
     };
 });

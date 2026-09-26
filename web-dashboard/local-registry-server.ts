@@ -26,11 +26,14 @@ export class LocalRegistryServer {
         }
     }
 
+    private provisioningManager: any = null;
+
     getInstances(): RegistryInstance[] {
         return Array.from(this.instances.values());
     }
 
     getRouter(targetsManager?: any, provisioningManager?: any): Router {
+        this.provisioningManager = provisioningManager;
         const router = Router();
 
         // POST /register
@@ -58,6 +61,9 @@ export class LocalRegistryServer {
                 ...payload,
                 last_seen: new Date().toISOString()
             };
+            if (payload.summary?.provisioning_status) {
+                (instance as any).provisioning_status = payload.summary.provisioning_status;
+            }
 
             this.instances.set(key, instance);
             // log('LOCAL-REGISTRY', `Heartbeat from ${payload.instance_id} (${payload.ip_private})`);
@@ -175,6 +181,10 @@ export class LocalRegistryServer {
         let onlineCount = 0;
         let offlineCount = 0;
 
+        const leaderState = this.provisioningManager ? this.provisioningManager.getState() : null;
+        const leaderRevisions = leaderState?.appliedRevisions || {};
+        const leaderBundleKeys = Object.keys(leaderRevisions);
+
         const enrichedInstances = instances.map(inst => {
             const isLeader = (localLeaderId && inst.instance_id === localLeaderId)
                 || inst.type === 'leader'
@@ -193,12 +203,40 @@ export class LocalRegistryServer {
                 offlineCount++;
             }
 
+            // Determine Config Sync status relative to Leader
+            let configSyncStatus: 'synced' | 'behind' | 'na' = 'na';
+            let behindCount = 0;
+            const peerProv = (inst as any).provisioning_status || inst.summary?.provisioning_status;
+            const peerRevisions = peerProv?.appliedRevisions || {};
+
+            if (isLeader) {
+                configSyncStatus = 'synced';
+            } else if (leaderBundleKeys.length > 0) {
+                let allSynced = true;
+                for (const bKey of leaderBundleKeys) {
+                    const lRevObj = leaderRevisions[bKey];
+                    const lRev = typeof lRevObj === 'object' ? lRevObj.revision : lRevObj;
+                    const pRevObj = peerRevisions[bKey];
+                    const pRev = typeof pRevObj === 'object' ? pRevObj.revision : pRevObj;
+                    if (lRev && (!pRev || pRev < lRev)) {
+                        allSynced = false;
+                        behindCount++;
+                    }
+                }
+                configSyncStatus = allSynced ? 'synced' : 'behind';
+            } else if (Object.keys(peerRevisions).length > 0) {
+                configSyncStatus = 'synced';
+            }
+
             return {
                 ...inst,
                 is_leader: isLeader,
                 status,
                 is_stale: isStale,
-                last_seen_seconds_ago: isLeader ? 0 : diffSeconds
+                last_seen_seconds_ago: isLeader ? 0 : diffSeconds,
+                config_sync_status: configSyncStatus,
+                behind_bundles_count: behindCount,
+                provisioning_status: peerProv
             };
         });
 
@@ -224,6 +262,7 @@ export class LocalRegistryServer {
             online_count: onlineCount,
             offline_count: offlineCount,
             avg_global_experience: avgGlobalExperience,
+            leader_revisions: leaderRevisions,
             instances: enrichedInstances,
             generated_at: new Date().toISOString()
         };

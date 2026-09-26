@@ -21,6 +21,8 @@ interface PeerInstance {
     is_stale: boolean;
     last_seen_seconds_ago: number;
     last_seen?: string;
+    config_sync_status?: 'synced' | 'behind' | 'na';
+    behind_bundles_count?: number;
     capabilities?: {
         voice?: boolean;
         convergence?: boolean;
@@ -43,6 +45,13 @@ interface PeerInstance {
         probes_global_health?: number; // 0-100 Global Experience score
         probes_total?: number;
         probes_passing?: number;
+        failing_probes?: Array<{
+            name: string;
+            type: string;
+            target: string;
+            error: string;
+            reliability?: number;
+        }>;
         traffic_state?: 'RUNNING' | 'STOPPED' | 'IDLE';
         traffic_rate_mbps?: number;
         voice_active?: boolean;
@@ -64,6 +73,7 @@ interface FleetOverviewResponse {
     online_count: number;
     offline_count: number;
     avg_global_experience: number | null;
+    leader_revisions?: Record<string, any>;
     instances: PeerInstance[];
     generated_at: string;
 }
@@ -78,7 +88,7 @@ const CAPABILITIES_CONFIG = [
     { key: 'connectivity', label: 'Connectivity', activeClass: 'bg-emerald-600/15 text-emerald-400 border-emerald-500/40 ring-1 ring-emerald-500/20', dotClass: 'bg-emerald-500' },
 ];
 
-// Mini Badge for Global Experience Score (DEM Health)
+// Mini Badge for Global Experience Score (in Table only)
 function ScoreMiniBadge({ score, isStale, isOnline }: { score?: number | null; isStale?: boolean; isOnline?: boolean }) {
     if (isStale || !isOnline) {
         return (
@@ -373,6 +383,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                 <th className="px-6 py-4">Probes</th>
                                 <th className="px-6 py-4">Traffic</th>
                                 <th className="px-6 py-4">Voice MOS</th>
+                                <th className="px-6 py-4">Config</th>
                                 <th className="px-6 py-4">Last Update</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
@@ -380,7 +391,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         <tbody className="divide-y divide-border">
                             {filteredInstances.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="px-6 py-12 text-center text-text-muted">
+                                    <td colSpan={9} className="px-6 py-12 text-center text-text-muted">
                                         {loading ? (
                                             <div className="flex items-center justify-center gap-2">
                                                 <RefreshCw size={16} className="animate-spin text-blue-400" />
@@ -522,7 +533,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 ) : peer.summary.traffic_state === 'RUNNING' ? (
                                                     <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-bold font-mono">
                                                         <span>▶</span>
-                                                        <span>{peer.summary.traffic_rate_mbps ? `${peer.summary.traffic_rate_mbps} Mbps` : 'Active'}</span>
+                                                        <span>{peer.summary.traffic_rate_mbps && peer.summary.traffic_rate_mbps > 0 ? `${peer.summary.traffic_rate_mbps} Mbps` : 'Active'}</span>
                                                     </div>
                                                 ) : (
                                                     <div className="flex items-center gap-1.5 text-xs text-neutral-400 font-mono">
@@ -540,6 +551,23 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                     <span className="text-xs font-bold font-mono text-cyan-400">
                                                         {peer.summary.voice_mos.toFixed(2)}
                                                     </span>
+                                                )}
+                                            </td>
+
+                                            {/* Config Sync Status */}
+                                            <td className="px-6 py-4">
+                                                {peer.config_sync_status === 'synced' ? (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="All global config bundles match Leader">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                                        Synced
+                                                    </span>
+                                                ) : peer.config_sync_status === 'behind' ? (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20" title={`${peer.behind_bundles_count || 1} bundle(s) behind Leader`}>
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                                        Behind ({peer.behind_bundles_count || '!'})
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs font-mono text-neutral-500">—</span>
                                                 )}
                                             </td>
 
@@ -583,195 +611,278 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                 </div>
             </div>
 
-            {/* Peer Detail Drawer / Modal */}
-            {selectedPeer && (
-                <div 
-                    className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-                    onClick={() => setSelectedPeer(null)}
-                >
+            {/* Peer Detail Drawer / Modal (Aligning with PRD Screen 2 Mockup) */}
+            {selectedPeer && (() => {
+                const score = selectedPeer.summary?.probes_global_health;
+                const scoreColor = score !== undefined && score !== null
+                    ? score >= 80 ? 'text-emerald-400' : score >= 65 ? 'text-cyan-400' : score >= 50 ? 'text-amber-400' : 'text-red-400'
+                    : 'text-neutral-400';
+                const label = score !== undefined && score !== null
+                    ? score >= 80 ? 'Optimal' : score >= 65 ? 'Good' : score >= 50 ? 'Degraded' : 'Critical'
+                    : 'N/A';
+
+                return (
                     <div 
-                        className="bg-card border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl p-6 space-y-6 animate-in fade-in zoom-in-95 duration-150"
-                        onClick={e => e.stopPropagation()}
+                        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => setSelectedPeer(null)}
                     >
-                        {/* Modal Header */}
-                        <div className="flex items-start justify-between border-b border-border pb-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 font-black text-lg">
-                                    {(selectedPeer.meta?.site || selectedPeer.instance_id).slice(0, 3).toUpperCase()}
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <h2 className="text-xl font-black text-text">
-                                            {selectedPeer.meta?.site || selectedPeer.instance_id}
-                                        </h2>
-                                        {selectedPeer.status === 'online' ? (
-                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                                Online
-                                            </span>
-                                        ) : (
-                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">
-                                                Offline
-                                            </span>
-                                        )}
-                                        {(selectedPeer.is_leader || selectedPeer.type === 'leader') && (
-                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                                                Leader
-                                            </span>
-                                        )}
+                        <div 
+                            className="bg-card border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl p-6 space-y-6 animate-in fade-in zoom-in-95 duration-150"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            {/* Modal Header */}
+                            <div className="flex items-start justify-between border-b border-border pb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 font-black text-lg">
+                                        {(selectedPeer.meta?.site || selectedPeer.instance_id).slice(0, 3).toUpperCase()}
                                     </div>
-                                    <p className="text-xs text-text-muted font-mono mt-0.5">
-                                        ID: {selectedPeer.instance_id} · Version: {selectedPeer.meta?.version || '—'}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <button 
-                                onClick={() => setSelectedPeer(null)}
-                                className="w-8 h-8 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center text-neutral-400 hover:text-white transition-colors"
-                            >
-                                <X size={16} />
-                            </button>
-                        </div>
-
-                        {/* Network & Access Addresses */}
-                        <div className="space-y-2">
-                            <h3 className="text-xs uppercase font-mono tracking-wider text-text-muted font-bold">
-                                Network & Management Addresses
-                            </h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="p-3 rounded-xl bg-neutral-900/60 border border-border flex items-center justify-between">
                                     <div>
-                                        <div className="text-[10px] uppercase font-bold text-text-muted">Traffic IP (Data Plane)</div>
-                                        <div className="text-sm font-mono font-bold text-text mt-0.5">{selectedPeer.ip_private}</div>
-                                    </div>
-                                    <button
-                                        onClick={(e) => handleCopy(e, selectedPeer.ip_private)}
-                                        className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
-                                        title="Copy IP"
-                                    >
-                                        {copiedIp === selectedPeer.ip_private ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                                    </button>
-                                </div>
-
-                                <div className="p-3 rounded-xl bg-neutral-900/60 border border-border flex items-center justify-between">
-                                    <div>
-                                        <div className="text-[10px] uppercase font-bold text-text-muted">Management URL</div>
-                                        <div className="text-sm font-mono font-bold text-text mt-0.5 truncate max-w-[180px]">
-                                            {selectedPeer.meta?.management_url 
-                                                || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}
+                                        <div className="flex items-center gap-2">
+                                            <h2 className="text-xl font-black text-text">
+                                                {selectedPeer.meta?.site || selectedPeer.instance_id}
+                                            </h2>
+                                            {selectedPeer.status === 'online' ? (
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                    Online
+                                                </span>
+                                            ) : (
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">
+                                                    Offline
+                                                </span>
+                                            )}
+                                            {(selectedPeer.is_leader || selectedPeer.type === 'leader') && (
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                                    Leader
+                                                </span>
+                                            )}
                                         </div>
+                                        <p className="text-xs text-text-muted font-mono mt-0.5">
+                                            ID: {selectedPeer.instance_id} · Version: {selectedPeer.meta?.version || '—'}
+                                        </p>
                                     </div>
-                                    <a
-                                        href={selectedPeer.meta?.management_url || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
-                                        title="Open UI"
-                                    >
-                                        <ExternalLink size={14} />
-                                    </a>
                                 </div>
-                            </div>
-                            <p className="text-[11px] text-text-muted italic">
-                                💡 Tip: The Traffic IP used for WAN packet generation can differ from the Management IP. You can set <code className="text-blue-400">STIGIX_MANAGEMENT_URL=http://&lt;mgmt-ip&gt;:8080</code> in the peer's environment to customize the direct UI link.
-                            </p>
-                        </div>
 
-                        {/* Top Telemetry Highlight (Clean, no 2-line wrap) */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-neutral-900/40 p-4 rounded-xl border border-border">
-                            <div className="min-w-0">
-                                <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Global Exp.</div>
-                                <div className="mt-1.5">
-                                    <ScoreMiniBadge 
-                                        score={selectedPeer.summary?.probes_global_health} 
-                                        isStale={selectedPeer.is_stale}
-                                        isOnline={selectedPeer.status === 'online'}
-                                    />
-                                </div>
+                                <button 
+                                    onClick={() => setSelectedPeer(null)}
+                                    className="w-8 h-8 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center text-neutral-400 hover:text-white transition-colors"
+                                >
+                                    <X size={16} />
+                                </button>
                             </div>
-                            <div>
-                                <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Traffic</div>
-                                <div className="mt-1 font-mono text-sm font-bold text-text">
-                                    {selectedPeer.summary?.traffic_state === 'RUNNING' 
-                                        ? `▶ ${selectedPeer.summary.traffic_rate_mbps || 0} Mbps` 
-                                        : '■ Stopped'}
-                                </div>
-                            </div>
-                            <div>
-                                <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Voice MOS</div>
-                                <div className="mt-1 font-mono text-sm font-bold text-cyan-400">
-                                    {selectedPeer.summary?.voice_mos ? selectedPeer.summary.voice_mos.toFixed(2) : '—'}
-                                </div>
-                            </div>
-                            <div>
-                                <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Uptime</div>
-                                <div className="mt-1 font-mono text-sm font-bold text-text">
-                                    {formatUptime(selectedPeer.summary?.uptime_seconds)}
-                                </div>
-                            </div>
-                        </div>
 
-                        {/* Node Capabilities matching standard Stigix color coding */}
-                        <div className="space-y-2">
-                            <h3 className="text-xs uppercase font-mono tracking-wider text-text-muted font-bold">
-                                Enabled Capabilities
-                            </h3>
-                            <div className="flex flex-wrap gap-2">
-                                {CAPABILITIES_CONFIG.map(cap => {
-                                    const enabled = !!selectedPeer.capabilities?.[cap.key];
-                                    return (
-                                        <span 
-                                            key={cap.key}
-                                            className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-2 transition-all shadow-sm ${
-                                                enabled 
-                                                    ? cap.activeClass 
-                                                    : 'bg-neutral-900/60 text-neutral-500 border-neutral-800'
-                                            }`}
-                                        >
-                                            <span className={`w-2 h-2 rounded-full ${enabled ? cap.dotClass : 'bg-neutral-600'}`} />
-                                            {cap.label}
-                                        </span>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Provisioning Revisions by Use Case */}
-                        {selectedPeer.provisioning_status?.appliedRevisions && (
+                            {/* Network & Access Addresses */}
                             <div className="space-y-2">
                                 <h3 className="text-xs uppercase font-mono tracking-wider text-text-muted font-bold">
-                                    Provisioned Configuration Revisions (by Use Case)
+                                    Network & Management Addresses
                                 </h3>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                    {Object.entries(selectedPeer.provisioning_status.appliedRevisions).map(([bundle, rev]) => (
-                                        <div key={bundle} className="p-2.5 rounded-lg bg-neutral-900/50 border border-neutral-800 text-xs font-mono flex items-center justify-between">
-                                            <span className="text-neutral-400 capitalize">{bundle.replace(/_/g, ' ')}</span>
-                                            <span className="font-bold text-blue-400">r{String(rev)}</span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="p-3 rounded-xl bg-neutral-900/60 border border-border flex items-center justify-between">
+                                        <div>
+                                            <div className="text-[10px] uppercase font-bold text-text-muted">Traffic IP (Data Plane)</div>
+                                            <div className="text-sm font-mono font-bold text-text mt-0.5">{selectedPeer.ip_private}</div>
                                         </div>
-                                    ))}
+                                        <button
+                                            onClick={(e) => handleCopy(e, selectedPeer.ip_private)}
+                                            className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
+                                            title="Copy IP"
+                                        >
+                                            {copiedIp === selectedPeer.ip_private ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                                        </button>
+                                    </div>
+
+                                    <div className="p-3 rounded-xl bg-neutral-900/60 border border-border flex items-center justify-between">
+                                        <div>
+                                            <div className="text-[10px] uppercase font-bold text-text-muted">Management URL</div>
+                                            <div className="text-sm font-mono font-bold text-text mt-0.5 truncate max-w-[180px]">
+                                                {selectedPeer.meta?.management_url 
+                                                    || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}
+                                            </div>
+                                        </div>
+                                        <a
+                                            href={selectedPeer.meta?.management_url || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
+                                            title="Open UI"
+                                        >
+                                            <ExternalLink size={14} />
+                                        </a>
+                                    </div>
+                                </div>
+                                <p className="text-[11px] text-text-muted italic">
+                                    💡 Tip: The Traffic IP used for WAN packet generation can differ from the Management IP. You can set <code className="text-blue-400">STIGIX_MANAGEMENT_URL=http://&lt;mgmt-ip&gt;:8080</code> in the peer's environment to customize the direct UI link.
+                                </p>
+                            </div>
+
+                            {/* Top Telemetry Highlight (Clean typography, no yellow box border) */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-neutral-900/40 p-4 rounded-xl border border-border">
+                                <div>
+                                    <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Global Exp.</div>
+                                    <div className="mt-1 font-mono text-sm font-bold flex items-baseline gap-1">
+                                        <span className={`text-base font-black ${scoreColor}`}>{score ?? '—'}</span>
+                                        <span className="text-xs text-text-muted">/100</span>
+                                        <span className={`text-[10px] font-bold uppercase ${scoreColor}`}>· {label}</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Traffic</div>
+                                    <div className="mt-1 font-mono text-sm font-bold">
+                                        {selectedPeer.summary?.traffic_state === 'RUNNING' ? (
+                                            <span className="text-emerald-400">
+                                                ▶ Active {selectedPeer.summary.traffic_rate_mbps && selectedPeer.summary.traffic_rate_mbps > 0 ? `(${selectedPeer.summary.traffic_rate_mbps} Mbps)` : ''}
+                                            </span>
+                                        ) : (
+                                            <span className="text-neutral-400">■ Stopped</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Voice MOS</div>
+                                    <div className="mt-1 font-mono text-sm font-bold text-cyan-400">
+                                        {selectedPeer.summary?.voice_mos ? selectedPeer.summary.voice_mos.toFixed(2) : '—'}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Uptime</div>
+                                    <div className="mt-1 font-mono text-sm font-bold text-text">
+                                        {formatUptime(selectedPeer.summary?.uptime_seconds)}
+                                    </div>
                                 </div>
                             </div>
-                        )}
 
-                        {/* Direct Action Footer */}
-                        <div className="flex items-center justify-between pt-4 border-t border-border">
-                            <span className="text-xs font-mono text-text-muted flex items-center gap-1.5">
-                                <Clock size={12} />
-                                Last heartbeat received: {selectedPeer.last_seen ? new Date(selectedPeer.last_seen).toLocaleString() : '—'}
-                            </span>
-                            <a
-                                href={selectedPeer.meta?.management_url || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-lg active:scale-95"
-                            >
-                                <span>Open Full Node Dashboard</span>
-                                <ExternalLink size={14} />
-                            </a>
+                            {/* Node Capabilities matching standard Stigix color coding */}
+                            <div className="space-y-2">
+                                <h3 className="text-xs uppercase font-mono tracking-wider text-text-muted font-bold">
+                                    Enabled Capabilities
+                                </h3>
+                                <div className="flex flex-wrap gap-2">
+                                    {CAPABILITIES_CONFIG.map(cap => {
+                                        const enabled = !!selectedPeer.capabilities?.[cap.key];
+                                        return (
+                                            <span 
+                                                key={cap.key}
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-2 transition-all shadow-sm ${
+                                                    enabled 
+                                                        ? cap.activeClass 
+                                                        : 'bg-neutral-900/60 text-neutral-500 border-neutral-800'
+                                                }`}
+                                            >
+                                                <span className={`w-2 h-2 rounded-full ${enabled ? cap.dotClass : 'bg-neutral-600'}`} />
+                                                {cap.label}
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Connectivity Probes Breakdown (from PRD Mockup) */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-xs uppercase font-mono tracking-wider text-text-muted font-bold">
+                                        Connectivity Probes
+                                    </h3>
+                                    <div className="text-xs font-mono">
+                                        <span className="text-text-muted">Total: </span>
+                                        <span className="font-bold text-text">{selectedPeer.summary?.probes_total ?? 0}</span>
+                                        <span className="text-text-muted"> | Passing: </span>
+                                        <span className="font-bold text-emerald-400">{selectedPeer.summary?.probes_passing ?? 0}</span>
+                                        <span className="text-text-muted"> | Failing: </span>
+                                        <span className={`font-bold ${(selectedPeer.summary?.probes_total ?? 0) - (selectedPeer.summary?.probes_passing ?? 0) > 0 ? 'text-amber-400' : 'text-text-muted'}`}>
+                                            {Math.max(0, (selectedPeer.summary?.probes_total ?? 0) - (selectedPeer.summary?.probes_passing ?? 0))}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {selectedPeer.summary?.failing_probes && selectedPeer.summary.failing_probes.length > 0 ? (
+                                    <div className="space-y-1.5">
+                                        {selectedPeer.summary.failing_probes.map((p, idx) => (
+                                            <div key={idx} className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs font-mono flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-amber-400">⚠️</span>
+                                                    <span className="font-bold text-text">{p.name}</span>
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 uppercase font-black">{p.type}</span>
+                                                    {p.target && <span className="text-text-muted text-[11px]">{p.target}</span>}
+                                                </div>
+                                                <div className="text-amber-400 text-right text-[11px] font-semibold">
+                                                    {p.error} {p.reliability !== undefined && p.reliability > 0 ? `(${p.reliability}%)` : ''}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-xs font-mono text-emerald-400 flex items-center gap-2">
+                                        <CheckCircle2 size={16} />
+                                        <span>All active synthetic probes are passing and 100% reliable</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Configuration Provisioning Sync Status (from PRD Mockup) */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-xs uppercase font-mono tracking-wider text-text-muted font-bold">
+                                        Configuration Provisioning
+                                    </h3>
+                                    <div>
+                                        {selectedPeer.config_sync_status === 'synced' ? (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                                All Synced (Matches Leader)
+                                            </span>
+                                        ) : selectedPeer.config_sync_status === 'behind' ? (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                                Behind Leader ({selectedPeer.behind_bundles_count || 1} bundle(s) out of date)
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs font-mono text-text-muted">Standalone / No Bundles</span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {selectedPeer.provisioning_status?.appliedRevisions && Object.keys(selectedPeer.provisioning_status.appliedRevisions).length > 0 && (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                        {Object.entries(selectedPeer.provisioning_status.appliedRevisions).map(([bundle, revObj]) => {
+                                            const rev = typeof revObj === 'object' ? revObj.revision : revObj;
+                                            const leaderRevObj = data?.leader_revisions?.[bundle];
+                                            const leaderRev = typeof leaderRevObj === 'object' ? leaderRevObj?.revision : leaderRevObj;
+                                            const isBundleSynced = selectedPeer.is_leader || !leaderRev || rev >= leaderRev;
+                                            return (
+                                                <div key={bundle} className={`p-2.5 rounded-xl border text-xs font-mono flex items-center justify-between ${
+                                                    isBundleSynced ? 'bg-neutral-900/50 border-neutral-800' : 'bg-amber-500/5 border-amber-500/20'
+                                                }`}>
+                                                    <span className="text-neutral-400 capitalize">{bundle.replace(/_/g, ' ')}</span>
+                                                    <span className={`font-bold flex items-center gap-1.5 ${isBundleSynced ? 'text-blue-400' : 'text-amber-400'}`}>
+                                                        r{String(rev)}
+                                                        {isBundleSynced ? <Check size={12} className="text-emerald-400" /> : <AlertTriangle size={12} className="text-amber-400" />}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Direct Action Footer */}
+                            <div className="flex items-center justify-between pt-4 border-t border-border">
+                                <span className="text-xs font-mono text-text-muted flex items-center gap-1.5">
+                                    <Clock size={12} />
+                                    Last heartbeat received: {selectedPeer.last_seen ? new Date(selectedPeer.last_seen).toLocaleString() : '—'}
+                                </span>
+                                <a
+                                    href={selectedPeer.meta?.management_url || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-lg active:scale-95"
+                                >
+                                    <span>Open Full Node Dashboard</span>
+                                    <ExternalLink size={14} />
+                                </a>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
         </div>
     );
 }
