@@ -377,15 +377,15 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                     <table className="w-full text-left text-sm">
                         <thead className="bg-neutral-900/60 border-b border-border text-xs uppercase font-mono tracking-wider text-text-muted">
                             <tr>
-                                <th className="px-6 py-4">Site / Node</th>
-                                <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4">Global Exp. Score</th>
-                                <th className="px-6 py-4">Probes</th>
-                                <th className="px-6 py-4">Traffic</th>
-                                <th className="px-6 py-4">Voice MOS</th>
-                                <th className="px-6 py-4">Config</th>
-                                <th className="px-6 py-4">Last Update</th>
-                                <th className="px-6 py-4 text-right">Actions</th>
+                                <th className="px-6 py-3">Site / Node</th>
+                                <th className="px-6 py-3">Status</th>
+                                <th className="px-6 py-3">Global Exp. Score</th>
+                                <th className="px-6 py-3">Probes</th>
+                                <th className="px-6 py-3">Traffic</th>
+                                <th className="px-6 py-3">Voice MOS</th>
+                                <th className="px-6 py-3">Config</th>
+                                <th className="px-6 py-3">Last Update</th>
+                                <th className="px-6 py-3 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
@@ -423,26 +423,26 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 isLeader ? 'bg-purple-950/10' : ''
                                             }`}
                                         >
-                                            {/* Site & ID with capability indicator dots */}
-                                            <td className="px-6 py-4">
+                                            {/* Site & ID: Compact 2 lines with inline capability dots (Option A) */}
+                                            <td className="px-6 py-3">
                                                 <div className="flex items-center gap-3">
-                                                    <div className={`w-9 h-9 rounded-lg border flex items-center justify-center font-bold transition-all ${
+                                                    <div className={`w-8 h-8 rounded-lg border flex items-center justify-center font-bold text-xs transition-all shrink-0 ${
                                                         isLeader 
                                                             ? 'bg-purple-500/10 border-purple-500/30 text-purple-400' 
                                                             : 'bg-neutral-800/80 border-neutral-700 text-neutral-300 group-hover:border-blue-500/40 group-hover:text-blue-400'
                                                     }`}>
                                                         {isLeader ? '👑' : siteName.slice(0, 3).toUpperCase()}
                                                     </div>
-                                                    <div>
+                                                    <div className="min-w-0">
                                                         <div className="font-bold text-text flex items-center gap-2">
-                                                            {siteName}
+                                                            <span className="truncate">{siteName}</span>
                                                             {isLeader && (
-                                                                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                                                <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20 whitespace-nowrap">
                                                                     Leader (This Node)
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <div className="text-xs text-text-muted font-mono flex items-center gap-2 mt-0.5">
+                                                        <div className="text-xs text-text-muted font-mono flex items-center gap-2 mt-0.5 whitespace-nowrap">
                                                             {/* Traffic IP with 1-click copy */}
                                                             <span 
                                                                 onClick={(e) => handleCopy(e, peer.ip_private)}
@@ -454,29 +454,29 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                             </span>
                                                             <span>·</span>
                                                             <span className="text-[11px] opacity-75">{version}</span>
-                                                        </div>
-
-                                                        {/* Colored Capability Dots (Voice, Failover, Custom Apps, Speedtest, Security, Connectivity) */}
-                                                        <div className="flex items-center gap-1.5 mt-1.5">
-                                                            {CAPABILITIES_CONFIG.map(cap => {
-                                                                const enabled = !!peer.capabilities?.[cap.key];
-                                                                return (
-                                                                    <span
-                                                                        key={cap.key}
-                                                                        title={`${cap.label}: ${enabled ? 'Enabled' : 'Disabled'}`}
-                                                                        className={`w-2 h-2 rounded-full transition-all ${
-                                                                            enabled ? cap.dotClass : 'bg-neutral-700/40'
-                                                                        }`}
-                                                                    />
-                                                                );
-                                                            })}
+                                                            <span>·</span>
+                                                            {/* Colored Capability Dots inline */}
+                                                            <div className="flex items-center gap-1">
+                                                                {CAPABILITIES_CONFIG.map(cap => {
+                                                                    const enabled = !!peer.capabilities?.[cap.key];
+                                                                    return (
+                                                                        <span
+                                                                            key={cap.key}
+                                                                            title={`${cap.label}: ${enabled ? 'Enabled' : 'Disabled'}`}
+                                                                            className={`w-1.5 h-1.5 rounded-full transition-all ${
+                                                                                enabled ? cap.dotClass : 'bg-neutral-700/40'
+                                                                            }`}
+                                                                        />
+                                                                    );
+                                                                })}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
                                             </td>
 
                                             {/* Status Badge (Pure Online / Offline) */}
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-3">
                                                 {peer.status === 'online' ? (
                                                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -491,7 +491,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             </td>
 
                                             {/* Global Experience Score (Single line, no wrap) */}
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-3">
                                                 <ScoreMiniBadge 
                                                     score={peer.summary?.probes_global_health} 
                                                     isStale={peer.is_stale}
@@ -500,7 +500,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             </td>
 
                                             {/* Probes Summary with descriptive tooltip */}
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-3">
                                                 {peer.is_stale || peer.summary?.probes_total === undefined ? (
                                                     <span className="text-xs text-neutral-500 font-mono">—</span>
                                                 ) : (() => {
@@ -527,7 +527,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             </td>
 
                                             {/* Traffic State */}
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-3">
                                                 {peer.is_stale || !peer.summary?.traffic_state ? (
                                                     <span className="text-xs text-neutral-500 font-mono">—</span>
                                                 ) : peer.summary.traffic_state === 'RUNNING' ? (
@@ -544,7 +544,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             </td>
 
                                             {/* Voice MOS */}
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-3">
                                                 {peer.is_stale || !peer.summary?.voice_mos ? (
                                                     <span className="text-xs text-neutral-500 font-mono">—</span>
                                                 ) : (
@@ -555,7 +555,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             </td>
 
                                             {/* Config Sync Status */}
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-3">
                                                 {peer.config_sync_status === 'synced' ? (
                                                     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="All global config bundles match Leader">
                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
@@ -572,7 +572,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             </td>
 
                                             {/* Last Update: Relative + Absolute Timestamp */}
-                                            <td className="px-6 py-4 text-xs font-mono text-text-muted" title={peer.last_seen || ''}>
+                                            <td className="px-6 py-3 text-xs font-mono text-text-muted" title={peer.last_seen || ''}>
                                                 <div className="flex flex-col">
                                                     <span className="font-bold text-text/80">{rel}</span>
                                                     {timeStr && <span className="text-[11px] opacity-60">{timeStr}</span>}
@@ -580,7 +580,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             </td>
 
                                             {/* Actions: Open UI & Copy IP */}
-                                            <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
+                                            <td className="px-6 py-3 text-right" onClick={e => e.stopPropagation()}>
                                                 <div className="inline-flex items-center gap-1.5">
                                                     <button
                                                         onClick={(e) => handleCopy(e, peer.ip_private)}
