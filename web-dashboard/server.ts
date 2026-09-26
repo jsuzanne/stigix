@@ -6025,9 +6025,16 @@ app.get('/api/system/tech-support', authenticateToken, async (req: any, res: any
         fs.mkdirSync(telemetrySubdir, { recursive: true });
 
         // 1. Metadata
+        let currentVersion = 'unknown';
+        try {
+            const vPath = fs.existsSync('/app/VERSION') ? '/app/VERSION' : path.join(__dirname, 'VERSION');
+            if (fs.existsSync(vPath)) currentVersion = fs.readFileSync(vPath, 'utf8').trim();
+        } catch (e) {}
+        if (currentVersion === 'unknown' && process.env.STIGIX_VERSION) currentVersion = process.env.STIGIX_VERSION;
+
         const metadata = {
             generator: 'Stigix Tech-Support Diagnostic Bundle',
-            version: STIGIX_VERSION || 'unknown',
+            version: currentVersion,
             git_commit: process.env.GIT_COMMIT || 'unknown',
             site_name: process.env.STIGIX_SITE_NAME || 'standalone',
             instance_id: process.env.STIGIX_INSTANCE_ID || 'unknown',
