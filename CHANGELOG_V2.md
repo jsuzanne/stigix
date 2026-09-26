@@ -2,11 +2,29 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2-dev] - 2026-09-26 — Fleet Telemetry Provider & Detail View Fixes
+## [v2-dev] - 2026-09-26 — Tech-Support Diagnostics Bundle, Reports & Telemetry Enrichment
+
+### Added
+- **Tech-Support Diagnostic Bundle Generator** 📦:
+  - **1-Click Web UI Download**: Added « Download Tech-Support Bundle » in Settings → System Information.
+  - **CLI Automation**: Added `tech-support [--output <path>]` command in `stigix-cli.py` with autocomplete.
+  - **REST API Endpoint**: Protected route `GET /api/system/tech-support` generating structured `.tar.gz` archive.
+  - **Zero-Leak Sanitization**: Recursive secret scrubber replacing tokens, passwords, private keys, client secrets, and JWTs with `***REDACTED***`.
+  - **Comprehensive Diagnostics**:
+    - `metadata.json`: Node version, git commit, platform hardware specs, and timestamp.
+    - `config/`: All active `.json` configurations (sanitized).
+    - `system/`: Live network and OS state (`ip addr`, `ip route`, `iptables`, `/proc/net/dev`, `df`, `free`, `ps aux`, `docker ps`, `supervisorctl status`).
+    - `telemetry/`: Mesh status, fleet peers, 1h/24h connectivity SLA stats, probes catalog, and services health.
+    - `logs/`: Tail of last 1,000 lines from all core engine and supervisor logs.
+  - **Documentation**: Created [`docs/TECH_SUPPORT_DIAGNOSTICS.md`](file:///Users/jsuzanne/Github/stigix/docs/TECH_SUPPORT_DIAGNOSTICS.md) and updated [`docs/STIGIX_CLI.md`](file:///Users/jsuzanne/Github/stigix/docs/STIGIX_CLI.md).
+- **Research Papers & Whitepapers Published**:
+  - Published Application vs Network white paper and BR8/DC1 technical report to `site/reports/` and `stigix.io/reports.html`.
 
 ### Fixed
 - **Fleet Telemetry Scope Bug**: Fixed a `ReferenceError: failingProbes is not defined` in `registryManager.setTelemetryProvider` where `failingProbes` was scoped inside the `try` block, preventing heartbeat telemetry summaries from being generated on upgraded nodes (`DC1`, `BR2`, `BR5`, `BR8`).
+- **Fleet Traffic Direction Display**: Cleaned up double arrow display in Fleet peer table (`▲ TX · ▼ RX`).
 - **Fleet Detail View Traffic Wrapping**: Prevented awkward multi-line break of `▶ Active (X Mbps)` in the peer detail modal by setting `whitespace-nowrap`, allocating proportional column widths, and expanding the modal to `max-w-3xl`.
+
 
 ## [v2-dev] - 2026-09-25 — Fleet Control Plane: Telemetry Enriched Heartbeat & Fleet Observability (Phase 3A)
 
