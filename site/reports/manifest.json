@@ -1,5 +1,41 @@
 [
   {
+    "id": "whitepaper-app-vs-network",
+    "title": "Beyond Ping: Separating Application from Network Issues",
+    "category": "White Paper",
+    "tags": ["White Paper", "SRT", "Prisma SD-WAN", "TCP Timing", "Digital Experience", "SASE"],
+    "date": "2026-09-26",
+    "author": "Jean-Louis SUZANNE, Technical Sales Manager, Palo Alto Networks",
+    "summary": "Architectural white paper exploring how Prisma SD-WAN and Stigix decompose end-to-end user latency into Network RTT and Server Response Time (SRT) without server agents or SSL decryption.",
+    "highlights": [
+      "Decomposing transaction latency: Network RTT vs Server Response Time (SRT)",
+      "Two synchronized measurement planes: Stigix per-session telemetry and Prisma SD-WAN SCM",
+      "Eliminates the 'Is it the network?' blame game in minutes",
+      "Fully passive TCP session timing analysis without application modification"
+    ],
+    "pdf_file": "Whitepaper_AppVsNetwork_PrismaSDWAN.pdf",
+    "featured": true,
+    "size": "1.98 MB"
+  },
+  {
+    "id": "srt-report-app-vs-network",
+    "title": "It's Not the Network: Pinpointing Application vs. Network Issues",
+    "category": "Lab Benchmark",
+    "tags": ["SRT", "Server Response Time", "Prisma SD-WAN", "Application Diagnostics", "Bottleneck Isolation"],
+    "date": "2026-09-26",
+    "author": "Jean-Louis SUZANNE, Technical Sales Manager, Palo Alto Networks",
+    "summary": "Live diagnostic testing separating application latency from SD-WAN network transport using Server Response Time (SRT) measurements to isolate server-side processing delays in under 30 seconds.",
+    "highlights": [
+      "5.8 ms Network RTT vs 800 ms Server Response Time (SRT) clear isolation",
+      "99% of user delay proven caused by backend server processing, not the SD-WAN network",
+      "Zero-agent, non-intrusive dual measurement with Stigix and Prisma SD-WAN SCM",
+      "Fast diagnostic verdict achieved in under 30 seconds"
+    ],
+    "pdf_file": "SRT_Report_AppVsNetwork_BR8_DC1.pdf",
+    "featured": true,
+    "size": "1.76 MB"
+  },
+  {
     "id": "prisma-sdwan-grey-failure",
     "title": "When Routing Can't See the Failure: Application-Aware Failover with Prisma SD-WAN",
     "category": "White Paper",
@@ -52,7 +88,7 @@
     ],
     "pdf_file": "SDWAN_Resilience_Report_BR8_DC1.pdf",
     "markdown_file": "SDWAN_Failover_Executive_Report.docx.md",
-    "featured": true,
+    "featured": false,
     "size": "79 KB"
   },
   {
