@@ -1,0 +1,106 @@
+[
+  {
+    "id": "prisma-sdwan-grey-failure",
+    "title": "When Routing Can't See the Failure: Application-Aware Failover with Prisma SD-WAN",
+    "category": "White Paper",
+    "tags": ["Prisma SD-WAN", "Failover", "Grey Failure", "Application Unreachability", "SASE"],
+    "date": "2026-09-25",
+    "author": "Jean-Louis SUZANNE, Technical Sales Manager, Palo Alto Networks",
+    "summary": "Prisma SD-WAN rerouted a branch's backhauled internet traffic to a backup data center in ~3 minutes during a silent internet breakout failure where Layer 3 routing remained completely blind.",
+    "highlights": [
+      "~3 min automatic failover during dead internet breakout behind active next hop",
+      "End-to-end TCP session tracking vs blind Layer 3 BFD / tunnel keepalives",
+      "Automatic probe-driven failback once primary DC breakout is repaired",
+      "Tested and validated in live lab environment using Stigix"
+    ],
+    "pdf_file": "When_Routing_Cant_See_the_Failure_Prisma_SD-WAN.pdf",
+    "markdown_file": "When Routing Can't See the Failure Application-Aware Failover with Prisma SD-WAN.md",
+    "featured": true,
+    "size": "575 KB"
+  },
+  {
+    "id": "making-of-stigix-prisma-sdwan",
+    "title": "Making-of: How Stigix Powered the Prisma SD-WAN Failover Tests",
+    "category": "White Paper",
+    "tags": ["Making-Of", "Prisma SD-WAN", "MCP", "AI Automation", "VyOS", "Test Methodology"],
+    "date": "2026-09-25",
+    "author": "Jean-Louis SUZANNE, Technical Sales Manager, Palo Alto Networks",
+    "summary": "Behind the scenes of the Prisma SD-WAN application-aware failover test campaign: how Stigix coordinated multi-site traffic generation, VyOS router impairments, Flow Browser telemetry, and MCP AI automation.",
+    "highlights": [
+      "Multi-angle telemetry: packets, application sessions, voice quality (MOS), and SD-WAN path decisions",
+      "VyOS fault injection with millisecond-accurate commit timestamps",
+      "Model Context Protocol (MCP) server enabling natural-language lab orchestration with Claude AI",
+      "Complete step-by-step methodology and reproducibility guide for SD-WAN lab validation"
+    ],
+    "pdf_file": "Making-of How Stigix Powered the Prisma SD-WAN Failover Tests.pdf",
+    "markdown_file": "Making-of How Stigix Powered the Prisma SD-WAN Failover Tests.md",
+    "featured": true,
+    "size": "685 KB"
+  },
+  {
+    "id": "sdwan-resilience-br8-dc1",
+    "title": "SD-WAN Convergence & Grey-Failure Resilience Report (BR8 → DC1)",
+    "category": "Lab Benchmark",
+    "tags": ["Convergence Lab", "Failover", "Packet Loss", "Path Evolution", "Dual-WAN"],
+    "date": "2026-09-24",
+    "author": "Jean-Louis SUZANNE",
+    "summary": "Comprehensive failover testing and path evolution analysis between branch office BR8 and primary datacenter DC1 under induced link impairments.",
+    "highlights": [
+      "Sub-second packet loss measurement during active failover",
+      "Path evolution telemetry: BR8-INET2 → DC1-INET ➔ BR8-INET1 → DC2-INET",
+      "Full flow session continuity audit"
+    ],
+    "pdf_file": "SDWAN_Resilience_Report_BR8_DC1.pdf",
+    "markdown_file": "SDWAN_Failover_Executive_Report.docx.md",
+    "featured": true,
+    "size": "79 KB"
+  },
+  {
+    "id": "br8-br5-dc1-parallel-convergence",
+    "title": "Multi-Branch Parallel Convergence Benchmark (BR8 + BR5 → DC1)",
+    "category": "Lab Benchmark",
+    "tags": ["Multi-Site", "Mesh", "Parallel Testing", "Orchestration"],
+    "date": "2026-09-23",
+    "author": "Stigix Testing Lab",
+    "summary": "Simultaneous dual-branch failover validation assessing central DC controller resilience under concurrent branch rerouting events.",
+    "highlights": [
+      "Zero cross-branch interference during simultaneous WAN switches",
+      "Distributed telemetry collection across multiple Stigix mesh nodes"
+    ],
+    "pdf_file": "BR8-BR5-DC1_Parallel_Convergence_Report.pdf",
+    "featured": false,
+    "size": "59 KB"
+  },
+  {
+    "id": "br8-dc1-convergence-test",
+    "title": "Single-Path WAN Degradation & Failover Test Report",
+    "category": "Lab Benchmark",
+    "tags": ["Failover", "VyOS", "Bandwidth", "RTT"],
+    "date": "2026-09-22",
+    "author": "Stigix Testing Lab",
+    "summary": "Automated network impairment validation with packet injection and VyOS router state telemetry.",
+    "highlights": [
+      "VyOS routing policy trigger analysis",
+      "Continuous UDP probe stream loss profiling"
+    ],
+    "pdf_file": "BR8-DC1_Convergence_Test_Report.pdf",
+    "featured": false,
+    "size": "57 KB"
+  },
+  {
+    "id": "m365-dem-probe-analysis",
+    "title": "Microsoft 365 & Azure Entra ID Digital Experience Monitoring Audit",
+    "category": "Technical Brief",
+    "tags": ["DEM", "Microsoft 365", "Latency", "HTTP Codes"],
+    "date": "2026-09-24",
+    "author": "Jean-Louis SUZANNE",
+    "summary": "Analysis of synthetic HTTP probe telemetry and status code scoring rules across Microsoft cloud authentication and SaaS endpoints.",
+    "highlights": [
+      "Custom status code handling (HTTP 403 / 401 on auth-gated portals)",
+      "TTFB, TLS handshake, and TCP connect latency decomposition"
+    ],
+    "markdown_file": "Microsoft Probe analysis Report Report (EN).md",
+    "featured": false,
+    "size": "7 KB"
+  }
+]

@@ -9,6 +9,7 @@ playwright.config.ts
 
 *.pdf
 !docs/MCP Reports/*.pdf
+!site/reports/*.pdf
 *.log
 *.log.*
 *.json
@@ -19,6 +20,7 @@ playwright.config.ts
 !tsconfig.node.json
 !logs/stats.json
 !mcp-server/tests/fixtures/**
+!site/reports/manifest.json
 
 # -------------------------------------------------------
 # Credentials & Secrets — NEVER commit these
