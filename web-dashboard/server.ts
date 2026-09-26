@@ -6137,7 +6137,7 @@ app.get('/api/system/tech-support', authenticateToken, async (req: any, res: any
         fs.writeFileSync(path.join(systemSubdir, 'docker_ps.txt'), dockerPs);
         fs.writeFileSync(path.join(systemSubdir, 'supervisor_status.txt'), supervisorStatus);
 
-        // 4. Logs Snapshot (Tail 1000 lines from log directories)
+        // 4. Logs Snapshot (Tail 1000 lines from log directories & Docker container stdout)
         const logDirs = [APP_CONFIG.logDir, '/var/log/sdwan-traffic-gen', '/var/log/supervisor'];
         for (const lDir of logDirs) {
             if (fs.existsSync(lDir)) {
@@ -6154,6 +6154,15 @@ app.get('/api/system/tech-support', authenticateToken, async (req: any, res: any
                 } catch (e) {}
             }
         }
+
+        // Docker container stdout/stderr log (equivalent to docker compose logs)
+        try {
+            const containerName = process.env.CONTAINER_NAME || 'stigix';
+            const dockerStdout = await runCmdSafe('docker', ['logs', '--tail', '1000', containerName]);
+            if (dockerStdout && !dockerStdout.startsWith('[Command')) {
+                fs.writeFileSync(path.join(logsSubdir, 'docker_compose_stdout.log'), dockerStdout);
+            }
+        } catch (e) {}
 
         // 5. Live Telemetry Snapshot
         try {
