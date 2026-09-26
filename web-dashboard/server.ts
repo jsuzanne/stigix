@@ -6116,7 +6116,7 @@ app.get('/api/system/tech-support', authenticateToken, async (req: any, res: any
             });
         };
 
-        const [ipAddr, ipRoute, iptables, netDev, uname, df, free, ps, dockerPs] = await Promise.all([
+        const [ipAddr, ipRoute, iptables, netDev, uname, df, free, ps, dockerPs, supervisorStatus] = await Promise.all([
             runCmdSafe('ip', ['-br', 'addr']),
             runCmdSafe('ip', ['route']),
             runCmdSafe('iptables', ['-L', '-n', '-v']),
@@ -6125,15 +6125,17 @@ app.get('/api/system/tech-support', authenticateToken, async (req: any, res: any
             runCmdSafe('df', ['-h']),
             runCmdSafe('free', ['-m']),
             runCmdSafe('ps', ['aux']),
-            runCmdSafe('docker', ['ps', '--no-trunc'])
+            runCmdSafe('docker', ['ps', '--no-trunc']),
+            runCmdSafe('supervisorctl', ['status'])
         ]);
 
         fs.writeFileSync(path.join(systemSubdir, 'ip_addr.txt'), ipAddr);
         fs.writeFileSync(path.join(systemSubdir, 'ip_route.txt'), ipRoute);
         fs.writeFileSync(path.join(systemSubdir, 'iptables.txt'), iptables);
         fs.writeFileSync(path.join(systemSubdir, 'net_dev.txt'), netDev);
-        fs.writeFileSync(path.join(systemSubdir, 'system_resources.txt'), `=== UNAME ===\n${uname}\n\n=== DISK SPACE ===\n${df}\n\n=== MEMORY ===\n${free}\n\n=== PROCESSES ===\n${ps}`);
+        fs.writeFileSync(path.join(systemSubdir, 'system_resources.txt'), `=== UNAME ===\n${uname}\n\n=== DISK SPACE ===\n${df}\n\n=== MEMORY ===\n${free}\n\n=== SUPERVISORD ===\n${supervisorStatus}\n\n=== PROCESSES ===\n${ps}`);
         fs.writeFileSync(path.join(systemSubdir, 'docker_ps.txt'), dockerPs);
+        fs.writeFileSync(path.join(systemSubdir, 'supervisor_status.txt'), supervisorStatus);
 
         // 4. Logs Snapshot (Tail 1000 lines from log directories)
         const logDirs = [APP_CONFIG.logDir, '/var/log/sdwan-traffic-gen', '/var/log/supervisor'];
@@ -6155,10 +6157,58 @@ app.get('/api/system/tech-support', authenticateToken, async (req: any, res: any
 
         // 5. Live Telemetry Snapshot
         try {
-            if (typeof (global as any).fleetManager?.getOverview === 'function') {
-                const fleetOverview = (global as any).fleetManager.getOverview();
-                fs.writeFileSync(path.join(telemetrySubdir, 'fleet_overview.json'), JSON.stringify(fleetOverview, null, 2));
+            // A. Registry Status & Peers
+            if (registryManager) {
+                fs.writeFileSync(path.join(telemetrySubdir, 'registry_status.json'), JSON.stringify(registryManager.getStatus(), null, 2));
+                fs.writeFileSync(path.join(telemetrySubdir, 'fleet_peers.json'), JSON.stringify(registryManager.getPeers(), null, 2));
+                
+                if (typeof (registryManager as any).telemetryProvider === 'function') {
+                    const localTel = await (registryManager as any).telemetryProvider();
+                    fs.writeFileSync(path.join(telemetrySubdir, 'local_telemetry.json'), JSON.stringify(localTel, null, 2));
+                }
             }
+        } catch (e) {}
+
+        try {
+            // B. Connectivity Stats (1h and 24h windows)
+            if (connectivityLogger) {
+                const stats1h = await connectivityLogger.getStats({ timeRange: '1h' });
+                const stats24h = await connectivityLogger.getStats({ timeRange: '24h' });
+                fs.writeFileSync(path.join(telemetrySubdir, 'connectivity_stats_1h.json'), JSON.stringify(stats1h, null, 2));
+                fs.writeFileSync(path.join(telemetrySubdir, 'connectivity_stats_24h.json'), JSON.stringify(stats24h, null, 2));
+            }
+        } catch (e) {}
+
+        try {
+            // C. Probes & Endpoints Catalog
+            const envProbes = getEnvConnectivityEndpoints ? getEnvConnectivityEndpoints() : [];
+            const customProbes = getCustomConnectivityEndpoints ? getCustomConnectivityEndpoints() : [];
+            const discoveredProbes = discoveryManager?.getProbes ? discoveryManager.getProbes() : [];
+            fs.writeFileSync(path.join(telemetrySubdir, 'probes_catalog.json'), JSON.stringify({
+                envProbes,
+                customProbes,
+                discoveredProbes
+            }, null, 2));
+        } catch (e) {}
+
+        try {
+            // D. Target Service Status (Voice, XFR, Traffic)
+            const targetStatus: any = {
+                traffic_running: false,
+                voice_active: false,
+                xfr_active: false,
+                active_convergences: convergenceProcesses ? convergenceProcesses.size : 0
+            };
+            if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
+                const appCfg = JSON.parse(fs.readFileSync(APPLICATIONS_CONFIG_FILE, 'utf8'));
+                targetStatus.traffic_running = !!appCfg.control?.enabled;
+                targetStatus.traffic_applications_count = (appCfg.applications || []).filter((a: any) => a.enabled !== false).length;
+            }
+            if (fs.existsSync(VOICE_CONFIG_FILE)) {
+                const voiceCfg = JSON.parse(fs.readFileSync(VOICE_CONFIG_FILE, 'utf8'));
+                targetStatus.voice_active = !!voiceCfg.control?.enabled;
+            }
+            fs.writeFileSync(path.join(telemetrySubdir, 'services_status.json'), JSON.stringify(targetStatus, null, 2));
         } catch (e) {}
 
         // 6. Create tar.gz archive
