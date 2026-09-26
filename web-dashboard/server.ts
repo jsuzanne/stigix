@@ -6155,12 +6155,18 @@ app.get('/api/system/tech-support', authenticateToken, async (req: any, res: any
             }
         }
 
-        // Docker container stdout/stderr log (equivalent to docker compose logs)
+        // Docker container stdout/stderr log (Startup boot sequence + Recent logs)
         try {
             const containerName = process.env.CONTAINER_NAME || 'stigix';
-            const dockerStdout = await runCmdSafe('docker', ['logs', '--tail', '1000', containerName]);
-            if (dockerStdout && !dockerStdout.startsWith('[Command')) {
-                fs.writeFileSync(path.join(logsSubdir, 'docker_compose_stdout.log'), dockerStdout);
+            const [dockerBoot, dockerRecent] = await Promise.all([
+                runCmdSafe('sh', ['-c', `docker logs ${containerName} 2>&1 | head -n 500`]),
+                runCmdSafe('docker', ['logs', '--tail', '1000', containerName])
+            ]);
+            if (dockerBoot && !dockerBoot.startsWith('[Command')) {
+                fs.writeFileSync(path.join(logsSubdir, 'docker_compose_boot.log'), dockerBoot);
+            }
+            if (dockerRecent && !dockerRecent.startsWith('[Command')) {
+                fs.writeFileSync(path.join(logsSubdir, 'docker_compose_recent.log'), dockerRecent);
             }
         } catch (e) {}
 

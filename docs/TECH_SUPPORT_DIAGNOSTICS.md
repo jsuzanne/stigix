@@ -44,7 +44,9 @@ stigix-techsupport-<site_name>-<timestamp>/
 │   ├── connectivity_stats_24h.json# 24-hour historical latency/loss SLA
 │   ├── probes_catalog.json       # Configured & auto-discovered probe definitions
 │   └── services_status.json      # Operational state of traffic, voice, XFR engines
-└── logs/                         # Execution logs (tail of last 1,000 lines per file)
+└── logs/                         # Execution logs (Tail + Boot sequences)
+    ├── docker_compose_boot.log   # First 500 lines of container startup & daemon boot
+    ├── docker_compose_recent.log # Last 1,000 lines of consolidated Docker Compose stdout/stderr
     ├── sdwan-traffic-gen_app.log # Traffic generator core engine log
     ├── sdwan-traffic-gen_voice.log # Voice SIP/RTP orchestrator log
     ├── sdwan-traffic-gen_iperf3.log# Bandwidth stress test logs
