@@ -534,7 +534,6 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                     <span className="text-xs text-neutral-500 font-mono">—</span>
                                                 ) : peer.summary.traffic_state === 'RUNNING' ? (
                                                     <div className="flex items-center gap-1.5 text-xs font-mono whitespace-nowrap">
-                                                        <span className="text-emerald-400">▶</span>
                                                         {peer.summary.traffic_tx_mbps !== undefined && peer.summary.traffic_rx_mbps !== undefined ? (
                                                             <span className="inline-flex items-center gap-1 font-bold">
                                                                 <span className="text-emerald-400" title={`Transmitted: ${peer.summary.traffic_tx_mbps} Mbps`}>
@@ -547,9 +546,12 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                                 <span className="text-neutral-400 text-[10px] font-normal">Mbps</span>
                                                             </span>
                                                         ) : (
-                                                            <span className="text-emerald-400 font-bold">
-                                                                {peer.summary.traffic_rate_mbps && peer.summary.traffic_rate_mbps > 0 ? `${peer.summary.traffic_rate_mbps} Mbps` : 'Active'}
-                                                            </span>
+                                                            <>
+                                                                <span className="text-emerald-400">▶</span>
+                                                                <span className="text-emerald-400 font-bold">
+                                                                    {peer.summary.traffic_rate_mbps && peer.summary.traffic_rate_mbps > 0 ? `${peer.summary.traffic_rate_mbps} Mbps` : 'Active'}
+                                                                </span>
+                                                            </>
                                                         )}
                                                     </div>
                                                 ) : (
