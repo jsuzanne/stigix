@@ -1,9 +1,10 @@
 # 🎯 Stigix Fleet — Ce que ça change concrètement
 
-**Last Updated:** 2026-09-25  
+**Last Updated:** 2026-09-26  
 **Creation Date:** 2026-09-25  
 **Initial Stigix Version:** v2.1 (planned)  
 **Status:** Draft  
+**Version:** 0.2  
 **Author:** jsuzanne
 
 > Version simplifiée du [PRD Multi-Instance Control Plane](SPECIFICATION_MULTI_INSTANCE_CONTROL_PLANE_REVISED.md)
@@ -13,6 +14,7 @@
 | Version | Date | Author | Changes |
 |---|---|---|---|
 | 0.1 | 2026-09-25 | jsuzanne | Initial visual guide — Fleet Overview, Peer Detail, Remote Actions wireframes, data flow diagram, change summary |
+| 0.2 | 2026-09-26 | jsuzanne | Added TX/RX bidirectional traffic indicators, 3-tier ACK job tracking (Claim, Fast-Poll, Final Result), synchronized `start_at` countdown, granular security suites, Port 9000 XFR, and Screen 4 Job Results Details modal |
 
 ---
 
@@ -58,18 +60,18 @@ C'est une **table de tous tes peers** avec leurs métriques clés, visible d'un 
 │                                                                              │
 │   🟢 6 Online    🟡 1 Degraded    🔴 1 Offline                    8 total   │
 │                                                                              │
-├──────┬──────────┬─────────┬────────────┬───────────┬──────────┬─────────────┤
-│ Site │ Status   │ Version │ Probes     │ Voice MOS │ Traffic  │ Config Rev  │
-├──────┼──────────┼─────────┼────────────┼───────────┼──────────┼─────────────┤
-│ BR1  │ 🟢 Online│ v2.0.66 │ 12/12 ✅   │ 4.35      │ ▶ Active │ r17 ✅      │
-│ BR2  │ 🟢 Online│ v2.0.66 │ 11/12 ⚠️   │ —         │ ▶ Active │ r17 ✅      │
-│ BR5  │ 🟡 Degr. │ v2.0.65 │ 8/12 ⚠️    │ 3.10 ⚠️   │ ▶ Active │ r16 ⏳      │
-│ BR8  │ 🟢 Online│ v2.0.66 │ 12/12 ✅   │ 4.40      │ ▶ Active │ r17 ✅      │
-│ DC1  │ 🟢 Online│ v2.0.66 │ 10/10 ✅   │ —         │ ■ Stopped│ r17 ✅      │
-│ DC2  │ 🟢 Online│ v2.0.66 │ 10/10 ✅   │ —         │ ▶ Active │ r17 ✅      │
-│ Cloud│ 🟢 Online│ v2.0.66 │ 5/5 ✅     │ —         │ ▶ Active │ r17 ✅      │
-│ Lab  │ 🔴 Offl. │ v2.0.64 │ — (stale)  │ — (stale) │ — (stale)│ r15 ❌      │
-└──────┴──────────┴─────────┴────────────┴───────────┴──────────┴─────────────┘
+├──────┬──────────┬─────────┬────────────┬───────────┬──────────────────────┬────────────┤
+│ Site │ Status   │ Version │ Probes     │ Voice MOS │ Traffic (TX / RX)    │ Config Rev │
+├──────┼──────────┼─────────┼────────────┼───────────┼──────────────────────┼────────────┤
+│ BR1  │ 🟢 Online│ v2.0.66 │ 12/12 ✅   │ 4.35      │ ▶ ▲ 2.3 · ▼ 2.2 Mbps │ r17 ✅     │
+│ BR2  │ 🟢 Online│ v2.0.66 │ 11/12 ⚠️   │ —         │ ▶ ▲ 4.1 · ▼ 0.1 ⚠️   │ r17 ✅     │
+│ BR5  │ 🟡 Degr. │ v2.0.65 │ 8/12 ⚠️    │ 3.10 ⚠️   │ ▶ ▲ 1.7 · ▼ 1.7 Mbps │ r16 ⏳     │
+│ BR8  │ 🟢 Online│ v2.0.66 │ 12/12 ✅   │ 4.40      │ ▶ ▲ 2.4 · ▼ 2.3 Mbps │ r17 ✅     │
+│ DC1  │ 🟢 Online│ v2.0.66 │ 10/10 ✅   │ —         │ ■ Stopped            │ r17 ✅     │
+│ DC2  │ 🟢 Online│ v2.0.66 │ 10/10 ✅   │ —         │ ▶ ▲ 5.0 · ▼ 5.0 Mbps │ r17 ✅     │
+│ Cloud│ 🟢 Online│ v2.0.66 │ 5/5 ✅     │ —         │ ▶ ▲ 0.8 · ▼ 0.8 Mbps │ r17 ✅     │
+│ Lab  │ 🔴 Offl. │ v2.0.64 │ — (stale)  │ — (stale) │ — (stale)            │ r15 ❌     │
+└──────┴──────────┴─────────┴────────────┴───────────┴──────────────────────┴────────────┘
                                                                  ↑
                                                     Dernière donnée connue
                                                     affichée en grisé pour
@@ -80,7 +82,7 @@ C'est une **table de tous tes peers** avec leurs métriques clés, visible d'un 
 - **Qui est en ligne** et depuis quand
 - **Combien de probes échouent** sur chaque site
 - **Le score MOS Voice** en temps réel
-- **Le trafic tourne-t-il** ou pas
+- **Le trafic et sa balance bidirectionnelle** (TX émis vs RX reçu en direct pour détecter les pertes de retour)
 - **La config est-elle à jour** (révision appliquée vs publiée)
 - **Quelle version** tourne sur chaque peer
 
@@ -128,16 +130,27 @@ Quand tu cliques sur "BR5" dans la table, tu obtiens un panneau de détail :
 
 ---
 
-## Écran 3 : Actions à distance (Phase 3B — Plus tard)
+## Écran 3 : Actions à distance & Synchronisation (Phase 3B)
 
-Depuis Fleet, tu pourras **déclencher des actions** sans ouvrir chaque instance :
+Depuis Fleet, tu peux **déclencher des actions granulaires** sans ouvrir chaque instance, avec synchronisation temporelle (`start_at`) :
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │  ⚡ New Fleet Action                                                         │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  Action:  [ ▶ Start Traffic        ▼ ]                                       │
+│  Action Domain: [ 🛡️ Security — URL Filtering Test Suite         ▼ ]         │
+│  Suites dispo:  Traffic | Probes | Convergence | Voice | XFR (Port 9000)     │
+│                 Security (URL Filtering, DNS Security, EICAR AV)             │
+│                                                                              │
+│  Parameters:                                                                 │
+│    Categories:   [☑ Malware  ☑ Phishing  ☑ Gambling  ☐ Adult]                │
+│    Target Port:  9000 (auto-assigné pour tests XFR haut débit)               │
+│                                                                              │
+│  Execution Timing:                                                           │
+│    ◉ Synchronized start_at: Dans 45s (11:30:00 UTC)                          │
+│      ↳ Permet à tous les peers de claim leur job pendant leur cycle 30s,     │
+│        et de démarrer le test exactement à la même seconde !                 │
 │                                                                              │
 │  Target Peers:                                                               │
 │    ☑ BR1 (🟢 Online, v2.0.66)                                                │
@@ -146,22 +159,67 @@ Depuis Fleet, tu pourras **déclencher des actions** sans ouvrir chaque instance
 │    ☐ BR8 (🟢 Online, v2.0.66)                                                │
 │    ☐ Lab (🔴 Offline — sera ignoré)                                          │
 │                                                                              │
-│  ⚠️ BR5 is running v2.0.65 (older than leader v2.0.66)                      │
-│  ⚠️ Lab is offline and will be skipped                                       │
-│                                                                              │
-│                          [ Cancel ]   [ ✅ Confirm & Execute ]               │
+│                          [ Cancel ]   [ ✅ Confirm & Dispatch ]              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Après confirmation, le résultat s'affiche en temps réel :
+Suivi d'exécution en temps réel avec le **cycle d'ACK à 3 étages** :
 
 ```
-  Job #J-20260925-001 — Start Traffic on 3 peers
-  ├─ BR1:  ✅ Started (0.3s)
-  ├─ BR2:  ✅ Started (0.5s)
-  ├─ BR5:  ⏳ Pending (peer will pick up on next poll)
-  └─ Lab:  ⏭ Skipped (offline)
+  Job #J-20260926-042 — Security URL Filtering on 3 peers
+  ├─ 1. ACK Réception (Claim) :
+  │    ├─ BR1:  ⏳ Claimed (Prêt, rendez-vous calé à 11:30:00)
+  │    ├─ BR2:  ⏳ Claimed (Prêt, rendez-vous calé à 11:30:00)
+  │    └─ BR5:  ⏳ Polling (récupération au prochain cycle de 30s)
+  │
+  ├─ 2. ACK Démarrage & Fast-Polling (3s-5s) :
+  │    ├─ BR1:  ▶ RUNNING (Horloge T0 atteinte, fast-poll actif)
+  │    ├─ BR2:  ▶ RUNNING (Horloge T0 atteinte, fast-poll actif)
+  │    └─ BR5:  ▶ RUNNING (Fast-poll actif)
+  │
+  └─ 3. Final ACK : Remontée des Résultats & Métriques
+```
+
+---
+
+## Écran 4 : Détail & Télémétrie d'un Job terminé (Ce qui remonte au Leader !)
+
+Quand le job se termine, le peer renvoie son **Final ACK** avec le bilan complet. En cliquant sur le job dans la Fleet UI, tu ouvres la vue détaillée :
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  📊 Job Report: #J-20260926-042 — Security URL Filtering                     │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  Status: ✅ COMPLETED (3/3 peers)        Duration: 18s        Exit Code: 0   │
+│  Initiated: 11:29:15 UTC                 Start At: 11:30:00 UTC              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ▼ BR1 — Branch Paris 1 (🟢 100% Protection)                                 │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │ Testées: 20 URLs  |  Bloquées: 20 ✅  |  Passées: 0  |  Score: 100%    │  │
+│  │ • Malware:   10/10 bloquées (HTTP 403 Palo Alto SASE Block Page ✅)    │  │
+│  │ • Phishing:  10/10 bloquées (HTTP 403 SWG Response Header ✅)          │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ▼ BR2 — Branch Paris 2 (⚠️ 85% Protection — 3 fuites détectées)             │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │ Testées: 20 URLs  |  Bloquées: 17 ✅  |  Passées: 3 ⚠️  |  Score: 85%   │  │
+│  │ • Malware:   10/10 bloquées                                            │  │
+│  │ • Phishing:  7/10 bloquées (3 URLs gambling/phishing passées en 200 OK)│  │
+│  │ ⚠️ Alerte: Règle URL Filtering non appliquée sur tunnel WAN2 !         │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ▼ Résumé selon le type de test :                                            │
+│  • Traffic:      TX bytes, RX bytes, live Mbps (▲/▼), pertes %               │
+│  • Probes:       Détail probe par probe, latence min/max, erreurs TCP/DNS    │
+│  • Convergence:  Délai de bascule exact (ex: 360ms), paquets perdus          │
+│  • Voice MOS:    Score MOS calculé (ex: 4.38), gigue, délai aller/retour     │
+│  • XFR (P9000):  Débit réel (ex: 942 Mbps), retransmissions, multi-stream    │
+│  • EICAR AV:     Fichier bloqué au flux SSL vs livré sans inspection         │
+│                                                                              │
+│                                                   [ 📥 Export JSON ] [ Fermer ]│
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---

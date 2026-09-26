@@ -40,7 +40,7 @@ Do not invent endpoint names, payloads, source paths, or authentication mechanis
 **Creation Date:** 2026-09-25  
 **Initial Stigix Version:** v2.1 (planned)  
 **Status:** Revised proposal, aligned with direct peer installation and global configuration provisioning  
-**Version:** 0.3  
+**Version:** 0.4  
 **Audience:** Stigix development / Google Antigravity  
 **Language:** English for implementation clarity
 
@@ -51,6 +51,7 @@ Do not invent endpoint names, payloads, source paths, or authentication mechanis
 | 0.1 | 2026-09-25 | jsuzanne | Initial draft — broad Hub-calls-agent model |
 | 0.2 | 2026-09-25 | jsuzanne | Revised to agent-pull model, aligned with Phase 1 (Direct Controller) and Phase 2 (Global Provisioning), removed competing Fleet Config APIs |
 | 0.3 | 2026-09-25 | jsuzanne | Integrated architectural review recommendations: enriched heartbeat telemetry instead of separate `/api/fleet/telemetry`, last-known-state for offline peers, MCP/Fleet coexistence clarification, WebSocket for Fleet UI updates, adaptive polling for job storm mitigation |
+| 0.4 | 2026-09-26 | jsuzanne | Added detailed Pull-Mode Job Lifecycle (3-stage ACKs: Claim, Progress, Result + Watchdog), synchronized `start_at` scheduling, adaptive fast polling (3-5s), explicit port 9000 for XFR speedtest, granular security test suites (URL filtering, DNS security, EICAR AV, CVE probes), and concrete telemetry return schemas |
 
 ## Objective
 
@@ -255,7 +256,7 @@ Suggested conceptual telemetry fields:
   "version": "current-version",
   "capabilities": ["traffic", "connectivity", "convergence"],
   "summary": {
-    "traffic": { "active": true },
+    "traffic": { "active": true, "rate_mbps": 4.57, "tx_mbps": 2.34, "rx_mbps": 2.23 },
     "connectivity": { "failingProbeCount": 1 },
     "convergence": { "status": "good", "lastRunAt": "timestamp" },
     "voice": { "mos": 4.1, "lastRunAt": "timestamp" },
@@ -316,43 +317,206 @@ Store per peer:
 - HTTP/application error code or safely summarized error.
 - Idempotency key.
 
-### Job flow
+### Asynchronous Pull-Mode Job Lifecycle & 3-Tier ACK Architecture
+
+Because remote peers are frequently positioned behind stateful firewalls, branch routers, or NAT, the Control Plane uses an asynchronous **agent-pull model**. To ensure absolute operational visibility, execution synchronization, and fault-tolerance, every job adheres to a **3-Tier ACK and State Machine** lifecycle:
 
 ```text
-1. Operator selects one or more peers in Fleet.
-2. Operator selects an allowed action.
-3. Controller validates declared capabilities and compatibility.
-4. For impactful actions, UI asks for explicit confirmation.
-5. Controller stores job and target sub-jobs.
-6. Target peer polls its controller job endpoint.
-7. Peer claims only its own pending job.
-8. Peer validates local preconditions and authorization.
-9. Peer invokes the existing local Stigix action/service logic.
-10. Peer posts a sanitized outcome.
-11. Controller updates Fleet UI, job status and audit.
+ Controller / Fleet UI                                          Remote Peer (e.g., BR1)
+         │                                                                  │
+  [Create Job: PENDING]                                                     │
+  (start_at = now + 45s)                                                    │
+         │                                                                  │
+         │◄──────────── Periodic Poll (every 30s) ──────────────────────────│
+         │───────────── Delivers Job Manifest ─────────────────────────────►│
+         │                                                                  │
+         │   [TIER 1 ACK: CLAIM & READINESS VALIDATION]                     │
+         │◄── POST /api/fleet/peer-jobs/:id/ack ────────────────────────────│
+         │    status: "CLAIMED", readiness: "ACCEPTED" | "REJECTED"         │ (Verifies local capabilities,
+  [State: CLAIMED / SCHEDULED]                                              │  module active, port 9000 free)
+  (UI: ⏳ Scheduled for 11:20:00)                                          │
+         │                                                                  │
+         │                                                     [Local clock reaches start_at]
+         │                                                     [Process launches]
+         │                                                     [Peer enters Fast-Polling: 3-5s]
+         │                                                                  │
+         │   [TIER 2 ACK: PROGRESS HEARTBEATS]                              │
+         │◄── POST /api/fleet/peer-jobs/:id/progress ───────────────────────│
+  [State: RUNNING]   status: "RUNNING", progress_pct: 45                    │
+  (UI: ▶ Active 45% + live streaming metrics)                               │
+         │                                                                  │
+         │                                                     [Execution ends or aborts]
+         │   [TIER 3 ACK: SANITIZED FINAL RESULT]                           │
+         │◄── POST /api/fleet/peer-jobs/:id/result ─────────────────────────│
+         │    status: "COMPLETED" | "FAILED", exit_code, metrics payload   │
+  [State: COMPLETED]                                                        │ [Peer returns to 30s poll]
+  (UI: ✅ Completed + Detailed Telemetry Dialog)                             │
 ```
 
-### Initial action set
+#### Job State Definitions:
+- `PENDING`: Stored on the Controller, awaiting the peer's next polling cycle.
+- `CLAIMED`: Claimed by the target peer with Tier 1 ACK. If preconditions fail (port busy, daemon missing), peer returns `REJECTED` and the job transitions immediately to `FAILED`.
+- `SCHEDULED`: Waiting for synchronized execution epoch (`start_at`).
+- `RUNNING`: Actively running locally. Peer streams progress via fast-polling.
+- `COMPLETED`: Finished successfully with exit code 0 and metrics payload returned.
+- `FAILED`: Finished with non-zero exit code or execution error; error details captured.
+- `TIMED_OUT`: Controller watchdog state triggered if no final result is received before `deadline_epoch`.
 
-Start with low-risk, easily idempotent actions:
+#### Synchronized Multi-Node Scheduling (`start_at`)
+With a default 30-second polling interval, peers poll with a jitter of 0–30s. For tests that require multiple peers to act in unison (e.g. Traffic saturation, Convergence failovers, Voice calls, or Mesh tests), the Controller specifies a future execution epoch:
+```json
+"start_at": 1727342445 // Unix epoch (now + 45s)
+```
+Target peers poll and claim the job independently during their standard cycles, initialize test fixtures locally, and hold until their system clock hits `start_at`, triggering execution at the exact same second across the entire fleet.
 
-| Domain | Action | Notes |
-|---|---|---|
-| Traffic | Start traffic | Use existing local traffic logic/API. |
-| Traffic | Stop traffic | Confirmation required for multi-peer action. |
-| Connectivity | Run a selected configured probe set | Do not create arbitrary unaudited command execution. |
-| Convergence | Start a configured test/profile | Only if target/profile is valid locally. |
-| Convergence | Stop running test | Confirmation appropriate when multiple peers are affected. |
+#### Adaptive Fast Polling
+To avoid UI lag while maintaining low overhead at rest:
+- **Baseline Polling (Idle):** 30 seconds.
+- **Fast Polling (Active Job):** Peers switch to **3–5 seconds** polling interval as soon as a job enters `RUNNING`, streaming real-time metrics back to the Controller.
+- **Reversion:** Immediately reverts to 30 seconds upon job termination (`COMPLETED` or `FAILED`).
 
-Do not include raw shell execution.
+#### Controller Watchdog & Deadlines
+Every job contains a `deadline_epoch`:
+```text
+deadline_epoch = start_at + max_duration_sec + 60s (grace period)
+```
+If a peer encounters a hard crash, kernel freeze, or total physical link loss during a test, it will never post its Tier 3 result. The Controller watchdog automatically flags the sub-job as `TIMED_OUT` when `deadline_epoch` expires, informing the operator that peer connectivity was lost during execution.
 
-Defer these until jobs/auth/audit are proven:
+---
 
-- VyOS network-changing sequences.
-- Restart/upgrade/maintenance actions.
-- Security test campaigns.
-- Voice and XFR complex actions.
-- Delete/reset/history removal actions.
+### Phase 3B & 3C Remote Job Catalog & Return Telemetry Schemas
+
+All remote actions are modular, parameterized, and return strongly-typed telemetry in their Final Result ACK:
+
+#### 1. Traffic Generation (`traffic.*`)
+- **Actions:**
+  - `traffic.start`: Launch background traffic generation.
+  - `traffic.set_rate`: Dynamically adjust generator bandwidth.
+  - `traffic.stop`: Halt generation immediately.
+- **Parameters:** `bitrate_mbps` (number), `duration_sec` (number, 0=indefinite), `profile` (`enterprise_saas`, `heavy_backup`, `iot_telemetry`), `start_at` (epoch timestamp).
+- **Return Telemetry Schema (`result.metrics`):**
+  ```json
+  {
+    "traffic_state": "STOPPED",
+    "duration_seconds": 60,
+    "tx_bytes": 34500000,
+    "rx_bytes": 34100000,
+    "tx_mbps": 4.60,
+    "rx_mbps": 4.55,
+    "packets_sent": 23000,
+    "drop_rate_pct": 0.05,
+    "exit_code": 0
+  }
+  ```
+
+#### 2. Connectivity & Probes (`connectivity.*`)
+- **Actions:** `connectivity.run_probes`
+- **Parameters:** `probe_ids` (optional array of specific probe names), `profile` (`all`, `critical_saas`, `sdwan_underlay`).
+- **Return Telemetry Schema (`result.metrics`):**
+  ```json
+  {
+    "total_probes": 12,
+    "passing_count": 11,
+    "failing_count": 1,
+    "health_score": 92,
+    "probes": [
+      { "id": "google-dns", "target": "8.8.8.8", "protocol": "ICMP", "latency_ms": 14.2, "status": "PASS" },
+      { "id": "m365-portal", "target": "portal.office.com", "protocol": "HTTPS", "latency_ms": 28.5, "status": "PASS" },
+      { "id": "internal-db", "target": "10.0.0.50", "protocol": "TCP", "port": 5432, "status": "FAIL", "error": "Connection refused" }
+    ]
+  }
+  ```
+
+#### 3. SD-WAN Convergence & Failover (`convergence.*`)
+- **Actions:** `convergence.start_test`, `convergence.stop_test`
+- **Parameters:** `target_ip` (string), `target_port` (default 6200 UDP), `duration_sec` (number), `start_at` (epoch timestamp).
+- **Return Telemetry Schema (`result.metrics`):**
+  ```json
+  {
+    "packets_sent": 5000,
+    "packets_received": 4982,
+    "packets_lost": 18,
+    "convergence_time_ms": 360,
+    "packet_loss_pct": 0.36,
+    "jitter_ms": 1.4,
+    "sla_breached": false,
+    "switchover_detected_at": 1727342460
+  }
+  ```
+
+#### 4. Voice RTP & MOS Simulation (`voice.*`)
+- **Actions:** `voice.start_call`, `voice.stop_call`
+- **Parameters:** `target_ip` (string), `target_port` (default 6100 UDP), `codec` (`g711u`, `g729`, `opus`), `duration_sec` (number), `start_at` (epoch timestamp).
+- **Return Telemetry Schema (`result.metrics`):**
+  ```json
+  {
+    "codec": "g711u",
+    "call_duration_seconds": 30,
+    "mos_score": 4.38,
+    "r_factor": 91.2,
+    "jitter_ms": 2.1,
+    "round_trip_delay_ms": 24.8,
+    "packets_lost_pct": 0.0,
+    "quality_rating": "GOOD"
+  }
+  ```
+
+#### 5. High-Performance XFR Speedtest (`xfr.*`)
+- **Architecture Note:** Stigix utilizes a native high-performance multi-stream daemon running on **Port 9000** (TCP/UDP/QUIC). Port 5201 is reserved strictly for legacy iPerf3.
+- **Orchestration Workflow (Receiver-First Coordination):**
+  1. Controller dispatches listener job to Target Peer on port 9000.
+  2. Target Peer binds port 9000 and ACKs readiness.
+  3. Controller dispatches sender job to Source Peer targeting Target IP:9000.
+- **Actions:** `xfr.run_test`
+- **Parameters:** `target_host` (string), `port` (default 9000), `protocol` (`tcp`, `udp`, `quic`), `direction` (`client-to-server`, `server-to-client`, `bidirectional`), `streams` (number, 1-8), `duration_sec` (number).
+- **Return Telemetry Schema (`result.metrics`):**
+  ```json
+  {
+    "protocol": "tcp",
+    "target_port": 9000,
+    "duration_seconds": 10,
+    "streams_used": 4,
+    "throughput_mbps": 942.5,
+    "transferred_megabytes": 1124.8,
+    "retransmits": 12,
+    "min_rtt_ms": 1.2,
+    "max_rtt_ms": 4.8
+  }
+  ```
+
+#### 6. Granular Security Test Suites (`security.*`)
+- **Strict Design Rule:** Do **not** run blind or generic attack campaigns. Every security action is scoped to a specific threat discipline to validate discrete firewall / SASE inspection profiles:
+  - `security.run_url_filtering`: Validates URL Categorization, SWG, and block page injection.
+  - `security.run_dns_security`: Validates DNS sinkholing, tunneling detection, and malicious domain blocking.
+  - `security.run_eicar_test`: Validates Anti-Virus, WildFire, and SSL/TLS Decryption.
+  - `security.run_vulnerability_probe`: Validates IPS signature matching and TCP RST injection.
+- **Actions & Parameters:**
+  - `security.run_url_filtering`: `categories` (array of category strings: `malware`, `phishing`, `gambling`, `adult`), `sample_size_per_cat` (number).
+  - `security.run_dns_security`: `tests` (array: `tunneling`, `dga`, `known_malicious`).
+  - `security.run_eicar_test`: `protocols` (`["http", "https"]`), `expected_action` (`block`).
+  - `security.run_vulnerability_probe`: `cve_signatures` (array of benign test exploits).
+- **Return Telemetry Schema (`result.metrics`):**
+  ```json
+  {
+    "suite": "url_filtering",
+    "total_tested": 20,
+    "blocked_count": 18,
+    "permitted_count": 2,
+    "detection_rate_pct": 90.0,
+    "results": [
+      {
+        "target_url": "http://malware-test.stigix.internal/payload",
+        "category": "malware",
+        "action_observed": "BLOCKED",
+        "http_status": 403,
+        "block_page_detected": true,
+        "palo_alto_response_header": "X-PAN-Threat-ID: 99991"
+      }
+    ]
+  }
+  ```
+
+---
 
 ### Confirmation requirements
 
@@ -384,13 +548,15 @@ The confirmation dialog must show:
 
 Only after 3A and 3B are stable:
 
-- Voice control and campaigns.
-- XFR orchestration.
-- Security test campaigns.
+- Advanced voice campaigns and multi-codec MOS matrices.
+- Coordinated multi-pair XFR orchestration on Port 9000.
+- Multi-step security test campaigns with Palo Alto SASE log correlation.
 - VyOS declarative scenarios, subject to strict local mappings and confirmation.
 - Maintenance/restart/upgrade orchestration.
-- Schedules and multi-step campaigns.
+- Schedules and recurring multi-step campaigns.
 - Optional direct controller-to-peer REST transport for environments with secured management reachability.
+
+Do not add these to the first control-plane release.
 
 Do not add these to the first control-plane release.
 
