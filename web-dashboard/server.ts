@@ -11791,6 +11791,7 @@ registryManager.setTelemetryProvider(async () => {
     let probesGlobalHealth = 0;
     let probesTotal = 0;
     let probesPassing = 0;
+    let failingProbes: Array<{ name: string; type: string; target: string; error: string; reliability: number }> = [];
 
     try {
         const envProbes = getEnvConnectivityEndpoints();
@@ -11820,7 +11821,6 @@ registryManager.setTelemetryProvider(async () => {
         if (stats && typeof stats.globalHealth === 'number') {
             probesGlobalHealth = stats.globalHealth;
         }
-        let failingProbes: Array<{ name: string; type: string; target: string; error: string; reliability: number }> = [];
         if (stats && stats.flakyEndpoints) {
             const downCount = stats.flakyEndpoints.filter((f: any) => f.isDown).length;
             probesPassing = Math.max(0, probesTotal - downCount);

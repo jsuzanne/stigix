@@ -2,6 +2,11 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2-dev] - 2026-09-26 — Fleet Telemetry Provider Scope Fix
+
+### Fixed
+- **Fleet Telemetry Scope Bug**: Fixed a `ReferenceError: failingProbes is not defined` in `registryManager.setTelemetryProvider` where `failingProbes` was scoped inside the `try` block, preventing heartbeat telemetry summaries from being generated on upgraded nodes (`DC1`, `BR2`, `BR5`, `BR8`).
+
 ## [v2-dev] - 2026-09-25 — Fleet Control Plane: Telemetry Enriched Heartbeat & Fleet Observability (Phase 3A)
 
 ### Added
