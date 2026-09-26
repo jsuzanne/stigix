@@ -627,7 +627,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         onClick={() => setSelectedPeer(null)}
                     >
                         <div 
-                            className="bg-card border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl p-6 space-y-6 animate-in fade-in zoom-in-95 duration-150"
+                            className="bg-card border border-border rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl p-6 space-y-6 animate-in fade-in zoom-in-95 duration-150"
                             onClick={e => e.stopPropagation()}
                         >
                             {/* Modal Header */}
@@ -714,11 +714,11 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                 </p>
                             </div>
 
-                            {/* Top Telemetry Highlight (Clean typography, no yellow box border) */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-neutral-900/40 p-4 rounded-xl border border-border">
+                            {/* Top Telemetry Highlight (Clean typography, no wrap, proportional widths) */}
+                            <div className="grid grid-cols-2 sm:grid-cols-[1.3fr_1.4fr_0.7fr_0.6fr] gap-3 bg-neutral-900/40 p-4 rounded-xl border border-border">
                                 <div>
                                     <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Global Exp.</div>
-                                    <div className="mt-1 font-mono text-sm font-bold flex items-baseline gap-1">
+                                    <div className="mt-1 font-mono text-sm font-bold flex items-baseline gap-1 whitespace-nowrap">
                                         <span className={`text-base font-black ${scoreColor}`}>{score ?? '—'}</span>
                                         <span className="text-xs text-text-muted">/100</span>
                                         <span className={`text-[10px] font-bold uppercase ${scoreColor}`}>· {label}</span>
@@ -726,10 +726,13 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                 </div>
                                 <div>
                                     <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Traffic</div>
-                                    <div className="mt-1 font-mono text-sm font-bold">
+                                    <div className="mt-1 font-mono text-sm font-bold whitespace-nowrap">
                                         {selectedPeer.summary?.traffic_state === 'RUNNING' ? (
-                                            <span className="text-emerald-400">
-                                                ▶ Active {selectedPeer.summary.traffic_rate_mbps && selectedPeer.summary.traffic_rate_mbps > 0 ? `(${selectedPeer.summary.traffic_rate_mbps} Mbps)` : ''}
+                                            <span className="text-emerald-400 inline-flex items-center gap-1.5">
+                                                <span>▶ Active</span>
+                                                {selectedPeer.summary.traffic_rate_mbps && selectedPeer.summary.traffic_rate_mbps > 0 ? (
+                                                    <span className="text-xs font-normal opacity-90">({selectedPeer.summary.traffic_rate_mbps} Mbps)</span>
+                                                ) : null}
                                             </span>
                                         ) : (
                                             <span className="text-neutral-400">■ Stopped</span>
@@ -738,7 +741,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                 </div>
                                 <div>
                                     <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Voice MOS</div>
-                                    <div className="mt-1 font-mono text-sm font-bold text-cyan-400">
+                                    <div className="mt-1 font-mono text-sm font-bold text-cyan-400 whitespace-nowrap">
                                         {selectedPeer.summary?.voice_mos ? selectedPeer.summary.voice_mos.toFixed(2) : '—'}
                                     </div>
                                 </div>
