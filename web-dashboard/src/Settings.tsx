@@ -467,6 +467,47 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     }, []);
     const [latestEgressResult, setLatestEgressResult] = useState<any>(null);
     const [containerStats, setContainerStats] = useState<any[]>([]);
+    const [isGeneratingTechSupport, setIsGeneratingTechSupport] = useState(false);
+
+    const handleDownloadTechSupport = async () => {
+        setIsGeneratingTechSupport(true);
+        const toastId = toast.loading('Generating and packaging Tech-Support bundle...');
+        try {
+            const res = await fetch('/api/system/tech-support', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.details || errData.error || `HTTP ${res.status}`);
+            }
+
+            const blob = await res.blob();
+            const disposition = res.headers.get('content-disposition');
+            let filename = 'stigix-techsupport.tar.gz';
+            if (disposition && disposition.includes('filename=')) {
+                const match = disposition.match(/filename="?([^"]+)"?/);
+                if (match && match[1]) filename = match[1];
+            }
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            toast.success('Tech-Support bundle downloaded successfully!', { id: toastId });
+        } catch (err: any) {
+            toast.error(`Failed to generate Tech-Support: ${err.message}`, { id: toastId });
+        } finally {
+            setIsGeneratingTechSupport(false);
+        }
+    };
 
     // Targets State
     const [targets, setTargets] = useState<TargetDefinition[]>([]);
@@ -3787,14 +3828,34 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         )}
 
                         <div className="pt-8 border-t border-border/50">
-                            <div className="flex items-center gap-3 mb-8">
-                                <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
-                                    <Server size={24} />
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-purple-600/10 rounded-lg text-purple-600 dark:text-purple-400 font-bold">
+                                        <Server size={24} />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-black text-text-primary tracking-tight">System Information</h2>
+                                        <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Hardware metrics, diagnostics, and execution context</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h2 className="text-lg font-black text-text-primary tracking-tight">System Information</h2>
-                                    <p className="text-[10px] font-bold text-text-muted tracking-widest mt-0.5 opacity-70">Hardware metrics and execution context</p>
-                                </div>
+                                <button
+                                    onClick={handleDownloadTechSupport}
+                                    disabled={isGeneratingTechSupport}
+                                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                                    title="Generate and download complete sanitized diagnostics and logs bundle"
+                                >
+                                    {isGeneratingTechSupport ? (
+                                        <>
+                                            <RefreshCw size={14} className="animate-spin" />
+                                            <span>Packaging Tech-Support...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Download size={14} />
+                                            <span>Download Tech-Support Bundle</span>
+                                        </>
+                                    )}
+                                </button>
                             </div>
 
                             {!systemInfo ? (

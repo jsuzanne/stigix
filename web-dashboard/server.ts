@@ -6003,6 +6003,200 @@ app.get('/api/connectivity/docker-stats', authenticateToken, async (req, res) =>
     }
 });
 
+// API: Tech-Support Diagnostics Bundle (Sanitized logs, configs, and system state)
+app.get('/api/system/tech-support', authenticateToken, async (req: any, res: any) => {
+    const startTime = Date.now();
+    log('SYSTEM', 'Generating Tech-Support diagnostic bundle...', 'info');
+
+    const tempBase = path.join(os.tmpdir(), `stigix-ts-${Date.now()}`);
+    try {
+        const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').split('.')[0];
+        const siteName = (process.env.STIGIX_SITE_NAME || 'standalone').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const bundleName = `stigix-techsupport-${siteName}-${timestamp}`;
+        const bundleDir = path.join(tempBase, bundleName);
+        const configSubdir = path.join(bundleDir, 'config');
+        const logsSubdir = path.join(bundleDir, 'logs');
+        const systemSubdir = path.join(bundleDir, 'system');
+        const telemetrySubdir = path.join(bundleDir, 'telemetry');
+
+        fs.mkdirSync(configSubdir, { recursive: true });
+        fs.mkdirSync(logsSubdir, { recursive: true });
+        fs.mkdirSync(systemSubdir, { recursive: true });
+        fs.mkdirSync(telemetrySubdir, { recursive: true });
+
+        // 1. Metadata
+        const metadata = {
+            generator: 'Stigix Tech-Support Diagnostic Bundle',
+            version: STIGIX_VERSION || 'unknown',
+            git_commit: process.env.GIT_COMMIT || 'unknown',
+            site_name: process.env.STIGIX_SITE_NAME || 'standalone',
+            instance_id: process.env.STIGIX_INSTANCE_ID || 'unknown',
+            generated_at: new Date().toISOString(),
+            platform: {
+                os_type: os.type(),
+                platform: os.platform(),
+                release: os.release(),
+                arch: os.arch(),
+                cpus: os.cpus().length,
+                totalmem_mb: Math.round(os.totalmem() / (1024 * 1024)),
+                freemem_mb: Math.round(os.freemem() / (1024 * 1024)),
+                uptime_sec: Math.round(os.uptime())
+            }
+        };
+        fs.writeFileSync(path.join(bundleDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
+
+        // 2. Secret Scrubber & Sanitized Configs (/app/config/*.json)
+        const sanitizeValue = (key: string, val: any): any => {
+            const lowerKey = key.toLowerCase();
+            if (
+                lowerKey.includes('secret') ||
+                lowerKey.includes('password') ||
+                lowerKey.includes('token') ||
+                lowerKey.includes('master_key') ||
+                lowerKey.includes('credential') ||
+                lowerKey.includes('private_key') ||
+                lowerKey.includes('auth_key') ||
+                lowerKey.includes('api_key')
+            ) {
+                return '***REDACTED***';
+            }
+            if (typeof val === 'string') {
+                if (/^eyJ[a-zA-Z0-9_-]{20,}\./.test(val)) return '***REDACTED_JWT***';
+                return val;
+            }
+            if (Array.isArray(val)) {
+                return val.map((item, idx) => sanitizeValue(String(idx), item));
+            }
+            if (val !== null && typeof val === 'object') {
+                const cleanObj: any = {};
+                for (const [k, v] of Object.entries(val)) {
+                    cleanObj[k] = sanitizeValue(k, v);
+                }
+                return cleanObj;
+            }
+            return val;
+        };
+
+        if (fs.existsSync(APP_CONFIG.configDir)) {
+            const configFiles = fs.readdirSync(APP_CONFIG.configDir);
+            for (const file of configFiles) {
+                if (file.endsWith('.json')) {
+                    try {
+                        const raw = fs.readFileSync(path.join(APP_CONFIG.configDir, file), 'utf8');
+                        const parsed = JSON.parse(raw);
+                        const clean = sanitizeValue('root', parsed);
+                        fs.writeFileSync(path.join(configSubdir, file), JSON.stringify(clean, null, 2));
+                    } catch (e) {
+                        // skip non-json
+                    }
+                }
+            }
+        }
+
+        // 3. System Commands Snapshot
+        const runCmdSafe = (cmd: string, args: string[]): Promise<string> => {
+            return new Promise((resolve) => {
+                const proc = spawn(cmd, args);
+                let out = '';
+                proc.stdout.on('data', d => out += d);
+                proc.stderr.on('data', d => out += d);
+                proc.on('close', () => resolve(out.trim()));
+                proc.on('error', () => resolve(`[Command ${cmd} not available]`));
+                setTimeout(() => {
+                    try { proc.kill(); } catch (e) {}
+                    resolve(out.trim() || '[Timeout]');
+                }, 4000);
+            });
+        };
+
+        const [ipAddr, ipRoute, iptables, netDev, uname, df, free, ps, dockerPs] = await Promise.all([
+            runCmdSafe('ip', ['-br', 'addr']),
+            runCmdSafe('ip', ['route']),
+            runCmdSafe('iptables', ['-L', '-n', '-v']),
+            runCmdSafe('cat', ['/proc/net/dev']),
+            runCmdSafe('uname', ['-a']),
+            runCmdSafe('df', ['-h']),
+            runCmdSafe('free', ['-m']),
+            runCmdSafe('ps', ['aux']),
+            runCmdSafe('docker', ['ps', '--no-trunc'])
+        ]);
+
+        fs.writeFileSync(path.join(systemSubdir, 'ip_addr.txt'), ipAddr);
+        fs.writeFileSync(path.join(systemSubdir, 'ip_route.txt'), ipRoute);
+        fs.writeFileSync(path.join(systemSubdir, 'iptables.txt'), iptables);
+        fs.writeFileSync(path.join(systemSubdir, 'net_dev.txt'), netDev);
+        fs.writeFileSync(path.join(systemSubdir, 'system_resources.txt'), `=== UNAME ===\n${uname}\n\n=== DISK SPACE ===\n${df}\n\n=== MEMORY ===\n${free}\n\n=== PROCESSES ===\n${ps}`);
+        fs.writeFileSync(path.join(systemSubdir, 'docker_ps.txt'), dockerPs);
+
+        // 4. Logs Snapshot (Tail 1000 lines from log directories)
+        const logDirs = [APP_CONFIG.logDir, '/var/log/sdwan-traffic-gen', '/var/log/supervisor'];
+        for (const lDir of logDirs) {
+            if (fs.existsSync(lDir)) {
+                try {
+                    const lFiles = fs.readdirSync(lDir);
+                    for (const lFile of lFiles) {
+                        const fullPath = path.join(lDir, lFile);
+                        if (fs.statSync(fullPath).isFile() && !lFile.endsWith('.tar.gz') && !lFile.endsWith('.zip')) {
+                            const tailContent = await runCmdSafe('tail', ['-n', '1000', fullPath]);
+                            const safeName = `${path.basename(lDir)}_${lFile}`;
+                            fs.writeFileSync(path.join(logsSubdir, safeName), tailContent);
+                        }
+                    }
+                } catch (e) {}
+            }
+        }
+
+        // 5. Live Telemetry Snapshot
+        try {
+            if (typeof (global as any).fleetManager?.getOverview === 'function') {
+                const fleetOverview = (global as any).fleetManager.getOverview();
+                fs.writeFileSync(path.join(telemetrySubdir, 'fleet_overview.json'), JSON.stringify(fleetOverview, null, 2));
+            }
+        } catch (e) {}
+
+        // 6. Create tar.gz archive
+        const archivePath = path.join(tempBase, `${bundleName}.tar.gz`);
+        await new Promise((resolve, reject) => {
+            const tarProc = spawn('tar', ['czf', archivePath, '-C', tempBase, bundleName]);
+            tarProc.on('close', (code) => {
+                if (code === 0) resolve(true);
+                else reject(new Error(`tar command failed with code ${code}`));
+            });
+            tarProc.on('error', reject);
+        });
+
+        // 7. Stream archive to client
+        const stat = fs.statSync(archivePath);
+        res.setHeader('Content-Type', 'application/gzip');
+        res.setHeader('Content-Length', stat.size);
+        res.setHeader('Content-Disposition', `attachment; filename="${bundleName}.tar.gz"`);
+
+        const fileStream = fs.createReadStream(archivePath);
+        fileStream.pipe(res);
+
+        fileStream.on('end', () => {
+            log('SYSTEM', `Tech-Support bundle generated in ${Date.now() - startTime}ms (${Math.round(stat.size / 1024)} KB)`, 'info');
+            try {
+                fs.rmSync(tempBase, { recursive: true, force: true });
+            } catch (e) {}
+        });
+
+        fileStream.on('error', (err) => {
+            log('SYSTEM', `Error streaming Tech-Support bundle: ${err.message}`, 'error');
+            try {
+                fs.rmSync(tempBase, { recursive: true, force: true });
+            } catch (e) {}
+        });
+
+    } catch (err: any) {
+        log('SYSTEM', `Failed to generate tech-support bundle: ${err.message}`, 'error');
+        try {
+            fs.rmSync(tempBase, { recursive: true, force: true });
+        } catch (e) {}
+        res.status(500).json({ error: 'Failed to generate Tech-Support bundle', details: err.message });
+    }
+});
+
 // API: System Health Check
 app.get('/api/system/health', authenticateToken, async (req, res) => {
     const now = Date.now();

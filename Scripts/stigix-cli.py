@@ -4712,6 +4712,39 @@ def cmd_system(args):
             print(f"  Disk    : {disk.get('usedPercent','?')}%  "
                   f"({disk.get('used',0)//1024//1024//1024}GB / {disk.get('total',0)//1024//1024//1024}GB)")
 
+    elif sub in ("techsupport", "tech-support", "bundle"):
+        hdr("━━ Tech-Support Diagnostic Bundle ━━━━━━━━")
+        info("Generating and downloading sanitized diagnostic package from Stigix...")
+        url = f"{STIGIX_URL}/api/system/tech-support"
+        headers = {}
+        if JWT_TOKEN:
+            headers["Authorization"] = f"Bearer {JWT_TOKEN}"
+
+        try:
+            r = HTTP_SESSION.get(url, headers=headers, stream=True, timeout=60)
+            if r.status_code == 200:
+                filename = "stigix-techsupport.tar.gz"
+                cd = r.headers.get("Content-Disposition", "")
+                if "filename=" in cd:
+                    filename = cd.split("filename=")[1].strip('"\'')
+
+                out_path = Path(args[1]) if len(args) > 1 else Path.cwd() / filename
+                with open(out_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk: f.write(chunk)
+
+                size_kb = round(out_path.stat().st_size / 1024, 1)
+                ok(f"Tech-Support bundle saved: {out_path} ({size_kb} KB)")
+                info("You can send this package to your support team or Stigix developers.")
+            else:
+                err(f"Failed to generate tech-support bundle: HTTP {r.status_code}")
+                try:
+                    print(r.json())
+                except Exception:
+                    print(r.text[:200])
+        except Exception as e:
+            err(f"Connection error: {e}")
+
     elif sub == "restart":
         confirm = input("Restart Stigix containers? [y/N]: ").strip().lower()
         if confirm == "y":
@@ -5535,6 +5568,8 @@ DISPATCH = {
     "app":            cmd_custom_tcp_app,
     "custom-apps":    cmd_custom_tcp_app,
     "system":         cmd_system,
+    "techsupport":    lambda args: cmd_system(["techsupport"] + args),
+    "tech-support":   lambda args: cmd_system(["techsupport"] + args),
     "trace":          cmd_trace,
     "traceroute":     cmd_trace,
     "pathtrace":      cmd_trace,
@@ -5776,8 +5811,11 @@ COMPLETER_TREE = {
     },
     "system":      {
         "health": None, "diag": None, "diagnostics": None,
-        "info": None, "interfaces": None, "logs": None, "restart": None, "upgrade": None
+        "info": None, "interfaces": None, "logs": None, "restart": None, "upgrade": None,
+        "techsupport": None, "tech-support": None, "bundle": None
     },
+    "techsupport":   None,
+    "tech-support":  None,
     "help":        None,
     "?":           None,
     "exit":        None,
