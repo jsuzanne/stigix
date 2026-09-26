@@ -125,7 +125,7 @@ jobs:
             if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               MAJOR=$(echo $VERSION | cut -d. -f1)
               MINOR=$(echo $VERSION | cut -d. -f2)
-              TAG_LIST="$TAG_LIST,${{ env.IMAGE_NAME }}:$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:v$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:$MAJOR,${{ env.IMAGE_NAME }}:v$MAJOR,${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:stable"
+              TAG_LIST="$TAG_LIST,${{ env.IMAGE_NAME }}:$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:v$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:$MAJOR,${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:stable"
             fi
             echo "tags=$TAG_LIST" >> $GITHUB_OUTPUT
             echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -161,7 +161,7 @@ jobs:
             MAJOR=$(echo $VERSION | cut -d. -f1)
             MINOR=$(echo $VERSION | cut -d. -f2)
             # main push = latest only (stable is promoted separately via workflow_dispatch)
-            TAG_LIST="${{ env.IMAGE_NAME }}:$VERSION,${{ env.IMAGE_NAME }}:v$VERSION,${{ env.IMAGE_NAME }}:$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:v$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:$MAJOR,${{ env.IMAGE_NAME }}:v$MAJOR,${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA"
+            TAG_LIST="${{ env.IMAGE_NAME }}:$VERSION,${{ env.IMAGE_NAME }}:v$VERSION,${{ env.IMAGE_NAME }}:$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:v$MAJOR.$MINOR,${{ env.IMAGE_NAME }}:$MAJOR,${{ env.IMAGE_NAME }}:latest,${{ env.IMAGE_NAME }}:sha-$SHORT_SHA"
             echo "tags=$TAG_LIST" >> $GITHUB_OUTPUT
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "is_release=true" >> $GITHUB_OUTPUT
