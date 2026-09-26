@@ -76,6 +76,8 @@ export interface RegistryInstanceSummary {
     probes_passing?: number;
     traffic_state?: 'RUNNING' | 'STOPPED' | 'IDLE';
     traffic_rate_mbps?: number;
+    traffic_tx_mbps?: number;
+    traffic_rx_mbps?: number;
     voice_active?: boolean;
     voice_mos?: number;
     convergence_active?: boolean;

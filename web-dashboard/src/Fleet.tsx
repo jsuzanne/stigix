@@ -54,6 +54,8 @@ interface PeerInstance {
         }>;
         traffic_state?: 'RUNNING' | 'STOPPED' | 'IDLE';
         traffic_rate_mbps?: number;
+        traffic_tx_mbps?: number;
+        traffic_rx_mbps?: number;
         voice_active?: boolean;
         voice_mos?: number;
         convergence_active?: boolean;
@@ -531,9 +533,24 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 {peer.is_stale || !peer.summary?.traffic_state ? (
                                                     <span className="text-xs text-neutral-500 font-mono">—</span>
                                                 ) : peer.summary.traffic_state === 'RUNNING' ? (
-                                                    <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-bold font-mono">
-                                                        <span>▶</span>
-                                                        <span>{peer.summary.traffic_rate_mbps && peer.summary.traffic_rate_mbps > 0 ? `${peer.summary.traffic_rate_mbps} Mbps` : 'Active'}</span>
+                                                    <div className="flex items-center gap-1.5 text-xs font-mono whitespace-nowrap">
+                                                        <span className="text-emerald-400">▶</span>
+                                                        {peer.summary.traffic_tx_mbps !== undefined && peer.summary.traffic_rx_mbps !== undefined ? (
+                                                            <span className="inline-flex items-center gap-1 font-bold">
+                                                                <span className="text-emerald-400" title={`Transmitted: ${peer.summary.traffic_tx_mbps} Mbps`}>
+                                                                    ▲ {peer.summary.traffic_tx_mbps}
+                                                                </span>
+                                                                <span className="text-neutral-500 font-normal">·</span>
+                                                                <span className={peer.summary.traffic_rx_mbps === 0 ? 'text-amber-400/90' : 'text-cyan-400'} title={`Received: ${peer.summary.traffic_rx_mbps} Mbps`}>
+                                                                    ▼ {peer.summary.traffic_rx_mbps}
+                                                                </span>
+                                                                <span className="text-neutral-400 text-[10px] font-normal">Mbps</span>
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-emerald-400 font-bold">
+                                                                {peer.summary.traffic_rate_mbps && peer.summary.traffic_rate_mbps > 0 ? `${peer.summary.traffic_rate_mbps} Mbps` : 'Active'}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <div className="flex items-center gap-1.5 text-xs text-neutral-400 font-mono">
@@ -728,9 +745,13 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                     <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Traffic</div>
                                     <div className="mt-1 font-mono text-sm font-bold whitespace-nowrap">
                                         {selectedPeer.summary?.traffic_state === 'RUNNING' ? (
-                                            <span className="text-emerald-400 inline-flex items-center gap-1.5">
+                                            <span className="text-emerald-400 inline-flex items-center gap-1.5 flex-wrap">
                                                 <span>▶ Active</span>
-                                                {selectedPeer.summary.traffic_rate_mbps && selectedPeer.summary.traffic_rate_mbps > 0 ? (
+                                                {selectedPeer.summary.traffic_tx_mbps !== undefined && selectedPeer.summary.traffic_rx_mbps !== undefined ? (
+                                                    <span className="text-xs font-normal opacity-90 text-neutral-300">
+                                                        (▲ {selectedPeer.summary.traffic_tx_mbps} TX · ▼ {selectedPeer.summary.traffic_rx_mbps} RX Mbps)
+                                                    </span>
+                                                ) : selectedPeer.summary.traffic_rate_mbps && selectedPeer.summary.traffic_rate_mbps > 0 ? (
                                                     <span className="text-xs font-normal opacity-90">({selectedPeer.summary.traffic_rate_mbps} Mbps)</span>
                                                 ) : null}
                                             </span>

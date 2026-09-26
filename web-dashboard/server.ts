@@ -11841,6 +11841,8 @@ registryManager.setTelemetryProvider(async () => {
     // Traffic state & rate
     let trafficState: 'RUNNING' | 'STOPPED' | 'IDLE' = 'STOPPED';
     let trafficRateMbps = 0;
+    let trafficTxMbps: number | undefined = undefined;
+    let trafficRxMbps: number | undefined = undefined;
     try {
         let configuredRateMbps = 0;
         if (fs.existsSync(APPLICATIONS_CONFIG_FILE)) {
@@ -11860,6 +11862,8 @@ registryManager.setTelemetryProvider(async () => {
 
         // Live network I/O bitrate sampling from /proc/net/dev
         let sampledLiveMbps = 0;
+        let sampledLiveTxMbps = 0;
+        let sampledLiveRxMbps = 0;
         if (fs.existsSync('/proc/net/dev')) {
             try {
                 const iface = getInterface();
@@ -11876,6 +11880,8 @@ registryManager.setTelemetryProvider(async () => {
                         const deltaTx = tx - prev.tx;
                         const deltaSec = (now - prev.time) / 1000;
                         if (deltaSec > 0 && deltaRx >= 0 && deltaTx >= 0) {
+                            sampledLiveTxMbps = Math.round(((deltaTx * 8) / (deltaSec * 1000000)) * 100) / 100;
+                            sampledLiveRxMbps = Math.round(((deltaRx * 8) / (deltaSec * 1000000)) * 100) / 100;
                             sampledLiveMbps = Math.round((((deltaRx + deltaTx) * 8) / (deltaSec * 1000000)) * 100) / 100;
                         }
                     }
@@ -11886,6 +11892,8 @@ registryManager.setTelemetryProvider(async () => {
 
         if (trafficState === 'RUNNING') {
             trafficRateMbps = sampledLiveMbps > 0 ? sampledLiveMbps : (Math.round(configuredRateMbps * 100) / 100);
+            trafficTxMbps = sampledLiveTxMbps > 0 ? sampledLiveTxMbps : (Math.round(configuredRateMbps * 100) / 100);
+            trafficRxMbps = sampledLiveRxMbps;
         }
     } catch {}
 
@@ -11924,6 +11932,8 @@ registryManager.setTelemetryProvider(async () => {
         failing_probes: failingProbes,
         traffic_state: trafficState,
         traffic_rate_mbps: trafficRateMbps,
+        traffic_tx_mbps: trafficTxMbps,
+        traffic_rx_mbps: trafficRxMbps,
         voice_active: voiceActive,
         voice_mos: voiceMos,
         convergence_active: convergenceActive,
