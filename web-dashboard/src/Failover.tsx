@@ -194,6 +194,11 @@ export default function Failover(props: FailoverProps) {
     }, [activePeerId]);
 
     useEffect(() => {
+        // Reachability must be checked by the node itself — proxying via the
+        // gateway from the Leader makes no sense and causes a request storm.
+        // Skip entirely in remote view mode.
+        if (activePeerId) return;
+
         const checkReachability = async () => {
             if (allTargets.length === 0) return;
             await Promise.all(allTargets.map(async (target) => {
@@ -219,11 +224,11 @@ export default function Failover(props: FailoverProps) {
                 setReachability(prev => ({ ...prev, [target.id]: isReachable }));
             }));
         };
-        
+
         checkReachability();
         const intv = setInterval(checkReachability, 10000);
         return () => clearInterval(intv);
-    }, [allTargets]);
+    }, [allTargets, activePeerId]);
 
     const addEndpoint = async () => {
         if (!newTarget.label || !newTarget.target) return;

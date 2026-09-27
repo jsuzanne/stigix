@@ -144,10 +144,14 @@ export default function Voice(props: VoiceProps) {
     const [reachability, setReachability] = useState<Record<string, boolean | 'loading'>>({});
 
     useEffect(() => {
+        // Reachability must be checked by the node itself — proxying via the
+        // gateway from the Leader makes no sense and causes a request storm.
+        // Skip entirely in remote view mode.
+        if (activePeerId) return;
         if (!targetRows.length) return;
         const checkTargets = async () => {
             const targetsToPing = targetRows.map(r => ({ host: r.host, port: r.port, id: r.id }));
-            
+
             await Promise.all(targetsToPing.map(async (t) => {
                 setReachability(prev => ({ ...prev, [t.id]: 'loading' }));
                 let isReachable = false;
@@ -171,11 +175,11 @@ export default function Voice(props: VoiceProps) {
                 setReachability(prev => ({ ...prev, [t.id]: isReachable }));
             }));
         };
-        
+
         checkTargets();
         const interval = setInterval(checkTargets, 60000);
         return () => clearInterval(interval);
-    }, [targetRows, token]);
+    }, [targetRows, token, activePeerId]);
 
     // ════════════════════════════════════════════════
     // External status feed (WebSocket / poll from parent)

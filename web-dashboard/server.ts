@@ -12439,6 +12439,24 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
 
     // Pipe the client request body to the peer (for POST/PUT/PATCH)
     req.pipe(proxyReq, { end: true });
+
+    // Handle client abort (browser tab switch, React unmount, peer switch).
+    // If the browser cancels the request mid-flight, destroy the upstream
+    // connection cleanly to avoid BadRequestError on the target peer.
+    const onClientClose = () => {
+        if (!proxyReq.destroyed) {
+            proxyReq.destroy();
+        }
+    };
+    req.on('close', onClientClose);
+    req.on('aborted', onClientClose); // Node < 18 compat
+
+    // Suppress expected socket errors caused by client-initiated aborts
+    // (ECONNRESET, EPIPE = client disconnected before we finished proxying)
+    proxyReq.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'ECONNRESET' || err.code === 'EPIPE') return; // already handled above
+        // (non-abort errors already logged in the earlier error handler)
+    });
 });
 log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/* (Leader only)`);
 
