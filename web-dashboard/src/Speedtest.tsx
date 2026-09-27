@@ -119,7 +119,7 @@ export default function Speedtest({ token }: Props) {
                 let isReachable = false;
                 for (let attempt = 0; attempt < 3; attempt++) {
                     try {
-                        const res = await fetch('/api/convergence/reachability', {
+                        const res = await gFetch('/api/convergence/reachability', {
                             method: 'POST',
                             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                             body: JSON.stringify({ target: t.host, port: t.port })
@@ -293,7 +293,7 @@ export default function Speedtest({ token }: Props) {
 
     const pollJob = async (id: string) => {
         try {
-            const res = await fetch(`/api/tests/xfr/${id}`, { headers: authHeaders });
+            const res = await gFetch(`/api/tests/xfr/${id}`, { headers: authHeaders });
             const data = await res.json();
             if (res.ok) {
                 setActiveJob(data);

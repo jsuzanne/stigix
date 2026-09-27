@@ -201,7 +201,7 @@ export default function Failover(props: FailoverProps) {
                 let isReachable = false;
                 for (let attempt = 0; attempt < 3; attempt++) {
                     try {
-                        const res = await fetch('/api/convergence/reachability', {
+                        const res = await gFetch('/api/convergence/reachability', {
                             method: 'POST',
                             headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                             body: JSON.stringify({ target: target.target, port: target.port })
@@ -229,7 +229,7 @@ export default function Failover(props: FailoverProps) {
         if (!newTarget.label || !newTarget.target) return;
         if (!isValidIpOrFqdn(newTarget.target)) return alert("Invalid Target IP/FQDN format");
         try {
-            const res = await fetch('/api/convergence/endpoints', {
+            const res = await gFetch('/api/convergence/endpoints', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(newTarget)
@@ -354,7 +354,7 @@ export default function Failover(props: FailoverProps) {
     const purgeHistory = async () => {
         if (!confirm('Are you sure you want to purge all failover test history? This action cannot be undone.')) return;
         try {
-            const res = await fetch('/api/convergence/history', {
+            const res = await gFetch('/api/convergence/history', {
                 method: 'DELETE',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' }
             });
@@ -511,7 +511,7 @@ export default function Failover(props: FailoverProps) {
         }));
 
         try {
-            const res = await fetch('/api/convergence/live-path', {
+            const res = await gFetch('/api/convergence/live-path', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -571,7 +571,7 @@ export default function Failover(props: FailoverProps) {
             const rawPort = testItem.source_port || getSourcePort(rawId);
             const sourcePort = rawPort && rawPort !== '????' ? parseInt(rawPort, 10) : undefined;
             const dstIp = testItem.target || testItem.destination_ip || testItem.dest_ip;
-            const res = await fetch('/api/convergence/history/refresh-path', {
+            const res = await gFetch('/api/convergence/history/refresh-path', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({

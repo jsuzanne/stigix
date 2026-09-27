@@ -538,7 +538,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
         if (!editingProbe || !editingProbe.name || !editingProbe.target) return;
         setIsSavingProbe(true);
         try {
-            const res = await fetch('/api/connectivity/custom', { headers: authHeaders() });
+            const res = await gFetch('/api/connectivity/custom', { headers: authHeaders() });
             const allEndpoints = await res.json();
             
             const origName = (editingProbe._originalName || editingProbe.name).toLowerCase();
@@ -589,7 +589,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
     const toggleProbeStatus = async (endpoint: any, e: React.MouseEvent) => {
         e.stopPropagation();
         try {
-            const res = await fetch('/api/connectivity/custom', { headers: authHeaders() });
+            const res = await gFetch('/api/connectivity/custom', { headers: authHeaders() });
             const allEndpoints = await res.json();
 
             const updatedEndpoints = allEndpoints.map((p: any) => {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { usePeerContext } from './PeerContext';
 import { Phone, PhoneIncoming, PhoneOutgoing, Play, Pause, BarChart2, Save, Plus, Trash2, Clock, Activity, Wifi, Search, CheckSquare, AlertCircle, Hash, Download, Upload, X } from 'lucide-react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
 import { clsx } from 'clsx';
@@ -102,6 +103,7 @@ const qualityTextClass = (q: string) =>
 
 export default function Voice(props: VoiceProps) {
     const { token, externalStatus } = props;
+    const { gFetch, activePeerId } = usePeerContext();
 
     // ── Core state ──
     const [enabled, setEnabled] = useState(false);
@@ -151,7 +153,7 @@ export default function Voice(props: VoiceProps) {
                 let isReachable = false;
                 for (let attempt = 0; attempt < 3; attempt++) {
                     try {
-                        const res = await fetch('/api/convergence/reachability', {
+                        const res = await gFetch('/api/convergence/reachability', {
                             method: 'POST',
                             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                             body: JSON.stringify({ target: t.host, port: parseInt(t.port, 10) })
@@ -206,7 +208,7 @@ export default function Voice(props: VoiceProps) {
             fetchIngress();
         }, 3000);
 
-        fetch('/api/targets', { headers: { Authorization: `Bearer ${token}` } })
+        gFetch('/api/targets', { headers: { Authorization: `Bearer ${token}` } })
             .then(r => r.json())
             .then((data: any[]) => {
                 const all = Array.isArray(data) ? data : [];
@@ -220,7 +222,7 @@ export default function Voice(props: VoiceProps) {
             .catch(() => setVoiceTargetsLoaded(true));
 
         return () => clearInterval(interval);
-    }, [token]);
+    }, [token, activePeerId]);
 
     // ════════════════════════════════════════════════
     // Build targetRows when both data sources are ready
@@ -285,7 +287,7 @@ export default function Voice(props: VoiceProps) {
     // ════════════════════════════════════════════════
     const fetchIngress = async () => {
         try {
-            const r = await fetch('/api/voice/ingress', { headers: { Authorization: `Bearer ${token}` } });
+            const r = await gFetch('/api/voice/ingress', { headers: { Authorization: `Bearer ${token}` } });
             const data = await r.json();
             if (data.success && Array.isArray(data.sessions)) {
                 setIngressSessions(data.sessions);
@@ -295,7 +297,7 @@ export default function Voice(props: VoiceProps) {
 
     const fetchConfig = async () => {
         try {
-            const r = await fetch('/api/voice/config', { headers: { Authorization: `Bearer ${token}` } });
+            const r = await gFetch('/api/voice/config', { headers: { Authorization: `Bearer ${token}` } });
             const data = await r.json();
             if (data.success) {
                 if (!isDirty) setRawServers(data.servers);
@@ -311,7 +313,7 @@ export default function Voice(props: VoiceProps) {
 
     const handleExport = async () => {
         try {
-            const r = await fetch('/api/voice/config/export', { headers: { Authorization: `Bearer ${token}` } });
+            const r = await gFetch('/api/voice/config/export', { headers: { Authorization: `Bearer ${token}` } });
             const blob = await r.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');

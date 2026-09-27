@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { usePeerContext } from './PeerContext';
 import {
     ReactFlow,
     Controls,
@@ -818,6 +819,7 @@ export default function Topology(props: TopologyProps) {
 
 function TopologyContent({ token }: TopologyProps) {
     const [topology, setTopology] = useState<any>(null);
+    const { gFetch, activePeerId } = usePeerContext();
     const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -926,7 +928,7 @@ function TopologyContent({ token }: TopologyProps) {
     useEffect(() => {
         if (!token) return;
         const interval = setInterval(() => {
-            fetch('/api/topology/underlay-debug', {
+            gFetch('/api/topology/underlay-debug', {
                 headers: { 'Authorization': `Bearer ${token}` }
             })
             .then(r => r.json())
@@ -938,7 +940,7 @@ function TopologyContent({ token }: TopologyProps) {
             .catch(() => {});
         }, 6000);
         return () => clearInterval(interval);
-    }, [token]);
+    }, [token, activePeerId]);
 
     const handleVyosDirectAction = async (
         routerName: string,
@@ -985,7 +987,7 @@ function TopologyContent({ token }: TopologyProps) {
             }
 
             // Immediately poll /api/topology/underlay-debug to refresh underlay routers and interface statuses
-            fetch('/api/topology/underlay-debug', {
+            gFetch('/api/topology/underlay-debug', {
                 headers: { 'Authorization': `Bearer ${token}` }
             })
             .then(r => r.json())
@@ -1525,7 +1527,7 @@ function TopologyContent({ token }: TopologyProps) {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch('/api/topology', {
+            const res = await gFetch('/api/topology', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
@@ -1535,7 +1537,7 @@ function TopologyContent({ token }: TopologyProps) {
             if (data.underlay) {
                 setUnderlayData(data.underlay);
             } else {
-                fetch('/api/topology/underlay-debug', {
+                gFetch('/api/topology/underlay-debug', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 })
                 .then(r => r.json())
@@ -1581,7 +1583,7 @@ function TopologyContent({ token }: TopologyProps) {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch('/api/topology?force=true', {
+            const res = await gFetch('/api/topology?force=true', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
@@ -1591,7 +1593,7 @@ function TopologyContent({ token }: TopologyProps) {
             if (data.underlay) {
                 setUnderlayData(data.underlay);
             } else {
-                fetch('/api/topology/underlay-debug', {
+                gFetch('/api/topology/underlay-debug', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 })
                 .then(r => r.json())

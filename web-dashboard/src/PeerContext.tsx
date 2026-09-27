@@ -270,52 +270,39 @@ export function GatewayDropdown({ isLeader }: GatewayDropdownProps) {
     );
 }
 
-// ─── RemoteViewBanner ─────────────────────────────────────────────────────────
+// ─── RemoteViewChip (inline — zero vertical space) ───────────────────────────
 
 /**
- * High-visibility banner shown below the navbar when a remote peer is selected.
- * Prevents operator disorientation and provides a one-click exit back to local.
+ * Compact inline chip shown in the navbar when a remote peer is active.
+ * Displays peer IP and provides a one-click exit back to local.
+ * Replaces the full-width banner to avoid layout shift.
  */
-export function RemoteViewBanner() {
+export function RemoteViewChip() {
     const { activePeerId, activePeer, setActivePeerId } = usePeerContext();
 
     if (!activePeerId) return null;
 
-    const label = activePeer?.site || activePeerId;
-    const ip = activePeer?.ip_private;
+    const ip = activePeer?.ip_private || activePeer?.site || activePeerId;
 
     return (
         <div
-            id="remote-view-banner"
-            className="
-                w-full mb-4 px-4 py-2.5 rounded-xl
-                bg-amber-500/10 border border-amber-500/30
-                flex items-center justify-between gap-4
-            "
+            id="remote-view-chip"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-400"
         >
-            <div className="flex items-center gap-2.5 text-amber-400 text-sm font-bold">
-                <Globe size={16} className="flex-shrink-0 animate-pulse" />
-                <span>
-                    Remote View: <strong>{label}</strong>
-                    {ip && <span className="text-amber-400/60 font-normal ml-1">— {ip}</span>}
-                </span>
-                <span className="text-[10px] font-normal text-amber-400/60 border border-amber-500/20 rounded px-2 py-0.5">
-                    Connected via Leader Gateway
-                </span>
-            </div>
+            <Globe size={12} className="flex-shrink-0 animate-pulse" />
+            <span className="text-[11px] font-mono font-bold tracking-tight">{ip}</span>
             <button
                 onClick={() => setActivePeerId(null)}
                 title="Exit remote view — return to local Leader"
-                className="
-                    flex items-center gap-1.5 px-3 py-1 rounded-lg
-                    text-xs font-bold text-amber-400
-                    border border-amber-500/30
-                    hover:bg-amber-500/20 transition-colors
-                    flex-shrink-0
-                "
+                className="ml-1 p-0.5 rounded hover:bg-amber-500/30 transition-colors flex-shrink-0"
             >
-                <X size={12} /> Exit to Local
+                <X size={11} />
             </button>
         </div>
     );
+}
+
+/** @deprecated Use RemoteViewChip in the header instead. Kept for backward compat. */
+export function RemoteViewBanner() {
+    return null;
 }

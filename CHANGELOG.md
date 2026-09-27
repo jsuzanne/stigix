@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.67] - 2026-09-27
+
+### Added
+- **Gateway Proxy — Leader Remote View** 🌐:
+  - Leader node can now browse any peer's dashboard data transparently via `/api/gateway/:peerId/*` without leaving the Leader UI.
+  - `gFetch()` helper in `PeerContext.tsx` automatically rewrites all read API calls through the gateway when a remote peer is selected; local mode (`activePeerId = null`) is completely unaffected.
+  - JWT auth injected server-side in `server.ts` so the Leader's token is forwarded to the target peer transparently.
+  - All read-only modules migrated to `gFetch`: `Failover`, `Speedtest`, `Voice`, `SRTAnalytics`, `ConnectivityPerformance`, `IoT`, `Security`, `Topology`, `Statistics`, `LiveEvents`.
+  - Write operations (POST/DELETE mutations) intentionally kept on direct `fetch` — only reads proxy through the gateway.
+
+### Changed
+- **RemoteViewBanner → RemoteViewChip** 🔧:
+  - Replaced full-width amber banner (which caused vertical layout shift) with a compact inline pill in the navbar showing peer IP + ✕ exit button.
+  - Zero additional vertical space; no content shift when switching remote peer.
+  - Label "Remote View:" removed — peer IP alone is the relevant info at a glance.
+
 ## [2.0.66] - 2026-09-25
 
 ### Added / Improved

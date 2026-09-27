@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { usePeerContext } from './PeerContext';
 import { Shield, Play, AlertTriangle, Check, CheckCircle, XCircle, Clock, Download, Trash2, ChevronDown, ChevronUp, Copy, Filter, Link, Upload, RefreshCcw, ShieldAlert, Globe, ListTree, RefreshCw, MoreVertical, Settings, Database, Server, Info, Search, History as HistoryIcon, Zap, ChevronRight, Activity, FileJson } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
@@ -377,6 +378,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const [runningEicarTarget, setRunningEicarTarget] = useState<string | null>(null);
 
 
+    const { gFetch, activePeerId } = usePeerContext();
+
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
     const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -430,7 +433,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         fetchHealth();
 
         // Load security profile (catalogue: URL/DNS/EICAR/C2/AI)
-        fetch('/api/security/profile', { headers: authHeaders() })
+        gFetch('/api/security/profile', { headers: authHeaders() })
             .then(r => r.ok ? r.json() : null)
             .then(profile => {
                 if (profile?.url_filtering?.items?.length) {
@@ -443,13 +446,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             .catch(() => { /* keep TS fallback */ });
 
         // Fetch shared targets with security capability
-        fetch('/api/targets', { headers: authHeaders() })
+        gFetch('/api/targets', { headers: authHeaders() })
             .then(r => r.json())
             .then(data => setSecurityTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.security)))
             .catch(() => { });
 
         // Fetch cloud eicar url
-        fetch('/api/security/cloud-eicar-url', { headers: authHeaders() })
+        gFetch('/api/security/cloud-eicar-url', { headers: authHeaders() })
             .then(r => r.json())
             .then(data => {
                 if (data.url) {
@@ -471,7 +474,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         }, 30000); // 30 seconds
 
         return () => clearInterval(pollInterval);
-    }, []);
+    }, [activePeerId]);
 
     // Initialize eicar targets from config only once
     const eicarInitialized = React.useRef(false);
@@ -535,7 +538,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const fetchHealth = async () => {
         try {
-            const res = await fetch('/api/system/health', { headers: authHeaders() });
+            const res = await gFetch('/api/system/health', { headers: authHeaders() });
             const data = await res.json();
             setSystemHealth(data);
         } catch (e) {
@@ -546,7 +549,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const fetchConfig = async () => {
         try {
-            const res = await fetch('/api/security/config', { headers: authHeaders() });
+            const res = await gFetch('/api/security/config', { headers: authHeaders() });
             if (!res.ok) {
                 console.error(`Failed to fetch security config: ${res.status} ${res.statusText}`);
                 return;
@@ -623,7 +626,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                 ...(testTypeFilter !== 'all' && { type: testTypeFilter === 'c2_scenario' ? 'c2' : testTypeFilter === 'ai_security' ? 'ai' : testTypeFilter })
             });
 
-            const res = await fetch(`/api/security/results?${params}`, { headers: authHeaders() });
+            const res = await gFetch(`/api/security/results?${params}`, { headers: authHeaders() });
             const data = await res.json();
 
             // Map id to testId for frontend compatibility
@@ -695,7 +698,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             setShowDetailModal(true);
         }
         try {
-            const response = await fetch(`/api/security/results/${testId}`, {
+            const response = await gFetch(`/api/security/results/${testId}`, {
                 headers: authHeaders()
             });
             const data = await response.json();
@@ -1312,7 +1315,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const exportProfile = async () => {
         try {
-            const res = await fetch('/api/security/profile', { headers: authHeaders() });
+            const res = await gFetch('/api/security/profile', { headers: authHeaders() });
             const profile = await res.json();
             const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);

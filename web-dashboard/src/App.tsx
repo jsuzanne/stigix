@@ -15,13 +15,58 @@ import LiveEvents from './LiveEvents';
 import { CustomApps } from './CustomApps';
 import Copilot from './Copilot';
 import Fleet from './Fleet';
-import { PeerContextProvider, GatewayDropdown, RemoteViewBanner } from './PeerContext';
+import { PeerContextProvider, GatewayDropdown, RemoteViewBanner, RemoteViewChip, usePeerContext } from './PeerContext';
 import { SystemHealthBadge } from './components/health/SystemHealthBadge';
 import { SystemHealthModal } from './components/health/SystemHealthModal';
 import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Toaster } from 'react-hot-toast';
+
+/**
+ * PeerStatusSync — lives INSIDE PeerContextProvider so it can call usePeerContext().
+ * When a remote peer is selected, it polls the peer's dashboard-data every 500ms
+ * (matching the failover fast-poll cadence) and patches the parent's global states
+ * via callbacks. This fixes the missing live failover window in remote view.
+ */
+function PeerStatusSync({
+  token,
+  view,
+  onConvStatus,
+  onVoiceStatus,
+}: {
+  token: string | null;
+  view: string;
+  onConvStatus: (v: any[]) => void;
+  onVoiceStatus: (v: any) => void;
+}) {
+  const { gFetch, activePeerId } = usePeerContext();
+
+  useEffect(() => {
+    // Only activate when a remote peer is selected
+    if (!token || !activePeerId) return;
+
+    const poll = async () => {
+      try {
+        const res = await gFetch('/api/admin/system/dashboard-data', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.convergenceTests) onConvStatus(data.convergenceTests);
+        if (data.voice) onVoiceStatus(data.voice);
+      } catch { }
+    };
+
+    poll();
+    // Fast poll when on failover tab, slow poll otherwise
+    const ms = view === 'failover' ? 500 : 3000;
+    const interval = setInterval(poll, ms);
+    return () => clearInterval(interval);
+  }, [token, activePeerId, view]);
+
+  return null;
+}
 
 function formatBitrate(mbpsStr: string) {
   const mbps = parseFloat(mbpsStr);
@@ -764,6 +809,13 @@ export default function App() {
 
   return (
     <PeerContextProvider token={token} isLeader={isLeader}>
+      {/* Peer-aware live status sync — patches globalConvStatus/globalVoiceStatus from remote peer */}
+      <PeerStatusSync
+        token={token}
+        view={view}
+        onConvStatus={setGlobalConvStatus}
+        onVoiceStatus={setGlobalVoiceStatus}
+      />
     <div className="min-h-screen bg-background text-foreground pt-4 pb-8 px-8">
       <Toaster position="top-right" />
       <header className="mb-8 flex justify-between items-center">
@@ -813,6 +865,8 @@ export default function App() {
 
 
         <div className="flex gap-3 items-center">
+          {/* Remote peer indicator — inline chip, no layout shift */}
+          {isLeader && <RemoteViewChip />}
           {/* Gateway Context Switcher (Leader only) */}
           {isLeader && <GatewayDropdown isLeader={isLeader} />}
 

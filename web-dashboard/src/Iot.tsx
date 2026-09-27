@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { usePeerContext } from './PeerContext';
 import {
     Cpu, Plus, Play, Square, Trash2, RefreshCcw,
     Wifi, Activity, Shield, Camera, Lightbulb,
@@ -131,6 +132,8 @@ export default function Iot({ token }: IotProps) {
         return () => { socket.disconnect(); };
     }, []);
 
+    const { gFetch, activePeerId } = usePeerContext();
+
     const authHeaders = () => ({
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
@@ -138,7 +141,7 @@ export default function Iot({ token }: IotProps) {
 
     const fetchDevices = async () => {
         try {
-            const res = await fetch('/api/iot/devices', { headers: authHeaders() });
+            const res = await gFetch('/api/iot/devices', { headers: authHeaders() });
             const data = await res.json();
             console.log("IoT Devices API Response:", data);
 
@@ -161,18 +164,18 @@ export default function Iot({ token }: IotProps) {
 
     useEffect(() => {
         // Fetch concurrency settings on mount
-        fetch('/api/iot/settings', { headers: authHeaders() }).then(r => r.json()).then(d => {
+        gFetch('/api/iot/settings', { headers: authHeaders() }).then(r => r.json()).then(d => {
             setIotSettings(d);
             setSliderValue(d.max);
         }).catch(() => {});
         // Sync bad behavior state from server (daemon starts with it enabled)
-        fetch('/api/iot/bad-behavior', { headers: authHeaders() }).then(r => r.json()).then(d => {
+        gFetch('/api/iot/bad-behavior', { headers: authHeaders() }).then(r => r.json()).then(d => {
             if (typeof d.enabled === 'boolean') setBadBehaviorEnabled(d.enabled);
         }).catch(() => {});
         fetchDevices();
         const interval = setInterval(fetchDevices, 5000);
         return () => clearInterval(interval);
-    }, []);
+    }, [activePeerId]);
 
     useEffect(() => {
         localStorage.setItem('iot-compact', String(isCompact));
