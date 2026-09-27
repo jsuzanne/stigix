@@ -66,6 +66,16 @@ The Stigix architecture is a **Target-centric, flat model**:
 - The UI already reflects this: the Leader appears in its own Targets list with a green "Local Node" badge (`isSelf` check in `Settings.tsx:5077`).
 - The Leader role is an **additional capability**, not a different class of node. It is "first among equals".
 
+### Design Decisions (confirmed)
+
+| Question | Answer | Impact on Terminology |
+|:---|:---|:---|
+| Custom Apps "Target Peer" — always a Stigix node? | **Yes, always.** The TCP server responder is a Stigix service. | "Target Peer" is correct and should NOT be renamed. |
+| Security EICAR — external URLs vs Stigix? | Each Stigix target provides EICAR on port 8082. External URLs (eicar.org) exist as a secondary option. | EICAR is primarily a Target service. External URLs are a convenience. |
+| Convergence/Failover endpoints — always Stigix? | **Yes, always.** Convergence uses port 6200 with TX/RX packet loss calculations — requires a Stigix responder. | "Endpoints" in Failover are actually Stigix Targets. |
+| Fleet — distinct from Target Controller? | Fleet is **redundant** with the registered targets shown in Target Controller. Kept as a separate view for now, but structurally it shows the same data. | No structural merge yet. Terminology alignment only. |
+| Controller vs Leader — which term? | **Either is fine, as long as it's consistent everywhere.** Currently mixed: badge says "Registry Leader", tab says "Target Controller", descriptions say "Target Controller Leader". | THE key decision: pick one and standardize. |
+
 ---
 
 ## 2. Current Terminology Map
@@ -137,17 +147,25 @@ The user understands that one is the control plane, the other is the data plane.
 
 **Revised assessment**: A "Target Peer" IS a Stigix peer that is targeted. The term is precise and correct. Custom TCP Apps specifically target Stigix peer nodes running TCP server responders.
 
-### 3.3 ⚠️ "Registry Leader" Badge — Leaks Implementation Detail
+### 3.3 🔴 "Controller" vs "Leader" — The Central Decision
 
-The header badge says **"Registry Leader"** but the settings tab is called **"Target Controller"**. Two different names for the same role:
+This is the **single most important terminology decision**. The same role is currently called three different things:
 
 ```
-Header badge:     "Registry Leader"    ← uses "Registry" (internal mechanism)
-Settings tab:     "Target Controller"  ← uses "Target Controller" (user-facing concept)
-Description text: "Target Controller Leader"  ← a third variant
+Header badge:     "Registry Leader"           ← "Registry" + "Leader"
+Settings tab:     "Target Controller"         ← "Target" + "Controller"
+Description text: "Target Controller Leader"  ← "Target" + "Controller" + "Leader" (all three!)
+Role selector:    "Leader" / "Peer"           ← bare "Leader"
 ```
 
-**Recommendation**: Standardize on one term. The badge should align with the Settings tab vocabulary.
+Two viable options:
+
+| Option | Badge | Settings Tab | Descriptions | Pros |
+|:---|:---|:---|:---|:---|
+| **Go with "Controller"** | `Controller` | `Target Controller` *(keep)* | `the Controller` | Professional, implies active management/provisioning |
+| **Go with "Leader"** | `Leader` | `Target Controller` *(keep)* | `the Leader` | Already used in role selector, simpler, SD-WAN natural |
+
+**Recommendation**: Either works. The critical requirement is **consistency** — pick one and use it in every badge, description, and tooltip.
 
 ### 3.4 ⚠️ "Connected Peers" vs "Stigix Targets" — Same Data, Different Names
 
@@ -170,15 +188,16 @@ These are the same entities viewed from two different angles. The terminology sh
 
 Three synonyms for the same concept: a Stigix machine.
 
-### 3.6 ⚠️ "Endpoint" — Overloaded Across Modules
+### 3.6 ⚠️ "Endpoint" — Overloaded but Mostly Means "Target"
 
-"Endpoint" is used for:
-- IP:port columns in Voice streams
-- EICAR URLs in Security (external URLs that are NOT Stigix nodes)
-- Convergence probe addresses in Failover
-- "Discovered & Remote Target **Endpoints**" in the Targets tab
+"Endpoint" is used in many places, but with the understanding that almost everything is a Stigix Target:
 
-In the Security module specifically, `eicar_endpoints` includes external URLs like `https://secure.eicar.org/eicar.com.txt` which are **not Stigix nodes**. This is the one place where the test destination is genuinely not a Stigix Target.
+- **Voice**: IP:port columns → these ARE Stigix Targets
+- **Convergence/Failover**: probe addresses → these ARE Stigix Targets (port 6200, requires Stigix responder)
+- **Security EICAR**: external URLs (eicar.org) → the only case where a destination is NOT a Stigix node, but each Target also exposes EICAR on port 8082
+- **Targets tab**: "Discovered & Remote Target **Endpoints**" → redundant with "Target"
+
+The word "Endpoint" is mostly a synonym for "Target" in the codebase. Consider replacing it with "Target" where the destination is a Stigix node, and keeping "Endpoint" only for the rare external URL cases.
 
 ### 3.7 ⚠️ "Central Global Provisioning" / "Master Publisher" — Verbose & Inconsistent
 
@@ -189,6 +208,10 @@ Main nav:          "Fleet"              ← established term
 Provisioning card: "Central Global Provisioning"  ← different name
 Toggle button:     "Master Publisher"   ← yet another name
 ```
+
+### 3.8 ⚠️ Fleet View — Functionally Redundant with Target Controller
+
+The Fleet page (leader-only) shows the same registered targets that already appear in the Target Controller "Connected Peers" table. Currently kept as a separate view for richer observability, but the terminology should acknowledge they show the same entities.
 
 ---
 
@@ -320,15 +343,15 @@ After Level B is applied:
 
 | Term | Definition | Strict Rule |
 |:---|:---|:---|
-| **Target** | A Stigix peer node running responder services (Voice, Convergence, XFR, EICAR, TCP). Must be a Stigix node. | THE central concept. Use consistently across all screens. |
-| **Leader** | The node that discovers targets, manages registration, and provisions configuration. | Use in badges, descriptions, role selectors. Never "Registry Leader". |
-| **Peer** | A node in the non-leader role. It registers with the Leader and becomes a Target. | Acceptable in Custom Apps as "Target Peer" (a peer that is targeted). |
+| **Target** | A Stigix node running responder services (Voice, Convergence, XFR, EICAR, TCP). Every Stigix node is a Target — including the Leader. | THE central concept. Use consistently across all screens. Never use "Endpoint" as a synonym. |
+| **Leader** (or **Controller**) | A Target with additional responsibilities: discovery, registry, and provisioning. Typically sits in the central DC or on management LAN/VLAN. Sends and receives traffic like any other Target. | Use in badges, descriptions, role selectors. Standardize — never mix "Registry Leader" and "Target Controller Leader". |
+| **Peer** | A Target that does not carry the Leader responsibility. Registers with the Leader. | Acceptable in Custom Apps as "Target Peer" (a peer that is targeted). |
+| **Target Peer** | A peer Stigix node targeted for traffic (Custom TCP Apps). Always a Stigix node. | Correct as-is. Do NOT rename to "Remote Host". |
 | **Node** | A single Stigix machine (physical or virtual). | Replace "Instance" and "Appliance" everywhere. |
-| **Fleet** | The collection of all interconnected Stigix nodes. Also: multi-target observability and centralized provisioning. | Use for the nav tab, provisioning features, and publisher toggle. |
+| **Fleet** | The collection of all interconnected Stigix targets. Also: multi-target observability and centralized provisioning. | Use for the nav tab, provisioning features, and publisher toggle. |
 | **Node Role** | The topology role of a node: Auto-Detect, Leader, or Peer. | Replace "Mesh Role Mode". |
-| **Registered Targets** | The list of peer nodes registered with the Leader. | Replace "Connected Peers" in the Target Controller tab. |
-| **Target Registry** | The shared directory of all known targets, reused across all test modules. | Replace "Stigix Targets Repository" (Level C only). |
-| **Endpoint** | An external URL (EICAR, API). NOT a Stigix node. | Use only in Security/API contexts for non-Stigix URLs. |
+| **Registered Targets** | The list of nodes registered with the Leader. | Replace "Connected Peers" in the Target Controller tab. |
+| **Endpoint** | An external URL used only in rare cases (e.g. external EICAR from eicar.org). Almost everything in Stigix is a Target, not an Endpoint. | Avoid using for Stigix nodes. Reserve for genuinely external URLs only. |
 
 ---
 
@@ -374,6 +397,7 @@ After Level B is applied:
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-09-27 | `v2.0.66` | Stigix Core Team | Rev 4 — Incorporated Q&A findings: everything is Stigix (Custom Apps, Convergence), EICAR external URLs are secondary, Fleet is redundant with Target Controller, Controller vs Leader is THE key decision. |
 | 2026-09-27 | `v2.0.66` | Stigix Core Team | Rev 3 — Clarified that the Leader IS also a Target (flat model, "first among equals"). Updated architecture diagram. |
 | 2026-09-27 | `v2.0.66` | Stigix Core Team | Rev 2 — Rewritten with correct Target semantic model (Target = Stigix peer node with responder services). Revised all proposals accordingly. |
 | 2026-09-27 | `v2.0.66` | Stigix Core Team | Initial document creation — terminology audit and consolidation proposals |
