@@ -12336,7 +12336,7 @@ log('FLEET', `🏢 Fleet Control Plane mounted at /api/fleet/overview (Leader on
 // Safe-Mode and HMAC inter-node signing are planned for M4.
 //
 
-app.all('/api/gateway/:peerId/*', authenticateToken, (req: any, res: any) => {
+app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) => {
     if (!registryManager.isLeader()) {
         return res.status(403).json({
             error: 'not_leader',
