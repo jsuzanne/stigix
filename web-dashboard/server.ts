@@ -12506,16 +12506,14 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
     // Pipe the client request body to the peer (for POST/PUT/PATCH)
     req.pipe(proxyReq, { end: true });
 
-    // Handle client abort (browser tab switch, React unmount, peer switch).
-    // Guard: only destroy proxyReq if BR5 has NOT yet responded (proxyResReceived = false).
-    // Once the response callback fires, the request is in normal flight — never destroy.
-    const onClientClose = () => {
-        if (!proxyResReceived && !proxyReq.destroyed) {
-            proxyReq.destroy();
-        }
-    };
-    req.on('close', onClientClose);
-    req.on('aborted', onClientClose); // Node < 18 compat
+    // Node < 18: 'aborted' fires only on genuine client cancellation.
+    // Node ≥ 18: 'close' fires on every GET request (body drains immediately),
+    // making it impossible to distinguish abort from normal completion before the
+    // peer responds. We intentionally do NOT listen to 'close' here.
+    // Orphaned upstream connections are cleaned up by the 5 s timeout above.
+    req.on('aborted', () => {
+        if (!proxyResReceived && !proxyReq.destroyed) proxyReq.destroy();
+    });
 });
 log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/* (Leader only)`);
 
