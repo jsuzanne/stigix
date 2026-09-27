@@ -777,6 +777,30 @@ class XfrJobManager {
         return Array.from(this.jobs.values()).sort((a, b) => b.sequence_id.localeCompare(a.sequence_id));
     }
 
+    deleteJob(id: string): boolean {
+        if (!id) return false;
+        const job = this.getJob(id);
+        if (!job) return false;
+        if (job.status === 'running' && job.process) {
+            try { job.process.kill(); } catch (e) {}
+        }
+        this.jobs.delete(job.id);
+        this.saveHistory();
+        return true;
+    }
+
+    clearHistory(): number {
+        const count = this.jobs.size;
+        for (const job of this.jobs.values()) {
+            if (job.status === 'running' && job.process) {
+                try { job.process.kill(); } catch (e) {}
+            }
+        }
+        this.jobs.clear();
+        this.saveHistory();
+        return count;
+    }
+
     private logToXfrFile(job: XfrJob, message: string) {
         const xfrLogFile = path.join(APP_CONFIG.logDir, 'xfr.log');
         const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
@@ -2819,6 +2843,27 @@ app.get('/api/tests/xfr/:id', authenticateToken, (req, res) => {
         intervals: job.intervals,
         error: job.error
     });
+});
+
+app.delete('/api/tests/xfr', authenticateToken, (req, res) => {
+    try {
+        const count = xfrManager.clearHistory();
+        res.json({ success: true, count });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.delete('/api/tests/xfr/:id', authenticateToken, (req, res) => {
+    try {
+        const deleted = xfrManager.deleteJob(req.params.id);
+        if (!deleted) {
+            return res.status(404).json({ success: false, error: 'Job not found' });
+        }
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 app.get('/api/tests/xfr/:id/stream', authenticateToken, (req, res) => {
@@ -5644,6 +5689,60 @@ app.get('/api/convergence/history', authenticateToken, (req, res) => {
         res.json(history);
     } catch (e) {
         res.status(500).json({ error: 'Failed to read history' });
+    }
+});
+
+app.delete('/api/convergence/history', authenticateToken, async (req, res) => {
+    try {
+        if (fs.existsSync(CONVERGENCE_HISTORY_FILE)) {
+            await fs.promises.writeFile(CONVERGENCE_HISTORY_FILE, '', 'utf8');
+        }
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.delete('/api/convergence/history/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const reqTimestamp = req.query.timestamp || req.body?.timestamp;
+        if (!fs.existsSync(CONVERGENCE_HISTORY_FILE)) {
+            return res.json({ success: true, deleted: 0 });
+        }
+        const raw = await fs.promises.readFile(CONVERGENCE_HISTORY_FILE, 'utf-8');
+        const lines = raw.split('\n').filter(Boolean);
+        const cleanTargetId = String(id).split(' (')[0].trim().toUpperCase();
+
+        const filtered = lines.filter(line => {
+            try {
+                const obj = JSON.parse(line);
+                const recordId: string = obj.test_id || obj.testId || '';
+                const cleanRecordId = String(recordId).split(' (')[0].trim().toUpperCase();
+                const idMatches = (cleanRecordId === cleanTargetId || recordId === id || recordId.startsWith(id + ' ') || recordId.startsWith(id + '('));
+
+                if (idMatches) {
+                    if (reqTimestamp) {
+                        const objTs = obj.timestamp || obj.start_time;
+                        if (String(objTs) === String(reqTimestamp)) {
+                            return false; // delete this matched record
+                        }
+                        return true; // keep record with different timestamp
+                    }
+                    return false; // delete
+                }
+                return true;
+            } catch {
+                return true;
+            }
+        });
+
+        const tmp = CONVERGENCE_HISTORY_FILE + '.tmp';
+        await fs.promises.writeFile(tmp, filtered.length > 0 ? filtered.join('\n') + '\n' : '', 'utf-8');
+        await fs.promises.rename(tmp, CONVERGENCE_HISTORY_FILE);
+        res.json({ success: true, deleted: lines.length - filtered.length });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 

@@ -349,6 +349,46 @@ export default function Failover(props: FailoverProps) {
         } catch (e) { }
     };
 
+    const purgeHistory = async () => {
+        if (!confirm('Are you sure you want to purge all failover test history? This action cannot be undone.')) return;
+        try {
+            const res = await fetch('/api/convergence/history', {
+                method: 'DELETE',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' }
+            });
+            if (res.ok) {
+                setHistory([]);
+                setExpandedHistory(null);
+            }
+        } catch (e) { }
+    };
+
+    const handleDeleteTest = async (testItem: any) => {
+        const rawId = testItem.test_id || testItem.testId || '';
+        const label = testItem.label || rawId;
+        if (!confirm(`Delete failover test record "${label}"?`)) return;
+        try {
+            const testId = rawId.match(/(CONV-\d+)/)?.[1] || rawId;
+            const res = await fetch(`/api/convergence/history/${encodeURIComponent(testId)}?timestamp=${encodeURIComponent(testItem.timestamp || testItem.start_time || '')}`, {
+                method: 'DELETE',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' }
+            });
+            if (res.ok) {
+                setHistory(prev => prev.filter(t => {
+                    const matchId = (t.test_id || t.testId) === rawId;
+                    const matchTs = testItem.timestamp && (t.timestamp || t.start_time) === (testItem.timestamp || testItem.start_time);
+                    if (testItem.timestamp) {
+                        return !(matchId && matchTs);
+                    }
+                    return !matchId;
+                }));
+                if (expandedHistory === (testItem.test_id + testItem.timestamp)) {
+                    setExpandedHistory(null);
+                }
+            }
+        } catch (e) { }
+    };
+
     const handleSort = (key: string) => {
         let direction: 'asc' | 'desc' = 'asc';
         if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -1365,14 +1405,26 @@ export default function Failover(props: FailoverProps) {
                                 )}
                             </div>
                             {activeTests.length === 0 && (
-                                <button
-                                    onClick={resetIds}
-                                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-widest text-orange-600 dark:text-orange-400 bg-orange-600/5 hover:bg-orange-600/10 border border-orange-500/20 rounded-lg transition-all shrink-0 cursor-pointer"
-                                    title="Reset test counter"
-                                >
-                                    <Hash size={12} />
-                                    RESET ID
-                                </button>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                        onClick={resetIds}
+                                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-widest text-orange-600 dark:text-orange-400 bg-orange-600/5 hover:bg-orange-600/10 border border-orange-500/20 rounded-lg transition-all shrink-0 cursor-pointer"
+                                        title="Reset test counter"
+                                    >
+                                        <Hash size={12} />
+                                        RESET ID
+                                    </button>
+                                    {history.length > 0 && (
+                                        <button
+                                            onClick={purgeHistory}
+                                            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-widest text-red-600 dark:text-red-400 bg-red-600/5 hover:bg-red-600/10 border border-red-500/20 rounded-lg transition-all shrink-0 cursor-pointer"
+                                            title="Purge all test history"
+                                        >
+                                            <Trash2 size={12} />
+                                            PURGE ALL
+                                        </button>
+                                    )}
+                                </div>
                             )}
                         </div>
                     </div>
@@ -1384,12 +1436,13 @@ export default function Failover(props: FailoverProps) {
                                     <th className="px-6 py-3 font-bold tracking-tight text-center">Verdict</th>
                                     <th className="px-6 py-3 font-bold tracking-tight text-center">Outcome / Duration</th>
                                     <th className="px-6 py-3 font-bold tracking-tight text-center">Packet Details</th>
+                                    <th className="px-4 py-3 font-bold tracking-tight text-right w-12"></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
                                 {sortedHistory.length === 0 ? (
                                     <tr>
-                                        <td colSpan={4} className="px-6 py-8 text-center text-text-muted">
+                                        <td colSpan={5} className="px-6 py-8 text-center text-text-muted">
                                             {historySearch ? (
                                                 <div className="flex flex-col items-center gap-2">
                                                     <Search size={20} className="text-text-muted/40" />
@@ -1490,6 +1543,15 @@ export default function Failover(props: FailoverProps) {
                                                                 S: {test.sent} • Echo: {test.server_received ?? '-'} • R: {test.received}
                                                             </div>
                                                         </div>
+                                                    </td>
+                                                    <td className="px-4 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                                                        <button
+                                                            onClick={() => handleDeleteTest(test)}
+                                                            className="p-1.5 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                                                            title="Delete this test record"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
                                                     </td>
                                                 </tr>
                                                 {isExpanded && (

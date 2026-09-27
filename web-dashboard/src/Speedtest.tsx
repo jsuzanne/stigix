@@ -188,6 +188,46 @@ export default function Speedtest({ token }: Props) {
         } catch (e) { }
     };
 
+    const purgeHistory = async () => {
+        if (!confirm('Are you sure you want to purge all bandwidth test history? This action cannot be undone.')) return;
+        try {
+            const res = await fetch('/api/tests/xfr', {
+                method: 'DELETE',
+                headers: authHeaders
+            });
+            if (res.ok) {
+                setHistory([]);
+                if (showDetailModal) setShowDetailModal(false);
+                toast.success('Bandwidth test history purged');
+            } else {
+                toast.error('Failed to purge history');
+            }
+        } catch (e: any) {
+            toast.error(e.message || 'Error purging history');
+        }
+    };
+
+    const deleteJob = async (job: any) => {
+        if (!confirm(`Delete test record "${job.sequence_id}"?`)) return;
+        try {
+            const res = await fetch(`/api/tests/xfr/${encodeURIComponent(job.id || job.sequence_id)}`, {
+                method: 'DELETE',
+                headers: authHeaders
+            });
+            if (res.ok) {
+                setHistory(prev => prev.filter(j => j.id !== job.id && j.sequence_id !== job.sequence_id));
+                if (selectedJob && (selectedJob.id === job.id || selectedJob.sequence_id === job.sequence_id)) {
+                    setShowDetailModal(false);
+                }
+                toast.success(`Deleted ${job.sequence_id}`);
+            } else {
+                toast.error('Failed to delete test');
+            }
+        } catch (e: any) {
+            toast.error(e.message || 'Error deleting test');
+        }
+    };
+
     const isValidDscp = (val: string) => {
         if (!val) return true;
         const upper = val.toUpperCase();
@@ -892,12 +932,27 @@ export default function Speedtest({ token }: Props) {
                                     <p className="text-[10px] text-text-muted font-bold tracking-widest opacity-60">Past Telemetry Log</p>
                                 </div>
                             </div>
-                            <button
-                                onClick={() => setIsHistoryExpanded(!isHistoryExpanded)}
-                                className="p-2 hover:bg-card rounded-lg transition-colors border border-transparent hover:border-border text-text-muted"
-                            >
-                                {isHistoryExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {history.length > 0 && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            purgeHistory();
+                                        }}
+                                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-widest text-red-600 dark:text-red-400 bg-red-600/5 hover:bg-red-600/10 border border-red-500/20 rounded-lg transition-all shrink-0 cursor-pointer"
+                                        title="Purge all bandwidth test history"
+                                    >
+                                        <Trash2 size={12} />
+                                        PURGE ALL
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setIsHistoryExpanded(!isHistoryExpanded)}
+                                    className="p-2 hover:bg-card rounded-lg transition-colors border border-transparent hover:border-border text-text-muted"
+                                >
+                                    {isHistoryExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                </button>
+                            </div>
                         </div>
 
                         {isHistoryExpanded && (
@@ -921,7 +976,7 @@ export default function Speedtest({ token }: Props) {
                                                 <th className="px-4 py-4 text-[9px] font-black text-text-muted tracking-[0.2em]">Target / Params</th>
                                                 <th className="px-4 py-4 text-[9px] font-black text-text-muted tracking-[0.2em] text-center">Disposition</th>
                                                 <th className="px-4 py-4 text-[9px] font-black text-text-muted tracking-[0.2em] text-right">Throughput</th>
-                                                <th className="px-4 py-4 text-[9px] font-black text-text-muted tracking-[0.2em] text-right">Test Details</th>
+                                                <th className="px-4 py-4 text-[9px] font-black text-text-muted tracking-[0.2em] text-right">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border/50">
@@ -968,8 +1023,20 @@ export default function Speedtest({ token }: Props) {
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-4 text-right">
-                                                        <div className="p-2 border border-border/50 bg-card-secondary rounded-lg text-blue-500/50 group-hover:text-blue-500 group-hover:border-blue-500/30 group-hover:bg-blue-500/5 transition-all inline-flex">
-                                                            <ExternalLink size={14} className="group-hover:scale-110 transition-transform" />
+                                                        <div className="flex items-center justify-end gap-1.5">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    deleteJob(job);
+                                                                }}
+                                                                className="p-2 border border-transparent hover:border-red-500/30 hover:bg-red-500/10 rounded-lg text-text-muted hover:text-red-400 transition-all inline-flex cursor-pointer"
+                                                                title="Delete this test record"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                            <div className="p-2 border border-border/50 bg-card-secondary rounded-lg text-blue-500/50 group-hover:text-blue-500 group-hover:border-blue-500/30 group-hover:bg-blue-500/5 transition-all inline-flex">
+                                                                <ExternalLink size={14} className="group-hover:scale-110 transition-transform" />
+                                                            </div>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -1174,6 +1241,14 @@ export default function Speedtest({ token }: Props) {
 
                                 {/* Actions */}
                                 <div className="flex gap-2 pt-1">
+                                    <button
+                                        onClick={() => deleteJob(selectedJob)}
+                                        className="py-2.5 px-3 bg-red-600/10 border border-red-500/20 hover:bg-red-500/20 text-red-500 rounded-xl text-[10px] font-black tracking-widest transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                        title="Delete this test record"
+                                    >
+                                        <Trash2 size={13} />
+                                        Delete
+                                    </button>
                                     <button
                                         onClick={() => setShowDetailModal(false)}
                                         className="flex-1 py-2.5 bg-card-secondary border border-border hover:bg-card rounded-xl text-[10px] font-black text-text-primary tracking-widest transition-all"
