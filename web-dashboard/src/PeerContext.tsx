@@ -56,11 +56,15 @@ interface PeerContextProviderProps {
     token: string | null;
     isLeader: boolean;
     children: React.ReactNode;
+    /** Called whenever the active peer changes (null = local/Leader mode). */
+    onActivePeerChange?: (peerId: string | null) => void;
 }
 
-export function PeerContextProvider({ token, isLeader, children }: PeerContextProviderProps) {
+export function PeerContextProvider({ token, isLeader, children, onActivePeerChange }: PeerContextProviderProps) {
     const [activePeerId, setActivePeerIdRaw] = useState<string | null>(null);
     const [peers, setPeers] = useState<PeerEntry[]>([]);
+    const onActivePeerChangeRef = React.useRef(onActivePeerChange);
+    onActivePeerChangeRef.current = onActivePeerChange;
 
     const refreshPeers = useCallback(async () => {
         if (!token || !isLeader) return;
@@ -93,11 +97,15 @@ export function PeerContextProvider({ token, isLeader, children }: PeerContextPr
 
     // Reset to local context when Leader status changes
     useEffect(() => {
-        if (!isLeader) setActivePeerIdRaw(null);
+        if (!isLeader) {
+            setActivePeerIdRaw(null);
+            onActivePeerChangeRef.current?.(null);
+        }
     }, [isLeader]);
 
     const setActivePeerId = useCallback((id: string | null) => {
         setActivePeerIdRaw(id);
+        onActivePeerChangeRef.current?.(id);
     }, []);
 
     const activePeer = peers.find(p => p.instance_id === activePeerId) ?? null;

@@ -117,6 +117,9 @@ export default function App() {
   const [copilotDrawerOpen, setCopilotDrawerOpen] = useState(false);
   const [copilotConfig, setCopilotConfig] = useState<{ enabled: boolean; featureEnabled?: boolean; hasKey: boolean } | null>(null);
   const [isLeader, setIsLeader] = useState<boolean>(false);
+  // Tracks whether a remote peer is active (set via PeerContextProvider callback).
+  // Used by fetchDashboardData to avoid overwriting remote voice/conv data with DC1 local data.
+  const isRemoteViewRef = React.useRef<boolean>(false);
 
   const fetchRegistryLeaderStatus = async () => {
     if (!token) return;
@@ -450,8 +453,13 @@ export default function App() {
       if (data.status) setStatus(data.status);
       if (data.logs) setLogs(data.logs);
       if (data.dockerStats) setDockerStats(data.dockerStats);
-      if (data.convergenceTests) setGlobalConvStatus(data.convergenceTests);
-      if (data.voice) setGlobalVoiceStatus(data.voice);
+      // In remote view, voice and convergenceTests are owned by PeerStatusSync
+      // (which polls the active peer via gFetch). Skipping here avoids flapping
+      // caused by DC1 local data overwriting BR5 remote data.
+      if (!isRemoteViewRef.current) {
+        if (data.convergenceTests) setGlobalConvStatus(data.convergenceTests);
+        if (data.voice) setGlobalVoiceStatus(data.voice);
+      }
       if (data.registry) setRegistryStatus(data.registry);
     } catch (e) {
       console.error('Consolidated fetch failed');
@@ -810,7 +818,11 @@ export default function App() {
   }
 
   return (
-    <PeerContextProvider token={token} isLeader={isLeader}>
+    <PeerContextProvider
+      token={token}
+      isLeader={isLeader}
+      onActivePeerChange={(peerId) => { isRemoteViewRef.current = peerId !== null; }}
+    >
       {/* Peer-aware live status sync — patches globalConvStatus/globalVoiceStatus from remote peer */}
       <PeerStatusSync
         token={token}
