@@ -2055,6 +2055,15 @@ const DEBUG_API = process.env.DEBUG_API === 'true';
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// Suppress "BadRequestError: request aborted" noise from raw-body/body-parser.
+// This fires when the browser cancels a fetch mid-flight (tab switch, React unmount,
+// peer switch). It is harmless — the gateway or client simply moved on.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err?.status === 400 && err?.type === 'request.aborted') return; // silently ignore
+    next(err);
+});
+
 // Global request logger - logs ALL incoming requests (only if DEBUG_API=true)
 if (DEBUG_API) {
     app.use((req, res, next) => {
