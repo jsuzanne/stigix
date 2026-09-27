@@ -814,7 +814,7 @@ export default function App() {
 
         <div className="flex gap-3 items-center">
           {/* Gateway Context Switcher (Leader only) */}
-          {isLeader && <GatewayDropdown token={token} isLeader={isLeader} />}
+          {isLeader && <GatewayDropdown isLeader={isLeader} />}
 
           {/* Quick Copilot Trigger Button (only visible if feature enabled and Anthropic API key is configured) */}
           {copilotConfig?.featureEnabled && copilotConfig?.hasKey && (

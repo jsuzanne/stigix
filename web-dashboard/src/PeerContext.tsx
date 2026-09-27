@@ -110,11 +110,10 @@ export function PeerContextProvider({ token, isLeader, children }: PeerContextPr
  * Shows the active peer context and lets the operator switch to any registered peer.
  */
 interface GatewayDropdownProps {
-    token: string | null;
     isLeader: boolean;
 }
 
-export function GatewayDropdown({ token, isLeader }: GatewayDropdownProps) {
+export function GatewayDropdown({ isLeader }: GatewayDropdownProps) {
     const { activePeerId, activePeer, peers, setActivePeerId } = usePeerContext();
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
