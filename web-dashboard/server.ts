@@ -12502,21 +12502,21 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
     req.pipe(proxyReq, { end: true });
 
     // Handle client abort (browser tab switch, React unmount, peer switch).
-    // If the browser cancels the request mid-flight, destroy the upstream
-    // connection cleanly to avoid BadRequestError on the target peer.
+    // IMPORTANT: req.on('close') fires on BOTH normal completion AND client abort.
+    // We must only destroy the upstream connection when the client actually aborted
+    // (i.e. the response has not finished yet). If res.writableEnded is true,
+    // the request completed normally — don't touch proxyReq.
     const onClientClose = () => {
-        if (!proxyReq.destroyed) {
+        if (!res.writableEnded && !proxyReq.destroyed) {
             proxyReq.destroy();
         }
     };
     req.on('close', onClientClose);
     req.on('aborted', onClientClose); // Node < 18 compat
 
-    // Suppress expected socket errors caused by client-initiated aborts
-    // (ECONNRESET, EPIPE = client disconnected before we finished proxying)
+    // Suppress residual ECONNRESET/EPIPE from already-handled abort cleanup
     proxyReq.on('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'ECONNRESET' || err.code === 'EPIPE') return; // already handled above
-        // (non-abort errors already logged in the earlier error handler)
+        if (err.code === 'ECONNRESET' || err.code === 'EPIPE') return;
     });
 });
 log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/* (Leader only)`);
