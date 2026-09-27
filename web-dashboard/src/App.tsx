@@ -15,6 +15,7 @@ import LiveEvents from './LiveEvents';
 import { CustomApps } from './CustomApps';
 import Copilot from './Copilot';
 import Fleet from './Fleet';
+import { PeerContextProvider, GatewayDropdown, RemoteViewBanner } from './PeerContext';
 import { SystemHealthBadge } from './components/health/SystemHealthBadge';
 import { SystemHealthModal } from './components/health/SystemHealthModal';
 import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot } from 'lucide-react';
@@ -762,6 +763,7 @@ export default function App() {
   }
 
   return (
+    <PeerContextProvider token={token} isLeader={isLeader}>
     <div className="min-h-screen bg-background text-foreground pt-4 pb-8 px-8">
       <Toaster position="top-right" />
       <header className="mb-8 flex justify-between items-center">
@@ -811,6 +813,9 @@ export default function App() {
 
 
         <div className="flex gap-3 items-center">
+          {/* Gateway Context Switcher (Leader only) */}
+          {isLeader && <GatewayDropdown token={token} isLeader={isLeader} />}
+
           {/* Quick Copilot Trigger Button (only visible if feature enabled and Anthropic API key is configured) */}
           {copilotConfig?.featureEnabled && copilotConfig?.hasKey && (
             <button
@@ -985,6 +990,9 @@ export default function App() {
       }
 
 
+
+      {/* Remote Peer View Banner — shown when a remote peer context is active */}
+      <RemoteViewBanner />
 
       {/* Navigation Tabs */}
       <div className="flex flex-wrap gap-2 mb-8 border-b border-border">
@@ -1815,6 +1823,7 @@ export default function App() {
         }}
       />
     </div>
+    </PeerContextProvider>
   );
 }
 

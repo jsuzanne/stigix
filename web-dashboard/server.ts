@@ -22,7 +22,7 @@ import { VyosManager } from './vyos-manager.js';
 import { VyosScheduler } from './vyos-scheduler.js';
 import { SiteManager } from './site-manager.js';
 import { DiscoveryManager, DiscoveredProbe } from './discovery-manager.js';
-import { createServer } from 'http';
+import http, { createServer } from 'http';
 import { TargetsManager } from './targets-manager.js';
 import { TargetManager, TargetScenario } from './target-manager.js';
 import { RegistryManager } from './registry-manager.js';
@@ -12321,6 +12321,117 @@ app.get('/api/fleet/overview', authenticateToken, (req, res) => {
     res.json(overview);
 });
 log('FLEET', `🏢 Fleet Control Plane mounted at /api/fleet/overview (Leader only)`);
+
+// --- Stigix Fleet Gateway BFF Reverse Proxy (Peer Context Switcher - M1) ---
+//
+// Route: /api/gateway/:peerId/*
+//
+// Resolves the peer's management IP from the local in-memory registry, then
+// proxies the request (all HTTP methods) to that peer's dashboard port (8080).
+// The client browser always stays on the Leader URL. No credentials or JWT
+// secrets are forwarded; only a lightweight X-Gateway-Source header is appended.
+//
+// Security: Leader-only. Operator must be authenticated (authenticateToken).
+// Timeout: 5 000 ms — returns 504 on unreachable peer.
+// Safe-Mode and HMAC inter-node signing are planned for M4.
+//
+
+app.all('/api/gateway/:peerId/*', authenticateToken, (req: any, res: any) => {
+    if (!registryManager.isLeader()) {
+        return res.status(403).json({
+            error: 'not_leader',
+            message: 'The Fleet Gateway is only accessible on the Leader instance.'
+        });
+    }
+
+    const peerId = req.params.peerId;
+
+    // Resolve peer management IP from the in-memory local registry
+    const allInstances = localRegistryServer.getInstances();
+    const peer = allInstances.find(
+        (inst) => inst.instance_id === peerId || (inst.meta?.site || '').toLowerCase() === peerId.toLowerCase()
+    );
+
+    if (!peer) {
+        return res.status(404).json({
+            error: 'peer_not_found',
+            message: `Peer "${peerId}" is not registered in the local registry.`,
+            registered_peers: allInstances.map((i) => i.instance_id)
+        });
+    }
+
+    const peerIp = peer.ip_private;
+    const peerPort = 8080;
+
+    // Strip /api/gateway/:peerId prefix — forward the remainder to the peer
+    const proxyPath = req.path.replace(`/api/gateway/${peerId}`, '') || '/';
+    const proxyUrl = req.originalUrl.replace(`/api/gateway/${peerId}`, '');
+
+    // Build forwarded headers: strip hop-by-hop headers, keep the rest
+    const hopByHop = new Set([
+        'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+        'te', 'trailers', 'transfer-encoding', 'upgrade', 'host', 'authorization'
+    ]);
+    const forwardHeaders: Record<string, string | string[]> = {};
+    for (const [k, v] of Object.entries(req.headers)) {
+        if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
+            forwardHeaders[k] = v as string | string[];
+        }
+    }
+    forwardHeaders['x-gateway-source'] = 'stigix-leader';
+    forwardHeaders['x-forwarded-for'] = req.ip || '';
+    forwardHeaders['host'] = `${peerIp}:${peerPort}`;
+
+    const options: http.RequestOptions = {
+        hostname: peerIp,
+        port: peerPort,
+        path: proxyUrl,
+        method: req.method,
+        headers: forwardHeaders,
+        timeout: 5000
+    };
+
+    log('GATEWAY', `→ ${req.method} ${peerIp}:${peerPort}${proxyUrl} [${peerId}]`);
+
+    const proxyReq = http.request(options, (proxyRes) => {
+        // Forward response status + headers (minus hop-by-hop)
+        res.status(proxyRes.statusCode || 502);
+        for (const [k, v] of Object.entries(proxyRes.headers)) {
+            if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
+                res.setHeader(k, v as string | string[]);
+            }
+        }
+        res.setHeader('x-gateway-peer', peerId);
+        proxyRes.pipe(res, { end: true });
+    });
+
+    proxyReq.on('timeout', () => {
+        proxyReq.destroy();
+        log('GATEWAY', `Timeout reaching peer ${peerId} (${peerIp}:${peerPort})`, 'warn');
+        if (!res.headersSent) {
+            res.status(504).json({
+                error: 'gateway_timeout',
+                message: `Peer "${peerId}" did not respond within 5 seconds.`,
+                peer_ip: peerIp
+            });
+        }
+    });
+
+    proxyReq.on('error', (err: NodeJS.ErrnoException) => {
+        log('GATEWAY', `Error reaching peer ${peerId} (${peerIp}:${peerPort}): ${err.message}`, 'warn');
+        if (!res.headersSent) {
+            res.status(502).json({
+                error: 'gateway_error',
+                message: `Cannot reach peer "${peerId}": ${err.message}`,
+                peer_ip: peerIp
+            });
+        }
+    });
+
+    // Pipe the client request body to the peer (for POST/PUT/PATCH)
+    req.pipe(proxyReq, { end: true });
+});
+log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/* (Leader only)`);
 
 // --- Custom TCP Inter-Site Applications API ---
 app.use('/api/custom-tcp-apps', authenticateToken, createCustomTcpApiRouter(tcpAppManager));
