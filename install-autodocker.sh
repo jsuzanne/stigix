@@ -190,24 +190,103 @@ fi
 echo "🚀 Stigix (All-in-One) - Installation"
 echo "=========================================="
 
-# 1. Prerequisite Check: Docker
+# 1. Prerequisite Check & Auto-Installation: Docker
+OS_TYPE=$(uname)
+IS_LINUX=false
+if [[ "$OS_TYPE" == "Linux" ]] && ! grep -qi microsoft /proc/version 2>/dev/null; then
+    IS_LINUX=true
+fi
+
 if ! command -v docker &> /dev/null; then
-    echo "❌ Error: Docker is not installed."
-    echo "Please install Docker first: https://docs.docker.com/get-docker/"
+    echo "⚠️  Docker is not installed."
+    
+    if [ "$IS_LINUX" = true ]; then
+        echo "🐧 Linux detected. Attempting automated Docker installation via official get.docker.com..."
+        
+        SUDO_CMD=""
+        if [ "$EUID" -ne 0 ]; then
+            if command -v sudo &> /dev/null; then
+                SUDO_CMD="sudo"
+            else
+                echo "❌ Error: Root privileges or 'sudo' command required to install Docker."
+                echo "Please install Docker manually: https://docs.docker.com/engine/install/"
+                exit 1
+            fi
+        fi
+        
+        # Download and execute official Docker setup script
+        if command -v curl &> /dev/null; then
+            curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+        elif command -v wget &> /dev/null; then
+            wget -qO /tmp/get-docker.sh https://get.docker.com
+        else
+            echo "❌ Error: Neither 'curl' nor 'wget' is installed to download Docker."
+            exit 1
+        fi
+        
+        echo "⏳ Running Docker installation script (this may take 1-2 minutes)..."
+        $SUDO_CMD sh /tmp/get-docker.sh
+        rm -f /tmp/get-docker.sh
+        
+        # Add current user to docker group
+        if [ "$EUID" -ne 0 ] && [ -n "$USER" ]; then
+            $SUDO_CMD usermod -aG docker "$USER" 2>/dev/null || true
+        fi
+        
+        # Start & enable Docker service
+        if command -v systemctl &> /dev/null; then
+            $SUDO_CMD systemctl start docker 2>/dev/null || true
+            $SUDO_CMD systemctl enable docker 2>/dev/null || true
+        elif command -v service &> /dev/null; then
+            $SUDO_CMD service docker start 2>/dev/null || true
+        fi
+    elif [[ "$OS_TYPE" == "Darwin" ]]; then
+        echo "🍎 Platform: macOS detected."
+        echo "❌ Automated background installation is not supported on macOS."
+        echo "Please install Docker Desktop for Mac: https://docs.docker.com/desktop/setup/install/mac-install/"
+        exit 1
+    else
+        echo "🪟 Platform: Windows / WSL detected."
+        echo "❌ Please install Docker Desktop for Windows with WSL 2 integration:"
+        echo "👉 https://docs.docker.com/desktop/setup/install/windows-install/"
+        exit 1
+    fi
+fi
+
+if ! command -v docker &> /dev/null; then
+    echo "❌ Error: Docker is still not found after installation attempt."
+    echo "Please install Docker manually: https://docs.docker.com/get-docker/"
     exit 1
 fi
 
+# 2. Check if Docker daemon is running, try starting if on Linux
 if ! docker info &> /dev/null; then
-    echo "❌ Error: Docker is installed but not running."
-    echo "Please start the Docker Desktop / Daemon and try again."
+    if [ "$IS_LINUX" = true ]; then
+        SUDO_CMD=""
+        [ "$EUID" -ne 0 ] && command -v sudo &> /dev/null && SUDO_CMD="sudo"
+        if command -v systemctl &> /dev/null; then
+            $SUDO_CMD systemctl start docker 2>/dev/null || true
+        elif command -v service &> /dev/null; then
+            $SUDO_CMD service docker start 2>/dev/null || true
+        fi
+    fi
+fi
+
+if ! docker info &> /dev/null; then
+    echo "❌ Error: Docker is installed but the Docker daemon is not accessible or not running."
+    if [ "$IS_LINUX" = true ] && [ "$EUID" -ne 0 ]; then
+        echo "💡 Tip: If you were just added to the 'docker' group, try running: newgrp docker"
+        echo "   Or run the installer with sudo, or log out and log back in."
+    else
+        echo "Please start the Docker Desktop / Daemon and try again."
+    fi
     exit 1
 fi
 
 echo "✅ Docker is running."
 
 # OS Detection — Linux gets host mode, macOS/Windows get bridge mode
-OS_TYPE=$(uname)
-if [[ "$OS_TYPE" == "Linux" ]] && ! grep -qi microsoft /proc/version 2>/dev/null; then
+if [ "$IS_LINUX" = true ]; then
     echo "🐧 Platform: Native Linux detected. (Using host mode for full features)"
     COMPOSE_URL="$REPO_URL/docker-compose.yml"
 elif [[ "$OS_TYPE" == "Darwin" ]]; then
