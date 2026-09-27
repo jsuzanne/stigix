@@ -442,7 +442,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `stigix-custom-apps-${instanceInfo?.siteName || 'fleet'}-${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `stigix-custom-apps-${instanceInfo?.siteName || 'mesh'}-${new Date().toISOString().slice(0, 10)}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -593,7 +593,7 @@ const secs = seconds % 60;
                                     onMouseLeave={() => setStartMenuOpen(false)}
                                 >
                                     <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
-                                        Appliance Start Options
+                                        Node Start Options
                                     </div>
                                     <button
                                         onClick={() => { setStartMenuOpen(false); handleGlobalAction('start-all'); }}
@@ -636,7 +636,7 @@ const secs = seconds % 60;
                                     disabled={isActionLoading}
                                     onClick={() => handleGlobalAction('stop-all')}
                                     className="h-[32px] px-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                                    title="Stop all running clients and listeners on this appliance"
+                                    title="Stop all running clients and listeners on this node"
                                 >
                                     <Square size={12} fill="currentColor" />
                                     <span>Stop All</span>
@@ -658,7 +658,7 @@ const secs = seconds % 60;
                                     onMouseLeave={() => setStopMenuOpen(false)}
                                 >
                                     <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-text-muted">
-                                        Appliance Stop Options
+                                        Node Stop Options
                                     </div>
                                     <button
                                         onClick={() => { setStopMenuOpen(false); handleGlobalAction('stop-all'); }}
@@ -811,7 +811,7 @@ const secs = seconds % 60;
                                     <FileJson size={14} className="text-indigo-500" />
                                     <div>
                                         <div className="font-bold">Export All Applications</div>
-                                        <div className="text-[10px] text-text-muted">Download full fleet bundle ({applications.length} apps)</div>
+                                        <div className="text-[10px] text-text-muted">Download full mesh bundle ({applications.length} apps)</div>
                                     </div>
                                 </button>
                                 {currentApp && (

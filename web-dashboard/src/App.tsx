@@ -800,7 +800,7 @@ export default function App() {
                     : "bg-blue-600/10 text-blue-500 border-blue-500/30"
                 )}>
                   <div className={cn("w-1.5 h-1.5 rounded-full", registryStatus.mode === 'leader' ? "bg-purple-500 animate-pulse" : "bg-blue-500")} />
-                  {registryStatus.mode === 'leader' ? 'Registry Leader' : 'Peer Node'}
+                  {registryStatus.mode === 'leader' ? 'Leader' : 'Peer'}
                 </span>
               )}
             </p>
@@ -1121,8 +1121,8 @@ export default function App() {
               view === 'fleet' ? "border-blue-600 text-blue-600 dark:text-blue-300" : "border-transparent text-text-muted hover:text-text-primary"
             )}
           >
-            <Globe size={18} /> Fleet <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 ml-1">Leader</span>
-            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Centralized multi-instance fleet observability & peer metrics</span>
+            <Globe size={18} /> Mesh <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 ml-1">Leader</span>
+            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-3 py-1.5 bg-[#0f172a] text-[#f8fafc] text-[10px] font-bold rounded shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all pointer-events-none z-[100] border border-[#1e293b] whitespace-nowrap">Centralized multi-instance mesh observability & peer metrics</span>
           </button>
         )}
         {/* SRT Tab hidden in v1.1.2-patch.28 */}

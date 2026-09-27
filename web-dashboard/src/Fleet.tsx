@@ -187,9 +187,9 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
             });
             if (!res.ok) {
                 if (res.status === 403) {
-                    throw new Error('This instance is not in Leader mode. Fleet Overview is only accessible on the Leader.');
+                    throw new Error('This node is not in Leader mode. Mesh Overview is only accessible on the Leader.');
                 }
-                throw new Error(`Failed to fetch fleet overview (${res.status})`);
+                throw new Error(`Failed to fetch mesh overview (${res.status})`);
             }
             const json: FleetOverviewResponse = await res.json();
             setData(json);
@@ -202,7 +202,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                 if (refreshed) setSelectedPeer(refreshed);
             }
         } catch (err: any) {
-            setError(err.message || 'Error contacting Fleet API');
+            setError(err.message || 'Error contacting Mesh API');
         } finally {
             setLoading(false);
         }
@@ -244,7 +244,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                     </div>
                     <div>
                         <div className="flex items-center gap-3">
-                            <h1 className="text-2xl font-black tracking-tight text-text">Fleet Control Plane</h1>
+                            <h1 className="text-2xl font-black tracking-tight text-text">Mesh Overview</h1>
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
                                 <ShieldCheck size={12} />
                                 Leader Active
@@ -330,7 +330,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         <Gauge size={20} />
                     </div>
                     <div>
-                        <div className="text-xs text-blue-400/80 font-bold uppercase tracking-wider">Fleet Global Exp.</div>
+                        <div className="text-xs text-blue-400/80 font-bold uppercase tracking-wider">Mesh Global Exp.</div>
                         <div className="text-2xl font-black text-blue-400">
                             {data?.avg_global_experience !== null && data?.avg_global_experience !== undefined 
                                 ? `${data.avg_global_experience}%` 
@@ -397,7 +397,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                         {loading ? (
                                             <div className="flex items-center justify-center gap-2">
                                                 <RefreshCw size={16} className="animate-spin text-blue-400" />
-                                                <span>Loading fleet instances...</span>
+                                                <span>Loading mesh nodes...</span>
                                             </div>
                                         ) : (
                                             <span>No peer instances matching filter</span>

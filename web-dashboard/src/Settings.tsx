@@ -4102,7 +4102,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                             </div>
                             <div>
                                 <div className="flex items-center gap-2">
-                                    <h4 className="text-xs font-black text-text-primary uppercase tracking-wider">Mesh Role Mode</h4>
+                                    <h4 className="text-xs font-black text-text-primary uppercase tracking-wider">Node Role</h4>
                                     <span className="text-[9px] font-mono font-bold text-text-muted opacity-60">
                                         (Active: {systemSettings.registry_mode === 'leader' ? 'Forced Leader' : systemSettings.registry_mode === 'peer' ? 'Forced Peer' : 'Auto-Detect'})
                                     </span>
@@ -4111,8 +4111,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     {(systemSettings.registry_mode || 'auto') === 'auto'
                                         ? 'Auto-Detect: Automatically elects this node as Leader on SD-WAN HUB / Branch Gateway, or Peer on spoke nodes.'
                                         : (systemSettings.registry_mode === 'leader'
-                                            ? 'Forced Leader: This instance hosts the central registry on :8080 and acts as master configuration publisher.'
-                                            : 'Forced Peer: This instance connects to an external Leader as a managed branch member.')}
+                                            ? 'Forced Leader: This node hosts the central registry on :8080 and acts as mesh configuration publisher.'
+                                            : 'Forced Peer: This node connects to an external Leader as a managed branch member.')}
                                 </p>
                             </div>
                         </div>
@@ -4154,7 +4154,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                     {/* ════════ LEADER VIEW ════════ */}
                     {isLeader && (
                         <>
-                            {/* Central Global Provisioning Publishing Card */}
+                            {/* Mesh Provisioning Publishing Card */}
                             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
@@ -4162,8 +4162,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <Layers size={18} />
                                         </div>
                                         <div>
-                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Central Global Provisioning</h3>
-                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Publish shared configuration bundles once to all connected remote branch peers</p>
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Mesh Provisioning</h3>
+                                            <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Publish shared configuration bundles to all registered targets</p>
                                         </div>
                                     </div>
                                     <button
@@ -4176,7 +4176,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         }`}
                                     >
                                         {provisioningToggling ? <RefreshCw size={10} className="animate-spin" /> : <Power size={10} />}
-                                        {provisioningData?.state?.enabled ? 'Master Publisher Active' : 'Master Publisher Disabled'}
+                                        {provisioningData?.state?.enabled ? 'Mesh Publisher Active' : 'Mesh Publisher Disabled'}
                                     </button>
                                 </div>
 
@@ -4342,8 +4342,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <Users size={16} />
                                         </div>
                                         <div>
-                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Connected Peers</h3>
-                                            <p className="text-[9px] text-text-muted mt-0.5 opacity-60">Instances that have registered with this leader</p>
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Registered Targets</h3>
+                                            <p className="text-[9px] text-text-muted mt-0.5 opacity-60">Targets registered with this leader</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -4366,14 +4366,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <div className="w-12 h-12 mx-auto mb-4 rounded-2xl bg-purple-600/10 text-purple-500 flex items-center justify-center">
                                                 <Users size={24} />
                                             </div>
-                                            <p className="text-[10px] font-bold text-text-muted tracking-widest opacity-50 uppercase">No peers registered yet</p>
-                                            <p className="text-[9px] text-text-muted opacity-40 mt-1">Use the onboard command below to add a remote instance</p>
+                                            <p className="text-[10px] font-bold text-text-muted tracking-widest opacity-50 uppercase">No targets registered yet</p>
+                                            <p className="text-[9px] text-text-muted opacity-40 mt-1">Use the onboard command below to add a remote target</p>
                                         </div>
                                     ) : (
                                         <table className="w-full text-left">
                                             <thead>
                                                 <tr className="border-b border-border/50">
-                                                    <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Instance</th>
+                                                    <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Target</th>
                                                     <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">IP</th>
                                                     <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Capabilities</th>
                                                     <th className="pb-3 pt-4 px-5 text-[9px] font-black text-text-muted uppercase tracking-[0.2em]">Last Seen</th>
@@ -4560,7 +4560,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 </div>
                             )}
 
-                            {/* Global Provisioning Status & Opt-In Card */}
+                            {/* Mesh Provisioning Status & Opt-In Card */}
                             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
@@ -4568,7 +4568,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             <Layers size={18} />
                                         </div>
                                         <div>
-                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Central Global Provisioning</h3>
+                                            <h3 className="text-sm font-black text-text-primary tracking-tight">Mesh Provisioning</h3>
                                             <p className="text-[10px] text-text-muted mt-0.5 opacity-70">Automatically pull shared application catalogues and probes published by your Leader</p>
                                         </div>
                                     </div>
@@ -4593,7 +4593,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             }`}
                                         >
                                             {provisioningToggling ? <RefreshCw size={12} className="animate-spin" /> : <Power size={12} />}
-                                            {provisioningData?.state?.enabled ? 'Global Provisioning: ON' : 'Global Provisioning: OFF'}
+                                            {provisioningData?.state?.enabled ? 'Mesh Provisioning: ON' : 'Mesh Provisioning: OFF'}
                                         </button>
                                     </div>
                                 </div>
@@ -4924,7 +4924,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 <div className="flex items-center gap-2">
                                     <Shield size={14} className="text-emerald-500" />
                                     <h3 className="text-xs font-black text-text-primary uppercase tracking-wider">
-                                        Local Appliance Target & Security Service
+                                        Local Node & Services
                                     </h3>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -4976,7 +4976,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             </button>
                                         </div>
                                     </div>
-                                    <p className="text-[8.5px] text-text-muted opacity-60">Identifies this appliance across the mesh and Target Controller Leader.</p>
+                                    <p className="text-[8.5px] text-text-muted opacity-60">Identifies this node across the mesh and Leader.</p>
                                 </div>
 
                                 {/* ── Right Column: EICAR Security Target Service ── */}
@@ -5055,10 +5055,10 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                         <div>
                             <h3 className="text-xs font-black text-text-primary uppercase tracking-wider flex items-center gap-2">
                                 <Radio size={14} className="text-blue-500" />
-                                Discovered & Remote Target Endpoints
+                                Discovered & Static Targets
                             </h3>
                             <p className="text-[10px] text-text-muted opacity-70 tracking-tight mt-0.5">
-                                Target nodes learned dynamically from the Target Controller Leader or created manually.
+                                Target nodes learned dynamically from the Leader or added as static entries.
                             </p>
                         </div>
                         <span className="text-[10px] font-mono font-bold text-text-muted bg-card-secondary px-2.5 py-1 rounded-lg border border-border shrink-0 self-start sm:self-auto">
@@ -5106,7 +5106,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
                                             {/* ── Single Unified Origin Badge ── */}
                                             {isSelf ? (
-                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-sm" title="Local Stigix Appliance">
+                                                <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-sm" title="Local Stigix Node">
                                                     <Globe size={8} /> Local Node
                                                 </span>
                                             ) : t.meta?.registry ? (

@@ -199,19 +199,19 @@ Three synonyms for the same concept: a Stigix machine.
 
 The word "Endpoint" is mostly a synonym for "Target" in the codebase. Consider replacing it with "Target" where the destination is a Stigix node, and keeping "Endpoint" only for the rare external URL cases.
 
-### 3.7 ⚠️ "Central Global Provisioning" / "Master Publisher" — Verbose & Inconsistent
+### 3.7 ⚠️ "Central Global Provisioning" / "Master Publisher" → Mesh Provisioning
 
-These terms don't use the established "Fleet" vocabulary from the main navigation:
+Now standardized using the **Mesh** vocabulary:
 
 ```
-Main nav:          "Fleet"              ← established term
-Provisioning card: "Central Global Provisioning"  ← different name
-Toggle button:     "Master Publisher"   ← yet another name
+Main nav:          "Mesh"               ← selected alternative to Fleet
+Provisioning card: "Mesh Provisioning"  ← aligned with Mesh
+Toggle button:     "Mesh Publisher"     ← aligned with Mesh
 ```
 
-### 3.8 ⚠️ Fleet View — Functionally Redundant with Target Controller
+### 3.8 ⚠️ Mesh Overview (formerly Fleet View)
 
-The Fleet page (leader-only) shows the same registered targets that already appear in the Target Controller "Connected Peers" table. Currently kept as a separate view for richer observability, but the terminology should acknowledge they show the same entities.
+The Mesh page (leader-only) provides centralized multi-instance mesh observability and peer metrics. Standardized to "Mesh Overview".
 
 ---
 
@@ -230,22 +230,24 @@ Focus only on the **badge/label inconsistency** and the **machine synonym** prob
 
 > **Estimated scope**: ~8 UI strings. Zero new concepts.
 
-### Level B — Harmonized (Level A + vocabulary alignment)
+### Level B — Harmonized (Level A + Mesh vocabulary alignment)
 
-Level A plus internal section clarification for a consistent "Target-first" vocabulary.
+Level A plus internal section clarification for a consistent "Target-first" and "Mesh" vocabulary.
 
 | Current | Proposed | Rationale |
 |:---|:---|:---|
 | *All of Level A* | — | — |
+| **Fleet** (Nav tab) | **Mesh** | Natural in SD-WAN, matches mesh topology model. |
+| **Fleet Control Plane** | **Mesh Overview** | Shorter, cleaner, fits dashboard purpose. |
 | **Mesh Role Mode** | **Node Role** | Simpler. "Mesh" is implicit. The selector is about the role of THIS node. |
 | **Connected Peers** | **Registered Targets** | These peers ARE the targets. Using "Targets" connects this table to the Stigix Targets tab. |
-| **Central Global Provisioning** | **Fleet Provisioning** | Align with the established "Fleet" term from main nav. |
-| **Master Publisher** | **Fleet Publisher** | Same alignment. |
+| **Central Global Provisioning** | **Mesh Provisioning** | Align with the established "Mesh" term from main nav. |
+| **Master Publisher** | **Mesh Publisher** | Same alignment. |
 | **Local Appliance Target & Security Service** | **Local Node & Services** | Shorter, clearer. This section manages the local node identity + EICAR service. |
 | **Discovered & Remote Target Endpoints** | **Discovered & Static Targets** | Remove redundant "Endpoint". "Static" is already used as the badge label for manual targets. |
 | Description: **Target Controller Leader** | **Leader** | Redundant — just say "Leader" when the context is already the Target Controller. |
 
-> **Estimated scope**: ~25 UI strings. Makes the Target-centric model visible everywhere.
+> **Estimated scope**: ~25 UI strings. Makes the Target-centric & Mesh model visible everywhere.
 
 ### Level C — Full Polish
 
@@ -259,87 +261,74 @@ Everything from Level B, plus strict glossary enforcement across all modules.
 | **Stigix Voice Targets** | **Voice Targets** | Drop the "Stigix" prefix — it's obvious in context. |
 | **Stigix Targets** (Failover section) | **Targets** | Same — drop redundant prefix. |
 | All remaining **Appliance** references | **Node** | Complete the synonym unification. |
-| **Fleet Control Plane** | **Fleet Overview** | "Control Plane" is Kubernetes jargon. "Overview" is what the page actually is. |
-
-> **Estimated scope**: ~40 UI strings. Full consistency.
 
 ---
 
 ## 5. Detailed Change Matrix
 
-Below is the complete mapping for **Level B** (the recommended level):
+Below is the complete mapping for **Level B + Mesh** (implemented):
 
 ### 5.1 `App.tsx` Changes
 
-| Line | Current String | New String |
-|:---|:---|:---|
-| ~803 | `'Registry Leader'` | `'Leader'` |
-| ~803 | `'Peer Node'` | `'Peer'` |
+| Line | Current String | New String | Status |
+|:---|:---|:---|:---|
+| ~803 | `'Registry Leader'` | `'Leader'` | ✅ Applied |
+| ~803 | `'Peer Node'` | `'Peer'` | ✅ Applied |
+| ~1124 | `Fleet` (nav tab) | `Mesh` | ✅ Applied |
+| ~1125 | `...fleet observability...` | `...mesh observability...` | ✅ Applied |
 
-### 5.2 `Settings.tsx` — Target Controller Tab
+### 5.2 `Fleet.tsx` Changes
 
-| Line | Current String | New String |
-|:---|:---|:---|
-| ~4105 | `Mesh Role Mode` | `Node Role` |
-| ~4107 | `Forced Leader` / `Forced Peer` | *(keep as-is)* |
-| ~4114 | `master configuration publisher` | `fleet configuration publisher` |
-| ~4157 | `Central Global Provisioning` (comment) | `Fleet Provisioning` |
-| ~4165 | `Central Global Provisioning` (heading) | `Fleet Provisioning` |
-| ~4166 | `Publish shared configuration bundles once to all connected remote branch peers` | `Publish shared configuration bundles to all registered targets` |
-| ~4179 | `Master Publisher Active/Disabled` | `Fleet Publisher Active/Disabled` |
-| ~4345 | `Connected Peers` | `Registered Targets` |
-| ~4346 | `Instances that have registered with this leader` | `Targets registered with this leader` |
-| ~4369 | `No peers registered yet` | `No targets registered yet` |
-| ~4370 | `Use the onboard command below to add a remote instance` | `Use the onboard command below to add a remote target` |
-| ~4376 | Column: `Instance` | `Target` |
-| ~4571 | `Central Global Provisioning` (peer view) | `Fleet Provisioning` |
+| Line | Current String | New String | Status |
+|:---|:---|:---|:---|
+| ~190, 205 | `Fleet Overview / Fleet API` | `Mesh Overview / Mesh API` | ✅ Applied |
+| ~247 | `Fleet Control Plane` | `Mesh Overview` | ✅ Applied |
+| ~333 | `Fleet Global Exp.` | `Mesh Global Exp.` | ✅ Applied |
+| ~400 | `Loading fleet instances...` | `Loading mesh nodes...` | ✅ Applied |
 
-### 5.3 `Settings.tsx` — Stigix Targets Tab
+### 5.3 `Settings.tsx` — Target Controller Tab
 
-| Line | Current String | New String |
-|:---|:---|:---|
-| ~4927 | `Local Appliance Target & Security Service` | `Local Node & Services` |
-| ~4979 | `across the mesh and Target Controller Leader` | `across the mesh and Leader` |
-| ~5058 | `Discovered & Remote Target Endpoints` | `Discovered & Static Targets` |
-| ~5061 | `Target nodes learned dynamically from the Target Controller Leader or created manually` | `Target nodes learned dynamically from the Leader or added as static entries` |
-| ~5109 | `title="Local Stigix Appliance"` | `title="Local Stigix Node"` |
+| Line | Current String | New String | Status |
+|:---|:---|:---|:---|
+| ~4105 | `Mesh Role Mode` | `Node Role` | ✅ Applied |
+| ~4107 | `Forced Leader` / `Forced Peer` | *(keep as-is)* | ✅ Kept |
+| ~4114 | `master configuration publisher` | `mesh configuration publisher` | ✅ Applied |
+| ~4157 | `Central Global Provisioning` (comment) | `Mesh Provisioning` | ✅ Applied |
+| ~4165 | `Central Global Provisioning` (heading) | `Mesh Provisioning` | ✅ Applied |
+| ~4166 | `Publish shared configuration bundles once to all connected remote branch peers` | `Publish shared configuration bundles to all registered targets` | ✅ Applied |
+| ~4179 | `Master Publisher Active/Disabled` | `Mesh Publisher Active/Disabled` | ✅ Applied |
+| ~4345 | `Connected Peers` | `Registered Targets` | ✅ Applied |
+| ~4346 | `Instances that have registered with this leader` | `Targets registered with this leader` | ✅ Applied |
+| ~4369 | `No peers registered yet` | `No targets registered yet` | ✅ Applied |
+| ~4370 | `Use the onboard command below to add a remote instance` | `Use the onboard command below to add a remote target` | ✅ Applied |
+| ~4376 | Column: `Instance` | `Target` | ✅ Applied |
+| ~4571 | `Central Global Provisioning` (peer view) | `Mesh Provisioning` | ✅ Applied |
+| ~4596 | `Global Provisioning: ON/OFF` | `Mesh Provisioning: ON/OFF` | ✅ Applied |
 
-### 5.4 `CustomApps.tsx` Changes
+### 5.4 `Settings.tsx` — Stigix Targets Tab
 
-| Line | Current String | New String |
-|:---|:---|:---|
-| ~565 | `Global Appliance Controls` (comment) | `Global Node Controls` |
-| ~596 | `Appliance Start Options` | `Node Start Options` |
-| ~639 | `Stop all running clients and listeners on this appliance` | `Stop all running clients and listeners on this node` |
-| ~661 | `Appliance Stop Options` | `Node Stop Options` |
+| Line | Current String | New String | Status |
+|:---|:---|:---|:---|
+| ~4927 | `Local Appliance Target & Security Service` | `Local Node & Services` | ✅ Applied |
+| ~4979 | `across the mesh and Target Controller Leader` | `across the mesh and Leader` | ✅ Applied |
+| ~5058 | `Discovered & Remote Target Endpoints` | `Discovered & Static Targets` | ✅ Applied |
+| ~5061 | `Target nodes learned dynamically from the Target Controller Leader or created manually` | `Target nodes learned dynamically from the Leader or added as static entries` | ✅ Applied |
+| ~5109 | `title="Local Stigix Appliance"` | `title="Local Stigix Node"` | ✅ Applied |
 
-> [!NOTE]
-> **"Target Peer" in Custom Apps is NOT renamed.** It is semantically correct:
-> a Target Peer is a Stigix peer node targeted for TCP traffic.
+### 5.5 `CustomApps.tsx` Changes
 
-### 5.5 No Changes Needed
-
-| File | Reason |
-|:---|:---|
-| `Voice.tsx` | "Stigix Voice Targets" is clear in context |
-| `Failover.tsx` | "Stigix Targets" and "Endpoints" usage is contextually appropriate |
-| `Security.tsx` | "Endpoint" for EICAR URLs is acceptable (Level C would change this) |
-| `Fleet.tsx` | "Fleet Control Plane" is fine (Level C would simplify to "Fleet Overview") |
-
-### 5.6 Documentation Cross-References
-
-| Document | Terms to Update |
-|:---|:---|
-| `docs/HYBRID_REGISTRY.md` | "Registry Leader" → "Leader" |
-| `docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md` | "Central Global Provisioning" → "Fleet Provisioning" |
-| `docs/TARGET_CAPABILITIES.md` | "Connected Peers" → "Registered Targets" |
-| `docs/AUTODISCOVERY_GUIDE.md` | "Registry Leader" → "Leader" |
+| Line | Current String | New String | Status |
+|:---|:---|:---|:---|
+| ~596 | `Appliance Start Options` | `Node Start Options` | ✅ Applied |
+| ~639 | `Stop all running clients and listeners on this appliance` | `Stop all running clients and listeners on this node` | ✅ Applied |
+| ~661 | `Appliance Stop Options` | `Node Stop Options` | ✅ Applied |
+| ~814 | `Download full fleet bundle` | `Download full mesh bundle` | ✅ Applied |
 
 ---
 
 ## 6. Unified Glossary
 
-After Level B is applied:
+After Level B + Mesh is applied:
 
 | Term | Definition | Strict Rule |
 |:---|:---|:---|
@@ -348,7 +337,7 @@ After Level B is applied:
 | **Peer** | A Target that does not carry the Leader responsibility. Registers with the Leader. | Acceptable in Custom Apps as "Target Peer" (a peer that is targeted). |
 | **Target Peer** | A peer Stigix node targeted for traffic (Custom TCP Apps). Always a Stigix node. | Correct as-is. Do NOT rename to "Remote Host". |
 | **Node** | A single Stigix machine (physical or virtual). | Replace "Instance" and "Appliance" everywhere. |
-| **Fleet** | The collection of all interconnected Stigix targets. Also: multi-target observability and centralized provisioning. | Use for the nav tab, provisioning features, and publisher toggle. |
+| **Mesh** | The collection of all interconnected Stigix targets. Also: multi-target observability and centralized provisioning (formerly "Fleet"). | Use for the nav tab, provisioning features, and publisher toggle. |
 | **Node Role** | The topology role of a node: Auto-Detect, Leader, or Peer. | Replace "Mesh Role Mode". |
 | **Registered Targets** | The list of nodes registered with the Leader. | Replace "Connected Peers" in the Target Controller tab. |
 | **Endpoint** | An external URL used only in rare cases (e.g. external EICAR from eicar.org). Almost everything in Stigix is a Target, not an Endpoint. | Avoid using for Stigix nodes. Reserve for genuinely external URLs only. |
@@ -361,35 +350,21 @@ After Level B is applied:
 > All changes are purely cosmetic (UI labels, tooltips, descriptions).
 > No API routes, backend logic, or data structures are modified.
 
-### Phase 1 — Badge & Column Alignment (Level A)
-- [ ] Change `Registry Leader` → `Leader` in `App.tsx:803`
-- [ ] Change `Peer Node` → `Peer` in `App.tsx:803`
-- [ ] Change `Instance` column → `Target` or `Node` in `Settings.tsx:4376`
-- [ ] Change `Appliance Start/Stop Options` → `Node Start/Stop Options` in `CustomApps.tsx`
-- [ ] Verify all tooltips and descriptions are consistent
-
-### Phase 2 — Vocabulary Harmonization (Level B)
-- [ ] Rename `Mesh Role Mode` → `Node Role` in `Settings.tsx`
-- [ ] Rename `Connected Peers` → `Registered Targets` in `Settings.tsx`
-- [ ] Rename `Central Global Provisioning` → `Fleet Provisioning` (3 occurrences)
-- [ ] Rename `Master Publisher` → `Fleet Publisher`
-- [ ] Rename `Local Appliance Target & Security Service` → `Local Node & Services`
-- [ ] Rename `Discovered & Remote Target Endpoints` → `Discovered & Static Targets`
-- [ ] Simplify `Target Controller Leader` → `Leader` in descriptions
-
-### Phase 3 — Documentation Sync
-- [ ] Update `docs/HYBRID_REGISTRY.md`
-- [ ] Update `docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md`
-- [ ] Update `docs/TARGET_CAPABILITIES.md`
-- [ ] Update `docs/AUTODISCOVERY_GUIDE.md`
-- [ ] Update FAQ if terminology is mentioned (`site/faq.html`)
-
-### Phase 4 — Full Polish (Level C, optional)
-- [ ] Drop "Stigix" prefix from "Stigix Voice Targets" and "Stigix Targets" in modules
-- [ ] Rename `Stigix Targets Repository` → `Target Registry`
-- [ ] Rename `Fleet Control Plane` → `Fleet Overview`
-- [ ] Replace all remaining `Appliance` → `Node`
-- [ ] Replace Security `Endpoint` → `External URL` for non-Stigix URLs
+### Phase 1 & 2 — Badge, Mesh & Column Alignment (Applied on v2)
+- [x] Change `Registry Leader` → `Leader` in `App.tsx:803`
+- [x] Change `Peer Node` → `Peer` in `App.tsx:803`
+- [x] Change `Fleet` nav button → `Mesh` in `App.tsx:1124`
+- [x] Change `Fleet Control Plane` → `Mesh Overview` in `Fleet.tsx`
+- [x] Change `Fleet Global Exp.` → `Mesh Global Exp.` in `Fleet.tsx`
+- [x] Change `Mesh Role Mode` → `Node Role` in `Settings.tsx`
+- [x] Change `Central Global Provisioning` → `Mesh Provisioning` in `Settings.tsx`
+- [x] Change `Master Publisher` → `Mesh Publisher` in `Settings.tsx`
+- [x] Change `Connected Peers` → `Registered Targets` in `Settings.tsx`
+- [x] Change `Instance` column → `Target` in `Settings.tsx`
+- [x] Change `Local Appliance Target & Security Service` → `Local Node & Services` in `Settings.tsx`
+- [x] Change `Discovered & Remote Target Endpoints` → `Discovered & Static Targets` in `Settings.tsx`
+- [x] Change `Appliance Start/Stop Options` → `Node Start/Stop Options` in `CustomApps.tsx`
+- [x] Change `Download full fleet bundle` → `Download full mesh bundle` in `CustomApps.tsx`
 
 ---
 
@@ -397,6 +372,7 @@ After Level B is applied:
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-09-27 | `v2.0.66` | Stigix Core Team | Rev 5 — Applied "Mesh" terminology to replace "Fleet", standardized badges (`Leader`/`Peer`), updated Settings & CustomApps labels on `v2`. |
 | 2026-09-27 | `v2.0.66` | Stigix Core Team | Rev 4 — Incorporated Q&A findings: everything is Stigix (Custom Apps, Convergence), EICAR external URLs are secondary, Fleet is redundant with Target Controller, Controller vs Leader is THE key decision. |
 | 2026-09-27 | `v2.0.66` | Stigix Core Team | Rev 3 — Clarified that the Leader IS also a Target (flat model, "first among equals"). Updated architecture diagram. |
 | 2026-09-27 | `v2.0.66` | Stigix Core Team | Rev 2 — Rewritten with correct Target semantic model (Target = Stigix peer node with responder services). Revised all proposals accordingly. |

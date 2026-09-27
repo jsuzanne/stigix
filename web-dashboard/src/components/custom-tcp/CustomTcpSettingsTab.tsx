@@ -147,7 +147,7 @@ export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ toke
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `stigix-custom-apps-${instanceInfo?.siteName || 'fleet'}-${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `stigix-custom-apps-${instanceInfo?.siteName || 'mesh'}-${new Date().toISOString().slice(0, 10)}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
