@@ -227,35 +227,57 @@ export function GatewayDropdown({ isLeader }: GatewayDropdownProps) {
                             <p className="px-2 pb-1 text-[9px] font-black uppercase tracking-widest text-text-muted/60">
                                 Remote Sites
                             </p>
-                            {remotePeers.map(peer => (
+                            {remotePeers.map(peer => {
+                                const isOffline = peer.status === 'offline' || peer.status !== 'online';
+                                const isActive = peer.instance_id === activePeerId;
+                                return (
                                 <button
                                     key={peer.instance_id}
-                                    onClick={() => { setActivePeerId(peer.instance_id); setOpen(false); }}
+                                    onClick={() => {
+                                        if (isOffline) return;
+                                        setActivePeerId(peer.instance_id);
+                                        setOpen(false);
+                                    }}
+                                    disabled={isOffline}
+                                    title={isOffline
+                                        ? `${peer.site || peer.instance_id} is unreachable — the Leader cannot connect to this peer via the gateway. Check VPN tunnel or peer connectivity.`
+                                        : `Switch to ${peer.site || peer.instance_id} (${peer.ip_private || ''})`
+                                    }
                                     className={`
                                         w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm
-                                        transition-all hover:bg-card-hover
-                                        ${peer.instance_id === activePeerId
-                                            ? 'bg-amber-500/10 text-amber-400 font-bold'
-                                            : 'text-text-primary'
+                                        transition-all
+                                        ${isOffline
+                                            ? 'opacity-40 cursor-not-allowed grayscale'
+                                            : isActive
+                                                ? 'bg-amber-500/10 text-amber-400 font-bold hover:bg-amber-500/15'
+                                                : 'text-text-primary hover:bg-card-hover'
                                         }
-                                        ${peer.status === 'offline' ? 'opacity-50' : ''}
                                     `}
                                 >
                                     <span className={`
                                         w-2 h-2 rounded-full flex-shrink-0
                                         ${peer.status === 'online' ? 'bg-emerald-500' : 'bg-red-500'}
                                     `} />
-                                    <span className="flex-1 truncate">
+                                    <span className={`flex-1 truncate ${isOffline ? 'line-through decoration-red-500/60' : ''}`}>
                                         {peer.site || peer.instance_id}
                                     </span>
-                                    <span className="text-[9px] text-text-muted font-mono ml-auto">
-                                        {peer.ip_private || ''}
-                                    </span>
-                                    {peer.instance_id === activePeerId && (
-                                        <span className="text-[9px] font-black text-amber-400 ml-1">ACTIVE</span>
+                                    {isOffline ? (
+                                        <span className="text-[9px] font-black text-red-400/80 ml-auto border border-red-500/30 rounded px-1.5 py-0.5">
+                                            UNREACHABLE
+                                        </span>
+                                    ) : (
+                                        <>
+                                            <span className="text-[9px] text-text-muted font-mono ml-auto">
+                                                {peer.ip_private || ''}
+                                            </span>
+                                            {isActive && (
+                                                <span className="text-[9px] font-black text-amber-400 ml-1">ACTIVE</span>
+                                            )}
+                                        </>
                                     )}
                                 </button>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
 
