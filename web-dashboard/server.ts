@@ -12378,6 +12378,15 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
             forwardHeaders[k] = v as string | string[];
         }
     }
+    // Inject a short-lived internal gateway token so the peer can authenticate the request.
+    // All nodes in the mesh share the same JWT_SECRET — valid for the lab setup.
+    // M4 will replace this with HMAC inter-node signing (no shared secret needed).
+    const gatewayToken = jwt.sign(
+        { username: 'stigix-gateway', role: 'admin', peer: peerId },
+        SECRET_KEY,
+        { expiresIn: '30s' }
+    );
+    forwardHeaders['authorization'] = `Bearer ${gatewayToken}`;
     forwardHeaders['x-gateway-source'] = 'stigix-leader';
     forwardHeaders['x-forwarded-for'] = req.ip || '';
     forwardHeaders['host'] = `${peerIp}:${peerPort}`;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { usePeerContext } from './PeerContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Area, AreaChart, ComposedChart, Bar } from 'recharts';
 import {
     Activity, Gauge, Play, Pause, AlertCircle, Clock, Zap, Target, Network,
@@ -93,6 +94,7 @@ export default function Speedtest({ token }: Props) {
     const [cport, setCport] = useState<number>(30000);
     const sseRef = useRef<EventSource | null>(null);
 
+    const { gFetch, activePeerId } = usePeerContext();
     const authHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
 
     const [quickTargets, setQuickTargets] = useState<{ label: string, host: string }[]>([]);
@@ -150,11 +152,11 @@ export default function Speedtest({ token }: Props) {
             if (sseRef.current) sseRef.current.close();
             clearInterval(interval);
         };
-    }, []);
+    }, [activePeerId]);
 
     const fetchFeatures = async () => {
         try {
-            const res = await fetch('/api/features', { headers: authHeaders });
+            const res = await gFetch('/api/features', { headers: authHeaders });
             const data = await res.json();
             if (res.ok && data.xfr_targets) {
                 setQuickTargets(data.xfr_targets);
@@ -164,7 +166,7 @@ export default function Speedtest({ token }: Props) {
 
     const fetchSharedTargets = async () => {
         try {
-            const res = await fetch('/api/targets', { headers: authHeaders });
+            const res = await gFetch('/api/targets', { headers: authHeaders });
             if (res.ok) {
                 const data = await res.json();
                 setSharedTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.xfr));
@@ -174,7 +176,7 @@ export default function Speedtest({ token }: Props) {
 
     const fetchHistory = async () => {
         try {
-            const res = await fetch('/api/tests/xfr', { headers: authHeaders });
+            const res = await gFetch('/api/tests/xfr', { headers: authHeaders });
             const data = await res.json();
             if (res.ok) {
                 setHistory(data);

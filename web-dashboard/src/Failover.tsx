@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { usePeerContext } from './PeerContext';
 import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'recharts';
 import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera } from 'lucide-react';
 import { toPng } from 'html-to-image';
@@ -71,15 +72,16 @@ export default function Failover(props: FailoverProps) {
         return () => clearInterval(intv);
     }, []);
 
+    const { gFetch, activePeerId } = usePeerContext();
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
     const fetchEndpoints = async () => {
         try {
-            const res = await fetch('/api/convergence/endpoints', { headers: authHeaders() });
+            const res = await gFetch('/api/convergence/endpoints', { headers: authHeaders() });
             const data = await res.json();
             setEndpoints(data);
 
-            const ifaceRes = await fetch('/api/config/interfaces', { headers: authHeaders() });
+            const ifaceRes = await gFetch('/api/config/interfaces', { headers: authHeaders() });
             const ifaceData = await ifaceRes.json();
             setActiveInterfaces(ifaceData);
         } catch (e) { }
@@ -87,7 +89,7 @@ export default function Failover(props: FailoverProps) {
 
     const fetchStatus = async () => {
         try {
-            const res = await fetch('/api/convergence/status', { headers: authHeaders() });
+            const res = await gFetch('/api/convergence/status', { headers: authHeaders() });
             const data = await res.json();
             setActiveTests(data.filter((t: any) => t.running !== false));
         } catch (e) { }
@@ -95,7 +97,7 @@ export default function Failover(props: FailoverProps) {
 
     const fetchHistory = async () => {
         try {
-            const res = await fetch('/api/convergence/history', { headers: authHeaders() });
+            const res = await gFetch('/api/convergence/history', { headers: authHeaders() });
             const data = await res.json();
             setHistory(data);
         } catch (e) { } finally {
@@ -162,7 +164,7 @@ export default function Failover(props: FailoverProps) {
         // Fetch Thresholds
         const fetchThresholds = async () => {
             try {
-                const res = await fetch('/api/config/convergence', {
+                const res = await gFetch('/api/config/convergence', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
@@ -178,7 +180,7 @@ export default function Failover(props: FailoverProps) {
         fetchThresholds();
 
         // Fetch shared targets with convergence capability
-        fetch('/api/targets', { headers: authHeaders() })
+        gFetch('/api/targets', { headers: authHeaders() })
             .then(r => r.json())
             .then(data => setConvergenceTargets((Array.isArray(data) ? data : []).filter((t: any) => t.enabled && t.capabilities?.convergence)))
             .catch(() => { });
@@ -189,7 +191,7 @@ export default function Failover(props: FailoverProps) {
             fetchThresholds();
         }, 5000);
         return () => clearInterval(interval);
-    }, []);
+    }, [activePeerId]);
 
     useEffect(() => {
         const checkReachability = async () => {

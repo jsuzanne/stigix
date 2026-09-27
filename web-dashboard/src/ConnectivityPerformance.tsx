@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { usePeerContext } from './PeerContext';
 import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine, ReferenceArea } from 'recharts';
 import { twMerge } from 'tailwind-merge';
@@ -446,6 +447,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
         { x: 0, connTop: 0, connH: 0, visible: false }
     );
 
+    const { gFetch, activePeerId } = usePeerContext();
     const authHeaders = () => ({ 'Authorization': `Bearer ${token}` });
 
     const formatMs = (val: number | undefined | null) => {
@@ -457,9 +459,9 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
     const fetchProbesConfig = async () => {
         try {
             const [activeRes, configsRes, scenariosRes] = await Promise.all([
-                fetch('/api/connectivity/active-probes', { headers: authHeaders() }),
-                fetch('/api/connectivity/custom', { headers: authHeaders() }),
-                fetch('/api/target/scenarios', { headers: authHeaders() })
+                gFetch('/api/connectivity/active-probes', { headers: authHeaders() }),
+                gFetch('/api/connectivity/custom', { headers: authHeaders() }),
+                gFetch('/api/target/scenarios', { headers: authHeaders() })
             ]);
             const [activeData, configsData, scenariosData] = await Promise.all([
                 activeRes.json(),
@@ -493,8 +495,8 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
         try {
             const dynamicLimit = timeRange === '15m' ? 300 : timeRange === '1h' ? 1500 : timeRange === '6h' ? 5000 : timeRange === '24h' ? 12000 : 30000;
             const [statsRes, resultsRes] = await Promise.all([
-                fetch(`/api/connectivity/stats?range=${timeRange}`, { headers: authHeaders() }),
-                fetch(`/api/connectivity/results?timeRange=${timeRange}&limit=${dynamicLimit}`, { headers: authHeaders() })
+                gFetch(`/api/connectivity/stats?range=${timeRange}`, { headers: authHeaders() }),
+                gFetch(`/api/connectivity/results?timeRange=${timeRange}&limit=${dynamicLimit}`, { headers: authHeaders() })
             ]);
             const [statsData, resultsData] = await Promise.all([
                 statsRes.json(),
@@ -616,7 +618,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
         fetchStatsAndResults();         // Phase 2: async
         const interval = setInterval(fetchData, 60000); // Refresh both every 60s
         return () => clearInterval(interval);
-    }, [timeRange]);
+    }, [timeRange, activePeerId]);
 
     const getScoreColor = (score: number) => {
         if (score >= 80) return 'text-green-600 dark:text-green-400 bg-green-500/10 border-green-500/20';

@@ -28,6 +28,10 @@ interface PeerContextValue {
     peers: PeerEntry[];
     setActivePeerId: (id: string | null) => void;
     refreshPeers: () => Promise<void>;
+    /** Rewrites /api/* paths to /api/gateway/:peerId/* when in remote context. */
+    gFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    /** Empty string in local mode, '/api/gateway/:peerId' in remote mode. */
+    apiBase: string;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -37,7 +41,9 @@ const PeerContext = createContext<PeerContextValue>({
     activePeer: null,
     peers: [],
     setActivePeerId: () => {},
-    refreshPeers: async () => {}
+    refreshPeers: async () => {},
+    gFetch: (input, init) => fetch(input, init),
+    apiBase: ''
 });
 
 export function usePeerContext() {
@@ -96,8 +102,27 @@ export function PeerContextProvider({ token, isLeader, children }: PeerContextPr
 
     const activePeer = peers.find(p => p.instance_id === activePeerId) ?? null;
 
+    // M3 — Gateway-aware fetch wrapper
+    // When activePeerId is set, rewrites /api/* → /api/gateway/:peerId/*
+    // In local mode (activePeerId = null), behaves exactly like window.fetch.
+    const apiBase = activePeerId ? `/api/gateway/${activePeerId}` : '';
+
+    const gFetch = useCallback((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        if (!activePeerId) {
+            return fetch(input, init);
+        }
+        // Rewrite URL: prepend gateway prefix for /api/* paths
+        let url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+        if (url.startsWith('/api/')) {
+            url = `/api/gateway/${activePeerId}${url}`;
+        }
+        // Rebuild input preserving Request properties if needed
+        const newInput = typeof input === 'string' || input instanceof URL ? url : new Request(url, input as Request);
+        return fetch(newInput, init);
+    }, [activePeerId]);
+
     return (
-        <PeerContext.Provider value={{ activePeerId, activePeer, peers, setActivePeerId, refreshPeers }}>
+        <PeerContext.Provider value={{ activePeerId, activePeer, peers, setActivePeerId, refreshPeers, gFetch, apiBase }}>
             {children}
         </PeerContext.Provider>
     );
