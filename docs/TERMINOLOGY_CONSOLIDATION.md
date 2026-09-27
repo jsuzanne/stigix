@@ -35,32 +35,36 @@ This is defined in [`targets.ts`](../web-dashboard/src/types/targets.ts):
  */
 ```
 
-The Stigix architecture is therefore a **Target-centric model**:
+The Stigix architecture is a **Target-centric, flat model**:
 
 ```
-                      ┌──────────────────────┐
-                      │       LEADER         │
-                      │  (Target Controller) │
-                      │  Discovers, manages  │
-                      │  and provisions all  │
-                      │  targets in the mesh │
-                      └──────────┬───────────┘
-                                 │ registers / syncs
-              ┌──────────────────┼──────────────────┐
-              ▼                  ▼                   ▼
-     ┌─────────────┐    ┌─────────────┐     ┌─────────────┐
-     │   TARGET     │    │   TARGET     │     │   TARGET     │
-     │  (BR1-Peer)  │    │  (BR2-Peer)  │     │  (DC1-Peer)  │
-     │             │    │             │     │             │
-     │ ☎ Voice 6100│    │ ☎ Voice 6100│     │ ☎ Voice 6100│
-     │ ⚡ Conv 6200│    │ ⚡ Conv 6200│     │ ⚡ Conv 6200│
-     │ 📡 XFR 5201 │    │ 📡 XFR 5201 │     │ 📡 XFR 5201 │
-     │ 🛡 EICAR 8082│   │ 🛡 EICAR 8082│    │ 🛡 EICAR 8082│
-     │ 🔌 TCP Apps │    │ 🔌 TCP Apps │     │ 🔌 TCP Apps │
-     └─────────────┘    └─────────────┘     └─────────────┘
+     ┌───────────────┐    ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+     │    TARGET      │    │    TARGET      │    │    TARGET      │    │    TARGET      │
+     │   DC1 (HUB)    │    │   BR1 (Spoke)  │    │   BR2 (Spoke)  │    │   BR5 (Spoke)  │
+     │               │    │               │    │               │    │               │
+     │ ☎ Voice  6100 │    │ ☎ Voice  6100 │    │ ☎ Voice  6100 │    │ ☎ Voice  6100 │
+     │ ⚡ Conv  6200 │    │ ⚡ Conv  6200 │    │ ⚡ Conv  6200 │    │ ⚡ Conv  6200 │
+     │ 📡 XFR   5201 │    │ 📡 XFR   5201 │    │ 📡 XFR   5201 │    │ 📡 XFR   5201 │
+     │ 🛡 EICAR 8082 │    │ 🛡 EICAR 8082 │    │ 🛡 EICAR 8082 │    │ 🛡 EICAR 8082 │
+     │ 🔌 TCP Apps   │    │ 🔌 TCP Apps   │    │ 🔌 TCP Apps   │    │ 🔌 TCP Apps   │
+     │               │    │               │    │               │    │               │
+     │ ★ LEADER ROLE │    │               │    │               │    │               │
+     │  + Discovery  │    │               │    │               │    │               │
+     │  + Registry   │    │               │    │               │    │               │
+     │  + Provisioning│   │               │    │               │    │               │
+     └───────┬───────┘    └───────┬───────┘    └───────┬───────┘    └───────┬───────┘
+             │                    │                    │                    │
+             └────────────────────┴────────────────────┴────────────────────┘
+                              All nodes are targets.
+                    The Leader is a target WITH additional duties.
 ```
 
-**Key insight**: "Target" and "Peer" are not separate concepts — they are two facets of the same entity. A peer IS a target. The Leader discovers peers and exposes them as targets to the rest of the mesh.
+**Key insights**:
+- **Every Stigix node is a Target** — it runs the same responder services regardless of its role.
+- **The Leader is a Target with additional responsibilities**: discovery, registry, and provisioning. It sits in the central DC or connects out-of-band via management LAN/VLAN. It can send AND receive test traffic like any other target.
+- **"Peer" simply means "not the Leader"** — a Peer is a Target that doesn't carry the Leader responsibility.
+- The UI already reflects this: the Leader appears in its own Targets list with a green "Local Node" badge (`isSelf` check in `Settings.tsx:5077`).
+- The Leader role is an **additional capability**, not a different class of node. It is "first among equals".
 
 ---
 
@@ -370,5 +374,6 @@ After Level B is applied:
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-09-27 | `v2.0.66` | Stigix Core Team | Rev 3 — Clarified that the Leader IS also a Target (flat model, "first among equals"). Updated architecture diagram. |
 | 2026-09-27 | `v2.0.66` | Stigix Core Team | Rev 2 — Rewritten with correct Target semantic model (Target = Stigix peer node with responder services). Revised all proposals accordingly. |
 | 2026-09-27 | `v2.0.66` | Stigix Core Team | Initial document creation — terminology audit and consolidation proposals |
