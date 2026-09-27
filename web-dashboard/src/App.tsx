@@ -118,8 +118,10 @@ export default function App() {
   const [copilotConfig, setCopilotConfig] = useState<{ enabled: boolean; featureEnabled?: boolean; hasKey: boolean } | null>(null);
   const [isLeader, setIsLeader] = useState<boolean>(false);
   // Tracks whether a remote peer is active (set via PeerContextProvider callback).
-  // Used by fetchDashboardData to avoid overwriting remote voice/conv data with DC1 local data.
+  // isRemoteViewRef: used in async fetchDashboardData (avoids stale closure).
+  // isRemoteView state: used for reactive UI (disable buttons, hide live sections).
   const isRemoteViewRef = React.useRef<boolean>(false);
+  const [isRemoteView, setIsRemoteView] = React.useState<boolean>(false);
 
   const fetchRegistryLeaderStatus = async () => {
     if (!token) return;
@@ -821,7 +823,10 @@ export default function App() {
     <PeerContextProvider
       token={token}
       isLeader={isLeader}
-      onActivePeerChange={(peerId) => { isRemoteViewRef.current = peerId !== null; }}
+      onActivePeerChange={(peerId) => {
+        isRemoteViewRef.current = peerId !== null;
+        setIsRemoteView(peerId !== null);
+      }}
     >
       {/* Peer-aware live status sync — patches globalConvStatus/globalVoiceStatus from remote peer */}
       <PeerStatusSync
@@ -1368,11 +1373,12 @@ export default function App() {
                 <div className="flex items-center gap-2.5">
                   <button
                     onClick={runSpeedtest}
-                    disabled={runningSpeedtest}
+                    disabled={runningSpeedtest || isRemoteView}
+                    title={isRemoteView ? "Cannot run speedtest on a remote peer — view only" : undefined}
                     className={cn(
                       "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all shadow-sm border",
-                      runningSpeedtest
-                        ? "bg-blue-500/10 text-blue-400 border-blue-500/30 cursor-not-allowed"
+                      (runningSpeedtest || isRemoteView)
+                        ? "bg-blue-500/10 text-blue-400/40 border-blue-500/20 cursor-not-allowed opacity-50"
                         : "bg-card-secondary hover:bg-card-hover hover:border-blue-500/30 text-text-muted hover:text-text-primary border-border"
                     )}
                   >
@@ -1382,7 +1388,14 @@ export default function App() {
 
                   <button
                     onClick={() => setShowIperfModal(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest bg-card-secondary hover:bg-card-hover hover:border-purple-500/30 text-text-muted hover:text-text-primary border border-border transition-all shadow-sm"
+                    disabled={isRemoteView}
+                    title={isRemoteView ? "Cannot run iperf on a remote peer — view only" : undefined}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest border transition-all shadow-sm",
+                      isRemoteView
+                        ? "bg-card-secondary text-text-muted/40 border-border opacity-50 cursor-not-allowed"
+                        : "bg-card-secondary hover:bg-card-hover hover:border-purple-500/30 text-text-muted hover:text-text-primary border-border"
+                    )}
                   >
                     <Activity size={13} className="text-purple-400" />
                     Iperf Client
