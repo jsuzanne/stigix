@@ -25,47 +25,81 @@ import { Toaster } from 'react-hot-toast';
 
 /**
  * PeerStatusSync — lives INSIDE PeerContextProvider so it can call usePeerContext().
- * When a remote peer is selected, it polls the peer's live-status every 500ms
- * (failover tab) or 3s (other tabs) and patches the parent's global states
- * via callbacks. Uses /api/admin/system/live-status — a lightweight endpoint
- * (~10× smaller than dashboard-data) that returns only convergenceTests + voice,
- * with no shell exec or heavy file I/O on the hot path.
+ * When a remote peer is selected:
+ *  - fast loop (500ms failover / 3s otherwise): polls live-status (voice + convergence)
+ *    + traffic/status (running, rate, client_count) from remote peer.
+ *  - slow loop (10s): polls dashboard-data for stats + status so the Traffic Generator
+ *    panel shows BR5's real metrics instead of DC1 zeros.
+ * All state patches go via callbacks; DC1 fetch functions skip those state updates when
+ * isRemoteViewRef.current is set (to prevent flapping).
  */
 function PeerStatusSync({
   token,
   view,
   onConvStatus,
   onVoiceStatus,
+  onStats,
+  onStatus,
+  onTrafficStatus,
 }: {
   token: string | null;
   view: string;
   onConvStatus: (v: any[]) => void;
   onVoiceStatus: (v: any) => void;
+  onStats?: (v: any) => void;
+  onStatus?: (v: string) => void;
+  onTrafficStatus?: (running: boolean, rate?: number, count?: number) => void;
 }) {
   const { gFetch, activePeerId } = usePeerContext();
 
+  // ── Fast loop: live-status (voice/conv) + traffic/status ──────────────────
   useEffect(() => {
-    // Only activate when a remote peer is selected
     if (!token || !activePeerId) return;
 
     const poll = async () => {
       try {
-        const res = await gFetch('/api/admin/system/live-status', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data.convergenceTests) onConvStatus(data.convergenceTests);
-        if (data.voice) onVoiceStatus(data.voice);
+        const [liveRes, trafficRes] = await Promise.allSettled([
+          gFetch('/api/admin/system/live-status', { headers: { 'Authorization': `Bearer ${token}` } }),
+          gFetch('/api/traffic/status', { headers: { 'Authorization': `Bearer ${token}` } }),
+        ]);
+        if (liveRes.status === 'fulfilled' && liveRes.value.ok) {
+          const data = await liveRes.value.json();
+          if (data.convergenceTests) onConvStatus(data.convergenceTests);
+          if (data.voice) onVoiceStatus(data.voice);
+        }
+        if (trafficRes.status === 'fulfilled' && trafficRes.value.ok) {
+          const td = await trafficRes.value.json();
+          onTrafficStatus?.(td.running ?? false, td.sleep_interval, td.client_count);
+        }
       } catch { }
     };
 
     poll();
-    // Fast poll when on failover tab, slow poll otherwise
     const ms = view === 'failover' ? 500 : 3000;
     const interval = setInterval(poll, ms);
     return () => clearInterval(interval);
   }, [token, activePeerId, view]);
+
+  // ── Slow loop: dashboard-data for stats + status (Traffic Generator) ───────
+  useEffect(() => {
+    if (!token || !activePeerId) return;
+
+    const pollDash = async () => {
+      try {
+        const res = await gFetch('/api/admin/system/dashboard-data', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.stats) onStats?.(data.stats);
+        if (data.status) onStatus?.(data.status);
+      } catch { }
+    };
+
+    pollDash();
+    const interval = setInterval(pollDash, 10_000);
+    return () => clearInterval(interval);
+  }, [token, activePeerId]);
 
   return null;
 }
@@ -451,13 +485,11 @@ export default function App() {
       if (res.status === 403 || res.status === 401) logout();
       const data = await res.json();
 
-      if (data.stats) processStats(data.stats);
-      if (data.status) setStatus(data.status);
+      if (data.stats && !isRemoteViewRef.current) processStats(data.stats);
+      if (data.status && !isRemoteViewRef.current) setStatus(data.status);
       if (data.logs) setLogs(data.logs);
       if (data.dockerStats) setDockerStats(data.dockerStats);
-      // In remote view, voice and convergenceTests are owned by PeerStatusSync
-      // (which polls the active peer via gFetch). Skipping here avoids flapping
-      // caused by DC1 local data overwriting BR5 remote data.
+      // In remote view, voice/conv/stats/status are owned by PeerStatusSync.
       if (!isRemoteViewRef.current) {
         if (data.convergenceTests) setGlobalConvStatus(data.convergenceTests);
         if (data.voice) setGlobalVoiceStatus(data.voice);
@@ -490,7 +522,7 @@ export default function App() {
   };
 
   const fetchTrafficStatus = async () => {
-    if (!token) return;
+    if (!token || isRemoteViewRef.current) return; // owned by PeerStatusSync in remote view
     try {
       const res = await fetch('/api/traffic/status', { headers: authHeaders() });
       const data = await res.json();
@@ -834,6 +866,13 @@ export default function App() {
         view={view}
         onConvStatus={setGlobalConvStatus}
         onVoiceStatus={setGlobalVoiceStatus}
+        onStats={processStats}
+        onStatus={setStatus}
+        onTrafficStatus={(running, rate, count) => {
+          setTrafficRunning(running);
+          if (rate !== undefined) setTrafficRate(rate);
+          if (count !== undefined) setTrafficClientCount(count);
+        }}
       />
     <div className="min-h-screen bg-background text-foreground pt-4 pb-8 px-8">
       <Toaster position="top-right" />

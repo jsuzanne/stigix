@@ -10,6 +10,8 @@ import {
     Layers, Cloud, Search, X, Info, ChevronDown, Upload, Download, FileJson
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { usePeerContext } from './PeerContext';
+
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return inputs.filter(Boolean).join(' ');
@@ -81,6 +83,10 @@ interface CustomAppsProps {
 }
 
 export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
+    // Route all API calls through the peer gateway when in remote view
+    const { gFetch, activePeerId } = usePeerContext();
+    const isRemoteView = activePeerId !== null;
+
     const [applications, setApplications] = useState<CustomTcpApplicationConfig[]>([]);
     const [allAppSummaries, setAllAppSummaries] = useState<Record<string, any>>({});
     const [instanceInfo, setInstanceInfo] = useState<{ instanceId: string; siteName: string; hostname: string } | null>(null);
@@ -123,7 +129,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const loadConfig = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch('/api/custom-tcp-apps', {
+            const res = await gFetch('/api/custom-tcp-apps', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -144,7 +150,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
 
     const loadAllSummaries = async () => {
         try {
-            const res = await fetch('/api/custom-tcp-apps/summary/all', { headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await gFetch('/api/custom-tcp-apps/summary/all', { headers: { 'Authorization': `Bearer ${token}` } });
             if (res.ok) {
                 const data = await res.json();
                 const map: Record<string, any> = {};
@@ -159,7 +165,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     };
 
     const handleGlobalAction = async (action: 'start-all' | 'stop-all' | 'start-clients' | 'stop-clients' | 'start-listeners' | 'stop-listeners') => {
-        if (isActionLoading || !token) return;
+        if (isActionLoading || !token || isRemoteView) return; // disabled in remote view
         setIsActionLoading(true);
         try {
             const res = await fetch(`/api/custom-tcp-apps/actions/${action}`, {
