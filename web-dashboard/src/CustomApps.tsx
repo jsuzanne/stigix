@@ -208,9 +208,9 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const loadAppStatus = async (appId: string) => {
         try {
             const [statusRes, inRes, outRes] = await Promise.all([
-                fetch(`/api/custom-tcp-apps/${appId}/status`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`/api/custom-tcp-apps/${appId}/sessions/incoming`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`/api/custom-tcp-apps/${appId}/sessions/outgoing`, { headers: { 'Authorization': `Bearer ${token}` } })
+                gFetch(`/api/custom-tcp-apps/${appId}/status`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                gFetch(`/api/custom-tcp-apps/${appId}/sessions/incoming`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                gFetch(`/api/custom-tcp-apps/${appId}/sessions/outgoing`, { headers: { 'Authorization': `Bearer ${token}` } })
             ]);
 
             if (statusRes.ok) {
