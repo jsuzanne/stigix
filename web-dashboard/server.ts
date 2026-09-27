@@ -12461,10 +12461,14 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
         timeout: 5000
     };
 
-    log('GATEWAY', `→ ${req.method} ${peerIp}:${peerPort}${proxyUrl} [${peerId}]`);
+    // proxyResReceived is set to true the moment BR5 starts responding.
+    // This is the only reliable guard for "is this a real mid-flight abort?"
+    // — req.on('close') fires on ALL GET requests as soon as the request
+    // headers are sent (before BR5 responds), making res.writableEnded useless.
+    let proxyResReceived = false;
 
     const proxyReq = http.request(options, (proxyRes) => {
-        // Forward response status + headers (minus hop-by-hop)
+        proxyResReceived = true; // peer responded — abort handler must no-op from here
         res.status(proxyRes.statusCode || 502);
         for (const [k, v] of Object.entries(proxyRes.headers)) {
             if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
@@ -12488,6 +12492,7 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
     });
 
     proxyReq.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'ECONNRESET' || err.code === 'EPIPE') return; // client-abort cleanup, already logged
         log('GATEWAY', `Error reaching peer ${peerId} (${peerIp}:${peerPort}): ${err.message}`, 'warn');
         if (!res.headersSent) {
             res.status(502).json({
@@ -12502,22 +12507,15 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
     req.pipe(proxyReq, { end: true });
 
     // Handle client abort (browser tab switch, React unmount, peer switch).
-    // IMPORTANT: req.on('close') fires on BOTH normal completion AND client abort.
-    // We must only destroy the upstream connection when the client actually aborted
-    // (i.e. the response has not finished yet). If res.writableEnded is true,
-    // the request completed normally — don't touch proxyReq.
+    // Guard: only destroy proxyReq if BR5 has NOT yet responded (proxyResReceived = false).
+    // Once the response callback fires, the request is in normal flight — never destroy.
     const onClientClose = () => {
-        if (!res.writableEnded && !proxyReq.destroyed) {
+        if (!proxyResReceived && !proxyReq.destroyed) {
             proxyReq.destroy();
         }
     };
     req.on('close', onClientClose);
     req.on('aborted', onClientClose); // Node < 18 compat
-
-    // Suppress residual ECONNRESET/EPIPE from already-handled abort cleanup
-    proxyReq.on('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'ECONNRESET' || err.code === 'EPIPE') return;
-    });
 });
 log('FLEET', `🔀 Fleet Gateway Reverse Proxy mounted at /api/gateway/:peerId/* (Leader only)`);
 
