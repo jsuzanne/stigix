@@ -47,7 +47,7 @@ function PeerStatusSync({
   onConvStatus: (v: any[]) => void;
   onVoiceStatus: (v: any) => void;
   onStats?: (v: any) => void;
-  onStatus?: (v: string) => void;
+  onStatus?: (v: 'running' | 'stopped' | 'unknown') => void;
   onTrafficStatus?: (running: boolean, rate?: number, count?: number) => void;
 }) {
   const { gFetch, activePeerId } = usePeerContext();
