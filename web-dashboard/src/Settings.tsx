@@ -15,6 +15,7 @@ import { twMerge } from 'tailwind-merge';
 import { toast } from 'react-hot-toast';
 import { CustomTcpSettingsTab } from './components/custom-tcp/CustomTcpSettingsTab';
 import { ApiStudio } from './ApiStudio';
+import { usePeerContext } from './PeerContext';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -196,6 +197,8 @@ interface DebugPoint {
 }
 
 function IoTDebugMonitor({ token }: { token: string }) {
+    const { gFetch } = usePeerContext();
+    const apiFetch = gFetch;
     const [open, setOpen] = useState(false);
     const [timeWindow, setTimeWindow] = useState<'15m' | '1h' | '6h'>('1h');
     const historyRef = useRef<DebugPoint[]>([]);
@@ -207,7 +210,7 @@ function IoTDebugMonitor({ token }: { token: string }) {
 
     const collect = useCallback(async () => {
         try {
-            const res = await fetch('/api/system/iot-debug-history', { headers: authH() });
+            const res = await apiFetch('/api/system/iot-debug-history', { headers: authH() });
             if (res.ok) {
                 const data = await res.json();
                 historyRef.current = data;
@@ -415,6 +418,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     onUpdateCopilotConfig?: () => void,
     initialTab?: 'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'
 }) {
+    // Route all API calls through the peer gateway when in remote view
+    const { gFetch, activePeerId } = usePeerContext();
+    const isRemoteView = activePeerId !== null;
+    const apiFetch = gFetch;
+
     const [activeTab, setActiveTab] = useState<'probes' | 'distribution' | 'maintenance' | 'system' | 'targets' | 'convergence' | 'registry' | 'targetService' | 'mcp' | 'prisma-api' | 'strata' | 'custom-tcp' | 'api-studio'>(initialTab || 'distribution');
 
     // Shared State
@@ -446,7 +454,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     // Fetch Target Service Status
     const fetchTargetServiceStatus = async () => {
         try {
-            const res = await fetch('/api/target-service/status', {
+            const res = await apiFetch('/api/target-service/status', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -473,7 +481,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         setIsGeneratingTechSupport(true);
         const toastId = toast.loading('Generating and packaging Tech-Support bundle...');
         try {
-            const res = await fetch('/api/system/tech-support', {
+            const res = await apiFetch('/api/system/tech-support', {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -540,7 +548,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             for (const t of targetsToPing) {
                 setTargetReachability(prev => ({ ...prev, [t.id]: 'loading' }));
                 try {
-                    const res = await fetch('/api/convergence/reachability', {
+                    const res = await apiFetch('/api/convergence/reachability', {
                         method: 'POST',
                         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ target: t.host, port: t.port })
@@ -570,7 +578,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         setTestingTargetId(t.id);
         setTargetReachability(prev => ({ ...prev, [t.id]: 'loading' }));
         try {
-            const res = await fetch(`/api/targets/${encodeURIComponent(t.id)}/test`, {
+            const res = await apiFetch(`/api/targets/${encodeURIComponent(t.id)}/test`, {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ host: t.host })
@@ -902,7 +910,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     useEffect(() => {
         const fetchMaintenanceStatus = async () => {
             try {
-                const res = await fetch('/api/admin/maintenance/status', {
+                const res = await apiFetch('/api/admin/maintenance/status', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
@@ -925,7 +933,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
         const fetchRegistryStatus = async () => {
             try {
-                const res = await fetch('/api/registry/status', { headers: authHeaders });
+                const res = await apiFetch('/api/registry/status', { headers: authHeaders });
                 const data = await res.json();
                 if (res.ok) {
                     setRegistryStatus(data);
@@ -990,7 +998,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         setIsTestingConnectivity(true);
         setConnectivityResult(null);
         try {
-            const res = await fetch('/api/registry/test-connectivity', {
+            const res = await apiFetch('/api/registry/test-connectivity', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ url: staticLeaderUrl })
@@ -1011,7 +1019,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const handleSaveStaticLeader = async (url: string | null) => {
         setSaving(true);
         try {
-            const res = await fetch('/api/registry/static-leader', {
+            const res = await apiFetch('/api/registry/static-leader', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ url })
@@ -1019,7 +1027,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             if (res.ok) {
                 showSuccess(url ? "Static Leader configured!" : "Reverted to auto-discovery");
                 // Refresh status
-                const sres = await fetch('/api/registry/status', { headers: authHeaders });
+                const sres = await apiFetch('/api/registry/status', { headers: authHeaders });
                 const sdata = await sres.json();
                 setRegistryStatus(sdata);
             } else {
@@ -1069,7 +1077,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         setSiteNameError(null);
         setSiteNameSaved(false);
         try {
-            const res = await fetch('/api/registry/site-name', {
+            const res = await apiFetch('/api/registry/site-name', {
                 method: 'POST',
                 headers: { ...authHeaders, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ siteName: siteNameEdit.trim() })
@@ -1078,7 +1086,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             if (!res.ok) throw new Error(data.error || 'Failed to save');
             setSiteNameSaved(true);
             // Refresh registry status to sync the new name
-            const sres = await fetch('/api/registry/status', { headers: authHeaders });
+            const sres = await apiFetch('/api/registry/status', { headers: authHeaders });
             if (sres.ok) setRegistryStatus(await sres.json());
             setTimeout(() => setSiteNameSaved(false), 3000);
         } catch (e: any) {
@@ -1166,7 +1174,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const handlePublishBundle = async (type: string) => {
         setPublishingType(type);
         try {
-            const res = await fetch(`/api/provisioning/publish/${type}`, {
+            const res = await apiFetch(`/api/provisioning/publish/${type}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
             });
@@ -1187,7 +1195,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const handleSyncNow = async () => {
         setIsSyncingPeer(true);
         try {
-            const res = await fetch('/api/provisioning/sync', {
+            const res = await apiFetch('/api/provisioning/sync', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1208,7 +1216,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const handleToggleProvisioning = async (enabled: boolean) => {
         setProvisioningToggling(true);
         try {
-            const res = await fetch('/api/provisioning/config', {
+            const res = await apiFetch('/api/provisioning/config', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ enabled })
@@ -1299,7 +1307,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         const updates: Record<string, number> = {};
         apps.forEach(a => updates[a.domain] = a.weight);
         try {
-            await fetch('/api/config/apps-bulk', {
+            await apiFetch('/api/config/apps-bulk', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ updates })
@@ -1311,7 +1319,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         const updates: Record<string, number> = {};
         allCats.forEach(c => c.apps.forEach(a => updates[a.domain] = a.weight));
         try {
-            await fetch('/api/config/apps-bulk', {
+            await apiFetch('/api/config/apps-bulk', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ updates })
@@ -1329,7 +1337,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const saveInterfaces = async (newInterfaces: string[]) => {
         try {
-            await fetch('/api/config/interfaces', {
+            await apiFetch('/api/config/interfaces', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ interfaces: newInterfaces })
@@ -1365,7 +1373,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const saveProbes = async (probes: CustomProbe[]) => {
         try {
-            await fetch('/api/connectivity/custom', {
+            await apiFetch('/api/connectivity/custom', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ endpoints: probes })
@@ -1396,7 +1404,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const handleExportProbes = async () => {
         try {
-            const res = await fetch('/api/connectivity/custom/export', { headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await apiFetch('/api/connectivity/custom/export', { headers: { 'Authorization': `Bearer ${token}` } });
             if (res.ok) {
                 const data = await res.json();
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1415,7 +1423,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             const endpoints = Array.isArray(data) ? data : data.endpoints;
             if (!endpoints) throw new Error("Invalid format");
 
-            await fetch('/api/connectivity/custom', {
+            await apiFetch('/api/connectivity/custom', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ endpoints })
@@ -1428,14 +1436,14 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const syncDiscovery = async () => {
         setIsSyncing(true);
         try {
-            const res = await fetch('/api/probes/discovery/sync', {
+            const res = await apiFetch('/api/probes/discovery/sync', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
             if (res.ok) {
                 toast.success(`Discovery Sync Complete: ${data.created || 0} created, ${data.updated || 0} updated, ${data.staleMarked || 0} stale.`);
-                const probesRes = await fetch('/api/connectivity/custom', {
+                const probesRes = await apiFetch('/api/connectivity/custom', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (probesRes.ok) {
@@ -1477,7 +1485,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             const targetsToImport = Array.isArray(data) ? data : data.targets;
             if (!targetsToImport) throw new Error("Invalid format");
 
-            await fetch('/api/targets/import', {
+            await apiFetch('/api/targets/import', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ targets: targetsToImport })
@@ -1489,7 +1497,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const handleExportApps = async () => {
         try {
-            const res = await fetch('/api/config/applications/export?format=json', { headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await apiFetch('/api/config/applications/export?format=json', { headers: { 'Authorization': `Bearer ${token}` } });
             if (res.ok) {
                 const data = await res.json();
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1504,7 +1512,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const handleImportApps = async (content: string) => {
         try {
-            const res = await fetch('/api/config/applications/import', {
+            const res = await apiFetch('/api/config/applications/import', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ content })
@@ -1526,7 +1534,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         setUpgrading(true);
         setErrorMsg(null);
         try {
-            const res = await fetch('/api/admin/maintenance/upgrade', {
+            const res = await apiFetch('/api/admin/maintenance/upgrade', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ version: status.latest })
@@ -1551,7 +1559,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         if (!confirm(msg)) return;
         setUpgrading(true);
         try {
-            await fetch('/api/admin/maintenance/restart', {
+            await apiFetch('/api/admin/maintenance/restart', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ type })
@@ -1568,7 +1576,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 critical: Math.max(1, Math.min(100, Number(convergenceThresholds.critical) || 10))
             };
             setConvergenceThresholds(sanitized);
-            const res = await fetch('/api/config/convergence', {
+            const res = await apiFetch('/api/config/convergence', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -1599,7 +1607,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 error_rate_warning_pct: Math.max(0.1, Number(trafficThresholds.error_rate_warning_pct) || 5)
             };
             setTrafficThresholds(sanitized);
-            const res = await fetch('/api/config/traffic-thresholds', {
+            const res = await apiFetch('/api/config/traffic-thresholds', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -1621,7 +1629,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const saveUIConfig = async () => {
         setSaving(true);
         try {
-            const res = await fetch('/api/config/ui', {
+            const res = await apiFetch('/api/config/ui', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ maxCaptures, globalScoreTypes })
@@ -1648,9 +1656,9 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         try {
             if (key === 'auto_restart_traffic') {
                 // Traffic is controlled directly via applications-config.json
-                await fetch(value ? '/api/traffic/start' : '/api/traffic/stop', { method: 'POST', headers: authHeaders });
+                await apiFetch(value ? '/api/traffic/start' : '/api/traffic/stop', { method: 'POST', headers: authHeaders });
             } else {
-                await fetch('/api/config/system-settings', {
+                await apiFetch('/api/config/system-settings', {
                     method: 'POST',
                     headers: authHeaders,
                     body: JSON.stringify({ [key]: value })
@@ -1678,11 +1686,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         try {
             let res;
             if (editingTargetId) {
-                res = await fetch(`/api/targets/${editingTargetId}`, {
+                res = await apiFetch(`/api/targets/${editingTargetId}`, {
                     method: 'PUT', headers: authHeaders, body: JSON.stringify(newTarget)
                 });
             } else {
-                res = await fetch('/api/targets', {
+                res = await apiFetch('/api/targets', {
                     method: 'POST', headers: authHeaders, body: JSON.stringify(newTarget)
                 });
             }
@@ -1704,7 +1712,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         setIsTestingCloud(true);
         setCloudTestResult(null);
         try {
-            const res = await fetch('/api/config/cloud/test', {
+            const res = await apiFetch('/api/config/cloud/test', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ 
@@ -1729,7 +1737,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         setIsTestingPrisma(true);
         setPrismaTestResult(null);
         try {
-            const res = await fetch('/api/security/config/test', {
+            const res = await apiFetch('/api/security/config/test', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ sls_config: slsConfig })
@@ -1747,7 +1755,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const saveCloudConfig = async () => {
         setIsSavingCloud(true);
         try {
-            const res = await fetch('/api/config/cloud', {
+            const res = await apiFetch('/api/config/cloud', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify({ 
@@ -1758,7 +1766,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             if (res.ok) {
                 showSuccess('Cloud configuration saved');
                 setCloudMasterKey(''); // Clear sensitive field
-                const data = await fetch('/api/config/cloud', { headers: authHeaders }).then(r => r.json());
+                const data = await apiFetch('/api/config/cloud', { headers: authHeaders }).then(r => r.json());
                 setCloudConfig(data);
             } else {
                 setErrorMsg('Failed to save cloud configuration');
@@ -1793,12 +1801,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const deleteTarget = async (id: string) => {
         if (!confirm('Delete this target?')) return;
-        const res = await fetch(`/api/targets/${id}`, { method: 'DELETE', headers: authHeaders });
+        const res = await apiFetch(`/api/targets/${id}`, { method: 'DELETE', headers: authHeaders });
         if (res.ok) { showSuccess('Target deleted'); fetchTargets(); }
     };
 
     const toggleTargetEnabled = async (t: TargetDefinition) => {
-        await fetch(`/api/targets/${t.id}`, {
+        await apiFetch(`/api/targets/${t.id}`, {
             method: 'PUT', headers: authHeaders, body: JSON.stringify({ ...t, enabled: !t.enabled })
         });
         fetchTargets();
@@ -3500,7 +3508,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     <button
                                         onClick={async () => {
                                             try {
-                                                const res = await fetch('/api/admin/config/export', { headers: { 'Authorization': `Bearer ${token}` } });
+                                                const res = await apiFetch('/api/admin/config/export', { headers: { 'Authorization': `Bearer ${token}` } });
                                                 if (res.ok) {
                                                     const data = await res.json();
                                                     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -3535,7 +3543,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 reader.onload = async (ev) => {
                                                     try {
                                                         const bundle = JSON.parse(ev.target?.result as string);
-                                                        const res = await fetch('/api/admin/config/import', {
+                                                        const res = await apiFetch('/api/admin/config/import', {
                                                             method: 'POST',
                                                             headers: authHeaders,
                                                             body: JSON.stringify({ bundle })
@@ -5283,7 +5291,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 if (!copilotApiKey.trim()) return;
                                                 setIsTestingCopilot(true);
                                                 try {
-                                                    const res = await fetch('/api/copilot/test-key', {
+                                                    const res = await apiFetch('/api/copilot/test-key', {
                                                         method: 'POST',
                                                         headers: authHeaders,
                                                         body: JSON.stringify({ apiKey: copilotApiKey.trim() })
@@ -5308,7 +5316,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 if (!copilotApiKey.trim()) return;
                                                 setIsSavingCopilot(true);
                                                 try {
-                                                    const res = await fetch('/api/copilot/config', {
+                                                    const res = await apiFetch('/api/copilot/config', {
                                                         method: 'POST',
                                                         headers: authHeaders,
                                                         body: JSON.stringify({ apiKey: copilotApiKey.trim() })
@@ -5339,7 +5347,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 onClick={async () => {
                                                     if (!confirm('Are you sure you want to remove your Anthropic API key?')) return;
                                                     try {
-                                                        const res = await fetch('/api/copilot/config', {
+                                                        const res = await apiFetch('/api/copilot/config', {
                                                             method: 'POST',
                                                             headers: authHeaders,
                                                             body: JSON.stringify({ apiKey: '' })
@@ -5373,7 +5381,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             onChange={async (e) => {
                                                 const model = e.target.value;
                                                 try {
-                                                    const res = await fetch('/api/copilot/config', {
+                                                    const res = await apiFetch('/api/copilot/config', {
                                                         method: 'POST',
                                                         headers: authHeaders,
                                                         body: JSON.stringify({ defaultModel: model })
@@ -5410,7 +5418,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             onChange={async (e) => {
                                                 const val = e.target.checked;
                                                 try {
-                                                    const res = await fetch('/api/copilot/config', {
+                                                    const res = await apiFetch('/api/copilot/config', {
                                                         method: 'POST',
                                                         headers: authHeaders,
                                                         body: JSON.stringify({ requireConfirmation: val })
@@ -5720,7 +5728,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             onClick={async () => {
                                                 setSaving(true);
                                                 try {
-                                                    const res = await fetch('/api/security/config', {
+                                                    const res = await apiFetch('/api/security/config', {
                                                         method: 'POST',
                                                         headers: authHeaders,
                                                         body: JSON.stringify({ sls_config: slsConfig })
