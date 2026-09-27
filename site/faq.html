@@ -2265,7 +2265,7 @@ stigix-cli provision sync
 # Publish a new bundle revision from the Leader
 stigix-cli provision publish custom-tcp-apps
 
-# Roll back a bundle to a specific revision across the entire fleet
+# Roll back a bundle to a specific revision across the entire mesh
 stigix-cli provision rollback custom-tcp-apps 2
 
 # List all connected branch nodes, last seen timestamps, and sync latency
@@ -2276,7 +2276,7 @@ stigix-cli provision peers</pre>
         <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does the Leader monitor peer health and identify out-of-sync branch instances?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>Every branch node transmits a telemetry heartbeat at regular intervals. The Leader aggregates these heartbeats in real-time under <strong>Settings &rarr; Central Global Provisioning</strong>, displaying a live Fleet Matrix showing:</p>
+            <p>Every branch node transmits a telemetry heartbeat at regular intervals. The Leader aggregates these heartbeats in real-time under <strong>Settings &rarr; Mesh Provisioning</strong>, displaying a live Mesh Matrix showing:</p>
             <ul>
               <li><strong>Connectivity Status:</strong> Live online / offline indicators with last-seen timestamps.</li>
               <li><strong>Revision Alignment:</strong> Per-bundle revision tracking (e.g. <code>rev-4</code> vs <code>rev-3</code>) highlighting synchronized nodes.</li>
@@ -2292,7 +2292,7 @@ stigix-cli provision peers</pre>
             <p>Stigix supports safe, staged validation workflows:</p>
             <ul>
               <li><strong>Draft Mode:</strong> You can configure and test new security test profiles or custom application traffic locally on the Leader or a single testbed instance without publishing.</li>
-              <li><strong>Publish Revision:</strong> When validation succeeds, clicking <strong>PUBLISH REVISION</strong> (or running <code>stigix-cli provision publish</code>) broadcasts the bundle to the entire fleet.</li>
+              <li><strong>Publish Revision:</strong> When validation succeeds, clicking <strong>PUBLISH REVISION</strong> (or running <code>stigix-cli provision publish</code>) broadcasts the bundle to the entire mesh.</li>
               <li><strong>Instant Rollback (&lt; 30s):</strong> If an issue arises in the field, clicking <strong>ROLLBACK</strong> immediately reverts all branch instances to the previous known-good revision in under 30 seconds.</li>
             </ul>
           </div></div></div>
@@ -2304,7 +2304,7 @@ stigix-cli provision peers</pre>
             <p><strong>Local Overrides &amp; Orphan Protection:</strong></p>
             <p>Branch nodes can locally enable or disable specific items without breaking central synchronization. If a centrally provisioned item is modified locally, Stigix marks it with an override badge to preserve local operational choices.</p>
             <p><strong>Instant Rollback:</strong></p>
-            <p>In <strong>Settings &rarr; Global Provisioning</strong> (or via CLI <code>stigix-cli --exec "provision rollback custom-tcp-apps 2"</code>), the Leader can roll back any bundle to a previous revision. All branch peers immediately pull and apply the restored revision within 30 seconds.</p>
+            <p>In <strong>Settings &rarr; Mesh Provisioning</strong> (or via CLI <code>stigix-cli --exec "provision rollback custom-tcp-apps 2"</code>), the Leader can roll back any bundle to a previous revision. All branch peers immediately pull and apply the restored revision within 30 seconds.</p>
           </div></div></div>
         </div>
 

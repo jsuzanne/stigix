@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-09-01 | **Created:** 2026-03-12 (v1.2.1-patch.180)
+> **Last Updated:** 2026-09-27 | **Created:** 2026-03-12 (v1.2.1-patch.180)
 
 # Stigix Hybrid Registry: Architecture & Logic
 
@@ -12,7 +12,7 @@ The system operates on two distinct layers:
 - **Local Leader (Self-Hosted)**: One node (typically a Hub) hosts a local registry service on port `8080`. Peers switch to this local service for high-frequency updates, bypassing Cloudflare quotas and enabling sub-minute failover detection.
 
 ### 2. Auto-Election & Bootstrap Signal
-When the Registry Mode is set to `auto` (the default behavior):
+When the Node Role is set to `auto` (the default behavior):
 - **Candidate Detection**: Instances run an auto-detection script (`getflow.py`) at startup to check if they are deployed on a **HUB** or a **Branch Gateway**. If so, they promote themselves to **LEADER**.
 - **The Bootstrap Announcement**: The Leader calls `announceLeader` directly to the Cloudflare Snapshot URL. This updates the global record so anyone in the PoC can find the site's entry point.
 - **Peer Behavior**: Other instances query Cloudflare once to find the Leader's IP, then "bind" to it.
@@ -39,18 +39,18 @@ Follow this order to set up your site for optimal target propagation:
 
 ### 1. Establish the "Anchor" (The Leader)
 Choose one instance that is accessible to all other nodes in the site (typically a central Hub or Gateway).
-- **Configuration**: Go to the **Target Controller Dashboard** in the Web UI of this instance. Under "Registry Role Override", select **Force Leader**.
+- **Configuration**: Go to the **Target Controller** tab in the Web UI of this instance. Under "Node Role", select **Leader**.
 - **Alternative (.env)**: Alternatively, set `STIGIX_REGISTRY_MODE=leader` in its `.env` file before starting the container.
 - **Result**: This node launches the Local Registry service and announces its IP to Cloudflare. 
 
 ### 2. Connect the "Peers" (The Spokes)
 All other instances on the site should use the default configuration.
-- **Configuration**: Ensure the Registry Role Override in the Web UI is set to **Auto-Detect** (or **Force Peer** if you want to strictly prevent them from ever becoming a leader).
+- **Configuration**: Ensure the Node Role in the Web UI is set to **Auto-Detect** (or **Peer** if you want to strictly prevent them from ever becoming a leader).
 - **Result**: They will automatically discover the Leader via Cloudflare and switch their communication to the local Hub IP within 60-90 seconds.
 
 ### 3. Centralized Target Provisioning
 Instead of configuring every node, go to the **Settings** menu of the **Leader** node.
-- **Action**: Add your manual targets (Generic ICMP/HTTP/TCP endpoints).
+- **Action**: Add your manual targets.
 - **Propagation**: Every 30 seconds, all connected Peers will fetch this list. These targets will appear in their dashboards marked with an **Auto** badge and a `Leader Provided` tooltip.
 - **Zero-Config**: Your Spokes are now fully provisioned without touching their individual `.env` or local files.
 
@@ -66,11 +66,20 @@ When a new Stigix instance joins the site:
 3. It immediately receives the full list of shared targets from the Leader.
 4. Total "Zero-Touch" deployment is achieved.
 
-## 6. Centralized Global Provisioning & Direct Onboarding
-For full details on **Direct Controller Peer Onboarding** (`curl | bash`), **Centralized Global Configuration Provisioning** (Applications & Connectivity Probes), **Pull-Mode Revision Distribution**, and **Local Field Overrides**, see the dedicated guide:
-👉 **[Global Provisioning & Peer Onboarding Guide](GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md)**
+## 6. Mesh Provisioning & Direct Onboarding
+For full details on **Direct Controller Peer Onboarding** (`curl | bash`), **Mesh Configuration Provisioning** (Applications & Connectivity Probes), **Pull-Mode Revision Distribution**, and **Local Field Overrides**, see the dedicated guide:
+👉 **[Mesh Provisioning & Peer Onboarding Guide](GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md)**
 
 ## Troubleshooting
 - **Local Leader Unreachable**: If a Peer shows "Falling back to Cloudflare", it means it found a Leader IP but could not reach port `8080` (check Firewalls/Security Groups on the Hub).
-- **Manual Forced Role**: You can instantly force a node's role via the **Target Controller Dashboard** in the Web UI without restarting any containers. This overrides any `.env` configuration.
+- **Manual Forced Role**: You can instantly force a node's role via the **Target Controller** tab in the Web UI without restarting any containers. This overrides any `.env` configuration.
 - **Domain Changes**: You can safely change the registry domain in `.env`. The Dashboard snapshots it at boot, ensuring transitions use the updated domain immediately.
+
+---
+
+## 📜 Revision History
+
+| Date | Stigix Version | Author / Trigger | Summary of Changes |
+|---|---|---|---|
+| 2026-09-27 | `v2.0.66` | Stigix Core Team | Standardized terminology: Node Role, Mesh Provisioning, Leader/Peer roles. |
+| 2026-03-12 | `v1.2.1-patch.180` | Stigix Core Team | Initial document creation |

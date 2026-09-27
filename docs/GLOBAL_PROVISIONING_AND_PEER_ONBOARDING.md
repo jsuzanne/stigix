@@ -1,6 +1,6 @@
-> **Last Updated:** 2026-09-01 | **Created:** 2026-09-01 (v1.4.1-patch.41)
+> **Last Updated:** 2026-09-27 | **Created:** 2026-09-01 (v1.4.1-patch.41)
 
-# 📖 User Guide — Central Configuration Provisioning & Peer Onboarding
+# 📖 User Guide — Mesh Configuration Provisioning & Peer Onboarding
 
 Welcome to the **Stigix Multi-Node User Guide**! This guide explains how to connect remote branch sites in 30 seconds and centrally manage SaaS applications and synthetic connectivity probes across your entire SD-WAN / SASE lab environment.
 
@@ -10,7 +10,7 @@ Welcome to the **Stigix Multi-Node User Guide**! This guide explains how to conn
 
 When running Stigix across multiple sites (e.g., Data Center Leader `DC1` and remote branch peers `BR1`, `BR5`), you don't need to manually configure applications or probes on every single machine.
 
-With **Central Configuration Provisioning**:
+With **Mesh Configuration Provisioning**:
 1. **One-Command Onboarding**: Connect any new remote branch server to your Leader in 30 seconds with a single copy-paste command.
 2. **Centralized Publishing**: Define your SaaS Applications and Connectivity Probes once on the Leader, then click **Publish** to push them to all remote branch sites.
 3. **Local Branch Autonomy**: Branch operators can customize probe targets or timeouts locally for their specific site without losing central updates.
@@ -41,7 +41,7 @@ Follow these 3 simple steps to add a new Linux host (e.g., a branch server or hu
 
 ### Step 3: Verify Connection in the Leader Dashboard
 1. Return to **Settings → Target Controller** on your Leader node.
-2. You will see your new remote site listed under **Connected Peers** with a green **CONNECTED** status badge.
+2. You will see your new remote site listed under **Registered Targets** with a green **CONNECTED** status badge.
 
 ---
 
@@ -53,7 +53,7 @@ Once your branch sites are connected, you can publish shared configuration catal
 
 1. On your **Leader node**, configure your SaaS Applications (**Settings → Traffic Distribution**) and Synthetic Probes (**Settings → Synthetic Probes**).
 2. Go to **Settings → Target Controller**.
-3. Under **Central Global Provisioning**, click:
+3. Under **Mesh Provisioning**, click:
    - **`[ Publish Apps ]`**: Publishes your SaaS application catalogue.
    - **`[ Publish Probes ]`**: Publishes all active HTTP, PING, DNS, and UDP synthetic probes.
 
@@ -108,8 +108,13 @@ Edits made on the Leader stay local until you click **Publish**. This acts as a 
 - If the branch site **had local modifications** (`✏️ Overridden`), the probe becomes **`⚠️ Orphaned`** on the branch site so local site monitoring is never silently destroyed.
 
 ### Can a branch site opt-out of central provisioning?
-**Yes.** On any branch site, go to **Settings → Target Controller** and click the **`[ Global Provisioning: ON / OFF ]`** toggle to turn off central sync. The branch site will retain its current configuration and stop pulling updates from the Leader.
+**Yes.** On any branch site, go to **Settings → Target Controller** and click the **`[ Mesh Provisioning: ON / OFF ]`** toggle to turn off central sync. The branch site will retain its current configuration and stop pulling updates from the Leader.
 
 ---
 
-*Need help? Visit the main project documentation at [README.md](../README.md) or explore technical references in [docs/](README.md).*
+## 📜 Revision History
+
+| Date | Stigix Version | Author / Trigger | Summary of Changes |
+|---|---|---|---|
+| 2026-09-27 | `v2.0.66` | Stigix Core Team | Updated terminology: Central Global Provisioning → Mesh Provisioning, Connected Peers → Registered Targets. |
+| 2026-09-01 | `v1.4.1-patch.41` | Stigix Core Team | Initial document creation |
