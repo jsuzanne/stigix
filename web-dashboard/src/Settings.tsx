@@ -673,16 +673,16 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         setLoading(true);
         // Core Config data - Must load for initial page state
         Promise.all([
-            fetch('/api/config/apps', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            fetch('/api/config/interfaces', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            fetch('/api/connectivity/custom', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            apiFetch('/api/config/apps', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            apiFetch('/api/config/interfaces', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            apiFetch('/api/connectivity/custom', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
         ]).then(([catsData, ifaceData, probesData]) => {
             setCategories(catsData.map((c: any) => ({ ...c, expanded: true })));
             setInterfaces(ifaceData);
             setCustomProbes(probesData || []);
 
             // Fetch Cloud Scenarios
-            fetch('/api/target/scenarios', { headers: authHeaders })
+            apiFetch('/api/target/scenarios', { headers: authHeaders })
                 .then(r => r.json())
                 .then(data => {
                     // Filter out EICAR for performance probes as requested
@@ -692,13 +692,13 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                 .catch(() => { });
 
             // Fetch Cloud Config
-            fetch('/api/config/cloud', { headers: authHeaders })
+            apiFetch('/api/config/cloud', { headers: authHeaders })
                 .then(r => r.json())
                 .then(setCloudConfig)
                 .catch(() => { });
 
             // Fetch ALL detected interfaces (secondary)
-            fetch('/api/config/interfaces?all=true', { headers: { 'Authorization': `Bearer ${token}` } })
+            apiFetch('/api/config/interfaces?all=true', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(r => r.json())
                 .then(setAvailableInterfaces)
                 .catch(() => { });
@@ -707,21 +707,21 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         }).catch(() => setLoading(false));
 
         // Targets
-        fetch('/api/targets', { headers: authHeaders })
+        apiFetch('/api/targets', { headers: authHeaders })
             .then(r => r.json())
             .then(data => setTargets(Array.isArray(data) ? data : []))
             .catch(() => { });
 
         // System/Maintenance data - Decoupled to avoid blocking initial load
         const fetchMaintenanceStatus = () => {
-            fetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
+            apiFetch('/api/admin/maintenance/version', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(r => r.json())
                 .then(maintenanceData => {
                     setStatus(maintenanceData);
                 })
                 .catch(() => { });
 
-            fetch('/api/admin/maintenance/status', { headers: { 'Authorization': `Bearer ${token}` } })
+            apiFetch('/api/admin/maintenance/status', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(r => r.json())
                 .then(upgradeData => {
                     setUpgradeStatus(upgradeData);
@@ -733,7 +733,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
         // Fetch System Info
         const fetchSystemInfo = () => {
-            fetch('/api/admin/system/info', { headers: { 'Authorization': `Bearer ${token}` } })
+            apiFetch('/api/admin/system/info', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(r => r.json())
                 .then(newInfo => {
                     setSystemInfo((prev: any) => {
@@ -756,7 +756,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
         // Fetch Live Container Stats
         const fetchContainerStats = () => {
-            fetch('/api/containers/stats', { headers: authHeaders })
+            apiFetch('/api/containers/stats', { headers: authHeaders })
                 .then(r => r.json())
                 .then(setContainerStats)
                 .catch(() => { });
@@ -766,7 +766,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
         // Fetch Latest Egress Info
         const fetchEgressInfo = () => {
-            fetch('/api/connectivity/results?limit=50', { headers: { 'Authorization': `Bearer ${token}` } })
+            apiFetch('/api/connectivity/results?limit=50', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(r => r.json())
                 .then(data => {
                     const results = data.results || [];
@@ -783,7 +783,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         const egressInterval = setInterval(fetchEgressInfo, 30000);
 
         // Fetch Convergence Thresholds
-        fetch('/api/config/convergence', { headers: { 'Authorization': `Bearer ${token}` } })
+        apiFetch('/api/config/convergence', { headers: { 'Authorization': `Bearer ${token}` } })
             .then(r => r.json())
             .then(data => {
                 if (data && typeof data === 'object' && 'good' in data) {
@@ -793,7 +793,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             .catch(() => { });
 
         // Fetch Traffic SLA Thresholds
-        fetch('/api/config/traffic-thresholds', { headers: { 'Authorization': `Bearer ${token}` } })
+        apiFetch('/api/config/traffic-thresholds', { headers: { 'Authorization': `Bearer ${token}` } })
             .then(r => r.json())
             .then(data => {
                 if (data && typeof data === 'object' && 'good_latency_ms' in data) {
@@ -804,7 +804,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
         // Fetch Registry Status
         const fetchRegistryStatus = () => {
-            fetch('/api/registry/status', { headers: authHeaders })
+            apiFetch('/api/registry/status', { headers: authHeaders })
                 .then(r => r.json())
                 .then(setRegistryStatus)
                 .catch(e => console.error("Failed to fetch registry status", e));
@@ -813,7 +813,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
         // Fetch Cloud Config
         const fetchCloudConfig = () => {
-            fetch('/api/config/cloud', { headers: authHeaders })
+            apiFetch('/api/config/cloud', { headers: authHeaders })
                 .then(r => r.json())
                 .then(setCloudConfig)
                 .catch(e => console.error("Failed to fetch cloud config", e));
@@ -821,7 +821,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         fetchCloudConfig();
 
         // Fetch SLS Config
-        fetch('/api/security/config', { headers: authHeaders })
+        apiFetch('/api/security/config', { headers: authHeaders })
             .then(r => r.json())
             .then(data => {
                 if (data && data.sls_config) {
@@ -835,7 +835,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             });
 
         const fetchMcpStatus = () => {
-            fetch('/api/admin/system/mcp-status', { headers: authHeaders })
+            apiFetch('/api/admin/system/mcp-status', { headers: authHeaders })
                 .then(r => r.json())
                 .then(setMcpStatus)
                 .catch(e => console.error("Failed to fetch MCP status", e));
@@ -844,7 +844,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         const mcpInterval = setInterval(fetchMcpStatus, 15000);
 
         const fetchMcpHistory = () => {
-            fetch('/api/admin/mcp/history?limit=30', { headers: authHeaders })
+            apiFetch('/api/admin/mcp/history?limit=30', { headers: authHeaders })
                 .then(r => r.json())
                 .then(setMcpHistory)
                 .catch(() => {});
@@ -853,7 +853,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         const mcpHistoryInterval = setInterval(fetchMcpHistory, 3000);
 
         const fetchCopilotConfig = () => {
-            fetch('/api/copilot/config', { headers: authHeaders })
+            apiFetch('/api/copilot/config', { headers: authHeaders })
                 .then(r => r.ok ? r.json() : null)
                 .then(data => { if (data) setCopilotConfig(data.config || data); })
                 .catch(() => {});
@@ -868,12 +868,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             clearInterval(containerStatsInterval);
         };
 
-    }, [token]);
+    }, [token, activePeerId]);
 
     // Fetch system settings (startup behaviour)
     useEffect(() => {
         // system-settings.json for probes/iot/voice
-        fetch('/api/config/system-settings', { headers: authHeaders })
+        apiFetch('/api/config/system-settings', { headers: authHeaders })
             .then(r => r.json())
             .then(data => setSystemSettings((prev: any) => ({
                 ...prev,
@@ -887,24 +887,24 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             .catch(() => {});
 
         // traffic status comes from applications-config.json via /api/traffic/status
-        fetch('/api/traffic/status', { headers: authHeaders })
+        apiFetch('/api/traffic/status', { headers: authHeaders })
             .then(r => r.json())
             .then(data => setSystemSettings((prev: any) => ({ ...prev, auto_restart_traffic: !!data.running })))
             .catch(() => {});
 
         // Check if IoT has at least 1 enabled device
-        fetch('/api/iot/devices', { headers: authHeaders })
+        apiFetch('/api/iot/devices', { headers: authHeaders })
             .then(r => r.json())
             .then((devices: any[]) => setIotHasConfig(Array.isArray(devices) && devices.some(d => d.enabled !== false)))
             .catch(() => setIotHasConfig(false));
 
         // Check if Voice has at least 1 server configured
         // API returns servers as a raw pipe-delimited string (not an array)
-        fetch('/api/voice/config', { headers: authHeaders })
+        apiFetch('/api/voice/config', { headers: authHeaders })
             .then(r => r.json())
             .then((cfg: any) => setVoiceHasConfig(typeof cfg?.servers === 'string' && cfg.servers.trim().length > 0))
             .catch(() => setVoiceHasConfig(false));
-    }, [token]);
+    }, [token, activePeerId]);
 
     // Polling for upgrade status and registry status
     useEffect(() => {
@@ -950,7 +950,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             fetchRegistryStatus();
         }, 30000);
         return () => clearInterval(interval);
-    }, [token]);
+    }, [token, activePeerId]);
 
     useEffect(() => {
         if (registryStatus?.static_leader_url && !staticLeaderUrl) {
@@ -1119,11 +1119,11 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const lastToastedRevs = useRef<{ [bundleType: string]: number }>({});
 
     const fetchProvisioningData = useCallback(() => {
-        fetch('/api/provisioning/config', { headers: { 'Authorization': `Bearer ${token}` } })
+        apiFetch('/api/provisioning/config', { headers: { 'Authorization': `Bearer ${token}` } })
             .then(res => res.json())
             .then(data => setProvisioningData(data))
             .catch(() => {});
-    }, [token]);
+    }, [token, activePeerId]);
 
     useEffect(() => {
         fetchProvisioningData();
@@ -1674,7 +1674,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     };
 
     // ─── Target CRUD Handlers ────────────────────────────────────────────────
-    const fetchTargets = () => fetch('/api/targets', { headers: authHeaders })
+    const fetchTargets = () => apiFetch('/api/targets', { headers: authHeaders })
         .then(r => r.json()).then(d => setTargets(Array.isArray(d) ? d : []));
 
     const saveTarget = async () => {
@@ -4359,7 +4359,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                             {registryStatus?.local_instances?.length ?? 0} registered
                                         </span>
                                         <button
-                                            onClick={() => fetch('/api/registry/status', { headers: authHeaders }).then(r => r.json()).then(setRegistryStatus)}
+                                            onClick={() => apiFetch('/api/registry/status', { headers: authHeaders }).then(r => r.json()).then(setRegistryStatus)}
                                             className="p-2 hover:bg-card-hover rounded-xl text-text-muted transition-all"
                                             title="Refresh"
                                         >
