@@ -168,7 +168,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         if (isActionLoading || !token || isRemoteView) return; // disabled in remote view
         setIsActionLoading(true);
         try {
-            const res = await fetch(`/api/custom-tcp-apps/actions/${action}`, {
+            const res = await gFetch(`/api/custom-tcp-apps/actions/${action}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -332,7 +332,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         const action = isListening ? 'stop' : 'start';
 
         try {
-            const res = await fetch(`/api/custom-tcp-apps/${selectedAppId}/listener/${action}`, {
+            const res = await gFetch(`/api/custom-tcp-apps/${selectedAppId}/listener/${action}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -366,7 +366,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         const action = isRunning ? 'stop' : 'start';
 
         try {
-            const res = await fetch(`/api/custom-tcp-apps/${selectedAppId}/client/${action}`, {
+            const res = await gFetch(`/api/custom-tcp-apps/${selectedAppId}/client/${action}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -389,7 +389,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         const method = isEdit ? 'PUT' : 'POST';
         const url = isEdit ? `/api/custom-tcp-apps/${app.id}` : '/api/custom-tcp-apps';
 
-        const res = await fetch(url, {
+        const res = await gFetch(url, {
             method,
             headers: {
                 'Content-Type': 'application/json',
@@ -412,7 +412,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
         if (!selectedAppId) return;
         setPeerTestResult({ loading: true });
         try {
-            const res = await fetch(`/api/custom-tcp-apps/${selectedAppId}/peers/${peerId}/test`, {
+            const res = await gFetch(`/api/custom-tcp-apps/${selectedAppId}/peers/${peerId}/test`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -440,7 +440,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
 
     const handleExportAll = async () => {
         try {
-            const res = await fetch('/api/custom-tcp-apps/export', {
+            const res = await gFetch('/api/custom-tcp-apps/export', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!res.ok) throw new Error('Export request failed');
@@ -462,7 +462,7 @@ export const CustomApps: React.FC<CustomAppsProps> = ({ token }) => {
     const handleExportCurrent = async () => {
         if (!selectedAppId) return;
         try {
-            const res = await fetch(`/api/custom-tcp-apps/${selectedAppId}/export`, {
+            const res = await gFetch(`/api/custom-tcp-apps/${selectedAppId}/export`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!res.ok) throw new Error('Export request failed');

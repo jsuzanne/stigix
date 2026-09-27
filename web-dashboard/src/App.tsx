@@ -41,6 +41,7 @@ function PeerStatusSync({
   onStats,
   onStatus,
   onTrafficStatus,
+  onHistory,
 }: {
   token: string | null;
   view: string;
@@ -49,6 +50,7 @@ function PeerStatusSync({
   onStats?: (v: any) => void;
   onStatus?: (v: 'running' | 'stopped' | 'unknown') => void;
   onTrafficStatus?: (running: boolean, rate?: number, count?: number) => void;
+  onHistory?: (history: any[]) => void;
 }) {
   const { gFetch, activePeerId } = usePeerContext();
 
@@ -98,6 +100,33 @@ function PeerStatusSync({
 
     pollDash();
     const interval = setInterval(pollDash, 10_000);
+    return () => clearInterval(interval);
+  }, [token, activePeerId]);
+
+  // ── History loop: traffic history for Traffic Volume chart (60s) ───────────
+  useEffect(() => {
+    if (!token || !activePeerId || !onHistory) return;
+
+    const pollHistory = async () => {
+      try {
+        const res = await gFetch('/api/traffic/history?range=1h', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const formatted = data.map((item: any) => ({
+          time: new Date(item.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          rawTimestamp: item.timestamp,
+          requests: item.rpm,
+          total: item.total_requests,
+          ...item.requests_by_app
+        }));
+        onHistory(formatted);
+      } catch { }
+    };
+
+    pollHistory();
+    const interval = setInterval(pollHistory, 60_000);
     return () => clearInterval(interval);
   }, [token, activePeerId]);
 
@@ -454,7 +483,7 @@ export default function App() {
   };
 
    const fetchHistory = async (silent = false) => {
-    if (!token) return;
+    if (!token || isRemoteViewRef.current) return; // owned by PeerStatusSync in remote view
     if (!silent) setIsHistoryLoading(true);
     try {
       const res = await fetch(`/api/traffic/history?range=${timeRange}`, { headers: authHeaders() });
@@ -873,6 +902,7 @@ export default function App() {
           if (rate !== undefined) setTrafficRate(rate);
           if (count !== undefined) setTrafficClientCount(count);
         }}
+        onHistory={setHistory}
       />
     <div className="min-h-screen bg-background text-foreground pt-4 pb-8 px-8">
       <Toaster position="top-right" />
