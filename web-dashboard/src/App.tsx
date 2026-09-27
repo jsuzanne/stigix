@@ -25,9 +25,11 @@ import { Toaster } from 'react-hot-toast';
 
 /**
  * PeerStatusSync — lives INSIDE PeerContextProvider so it can call usePeerContext().
- * When a remote peer is selected, it polls the peer's dashboard-data every 500ms
- * (matching the failover fast-poll cadence) and patches the parent's global states
- * via callbacks. This fixes the missing live failover window in remote view.
+ * When a remote peer is selected, it polls the peer's live-status every 500ms
+ * (failover tab) or 3s (other tabs) and patches the parent's global states
+ * via callbacks. Uses /api/admin/system/live-status — a lightweight endpoint
+ * (~10× smaller than dashboard-data) that returns only convergenceTests + voice,
+ * with no shell exec or heavy file I/O on the hot path.
  */
 function PeerStatusSync({
   token,
@@ -48,7 +50,7 @@ function PeerStatusSync({
 
     const poll = async () => {
       try {
-        const res = await gFetch('/api/admin/system/dashboard-data', {
+        const res = await gFetch('/api/admin/system/live-status', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!res.ok) return;

@@ -11228,6 +11228,67 @@ app.get('/api/admin/system/dashboard-data', authenticateToken, async (req, res) 
     }
 });
 
+// ─── Live Status (lightweight) ─────────────────────────────────────────────
+//
+// Designed for high-frequency polling by the Gateway Proxy in remote view.
+// Returns ONLY convergenceTests + voice — no shell exec, no file I/O on the
+// hot path (voice stats are capped at last 30 entries, loaded in-memory).
+// Safe to poll every 500 ms through the gateway without overloading the peer.
+//
+app.get('/api/admin/system/live-status', authenticateToken, async (req, res) => {
+    try {
+        // 1. Convergence — same logic as dashboard-data but isolated
+        const convergenceResults: any[] = [];
+        try {
+            const tmpFiles = await fs.promises.readdir('/tmp');
+            const targetFiles = tmpFiles.filter(f => f.startsWith('convergence_stats_') && f.endsWith('.json'));
+            await Promise.all(targetFiles.map(async (file) => {
+                try {
+                    const content = await fs.promises.readFile(path.join('/tmp', file), 'utf8');
+                    const cStats = JSON.parse(content);
+                    const testId = file.replace('convergence_stats_', '').replace('.json', '');
+                    convergenceResults.push({ ...cStats, testId, running: convergenceProcesses.has(testId) });
+                } catch { }
+            }));
+        } catch { }
+
+        // 2. Voice — read config + last 30 stats lines (capped, no exec)
+        let voiceStats: any[] = [];
+        let voiceControl = { enabled: false };
+        try {
+            if (fs.existsSync(VOICE_CONFIG_FILE)) {
+                const vData = await fs.promises.readFile(VOICE_CONFIG_FILE, 'utf8');
+                const vConfig = JSON.parse(vData);
+                voiceControl = vConfig.control || { enabled: false };
+            }
+            if (fs.existsSync(VOICE_STATS_FILE)) {
+                // Read last ~4 KB (≈ 30 entries) without spawning a shell
+                const fd = await fs.promises.open(VOICE_STATS_FILE, 'r');
+                const { size } = await fd.stat();
+                const readSize = Math.min(size, 4096);
+                const buf = Buffer.alloc(readSize);
+                await fd.read(buf, 0, readSize, size - readSize);
+                await fd.close();
+                voiceStats = buf.toString('utf8')
+                    .split('\n')
+                    .filter(l => l.trim())
+                    .map(l => { try { return JSON.parse(l); } catch { return null; } })
+                    .filter(Boolean)
+                    .reverse()
+                    .slice(0, 30);
+            }
+        } catch { }
+
+        res.json({
+            convergenceTests: convergenceResults,
+            voice: { control: voiceControl, stats: voiceStats },
+            timestamp: Date.now()
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: 'live_status_failed', details: e.message });
+    }
+});
+
 // ─── System Wide Live Logs ──────────────────────────────────────────────────
 
 // Serve log history (last 500 lines)
