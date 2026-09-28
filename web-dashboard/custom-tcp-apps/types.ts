@@ -209,6 +209,7 @@ export interface ServerBehaviorConfig {
     closeAfterDurationSec?: number;
     errorProbability: number;      // 0 to 100%
     errorCode?: string;
+    eicarPeriodMs?: number;        // eicar_response mode: interval between EICAR probes (default 60000 ms). Normal ACK sent between probes.
 }
 
 export interface ClientDefaultsConfig {

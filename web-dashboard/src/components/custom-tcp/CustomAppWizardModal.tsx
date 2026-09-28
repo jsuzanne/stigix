@@ -195,7 +195,8 @@ export function normalizeCustomTcpApp(app?: Partial<CustomTcpApplicationConfig> 
             errorProbability: Number(rawServerBehavior.errorProbability) || 0,
             errorCode: rawServerBehavior.errorCode || 'SIMULATED_DB_ERROR',
             closeAfterRequests: rawServerBehavior.closeAfterRequests ? Number(rawServerBehavior.closeAfterRequests) : undefined,
-            closeAfterDurationSec: rawServerBehavior.closeAfterDurationSec ? Number(rawServerBehavior.closeAfterDurationSec) : undefined
+            closeAfterDurationSec: rawServerBehavior.closeAfterDurationSec ? Number(rawServerBehavior.closeAfterDurationSec) : undefined,
+            eicarPeriodMs: rawServerBehavior.eicarPeriodMs ? Number(rawServerBehavior.eicarPeriodMs) : 300_000,
         },
         clientDefaults: {
             mode: (rawClientDefaults.mode || 'persistent_request_reply') as ClientWorkloadMode,
@@ -799,6 +800,49 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                         </div>
                                     </div>
                                 )}
+
+                                {formData.serverBehavior.mode === 'eicar_response' && (() => {
+                                    const EICAR_PRESETS = [
+                                        { label: '1 min',  ms: 60_000 },
+                                        { label: '2 min',  ms: 120_000 },
+                                        { label: '5 min',  ms: 300_000 },
+                                        { label: '10 min', ms: 600_000 },
+                                        { label: '30 min', ms: 1_800_000 },
+                                    ];
+                                    const currentMs = formData.serverBehavior.eicarPeriodMs ?? 300_000;
+                                    return (
+                                        <div className="space-y-3">
+                                            <label className="block text-xs font-semibold text-text-secondary">
+                                                EICAR Probe Frequency
+                                                <span className="ml-2 text-[10px] font-normal text-text-muted">(min. 1 min — normal ACK sent between probes)</span>
+                                            </label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {EICAR_PRESETS.map(p => (
+                                                    <button
+                                                        key={p.ms}
+                                                        type="button"
+                                                        onClick={() => setFormData((prev: CustomTcpApplicationConfig) => ({
+                                                            ...prev,
+                                                            serverBehavior: { ...prev.serverBehavior, eicarPeriodMs: p.ms }
+                                                        }))}
+                                                        className={cn(
+                                                            'px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all',
+                                                            currentMs === p.ms
+                                                                ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 shadow-sm shadow-amber-500/10'
+                                                                : 'bg-card border-border text-text-secondary hover:border-amber-500/40 hover:text-amber-400'
+                                                        )}
+                                                    >
+                                                        {p.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <p className="text-[11px] text-text-muted leading-relaxed">
+                                                Server sends EICAR every <span className="font-bold text-amber-400">{currentMs / 60_000} min</span>.
+                                                Between probes, normal ACK responses keep the session alive without flooding SASE logs.
+                                            </p>
+                                        </div>
+                                    );
+                                })()}
 
                                 {/* Contextual Mode Helper / Real-World Scenario */}
                                 {SERVER_BEHAVIOR_INFO[formData.serverBehavior.mode] && (

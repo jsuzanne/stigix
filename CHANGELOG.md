@@ -3382,3 +3382,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 _For versions 1.1.2-patch.33.75 and earlier, please refer to the existing CHANGELOG.md file._
 
 _Full version history continues with entries for v1.1.2-patch.33.75, v1.1.2-patch.33.71-74, v1.1.2-patch.33.65-70, and all earlier releases down to v1.0.0._
+
+## [2.0.75] - 2026-09-28
+
+### Added
+- **Custom TCP Apps — EICAR probe frequency control**: `eicar_response` server mode now sends the EICAR string only periodically (default every **5 minutes**) instead of on every request. Between probes, the server returns a normal ACK to keep the session alive without flooding SASE/NGFW security logs. Minimum period: 1 minute.
+- **Custom TCP Apps Wizard**: New **EICAR Probe Frequency** preset buttons (1 min / 2 min / 5 min / 10 min / 30 min) shown only when `eicar_response` mode is selected. Active preset highlighted in amber. Inline summary shows configured interval and explains the fallback ACK behavior.

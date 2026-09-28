@@ -50,6 +50,7 @@ interface TrackedIncomingClient {
     liveRxBps?: number;
     liveTxBps?: number;
     liveTps?: number;
+    lastEicarSentAt?: number;  // timestamp of last EICAR probe sent (eicar_response mode)
 }
 
 export class TcpServerRuntime extends EventEmitter {
@@ -384,31 +385,40 @@ export class TcpServerRuntime extends EventEmitter {
             }
 
             if (behavior.mode === 'eicar_response') {
-                const eicarBody = EICAR_TEST_STRING + '\n';
-                const eicarBuf = Buffer.from(eicarBody, 'utf8');
-                const headers = [
-                    'HTTP/1.1 200 OK',
-                    'Content-Type: text/plain',
-                    `Content-Length: ${eicarBuf.length}`,
-                    `Connection: ${isClose ? 'close' : 'keep-alive'}`,
-                    'Server: Stigix-CustomApp-HTTP/2.0',
-                    'X-Stigix-Security-Test: EICAR-Standard-Antivirus-Test',
-                    ...(clientReqId ? [`X-Stigix-Request-Id: ${clientReqId}`] : []),
-                    '',
-                    ''
-                ].join('\r\n');
+                // Throttle EICAR probes: only send the real EICAR string once per eicarPeriodMs
+                // (default 60s). Between probes the server returns a normal ACK so that the
+                // TCP session stays alive without flooding SASE/NGFW security logs.
+                const periodMs = behavior.eicarPeriodMs ?? 300_000; // default 5 min
+                const now = Date.now();
+                const shouldSendEicar = !client.lastEicarSentAt || (now - client.lastEicarSentAt) >= periodMs;
 
-                const fullResp = Buffer.concat([Buffer.from(headers, 'utf8'), eicarBuf]);
-                socket.write(fullResp);
-                state.bytesSent += fullResp.length;
-                state.state = 'connected';
-                this.metricsTracker.recordServerTx(fullResp.length);
-                this.metricsTracker.recordServerResponse();
+                if (shouldSendEicar) {
+                    client.lastEicarSentAt = now;
+                    const eicarBody = EICAR_TEST_STRING + '\n';
+                    const eicarBuf = Buffer.from(eicarBody, 'utf8');
+                    const headers = [
+                        'HTTP/1.1 200 OK',
+                        'Content-Type: text/plain',
+                        `Content-Length: ${eicarBuf.length}`,
+                        `Connection: ${isClose ? 'close' : 'keep-alive'}`,
+                        'Server: Stigix-CustomApp-HTTP/2.0',
+                        'X-Stigix-Security-Test: EICAR-Standard-Antivirus-Test',
+                        ...(clientReqId ? [`X-Stigix-Request-Id: ${clientReqId}`] : []),
+                        '',
+                        ''
+                    ].join('\r\n');
 
-                if (isClose) {
-                    socket.end();
+                    const fullResp = Buffer.concat([Buffer.from(headers, 'utf8'), eicarBuf]);
+                    socket.write(fullResp);
+                    state.bytesSent += fullResp.length;
+                    state.state = 'connected';
+                    this.metricsTracker.recordServerTx(fullResp.length);
+                    this.metricsTracker.recordServerResponse();
+
+                    if (isClose) socket.end();
+                    return;
                 }
-                return;
+                // Between EICAR probes: fall through to normal ACK response below
             }
 
             const statusCode = isError ? '500 Internal Server Error' : '200 OK';
