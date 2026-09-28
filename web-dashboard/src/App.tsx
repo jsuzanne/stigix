@@ -424,7 +424,7 @@ export default function App() {
     if (!token) return;
     if (!confirm('Are you sure you want to reset all traffic statistics?')) return;
     try {
-      const res = await fetch('/api/stats', {
+      const res = await apiFetch('/api/stats', {
         method: 'DELETE',
         headers: authHeaders()
       });
@@ -544,7 +544,7 @@ export default function App() {
   };
 
   const fetchStats = async () => {
-    if (!token) return;
+    if (!token || isRemoteViewRef.current) return; // owned by PeerStatusSync in remote view
     try {
       const res = await fetch('/api/stats', { headers: authHeaders() });
       if (res.status === 403 || res.status === 401) logout();
@@ -554,7 +554,7 @@ export default function App() {
   };
 
   const fetchStatus = async () => {
-    if (!token) return;
+    if (!token || isRemoteViewRef.current) return; // owned by PeerStatusSync in remote view
     try {
       const res = await fetch('/api/status', { headers: authHeaders() });
       const data = await res.json();
@@ -580,7 +580,7 @@ export default function App() {
   const checkConfigValid = async () => {
     if (!token) return;
     try {
-      const res = await fetch('/api/config/interfaces', { headers: authHeaders() });
+      const res = await apiFetch('/api/config/interfaces', { headers: authHeaders() });
       const interfaces = await res.json();
       setConfigValid(interfaces && interfaces.length > 0);
     } catch (e) {
@@ -798,7 +798,7 @@ export default function App() {
   const fetchHealthMatrix = async () => {
     if (!token) return;
     try {
-      const res = await fetch('/api/system/health-matrix', { headers: authHeaders() });
+      const res = await apiFetch('/api/system/health-matrix', { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         if (data.success) {

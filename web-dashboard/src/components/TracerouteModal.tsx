@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { usePeerContext } from '../PeerContext';
 import { Route, X, Play, Copy, Check, Terminal, Activity, ArrowRight, AlertCircle, CheckCircle2, RefreshCw, Shield, ChevronDown, ChevronUp } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 
@@ -58,6 +59,7 @@ export const TracerouteModal: React.FC<TracerouteModalProps> = ({
     token = '',
     title = 'Network Path Trace'
 }) => {
+    const { gFetch } = usePeerContext();
     const [target, setTarget] = useState<string>('');
     const [maxHops, setMaxHops] = useState<number>(15);
     const [method, setMethod] = useState<'udp' | 'tcp' | 'icmp'>('tcp');
@@ -98,7 +100,7 @@ export const TracerouteModal: React.FC<TracerouteModalProps> = ({
 
         try {
             const effectiveToken = token || localStorage.getItem('token') || '';
-            const res = await fetch('/api/network/traceroute', {
+            const res = await gFetch('/api/network/traceroute', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -149,7 +149,7 @@ export default function Statistics({ stats, appConfig, onReset, token }: StatsPr
     const handlePromoteToDem = async (appName: string) => {
         setPromotingApp(appName);
         try {
-            const res = await fetch('/api/probes/promote-app', {
+            const res = await gFetch('/api/probes/promote-app', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

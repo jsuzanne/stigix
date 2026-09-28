@@ -952,7 +952,7 @@ function TopologyContent({ token }: TopologyProps) {
         setIsVyosExecuting(true);
         setVyosActionResult(null);
         try {
-            const res = await fetch('/api/vyos/direct-action', {
+            const res = await gFetch('/api/vyos/direct-action', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
