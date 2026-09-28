@@ -2,6 +2,15 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.82] - 2026-09-28 — UX: Clean target selection cards in Speedtest
+
+### Changed
+- **Bandwidth Test Target Cards (`Speedtest.tsx`)**:
+  - Removed redundant checkbox icons on the left side of target cards (both Quick Targets and Shared Targets).
+  - Eliminates multi-selection ambiguity (Speedtest is strictly 1-to-1 point-to-point) and provides clean visual alignment directly with the pulsing reachability status dot.
+
+---
+
 ## [v2.0.81] - 2026-09-28 — Feature: Fleet Mesh context switcher direct connect
 
 ### Added

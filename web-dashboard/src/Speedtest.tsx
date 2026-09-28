@@ -415,10 +415,6 @@ export default function Speedtest({ token }: Props) {
                                                 onClick={() => { setTargetHost(t.host); setTargetPort(9000); }}
                                                 className={`bg-card border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-blue-500 bg-blue-600/5 shadow-blue-500/10' : 'border-border'}`}
                                             >
-                                                <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
-                                                    {isSelected && <Zap size={8} className="text-white" fill="currentColor" />}
-                                                </div>
-
                                                 {/* Reachability Dot */}
                                                 <div className="shrink-0 flex items-center justify-center w-4">
                                                     {status === 'loading' || status === undefined ? (
@@ -465,10 +461,6 @@ export default function Speedtest({ token }: Props) {
                                                 onClick={() => { setTargetHost(t.host); setTargetPort(port); }}
                                                 className={`bg-card border px-4 py-3 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-emerald-500 bg-emerald-600/5 shadow-emerald-500/10' : 'border-border'}`}
                                             >
-                                                <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-emerald-600 border-emerald-500' : 'bg-card-secondary border-border'}`}>
-                                                    {isSelected && <Zap size={8} className="text-white" fill="currentColor" />}
-                                                </div>
-
                                                 {/* Reachability Dot */}
                                                 <div className="shrink-0 flex items-center justify-center w-4">
                                                     {status === 'loading' || status === undefined ? (
