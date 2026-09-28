@@ -28,6 +28,11 @@ import {
 import { isIpInCidrs, normalizeIp } from './cidr.js';
 import { AppMetricsTracker } from './metrics.js';
 
+// Standard EICAR antivirus test string — used in eicar_response server behavior
+// to verify that SASE/NGFW threat prevention inspects and blocks TCP payloads.
+// See: https://www.eicar.org/download-anti-malware-testfile/
+const EICAR_TEST_STRING = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
+
 interface TrackedIncomingClient {
     sessionId: string;
     socket: net.Socket;
@@ -627,7 +632,6 @@ export class TcpServerRuntime extends EventEmitter {
 
             const isAck = behavior.mode === 'acknowledge';
             const isEicar = behavior.mode === 'eicar_response';
-            const eicarPayload = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
             const resp = buildResponse({
                 requestId: req.requestId,
                 clientSessionId: req.clientSessionId,

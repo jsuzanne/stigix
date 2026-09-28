@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.74] - 2026-09-28
+
+### Fixed
+- **Custom TCP Apps — EICAR mode (HTTP path)**: `EICAR_TEST_STRING` constant was referenced but never defined, causing the HTTP response to send `"undefined\n"` as the body instead of the real EICAR string. Security inspection layers would therefore never detect it. Fixed by defining the constant at module level and removing the duplicate inline definition in the binary protocol path.
+
 ## [2.0.73] - 2026-09-28
 
 ### Changed
