@@ -4,9 +4,9 @@
 
 ## Overview
 
-This document describes the **Remote View Gateway** feature implemented in Stigix v2.0.67 (M3). It is distinct from the long-term [Multi-Instance Control Plane PRD](../PRD/SPECIFICATION_MULTI_INSTANCE_CONTROL_PLANE_REVISED.md), which specifies a future agent-pull job model with durable jobs, ACKs, and fleet orchestration.
+This document describes the **Remote View Gateway** feature implemented in Stigix starting at v2.0.67 (M3) and extended through v2.0.73 (full read/write coverage). It is distinct from the long-term [Multi-Instance Control Plane PRD](../PRD/SPECIFICATION_MULTI_INSTANCE_CONTROL_PLANE_REVISED.md), which specifies a future agent-pull job model with durable jobs, ACKs, and fleet orchestration.
 
-The Remote View Gateway is a lightweight, immediate solution that allows an operator on **DC1** to observe the state of a remote peer (e.g. **BR5**) from within the DC1 dashboard, with no agent installed on BR5 and no additional network configuration beyond existing peer-to-peer reachability.
+The Remote View Gateway is a lightweight, immediate solution that allows an operator on **DC1** to observe and control a remote peer (e.g. **BR8**) from within the DC1 dashboard, with no agent installed on the peer and no additional network configuration beyond existing peer-to-peer reachability.
 
 ---
 
@@ -17,14 +17,16 @@ The Remote View Gateway is a lightweight, immediate solution that allows an oper
 ```
 DC1 Browser
     │
-    ▼  activePeerId = "br5"
+    ▼  activePeerId = "BR8-Ubuntu"
 gFetch interceptor (PeerContext.tsx)
-    │  intercepts all /api/* calls
+    │  rewrites /api/* → /api/gateway/:peerId/*
     ▼
-DC1 Express Gateway (/api/gateway/:peerId/*)
-    │  HTTP pass-through proxy (node-http-proxy)
+DC1 Express Gateway (/api/gateway/:peerId/*path)
+    │  rawBody middleware preserves body BEFORE express.json() consumes it
+    │  authenticateToken (supports ?token= query param for EventSource)
+    │  http.request() pass-through proxy with JWT re-signing
     ▼
-BR5 Stigix API (direct HTTP, peer-to-peer)
+BR8 Stigix API (direct HTTP, peer-to-peer)
 ```
 
 ### Key Components
@@ -32,145 +34,221 @@ BR5 Stigix API (direct HTTP, peer-to-peer)
 | Component | File | Role |
 |---|---|---|
 | `PeerContextProvider` | `src/PeerContext.tsx` | Provides `gFetch`, `activePeerId`, `setActivePeerId` to all children |
-| `gFetch` interceptor | `src/PeerContext.tsx` | Rewrites `/api/*` → `/api/gateway/:peerId/*` when a remote peer is active |
-| Gateway proxy | `gateway-routes.ts` | Express route handler that HTTP-proxies requests to the target peer |
-| `PeerStatusSync` | `src/App.tsx` | React component running 3 background polling loops for remote peer state |
-| `GatewayDropdown` | `src/components/GatewayDropdown.tsx` | UI dropdown to select the active peer; shows UNREACHABLE badge for offline peers |
-| `RemoteViewChip` | `src/App.tsx` | Banner displayed when a remote peer is selected |
-
-### PeerStatusSync Polling Loops
-
-`PeerStatusSync` runs inside `PeerContextProvider` and is active only when `activePeerId !== null` (i.e. a remote peer is selected):
-
-| Loop | Interval | Endpoint | Data Delivered |
-|---|---|---|---|
-| **Fast** | 3s (500ms on failover) | `/api/admin/live-status` | Voice streams, convergence status |
-| **Fast** | 3s | `/api/traffic/status` | Traffic running state, active rate, client count |
-| **Slow** | 10s | `/api/admin/system/dashboard-data` | System stats, overall status |
-| **History** | 60s | `/api/traffic/history?range=1h` | Traffic Volume chart data |
+| `gFetch` interceptor | `src/PeerContext.tsx` | Rewrites `/api/*` → `/api/gateway/:peerId/*` when a remote peer is active; falls back to native `fetch` in local mode |
+| Gateway proxy handler | `server.ts` (`/api/gateway/:peerId/*path`) | HTTP pass-through proxy with JWT re-signing, body forwarding, SSE support |
+| `rawBody` middleware | `server.ts` | Captures raw request body buffer BEFORE `express.json()` consumes it; required for POST/PATCH/PUT pass-through |
+| `PeerStatusSync` | `src/App.tsx` | React component running background polling loops for remote peer live state |
+| `GatewayDropdown` | `src/components/GatewayDropdown.tsx` | UI dropdown to select active peer; shows `UNREACHABLE` badge for offline peers |
+| `RemoteViewChip` | `src/PeerContext.tsx` | Inline amber chip in navbar; shows peer IP + exit button |
+| Remote-view inset border | `src/App.tsx` | `position:fixed` amber overlay div; `pointer-events:none`; zero layout shift |
 
 ---
 
-## Feature Coverage Matrix
+## Gateway Proxy — Implementation Details
+
+### Body Forwarding (Critical)
+
+**Problem (fixed in v2.0.68):** `express.json()` middleware consumed the request body stream before the gateway proxy could forward it. POST/PATCH/PUT requests arrived at the peer with an empty body.
+
+**Fix:** A `rawBody` middleware captures the raw buffer on all `/api/gateway/*` routes before `express.json()` runs:
+
+```typescript
+// Applied BEFORE express.json() on gateway routes only
+app.use('/api/gateway', (req, res, next) => {
+    let chunks: Buffer[] = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+        (req as any).rawBody = Buffer.concat(chunks);
+        next();
+    });
+});
+```
+
+The proxy then writes `req.rawBody` directly to the outbound request:
+
+```typescript
+if (rawBody?.length) {
+    proxyReq.write(rawBody);
+}
+proxyReq.end();
+```
+
+### SSE Proxying (text/event-stream)
+
+**Added in v2.0.72.** When the peer responds with `Content-Type: text/event-stream` (Server-Sent Events), the gateway:
+
+1. Sets `X-Accel-Buffering: no` to disable nginx/proxy buffering.
+2. Calls `res.flushHeaders()` immediately so the browser's `EventSource` receives the connection open event without waiting.
+3. Pipes `proxyRes` to `res` via Node.js stream pipe (chunks flow in real-time).
+
+```typescript
+const isSSE = (proxyRes.headers['content-type'] || '').includes('text/event-stream');
+if (isSSE) {
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.flushHeaders();
+}
+proxyRes.pipe(res, { end: true });
+```
+
+### EventSource URL Pattern for SSE Streams
+
+`EventSource` (browser API) cannot set custom headers. Since `authenticateToken` on DC1's gateway already supports `?token=` as a query parameter (for direct SSE use), gateway-routed SSE works with:
+
+```typescript
+const gwPrefix = activePeerId ? `/api/gateway/${activePeerId}` : '';
+const sse = new EventSource(`${gwPrefix}/api/tests/xfr/${id}/stream?token=${token}`);
+```
+
+In local mode (`activePeerId = null`), `gwPrefix = ''` and the URL is unchanged.
+
+### Hop-by-Hop Headers
+
+The following headers are stripped from both request and response to prevent proxy protocol leakage:
+
+```typescript
+const hopByHop = new Set([
+    'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+    'te', 'trailers', 'transfer-encoding', 'upgrade', 'host', 'authorization'
+]);
+```
+
+`Content-Type`, `Content-Length`, and `x-gateway-peer` (added by the proxy) are forwarded normally.
+
+---
+
+## PeerStatusSync Polling Loops
+
+`PeerStatusSync` is active only when `activePeerId !== null`:
+
+| Loop | Interval | Endpoint | Data Delivered |
+|---|---|---|---|
+| **Fast** | 3 s (500 ms on failover view) | `/api/admin/live-status` | Voice streams, convergence status |
+| **Fast** | 3 s | `/api/traffic/status` | Traffic running state, active rate, client count |
+| **Slow** | 10 s | `/api/admin/system/dashboard-data` | System stats, overall status |
+| **History** | 60 s | `/api/traffic/history?range=1h` | Traffic volume chart data |
+
+---
+
+## Feature Coverage Matrix (v2.0.73)
 
 ### ✅ Fully Working in Remote View
 
-| Feature | Notes |
-|---|---|
-| Traffic Generator stats | TRAFFIC RATE, SUCCESS RATE, ACTIVE APPS, TOTAL REQUESTS/ERRORS |
-| Traffic Volume chart | Populated via 60s history poll in PeerStatusSync |
-| Voice / Live Streams | Live BR5 streams; failover alerts |
-| Digital Experience (DX) | DX score, endpoints, latency |
-| Failover Monitoring | Live convergence results from BR5 |
-| Custom Apps — session list | Incoming/outgoing sessions, RTT, metrics from BR5 |
-| Custom Apps — app list | All 11 apps (list + status indicators) from BR5 |
-| Security — Posture Score | URL / DNS / Threat scores from BR5 via `useSecurityScores` hook |
-| Security — Efficacy | Test results from BR5 |
-| IoT — Device list | Devices, IPs (BR5 subnet), packets, scores from BR5 |
-| Settings — System tab | Hostname, uptime, container stats from BR5 |
+| Feature | Read | Write / Action | Notes |
+|---|---|---|---|
+| Digital Experience (DX) | ✅ | — | DX score, endpoints, latency |
+| Traffic Generator | ✅ | ✅ | Start/Stop; stats via PeerStatusSync |
+| Bandwidth Test (Speedtest) | ✅ | ✅ | History + live SSE stream via gateway; run/delete/purge |
+| Security | ✅ | ✅ | Posture, URL/DNS batch tests |
+| IoT | ✅ | ✅ | Device list, bad-behavior, settings, manage devices |
+| Voice | ✅ | ✅ | Config, ingress; start/stop simulation |
+| Custom Apps (operational) | ✅ | ✅ | Start/Stop listener & client; 1.5 s status poll |
+| Custom Apps (settings/params) | ✅ | ✅ | Edit parameters; hot-applied instantly on peer |
+| Failover Monitoring | ✅ | — | Live convergence results |
+| Topology | ✅ | — | |
+| VyOS Control | ✅ | ✅ | Run sequences |
+| Settings (config, thresholds) | ✅ | ✅ | 30 s polling; writes hot-applied |
+| Settings — System tab | ✅ | — | Hostname, uptime, container stats |
 
-### 🔒 Intentionally Disabled in Remote View (Read-Only M3)
-
-| Feature | Reason |
-|---|---|
-| Custom Apps Start/Stop All | Write action — M4 scope |
-| Custom Apps Listener/Client Start/Stop | Write action — M4 scope |
-| Internet Speedtest | Requires BR5 local process attachment; not proxiable |
-| Iperf Client | Same as Speedtest |
-| Settings — Save changes | Write action — M4 scope |
-
-### ❌ Not Yet Working / Known Limitations
+### ⚠️ Known Limitations
 
 | Feature | Root Cause | Planned Fix |
 |---|---|---|
-| **IoT Real-time Analysis (log stream)** | Uses SSE/WebSocket — cannot be tunneled through HTTP gateway proxy | M4: replace with REST polling fallback via `gFetch` |
-| **Network Status (GW IP, Public IP)** | Fetches from DC1 local system — no peer routing | M4: add dedicated endpoint to PeerStatusSync |
-| **Settings data in remote view** | useEffect dependency `[token, activePeerId]` added but write path needs validation | M4: full remote settings read/write with confirmation banner |
-| **Traffic history range selector** | History loop fixed to `?range=1h`; other ranges not yet hooked | M4: pass `timeRange` state to PeerStatusSync |
+| **IoT Real-time Log Stream** | Peer SSE stream not yet proxied through gateway | Replace with REST polling via `gFetch` |
+| **Network Status** (GW IP, Public IP) | Reads from local system, not peer | Add dedicated endpoint in PeerStatusSync |
+| **Traffic history range selector** | PeerStatusSync loop fixed to `?range=1h` | Pass `timeRange` state to PeerStatusSync |
 
 ---
 
 ## UX Conventions
 
-### Remote View Indicator
+### Remote View Indicators (v2.0.73)
 
-When a remote peer is active, a `RemoteViewChip` banner is shown at the top of the dashboard:
+Two simultaneous indicators with zero layout impact:
 
-```
-[ 👁 Remote View: BR5-Ubuntu ]
-```
+1. **Amber inline chip** in the navbar (`RemoteViewChip`):
+   - Shows peer IP or name
+   - Pulsing globe icon (`Globe` from lucide-react)
+   - `✕` button to exit remote view
+   - Rendered only when `activePeerId !== null`
 
-### Unavailable Features
-
-Features that cannot work in remote view must display one of:
-
-- **Disabled button** with tooltip: `"Not available in remote view"` (Speedtest, Iperf)
-- **`<RemoteUnavailable>`** inline badge: for panels that would otherwise appear empty without explanation (planned for IoT log stream, Network Status)
+2. **Amber inset border** (full-viewport frame):
+   - `position: fixed; inset: 0; z-index: 9998; pointer-events: none`
+   - `box-shadow: inset 0 0 0 2px rgba(251,191,36,0.40)`
+   - Zero layout shift, no content displacement
+   - Rendered as `{isRemoteView && <div ... />}` in `App.tsx`
 
 ### UNREACHABLE Peers
 
-The `GatewayDropdown` shows an `UNREACHABLE` badge (red) for peers that fail the gateway health check. Selecting them is blocked to prevent silent empty states.
+`GatewayDropdown` shows a red `UNREACHABLE` badge for peers that fail the health check. Selection is blocked.
+
+### Unavailable Features
+
+Features that cannot work in remote view display:
+- **Disabled button** with tooltip (e.g. Iperf client)
+- **`<RemoteUnavailable>`** inline badge for panels that would otherwise appear empty
 
 ---
 
-## Security Model (M3)
-
-> ⚠️ **Current state is permissive.** The gateway proxy on DC1 accepts any request from authenticated DC1 users and forwards it to the target peer using the peer's own credentials (registry token).
-
-| Aspect | M3 Status | M4 Target |
-|---|---|---|
-| Authentication | DC1 JWT required | Add per-peer HMAC signing |
-| Authorization | Any DC1 user can proxy to any peer | Role-based peer access |
-| Peer credential exposure | Peer token used internally, not sent to browser | Unchanged |
-| Audit log | None | Add gateway access audit trail |
-
----
-
-## Migration Patterns
+## Developer Patterns
 
 ### Adding a New Component to Remote View
 
 1. Import `usePeerContext` from `../PeerContext`.
-2. Replace `fetch(` calls with `gFetch(`.
+2. Replace all `fetch('/api/...` calls with `gFetch('/api/...`.
 3. Add `activePeerId` to any `useEffect` dependency array that loads data on mount.
-4. If the feature cannot work remotely, add a visual indicator (disabled state or `<RemoteUnavailable>`).
+4. For SSE streams: use the gateway prefix pattern (see EventSource section above).
+5. If the feature cannot work remotely, add a visual indicator (disabled state or `<RemoteUnavailable>`).
 
-### Common Pitfall: Promise.all and Chained .then()
+### Common Pitfalls
 
-`sed 's/await fetch(/await gFetch(/g'` **does not** catch:
+**`fetch()` not caught by simple search:**
 
 ```ts
-// ❌ missed by sed
+// ❌ missed by sed 's/fetch/gFetch/g'
 const [a, b] = await Promise.all([
   fetch('/api/foo', ...),
   fetch('/api/bar', ...),
 ]);
 
-// ❌ missed by sed
+// ❌ chained .then() — also missed
 fetch('/api/baz', ...).then(r => r.json()).then(setData);
 ```
 
 Always verify with:
 ```bash
-grep -c "fetch('/api\|fetch(\`/api" src/MyComponent.tsx
+grep -n "fetch('/api\|fetch(\`/api" src/MyComponent.tsx
 ```
+
+**`gFetch` is a no-op in local mode:** When `activePeerId = null`, `gFetch` calls native `fetch` with the original URL unchanged. All remote-view code paths are transparently bypassed.
+
+---
+
+## Security Model
+
+> ⚠️ **Current state is permissive.** The gateway proxy accepts any request from authenticated DC1 users and forwards it using the peer's own credentials.
+
+| Aspect | Current Status | Planned |
+|---|---|---|
+| Authentication | DC1 JWT required | Add per-peer HMAC signing |
+| Authorization | Any DC1 user can proxy to any peer | Role-based peer access |
+| Peer credential exposure | Peer token used internally, never sent to browser | Unchanged |
+| Audit log | None | Add gateway access audit trail |
 
 ---
 
 ## Relationship to PRD Phase 3
 
-The Remote View Gateway is a **pragmatic bootstrap** that satisfies the observability goal of Phase 3 without the full agent-pull job model. It should be seen as a stepping stone:
+The Remote View Gateway is a **pragmatic bootstrap** satisfying observability and basic control without a full agent-pull job model:
 
-| Capability | Remote View Gateway (M3) | PRD Phase 3 (planned) |
+| Capability | Remote View Gateway | PRD Phase 3 (planned) |
 |---|---|---|
 | Read peer state | ✅ Live polling | ✅ Enriched heartbeat telemetry |
-| Trigger remote actions | ❌ (M4) | ✅ Durable jobs with ACK lifecycle |
+| Trigger remote actions | ✅ Synchronous gateway proxy | ✅ Durable jobs with ACK lifecycle |
 | Offline peer last-known state | ❌ | ✅ Persisted in controller |
 | Multi-peer fleet view | ❌ | ✅ Consolidated fleet dashboard |
 | Job scheduling | ❌ | ✅ `start_at` synchronized jobs |
 | Audit trail | ❌ | ✅ Full job + result history |
-
-The gateway proxy approach may be retired or kept as a low-latency complement to the job model once Phase 3 is fully implemented.
 
 ---
 
@@ -178,4 +256,5 @@ The gateway proxy approach may be retired or kept as a low-latency complement to
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-09-28 | `v2.0.73` | Stigix Core Team / Antigravity | Major update: write operations coverage, body forwarding fix, SSE proxying, EventSource URL pattern, updated feature matrix, new UX indicators (chip + inset border) |
 | 2026-09-28 | `v2.0.67` | Stigix Core Team / Antigravity | Initial document creation — M3 Remote View Gateway implementation reference |
