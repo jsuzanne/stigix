@@ -162,21 +162,27 @@ const hopByHop = new Set([
 
 ## UX Conventions
 
-### Remote View Indicators (v2.0.73)
+### Remote View Indicators (v2.0.80)
 
-Two simultaneous indicators with zero layout impact:
+Visual indicators with zero layout impact confirm the active remote context:
 
-1. **Amber inline chip** in the navbar (`RemoteViewChip`):
+1. **Amber site name in header subtitle** (v2.0.80):
+   - Displays the active remote site name (e.g. `BR5-Ubuntu`) in bold amber next to "The Engine for SASE Validation".
+   - Zero additional API calls (resolved from existing peer registry state).
+
+2. **Amber inline chip** in the navbar (`RemoteViewChip`):
    - Shows peer IP or name
    - Pulsing globe icon (`Globe` from lucide-react)
    - `✕` button to exit remote view
    - Rendered only when `activePeerId !== null`
 
-2. **Amber inset border** (full-viewport frame):
+3. **Amber inset border** (full-viewport frame):
    - `position: fixed; inset: 0; z-index: 9998; pointer-events: none`
    - `box-shadow: inset 0 0 0 2px rgba(251,191,36,0.40)`
    - Zero layout shift, no content displacement
    - Rendered as `{isRemoteView && <div ... />}` in `App.tsx`
+
+![Remote View Active Mode with Amber Frame](screenshots/14-Remote-View/02-remote-view-active-frame.png)
 
 ### UNREACHABLE Peers
 
@@ -256,5 +262,6 @@ The Remote View Gateway is a **pragmatic bootstrap** satisfying observability an
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-09-28 | `v2.0.80` | Stigix Core Team / Antigravity | Documented top-left amber site name subtitle indicator and added UI screenshot |
 | 2026-09-28 | `v2.0.73` | Stigix Core Team / Antigravity | Major update: write operations coverage, body forwarding fix, SSE proxying, EventSource URL pattern, updated feature matrix, new UX indicators (chip + inset border) |
 | 2026-09-28 | `v2.0.67` | Stigix Core Team / Antigravity | Initial document creation — M3 Remote View Gateway implementation reference |

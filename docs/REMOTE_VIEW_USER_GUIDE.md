@@ -4,7 +4,7 @@
 
 ## What Is Remote View?
 
-Remote View allows an operator connected to a **Leader node** (e.g. DC1) to observe and control a remote **peer node** (e.g. BR8) directly from the Leader's dashboard — without opening a second browser tab or logging into BR8 separately.
+Remote View allows an operator connected to a **Leader node** (e.g. DC1) to observe and control a remote **peer node** (e.g. BR5, BR8) directly from the Leader's dashboard — without opening a second browser tab or logging into remote instances separately.
 
 All dashboard actions (reads and writes) are transparently routed through the Leader's gateway to the selected peer. The experience is equivalent to being directly connected to that peer.
 
@@ -21,8 +21,10 @@ All dashboard actions (reads and writes) are transparently routed through the Le
 ## Activating Remote View
 
 1. Click the **peer selector dropdown** in the top-right area of the header (next to the Health badge).
-2. Select the peer you want to manage (e.g. `BR8-Ubuntu`).
+2. Select the peer you want to manage (e.g. `BR5-Ubuntu` or `BR8-Ubuntu`).
 3. The dashboard immediately switches to Remote View mode.
+
+![Switch Stigix Target Dropdown](screenshots/14-Remote-View/01-peer-context-switcher-dropdown.png)
 
 > **Tip:** Peers shown with a red `UNREACHABLE` badge are offline or blocked by the network. Selecting them is disabled to prevent silent empty states.
 
@@ -30,14 +32,17 @@ All dashboard actions (reads and writes) are transparently routed through the Le
 
 ## Visual Indicators
 
-When Remote View is active, two indicators are shown simultaneously:
+When Remote View is active, clear visual cues identify the active remote context across the dashboard:
 
-| Indicator | Description |
-|---|---|
-| **Amber chip** (top-right navbar) | Shows the peer IP or name. Click **✕** to exit Remote View. Includes a pulsing globe icon. |
-| **Amber inset border** | A subtle 2 px amber frame around the entire viewport. Zero layout shift — no content is displaced. |
+| Indicator | Location | Description |
+|---|---|---|
+| **Amber Site Name** | Top-left header subtitle | Displays the active remote site name (e.g., `BR5-Ubuntu`) directly in the header banner next to the subtitle. |
+| **Amber Peer Chip** | Top-right navbar | Shows the remote peer IP and name. Includes a quick **✕** button to exit Remote View. |
+| **Amber Inset Border** | Full viewport perimeter | A subtle 2 px amber frame around the entire dashboard window. Zero layout shift — no content is displaced. |
 
-Both indicators disappear immediately when you exit Remote View.
+![Remote View Active Mode with Yellow Frame](screenshots/14-Remote-View/02-remote-view-active-frame.png)
+
+All remote indicators disappear immediately when you exit Remote View.
 
 ---
 
@@ -99,4 +104,5 @@ Click the **✕** button on the amber chip in the navbar. The dashboard instantl
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-09-28 | `v2.0.80` | Stigix Core Team / Antigravity | Added UI screenshots for Peer Context Switcher dropdown and Remote View active state (amber frame & site subtitle) |
 | 2026-09-28 | `v2.0.73` | Stigix Core Team / Antigravity | Initial document creation — Remote View operator guide |
