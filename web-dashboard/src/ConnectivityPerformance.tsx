@@ -566,7 +566,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 updatedList.push(updatedProbe);
             }
 
-            await fetch('/api/connectivity/custom', {
+            await gFetch('/api/connectivity/custom', {
                 method: 'POST',
                 headers: {
                     ...authHeaders(),
@@ -600,7 +600,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 return p;
             });
 
-            await fetch('/api/connectivity/custom', {
+            await gFetch('/api/connectivity/custom', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ endpoints: updatedEndpoints })

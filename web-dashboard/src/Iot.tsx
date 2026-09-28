@@ -197,7 +197,7 @@ export default function Iot({ token }: IotProps) {
     const handleBulkStart = async () => {
         if (selectedIds.length === 0) return;
         try {
-            await fetch('/api/iot/start-batch', {
+            await gFetch('/api/iot/start-batch', {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify({ ids: selectedIds })
@@ -212,7 +212,7 @@ export default function Iot({ token }: IotProps) {
     const handleBulkStop = async () => {
         if (selectedIds.length === 0) return;
         try {
-            await fetch('/api/iot/stop-batch', {
+            await gFetch('/api/iot/stop-batch', {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify({ ids: selectedIds })
@@ -235,7 +235,7 @@ export default function Iot({ token }: IotProps) {
     const handleDelete = async (id: string) => {
         if (!confirm("Are you sure you want to delete this device configuration?")) return;
         try {
-            await fetch(`/api/iot/devices/${id}`, { method: 'DELETE', headers: authHeaders() });
+            await gFetch(`/api/iot/devices/${id}`, { method: 'DELETE', headers: authHeaders() });
             fetchDevices();
         } catch (e) {
             console.error("Failed to delete device", e);
@@ -247,7 +247,7 @@ export default function Iot({ token }: IotProps) {
         if (!editingDevice || !editingDevice.id) return;
 
         try {
-            const res = await fetch('/api/iot/devices', {
+            const res = await gFetch('/api/iot/devices', {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify(editingDevice)
@@ -269,7 +269,7 @@ export default function Iot({ token }: IotProps) {
 
     const handleExportJson = async () => {
         try {
-            const res = await fetch('/api/iot/config/export', { headers: authHeaders() });
+            const res = await gFetch('/api/iot/config/export', { headers: authHeaders() });
             const blob = await res.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -292,7 +292,7 @@ export default function Iot({ token }: IotProps) {
         reader.onload = async (event) => {
             try {
                 const content = event.target?.result as string;
-                const res = await fetch('/api/iot/config/import', {
+                const res = await gFetch('/api/iot/config/import', {
                     method: 'POST',
                     headers: authHeaders(),
                     body: JSON.stringify({ content })
@@ -315,7 +315,7 @@ export default function Iot({ token }: IotProps) {
     const toggleBadBehavior = async () => {
         const next = !badBehaviorEnabled;
         try {
-            await fetch('/api/iot/bad-behavior', {
+            await gFetch('/api/iot/bad-behavior', {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify({ enabled: next })
@@ -368,7 +368,7 @@ export default function Iot({ token }: IotProps) {
             if (prismaOpts.bad_behavior === 'percentage')  body.security_percentage = prismaOpts.security_percentage;
             // 'auto' = default (script uses CSV risk level) — no extra flag needed
 
-            const res = await fetch('/api/iot/import-prisma-csv', {
+            const res = await gFetch('/api/iot/import-prisma-csv', {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify(body),
@@ -423,7 +423,7 @@ export default function Iot({ token }: IotProps) {
             if (vulnOpts.bad_behavior === 'none')        body.security_percentage = 0;
             if (vulnOpts.bad_behavior === 'percentage')  body.security_percentage = vulnOpts.security_percentage;
 
-            const res = await fetch('/api/iot/import-vuln-csv', {
+            const res = await gFetch('/api/iot/import-vuln-csv', {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify(body),
@@ -469,7 +469,7 @@ export default function Iot({ token }: IotProps) {
         setSliderValue(val);
         if (sliderDebounce.current) clearTimeout(sliderDebounce.current);
         sliderDebounce.current = setTimeout(() => {
-            fetch('/api/iot/settings', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ maxConcurrentDevices: val }) })
+            gFetch('/api/iot/settings', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ maxConcurrentDevices: val }) })
                 .then(r => r.json()).then(d => setIotSettings(d)).catch(() => {});
         }, 500);
     };

@@ -1,3 +1,4 @@
+import { usePeerContext } from '../../PeerContext';
 import React, { useState, useEffect, Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import {
@@ -88,7 +89,7 @@ export const PrismaAppSyncModal: React.FC<PrismaAppSyncModalProps> = ({
     const loadPrismaStatus = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch('/api/custom-tcp-apps/prisma/status', {
+            const res = await gFetch('/api/custom-tcp-apps/prisma/status', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
@@ -104,7 +105,7 @@ export const PrismaAppSyncModal: React.FC<PrismaAppSyncModalProps> = ({
     const handleSyncSingleApp = async (appId: string) => {
         setActionLoadingId(appId);
         try {
-            const res = await fetch(`/api/custom-tcp-apps/prisma/sync-app/${appId}`, {
+            const res = await gFetch(`/api/custom-tcp-apps/prisma/sync-app/${appId}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -125,7 +126,7 @@ export const PrismaAppSyncModal: React.FC<PrismaAppSyncModalProps> = ({
     const handleDeleteSingleApp = async (appId: string) => {
         setActionLoadingId(appId);
         try {
-            const res = await fetch(`/api/custom-tcp-apps/prisma/delete-app/${appId}`, {
+            const res = await gFetch(`/api/custom-tcp-apps/prisma/delete-app/${appId}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -146,7 +147,7 @@ export const PrismaAppSyncModal: React.FC<PrismaAppSyncModalProps> = ({
     const handleSyncAll = async () => {
         setIsGlobalActionLoading(true);
         try {
-            const res = await fetch('/api/custom-tcp-apps/prisma/sync-all', {
+            const res = await gFetch('/api/custom-tcp-apps/prisma/sync-all', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -170,7 +171,7 @@ export const PrismaAppSyncModal: React.FC<PrismaAppSyncModalProps> = ({
         }
         setIsGlobalActionLoading(true);
         try {
-            const res = await fetch('/api/custom-tcp-apps/prisma/clean-all', {
+            const res = await gFetch('/api/custom-tcp-apps/prisma/clean-all', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });

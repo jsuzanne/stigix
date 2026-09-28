@@ -2,6 +2,7 @@
  * Stigix Custom TCP Inter-Site Applications — 4-Step Creation & Edition Wizard Modal
  */
 
+import { usePeerContext } from '../../PeerContext';
 import React, { useState, useEffect, Component, type ErrorInfo, type ReactNode } from 'react';
 import {
     X, Server, Play, Shield, Globe, Plus, Trash2, CheckCircle2,
@@ -273,7 +274,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
 
     useEffect(() => {
         if (isOpen) {
-            fetch('/api/targets', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
+            gFetch('/api/targets', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
                 .then(r => r.json())
                 .then(data => {
                     const list = Array.isArray(data) ? data : (data.targets || []);
@@ -371,7 +372,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
         setValidationErrors([]);
         setValidationWarnings([]);
         try {
-            const res = await fetch('/api/custom-tcp-apps/validate', {
+            const res = await gFetch('/api/custom-tcp-apps/validate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
