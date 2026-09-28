@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.72] - 2026-09-28
+
+### Fixed
+- **Speedtest — remote-view mode (DC1→BR8)**: `runTest`, `purgeHistory`, and `deleteJob` used bare `fetch()` (direct to DC1) instead of `gFetch()` (gateway-routed). In remote-view, this launched tests on DC1 while `fetchHistory` read from BR8 via gateway — causing visible progress but no results in history. All Speedtest write operations now use `gFetch`.
+- **Speedtest — SSE stream in remote-view**: `subscribeToStream` used a hardcoded `EventSource('/api/tests/xfr/${id}/stream')` URL pointing to DC1. In remote-view, the stream is now built dynamically with the gateway prefix (`/api/gateway/${activePeerId}/api/tests/xfr/${id}/stream?token=...`) so BR8 streams the events.
+- **Gateway proxy — SSE buffering**: Added `X-Accel-Buffering: no` and `res.flushHeaders()` when the proxied response is `text/event-stream`, ensuring SSE events are forwarded in real-time through the gateway instead of being held in a buffer.
+
 ## [2.0.68] - 2026-09-28
 
 ### Fixed

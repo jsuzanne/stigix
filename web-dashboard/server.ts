@@ -12485,6 +12485,16 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
             }
         }
         res.setHeader('x-gateway-peer', peerId);
+
+        // SSE streams (text/event-stream) must not be buffered — flush headers
+        // immediately so the browser's EventSource receives events in real-time.
+        const isSSE = (proxyRes.headers['content-type'] || '').includes('text/event-stream');
+        if (isSSE) {
+            res.setHeader('X-Accel-Buffering', 'no');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.flushHeaders();
+        }
+
         proxyRes.pipe(res, { end: true });
     });
 

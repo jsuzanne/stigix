@@ -193,7 +193,7 @@ export default function Speedtest({ token }: Props) {
     const purgeHistory = async () => {
         if (!confirm('Are you sure you want to purge all bandwidth test history? This action cannot be undone.')) return;
         try {
-            const res = await fetch('/api/tests/xfr', {
+            const res = await gFetch('/api/tests/xfr', {
                 method: 'DELETE',
                 headers: authHeaders
             });
@@ -212,7 +212,7 @@ export default function Speedtest({ token }: Props) {
     const deleteJob = async (job: any) => {
         if (!confirm(`Delete test record "${job.sequence_id}"?`)) return;
         try {
-            const res = await fetch(`/api/tests/xfr/${encodeURIComponent(job.id || job.sequence_id)}`, {
+            const res = await gFetch(`/api/tests/xfr/${encodeURIComponent(job.id || job.sequence_id)}`, {
                 method: 'DELETE',
                 headers: authHeaders
             });
@@ -266,7 +266,7 @@ export default function Speedtest({ token }: Props) {
 
         try {
             console.log(`[XFR] Starting test to ${h}:${p}...`);
-            const res = await fetch('/api/tests/xfr', {
+            const res = await gFetch('/api/tests/xfr', {
                 method: 'POST',
                 headers: authHeaders,
                 body: JSON.stringify(body)
@@ -310,7 +310,10 @@ export default function Speedtest({ token }: Props) {
         if (sseRef.current) sseRef.current.close();
         setChartData([]);
 
-        const sse = new EventSource(`/api/tests/xfr/${id}/stream?token=${token}`);
+        // In remote-view mode, the EventSource must go through the gateway so that
+        // BR8 streams the test events — not DC1. activePeerId is null in local mode.
+        const gwPrefix = activePeerId ? `/api/gateway/${activePeerId}` : '';
+        const sse = new EventSource(`${gwPrefix}/api/tests/xfr/${id}/stream?token=${token}`);
         sseRef.current = sse;
         
         let counter = 0;

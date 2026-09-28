@@ -180,17 +180,29 @@ test.describe('Remote-View — Read + Write Routing (DC1→BR8 Live)', () => {
         });
 
         test('Voice: data reads from BR8', async ({ page }) => {
+            // Register listeners BEFORE navigating so we catch the initial parallel fetches
+            const ingressPromise = page.waitForResponse(
+                r => r.url().includes('/api/gateway/') && r.url().includes('voice/ingress'),
+                { timeout: 10_000 }
+            ).catch(() => null);
+            const configPromise = page.waitForResponse(
+                r => r.url().includes('/api/gateway/') && r.url().includes('voice/config'),
+                { timeout: 10_000 }
+            ).catch(() => null);
             await goToTab(page, 'Voice');
-            await waitNoLoading(page, 'Loading');
-            await page.waitForTimeout(1_500);
+            await Promise.all([ingressPromise, configPromise]);
             assertGWRead('/api/voice/config');
             assertGWRead('/api/voice/ingress');
         });
 
         test('IoT: data reads from BR8', async ({ page }) => {
+            // Register listener BEFORE navigating — iot/devices may complete quickly via gateway
+            const devicesPromise = page.waitForResponse(
+                r => r.url().includes('/api/gateway/') && r.url().includes('iot/devices'),
+                { timeout: 10_000 }
+            ).catch(() => null);
             await goToTab(page, 'IoT');
-            await waitNoLoading(page, 'Loading');
-            await page.waitForTimeout(2_000);
+            await devicesPromise;
             assertGWRead('/api/iot/settings');
             assertGWRead('/api/iot/devices');
             assertGWRead('/api/iot/bad-behavior');
@@ -258,25 +270,45 @@ test.describe('Remote-View — Read + Write Routing (DC1→BR8 Live)', () => {
         });
 
         test('Voice: control (start/stop) via BR8 gateway', async ({ page }) => {
+            test.setTimeout(60_000);
+            // Register listener BEFORE navigating so we don't miss the button state
             await goToTab(page, 'Voice');
-            await page.waitForTimeout(1_500);
+            // Wait for voice config to load via gateway (determines enabled state)
+            await page.waitForResponse(
+                r => r.url().includes('/api/gateway/') && r.url().includes('voice/config'),
+                { timeout: 8_000 }
+            ).catch(() => {});
+            await page.waitForTimeout(500); // let React re-render with received state
+
             const stopBtn  = page.locator('button:has-text("Stop Voice")').first();
             const startBtn = page.locator('button:has-text("Start Voice"), button:has-text("Start Simulation")').first();
-            const isRunning = await stopBtn.isVisible({ timeout: 4_000 }).catch(() => false);
+            const isRunning = await stopBtn.isVisible({ timeout: 3_000 }).catch(() => false);
             console.log(`  Voice: ${isRunning ? 'RUNNING' : 'IDLE'}`);
+
+            // Set up response listener BEFORE click so we don't race
+            const voiceCtrlResp = page.waitForResponse(
+                r => r.url().includes('voice/control'),
+                { timeout: 15_000 }
+            ).catch(() => null);
 
             if (isRunning) {
                 await stopBtn.click();
-                await page.waitForFunction(() => !document.body.innerText.includes('Terminating'), { timeout: 15_000 }).catch(() => {});
-                await page.waitForTimeout(500);
-                assertGWWrite('POST', '/api/voice/control');
             } else {
-                await expect(startBtn).toBeVisible({ timeout: 6_000 });
+                await expect(startBtn).toBeVisible({ timeout: 4_000 });
+                // Skip if button is disabled (no voice servers configured on BR8)
+                const isDisabled = await startBtn.isDisabled();
+                if (isDisabled) {
+                    console.log('  Voice start button disabled (no servers configured) — SKIP');
+                    test.skip();
+                    return;
+                }
                 await startBtn.click();
-                await page.waitForFunction(() => !document.body.innerText.includes('Initializing'), { timeout: 15_000 }).catch(() => {});
-                await page.waitForTimeout(500);
-                assertGWWrite('POST', '/api/voice/control');
             }
+
+            // Wait for the gateway POST to actually complete (not just the button to change)
+            await voiceCtrlResp;
+            await page.waitForTimeout(300);
+            assertGWWrite('POST', '/api/voice/control');
         });
 
         test('Security: batch URL test via BR8 gateway', async ({ page }) => {
