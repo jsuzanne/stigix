@@ -472,7 +472,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         fetchTargetServiceStatus();
         const interval = setInterval(fetchTargetServiceStatus, 5000);
         return () => clearInterval(interval);
-    }, []);
+    }, [activePeerId]);
     const [latestEgressResult, setLatestEgressResult] = useState<any>(null);
     const [containerStats, setContainerStats] = useState<any[]>([]);
     const [isGeneratingTechSupport, setIsGeneratingTechSupport] = useState(false);
@@ -541,6 +541,12 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     const [targetReachability, setTargetReachability] = useState<Record<string, boolean | 'loading'>>({});
 
+    // Reset target reachability cache on peer switch so stale results from the
+    // previous peer don't show incorrect red dots while the new check runs.
+    useEffect(() => {
+        setTargetReachability({});
+    }, [activePeerId]);
+
     useEffect(() => {
         if (!targets.length) return;
         const checkReachability = async () => {
@@ -564,7 +570,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         checkReachability();
         const interval = setInterval(checkReachability, 60000);
         return () => clearInterval(interval);
-    }, [targets, token]);
+    }, [targets, token, activePeerId]);
 
     const authHeaders = {
         'Authorization': `Bearer ${token}`,
