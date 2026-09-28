@@ -670,47 +670,80 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
 
     // Data Fetching
     useEffect(() => {
+        // ── Core config fetch — extracted so it can be polled every 30 s ──
+        // This ensures remote-view data stays fresh when BR5's config changes
+        // independently (e.g., edited directly on sdwanbr5) without requiring
+        // the user to navigate away and come back.
+        const fetchCoreConfig = () => {
+            Promise.all([
+                apiFetch('/api/config/apps', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+                apiFetch('/api/config/interfaces', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+                apiFetch('/api/connectivity/custom', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+            ]).then(([catsData, ifaceData, probesData]) => {
+                setCategories(catsData.map((c: any) => ({ ...c, expanded: true })));
+                setInterfaces(ifaceData);
+                setCustomProbes(probesData || []);
+
+                // Fetch Cloud Scenarios (secondary — runs once after initial load)
+                apiFetch('/api/target/scenarios', { headers: authHeaders })
+                    .then(r => r.json())
+                    .then(data => {
+                        // Filter out EICAR for performance probes as requested
+                        const filtered = (data || []).filter((s: any) => s.id !== 'security-eicar');
+                        setCloudScenarios(filtered);
+                    })
+                    .catch(() => { });
+
+                // Fetch Cloud Config
+                apiFetch('/api/config/cloud', { headers: authHeaders })
+                    .then(r => r.json())
+                    .then(setCloudConfig)
+                    .catch(() => { });
+
+                // Fetch ALL detected interfaces (secondary)
+                apiFetch('/api/config/interfaces?all=true', { headers: { 'Authorization': `Bearer ${token}` } })
+                    .then(r => r.json())
+                    .then(setAvailableInterfaces)
+                    .catch(() => { });
+
+                // Fetch Convergence Thresholds (failover parameters)
+                apiFetch('/api/config/convergence', { headers: { 'Authorization': `Bearer ${token}` } })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data && typeof data === 'object' && 'good' in data) {
+                            setConvergenceThresholds(data);
+                        }
+                    })
+                    .catch(() => { });
+
+                // Fetch Traffic SLA Thresholds
+                apiFetch('/api/config/traffic-thresholds', { headers: { 'Authorization': `Bearer ${token}` } })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data && typeof data === 'object' && 'good_latency_ms' in data) {
+                            setTrafficThresholds(data);
+                        }
+                    })
+                    .catch(() => { });
+
+                setLoading(false);
+            }).catch(() => setLoading(false));
+        };
+
+        const fetchTargets = () => {
+            apiFetch('/api/targets', { headers: authHeaders })
+                .then(r => r.json())
+                .then(data => setTargets(Array.isArray(data) ? data : []))
+                .catch(() => { });
+        };
+
         setLoading(true);
-        // Core Config data - Must load for initial page state
-        Promise.all([
-            apiFetch('/api/config/apps', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            apiFetch('/api/config/interfaces', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-            apiFetch('/api/connectivity/custom', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-        ]).then(([catsData, ifaceData, probesData]) => {
-            setCategories(catsData.map((c: any) => ({ ...c, expanded: true })));
-            setInterfaces(ifaceData);
-            setCustomProbes(probesData || []);
-
-            // Fetch Cloud Scenarios
-            apiFetch('/api/target/scenarios', { headers: authHeaders })
-                .then(r => r.json())
-                .then(data => {
-                    // Filter out EICAR for performance probes as requested
-                    const filtered = (data || []).filter((s: any) => s.id !== 'security-eicar');
-                    setCloudScenarios(filtered);
-                })
-                .catch(() => { });
-
-            // Fetch Cloud Config
-            apiFetch('/api/config/cloud', { headers: authHeaders })
-                .then(r => r.json())
-                .then(setCloudConfig)
-                .catch(() => { });
-
-            // Fetch ALL detected interfaces (secondary)
-            apiFetch('/api/config/interfaces?all=true', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(r => r.json())
-                .then(setAvailableInterfaces)
-                .catch(() => { });
-
-            setLoading(false);
-        }).catch(() => setLoading(false));
-
-        // Targets
-        apiFetch('/api/targets', { headers: authHeaders })
-            .then(r => r.json())
-            .then(data => setTargets(Array.isArray(data) ? data : []))
-            .catch(() => { });
+        fetchCoreConfig();
+        fetchTargets();
+        // Poll config data every 30 s — keeps remote-view current when the
+        // active peer's config changes without triggering a full page reload.
+        const coreConfigInterval = setInterval(fetchCoreConfig, 30000);
+        const targetsInterval = setInterval(fetchTargets, 30000);
 
         // System/Maintenance data - Decoupled to avoid blocking initial load
         const fetchMaintenanceStatus = () => {
@@ -782,25 +815,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         fetchEgressInfo();
         const egressInterval = setInterval(fetchEgressInfo, 30000);
 
-        // Fetch Convergence Thresholds
-        apiFetch('/api/config/convergence', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(r => r.json())
-            .then(data => {
-                if (data && typeof data === 'object' && 'good' in data) {
-                    setConvergenceThresholds(data);
-                }
-            })
-            .catch(() => { });
-
-        // Fetch Traffic SLA Thresholds
-        apiFetch('/api/config/traffic-thresholds', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(r => r.json())
-            .then(data => {
-                if (data && typeof data === 'object' && 'good_latency_ms' in data) {
-                    setTrafficThresholds(data);
-                }
-            })
-            .catch(() => { });
+        // Convergence thresholds and traffic thresholds are now fetched inside
+        // fetchCoreConfig() above and polled on a 30 s interval.
 
         // Fetch Registry Status
         const fetchRegistryStatus = () => {
@@ -861,6 +877,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
         fetchCopilotConfig();
 
         return () => {
+            clearInterval(coreConfigInterval);
+            clearInterval(targetsInterval);
             clearInterval(sysInfoInterval);
             clearInterval(mcpInterval);
             clearInterval(mcpHistoryInterval);
