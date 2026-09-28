@@ -335,34 +335,20 @@ a:hover { color: #fff; }
   border: 1px solid var(--stroke-hi);
   border-radius: var(--rl);
   overflow: hidden;
-  background: #ffffff;
-  box-shadow: 0 20px 70px rgba(0,0,0,0.55), 0 0 0 1px var(--stroke);
-  max-width: 880px;
-  margin: 0 auto;
-}
-.arch__bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
   background: var(--bg-card);
-  border-bottom: 1px solid var(--stroke);
+  box-shadow: 0 20px 70px rgba(0,0,0,0.55), 0 0 0 1px var(--stroke);
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  transition: border-color var(--ease), box-shadow var(--ease);
 }
-.arch__bar-dot {
-  width: 9px; height: 9px; border-radius: 50%;
-  background: var(--stroke-hi);
-}
-.arch__bar-dot:nth-child(1) { background: #e05252; }
-.arch__bar-dot:nth-child(2) { background: #e0a852; }
-.arch__bar-dot:nth-child(3) { background: #52c452; }
-.arch__bar-label {
-  font-family: var(--mono);
-  font-size: 0.68rem;
-  color: var(--muted);
-  margin-left: 8px;
+.arch__frame:hover {
+  border-color: rgba(24, 201, 174, 0.4);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.65), 0 0 0 1px rgba(24, 201, 174, 0.2);
 }
 .arch__frame img {
   width: 100%;
+  height: auto;
   display: block;
 }
 
