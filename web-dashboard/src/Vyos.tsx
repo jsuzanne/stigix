@@ -2636,6 +2636,7 @@ function ExecutionTimeline({
     routers: VyosRouter[];
     onRefresh: () => Promise<void>;
 }) {
+    const { gFetch } = usePeerContext();
     const [countdown, setCountdown] = useState('');
     const [currentOffset, setCurrentOffset] = useState(-1);
     const [isStepRunning, setIsStepRunning] = useState(false);

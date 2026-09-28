@@ -21,6 +21,7 @@ interface CustomTcpSettingsTabProps {
 }
 
 export const CustomTcpSettingsTab: React.FC<CustomTcpSettingsTabProps> = ({ token }) => {
+    const { gFetch } = usePeerContext();
     const [applications, setApplications] = useState<CustomTcpApplicationConfig[]>([]);
     const [instanceInfo, setInstanceInfo] = useState<any>(null);
     const [appStatuses, setAppStatuses] = useState<Record<string, any>>({});

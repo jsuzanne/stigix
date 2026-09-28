@@ -68,6 +68,7 @@ export const PrismaAppSyncModal: React.FC<PrismaAppSyncModalProps> = ({
     token,
     applications
 }) => {
+    const { gFetch } = usePeerContext();
     const [isLoading, setIsLoading] = useState(false);
     const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
     const [isGlobalActionLoading, setIsGlobalActionLoading] = useState(false);

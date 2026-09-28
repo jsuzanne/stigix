@@ -244,6 +244,7 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
     editingApp,
     token
 }) => {
+    const { gFetch } = usePeerContext();
     const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
     const [isSaving, setIsSaving] = useState(false);
     const [isValidating, setIsValidating] = useState(false);

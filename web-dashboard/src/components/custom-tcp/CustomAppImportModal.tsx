@@ -22,6 +22,7 @@ export const CustomAppImportModal: React.FC<CustomAppImportModalProps> = ({
     onSuccess,
     existingApps
 }) => {
+    const { gFetch } = usePeerContext();
     const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
     const [rawJsonText, setRawJsonText] = useState<string>('');
     const [parsedApps, setParsedApps] = useState<any[]>([]);
