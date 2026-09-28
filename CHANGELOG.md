@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.73] - 2026-09-28
+
+### Changed
+- **Remote-view indicator**: Replaced the old yellow banner (caused layout shift) with a subtle `position:fixed` amber inset border (2px, `rgba(251,191,36,0.40)`) drawn over the entire viewport. Uses `pointer-events:none` — zero layout impact, zero vertical/horizontal shift. Complements the existing amber chip in the navbar.
+
 ## [2.0.72] - 2026-09-28
 
 ### Fixed

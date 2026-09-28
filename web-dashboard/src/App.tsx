@@ -921,6 +921,17 @@ export default function App() {
       />
     <div className="min-h-screen bg-background text-foreground pt-4 pb-8 px-8">
       <Toaster position="top-right" />
+
+      {/* Remote-view inset frame — subtle amber border on all 4 edges.
+          position:fixed + pointer-events:none = zero layout impact, never shifts content. */}
+      {isRemoteView && (
+        <div
+          className="fixed inset-0 z-[9998] pointer-events-none"
+          style={{ boxShadow: 'inset 0 0 0 2px rgba(251,191,36,0.40)' }}
+          aria-hidden="true"
+        />
+      )}
+
       <header className="mb-8 flex justify-between items-center">
         <div>
           <div className="flex flex-col gap-0.5">
