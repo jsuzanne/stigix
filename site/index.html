@@ -652,6 +652,7 @@
       <button class="gallery__tab" data-tab="apistudio" role="tab" aria-selected="false" id="tab-btn-apistudio">API Studio</button>
       <button class="gallery__tab" data-tab="mcpserver" role="tab" aria-selected="false" id="tab-btn-mcpserver">MCP Server</button>
       <button class="gallery__tab" data-tab="remoteview" role="tab" aria-selected="false" id="tab-btn-remoteview">Remote View</button>
+      <button class="gallery__tab" data-tab="cli" role="tab" aria-selected="false" id="tab-btn-cli">CLI Console</button>
       <button class="gallery__tab" data-tab="statistics" role="tab" aria-selected="false" id="tab-btn-statistics">Live Events</button>
       <button class="gallery__tab" data-tab="config" role="tab" aria-selected="false" id="tab-btn-config">Config</button>
       <button class="gallery__tab" data-tab="dashboard2" role="tab" aria-selected="false" id="tab-btn-dashboard2">Dashboard 2</button>
@@ -1151,6 +1152,53 @@
       </div>
     </div>
 
+    <div class="gallery__panel" id="tab-cli">
+      <div class="gallery__frame">
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">CLI Console — Interactive Terminal &amp; Diagnostic Inspection</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+              <button class="gallery__dot" aria-label="Slide 4"></button>
+              <button class="gallery__dot" aria-label="Slide 5"></button>
+            </div>
+            <span class="gallery__counter">1 / 5</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="CLI — Interactive Console &amp; Tab-Completion">
+            <img src="assets/screenshots/cli-interactive.png" alt="Stigix Interactive CLI Console and Autocompletion" loading="lazy">
+            <div class="gallery__caption"><strong>Interactive Console &amp; Tab-Completion:</strong> Built-in container shell with session authentication, live footer status bar, and dynamic popup autocompletion for all operational commands.</div>
+          </div>
+          <div class="gallery__slide" data-label="CLI — Active SaaS Applications Traffic Statistics">
+            <img src="assets/screenshots/cli-traffic-stats.png" alt="CLI Active SaaS Applications Statistics" loading="lazy">
+            <div class="gallery__caption"><strong>Active Applications Traffic Matrix:</strong> Real-time request volume, error tracking, and 100% success rate breakdown across 67 active SaaS enterprise endpoints (Microsoft 365, Salesforce, Google Workspace, Zoom).</div>
+          </div>
+          <div class="gallery__slide" data-label="CLI — Synthetic DEM Probes &amp; Health Scoring">
+            <img src="assets/screenshots/cli-probes-dem.png" alt="CLI Synthetic Monitoring DEM Probes" loading="lazy">
+            <div class="gallery__caption"><strong>Synthetic DEM Probes &amp; Scoring:</strong> Active probe health table evaluating HTTPS, UDP, and ICMP endpoints with live score (0–100), latency benchmarks (ms), and Prisma SD-WAN catalog sync.</div>
+          </div>
+          <div class="gallery__slide" data-label="CLI — Prisma SD-WAN Flow Browser Path Correlation">
+            <img src="assets/screenshots/cli-flows-query.png" alt="CLI Prisma Flow Browser Query" loading="lazy">
+            <div class="gallery__caption"><strong>Prisma SD-WAN Flow Correlation:</strong> Live <code>flows query</code> command tracing end-to-end network sessions against the Prisma Flow Browser to verify active circuit path selection (<code>BR8-INET1 to DC1-INET</code>).</div>
+          </div>
+          <div class="gallery__slide" data-label="CLI — VoIP QoS Telemetry &amp; MOS Call History">
+            <img src="assets/screenshots/cli-voice-qos.png" alt="CLI Voice QoS and MOS Call History" loading="lazy">
+            <div class="gallery__caption"><strong>VoIP QoS &amp; MOS Call History:</strong> Real-time voice simulation telemetry with global MOS score (4.39 EXCELLENT), jitter, packet loss, per-target breakdowns (DC1, BR1, Hetzner), and active call event history.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="gallery__panel" id="tab-statistics">
       <div class="gallery__frame">
         <div class="gallery__bar">
@@ -1454,56 +1502,79 @@
     <div class="quickstart__header">
       <span class="label">Operations &amp; Automation</span>
       <h2 class="quickstart__title">Control and verify with the built-in CLI</h2>
-      <p class="quickstart__sub">Stigix ships a fully interactive terminal console inside the container with support for Custom Apps, Global Provisioning, and Controller mesh management.</p>
+      <p class="quickstart__sub">Stigix ships a fully interactive terminal console inside the container with support for Custom Apps, Global Provisioning, DEM probes, and Controller mesh management.</p>
     </div>
 
-    <div class="terminal" role="region" aria-label="Stigix CLI demo">
-      <div class="terminal__bar" style="position: relative;">
-        <div class="terminal__dots">
-          <span class="terminal__dot"></span>
-          <span class="terminal__dot"></span>
-          <span class="terminal__dot"></span>
+    <div class="cli-showcase">
+      <!-- Left: Interactive Terminal snippet -->
+      <div class="terminal" role="region" aria-label="Stigix CLI demo">
+        <div class="terminal__bar" style="position: relative;">
+          <div class="terminal__dots">
+            <span class="terminal__dot"></span>
+            <span class="terminal__dot"></span>
+            <span class="terminal__dot"></span>
+          </div>
+          <span class="terminal__title">stigix-cli — interactive console</span>
+          <button class="terminal__copy" aria-label="Copy CLI command" id="copy-cli">Copy</button>
         </div>
-        <span class="terminal__title">stigix-cli — interactive console</span>
-        <button class="terminal__copy" aria-label="Copy CLI command" id="copy-cli">Copy</button>
+        <div class="terminal__body">
+          <div class="terminal__line">
+            <span class="terminal__comment"># Launch the interactive console</span>
+          </div>
+          <div class="terminal__line">
+            <span class="terminal__prompt">$</span>
+            <span class="terminal__cmd">docker exec -it stigix stigix-cli</span>
+          </div>
+          <div class="terminal__line" style="margin-top: 10px;">
+            <span class="terminal__out info">stigix@localhost:8080 ›</span>
+            <span class="terminal__cmd" style="margin-left:8px;">tcp-app status erp-8443</span>
+          </div>
+          <div class="terminal__line">
+            <span class="terminal__out">━━ Application: ERP-Production (:8443) ━━━━━━━━━━</span>
+          </div>
+          <div class="terminal__line">
+            <span class="terminal__out ok">✓ Listener    [LISTENING]  (mode: fixed_delay 150ms)</span>
+          </div>
+          <div class="terminal__line">
+            <span class="terminal__out ok">✓ Outbound    [RUNNING]    (2 streams to DC1)</span>
+          </div>
+          <div class="terminal__line">
+            <span class="terminal__out info">→ Health      98/100 [OPTIMAL] (p50: 16.2ms · p95: 24.1ms)</span>
+          </div>
+          <div class="terminal__line" style="margin-top: 10px;">
+            <span class="terminal__out info">stigix@localhost:8080 ›</span>
+            <span class="terminal__cmd" style="margin-left:8px;">provision publish custom-tcp-apps</span>
+          </div>
+          <div class="terminal__line">
+            <span class="terminal__out ok">✓ Published custom-tcp-apps bundle rev-4 (diff: +1 app ~2 peers)</span>
+          </div>
+          <div class="terminal__line" style="margin-top: 10px;">
+            <span class="terminal__out info">stigix@localhost:8080 ›</span>
+            <span class="terminal__cmd" style="margin-left:8px;">controller peers</span>
+          </div>
+          <div class="terminal__line">
+            <span class="terminal__out">→ BR1 (192.168.101.50) · BR2 (192.168.102.50) · DC1 (192.168.203.100)</span>
+          </div>
+        </div>
       </div>
-      <div class="terminal__body">
-        <div class="terminal__line">
-          <span class="terminal__comment"># Launch the interactive console</span>
+
+      <!-- Right: Real screenshot preview of interactive console -->
+      <div class="cli-showcase__preview">
+        <div class="cli-showcase__bar">
+          <div class="cli-showcase__dots">
+            <span class="cli-showcase__dot"></span>
+            <span class="cli-showcase__dot"></span>
+            <span class="cli-showcase__dot"></span>
+          </div>
+          <span class="cli-showcase__title">Live Console Session &amp; Tab-Completion</span>
+          <span style="font-family:var(--mono);font-size:0.65rem;color:var(--teal);">v2.0.82</span>
         </div>
-        <div class="terminal__line">
-          <span class="terminal__prompt">$</span>
-          <span class="terminal__cmd">docker exec -it stigix stigix-cli</span>
+        <div class="cli-showcase__img-wrap">
+          <img src="assets/screenshots/cli-interactive.png" alt="Stigix CLI interactive console screenshot" loading="lazy">
         </div>
-        <div class="terminal__line" style="margin-top: 10px;">
-          <span class="terminal__out info">stigix@localhost:8080 ›</span>
-          <span class="terminal__cmd" style="margin-left:8px;">tcp-app status erp-8443</span>
-        </div>
-        <div class="terminal__line">
-          <span class="terminal__out">━━ Application: ERP-Production (:8443) ━━━━━━━━━━</span>
-        </div>
-        <div class="terminal__line">
-          <span class="terminal__out ok">✓ Listener    [LISTENING]  (mode: fixed_delay 150ms)</span>
-        </div>
-        <div class="terminal__line">
-          <span class="terminal__out ok">✓ Outbound    [RUNNING]    (2 streams to DC1)</span>
-        </div>
-        <div class="terminal__line">
-          <span class="terminal__out info">→ Health      98/100 [OPTIMAL] (p50: 16.2ms · p95: 24.1ms)</span>
-        </div>
-        <div class="terminal__line" style="margin-top: 10px;">
-          <span class="terminal__out info">stigix@localhost:8080 ›</span>
-          <span class="terminal__cmd" style="margin-left:8px;">provision publish custom-tcp-apps</span>
-        </div>
-        <div class="terminal__line">
-          <span class="terminal__out ok">✓ Published custom-tcp-apps bundle rev-4 (diff: +1 app ~2 peers)</span>
-        </div>
-        <div class="terminal__line" style="margin-top: 10px;">
-          <span class="terminal__out info">stigix@localhost:8080 ›</span>
-          <span class="terminal__cmd" style="margin-left:8px;">controller peers</span>
-        </div>
-        <div class="terminal__line">
-          <span class="terminal__out">→ BR1 (192.168.101.50) · BR2 (192.168.102.50) · DC1 (192.168.203.100)</span>
+        <div class="cli-showcase__caption">
+          <span>Auto-completion popup, status bar &amp; session tokens</span>
+          <a href="#gallery" style="color:var(--teal);font-weight:600;text-decoration:none;">View 5 CLI Screens &rarr;</a>
         </div>
       </div>
     </div>
