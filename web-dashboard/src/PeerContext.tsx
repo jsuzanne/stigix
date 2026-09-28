@@ -116,17 +116,40 @@ export function PeerContextProvider({ token, isLeader, children, onActivePeerCha
     const apiBase = activePeerId ? `/api/gateway/${activePeerId}` : '';
 
     const gFetch = useCallback((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const debug = typeof window !== 'undefined' && localStorage.getItem('stigix_rw_debug') === '1';
+        const method = init?.method ?? 'GET';
+
         if (!activePeerId) {
+            const origUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+            if (debug) console.log(`%c[gFetch LOCAL] ${method} ${origUrl}`, 'color:#888');
             return fetch(input, init);
         }
+
         // Rewrite URL: prepend gateway prefix for /api/* paths
         let url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+        const origPath = url;
         if (url.startsWith('/api/')) {
             url = `/api/gateway/${activePeerId}${url}`;
         }
+
+        if (debug) console.log(`%c[gFetch →${activePeerId}] ${method} ${origPath}`, 'color:#6cf;font-weight:bold');
+
         // Rebuild input preserving Request properties if needed
         const newInput = typeof input === 'string' || input instanceof URL ? url : new Request(url, input as Request);
-        return fetch(newInput, init);
+        const p = fetch(newInput, init);
+
+        if (debug) {
+            p.then(r => {
+                const style = r.ok ? 'color:#4f4' : 'color:#f44;font-weight:bold';
+                console.log(`%c[gFetch ←${activePeerId}] ${r.status} ${origPath}`, style);
+                if (!r.ok) {
+                    const clone = r.clone();
+                    clone.text().then(t => console.error(`  Body: ${t.slice(0, 300)}`));
+                }
+            }).catch(e => console.error(`[gFetch ERROR] ${origPath}`, e));
+        }
+
+        return p;
     }, [activePeerId]);
 
     return (
