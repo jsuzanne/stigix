@@ -136,18 +136,18 @@ const hopByHop = new Set([
 
 | Feature | Read | Write / Action | Notes |
 |---|---|---|---|
-| Digital Experience (DX) | ✅ | — | DX score, endpoints, latency |
+| Digital Experience (DX) | ✅ | ✅ | DX score, endpoints, latency; Add/Edit/Delete synthetic probes |
 | Traffic Generator | ✅ | ✅ | Start/Stop; stats via PeerStatusSync |
 | Bandwidth Test (Speedtest) | ✅ | ✅ | History + live SSE stream via gateway; run/delete/purge |
-| Security | ✅ | ✅ | Posture, URL/DNS batch tests |
+| Security | ✅ | ✅ | Posture, URL/DNS/threat batch tests |
 | IoT | ✅ | ✅ | Device list, bad-behavior, settings, manage devices |
 | Voice | ✅ | ✅ | Config, ingress; start/stop simulation |
 | Custom Apps (operational) | ✅ | ✅ | Start/Stop listener & client; 1.5 s status poll |
 | Custom Apps (settings/params) | ✅ | ✅ | Edit parameters; hot-applied instantly on peer |
-| Failover Monitoring | ✅ | — | Live convergence results |
+| Failover Monitoring | ✅ | ✅ | Live convergence results; Start/Stop tests, manage endpoints |
 | Topology | ✅ | — | |
 | VyOS Control | ✅ | ✅ | Run sequences |
-| Settings (config, thresholds) | ✅ | ✅ | 30 s polling; writes hot-applied |
+| Settings (config, thresholds) | ✅ | ✅ | 30 s polling; writes hot-applied (probes, thresholds, interfaces) |
 | Settings — System tab | ✅ | — | Hostname, uptime, container stats |
 
 ### ⚠️ Known Limitations

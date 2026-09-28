@@ -52,7 +52,7 @@ All standard dashboard features are fully operational against the remote peer:
 
 | Feature | Read | Write / Action |
 |---|---|---|
-| **Digital Experience** (DX score, probes, latency) | ✅ | — |
+| **Digital Experience** (DX score, probes, latency) | ✅ | ✅ Add / Edit / Delete synthetic probes |
 | **Traffic Generator** (stats, volume chart) | ✅ | ✅ Start / Stop |
 | **Bandwidth Test (Speedtest)** | ✅ History + live stream | ✅ Run test, delete, purge |
 | **Security** (posture, URL/DNS/threat tests) | ✅ | ✅ Run batch tests |
@@ -60,7 +60,7 @@ All standard dashboard features are fully operational against the remote peer:
 | **Voice** (config, ingress status) | ✅ | ✅ Start / Stop simulation |
 | **Custom TCP Apps** (operational view) | ✅ | ✅ Start/Stop listener & client |
 | **Custom TCP Apps** (settings / parameters) | ✅ | ✅ Edit parameters (hot-applied instantly) |
-| **Failover Monitoring** | ✅ | — |
+| **Failover Monitoring** | ✅ Live convergence results | ✅ Start / Stop test, manage endpoints |
 | **Topology** | ✅ | — |
 | **VyOS Control** | ✅ | ✅ Run sequences |
 | **Settings** (config, thresholds) | ✅ (30 s poll) | ✅ Save changes |
