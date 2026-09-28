@@ -816,6 +816,141 @@ a:hover { color: #fff; }
 }
 
 /* ─────────────────────────────────────────────
+   FEATURED REPORTS & WHITEPAPERS (HOMEPAGE)
+───────────────────────────────────────────── */
+.home-reports {
+  padding: 96px 0;
+  border-bottom: 1px solid var(--stroke);
+  position: relative;
+}
+.home-reports__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 48px;
+}
+.home-reports__title {
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--white);
+  line-height: 1.2;
+  margin-top: 4px;
+}
+.home-reports__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+}
+.home-report-card {
+  background: var(--bg-card);
+  border: 1px solid var(--stroke);
+  border-radius: var(--rl);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  transition: transform var(--ease), border-color var(--ease), box-shadow var(--ease);
+  position: relative;
+}
+.home-report-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(24, 201, 174, 0.4);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.home-report-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.home-report-badge {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 9px;
+  border-radius: 4px;
+}
+.home-report-badge--white-paper {
+  background: rgba(24, 201, 174, 0.12);
+  color: var(--teal);
+  border: 1px solid rgba(24, 201, 174, 0.3);
+}
+.home-report-badge--lab-benchmark {
+  background: rgba(99, 102, 241, 0.12);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+.home-report-card__date {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.home-report-card__title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--white);
+  line-height: 1.35;
+  margin-bottom: 10px;
+}
+.home-report-card__desc {
+  font-size: 0.86rem;
+  color: var(--mid);
+  line-height: 1.65;
+  margin-bottom: 20px;
+  flex: 1;
+}
+.home-report-card__highlights {
+  list-style: none;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.home-report-card__highlights li {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.45;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.home-report-card__highlights li::before {
+  content: '›';
+  color: var(--teal);
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+.home-report-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 18px;
+  border-top: 1px solid var(--stroke);
+  gap: 12px;
+}
+.home-report-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.home-reports__cta {
+  margin-top: 40px;
+  padding: 24px 32px;
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  border-radius: var(--rl);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+/* ─────────────────────────────────────────────
    MOBILE NAV
 ───────────────────────────────────────────── */
 .mnav {

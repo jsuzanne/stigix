@@ -632,6 +632,109 @@
   </div>
 </section>
 
+<hr class="rule">
+
+
+<!-- ══════════════════════════════════════════════════════════
+     FEATURED WHITEPAPERS & LAB BENCHMARKS
+══════════════════════════════════════════════════════════ -->
+<section class="home-reports" id="reports">
+  <div class="wrap">
+    <div class="home-reports__header">
+      <div>
+        <span class="label">Research &amp; Engineering Reports</span>
+        <h2 class="home-reports__title">Real-world lab whitepapers generated with Stigix</h2>
+      </div>
+      <a href="reports.html" class="btn btn--outline" id="home-view-all-reports-btn">
+        Browse All Reports (9) &rarr;
+      </a>
+    </div>
+
+    <div class="home-reports__grid">
+
+      <!-- Report 1 -->
+      <article class="home-report-card">
+        <div class="home-report-card__header">
+          <span class="home-report-badge home-report-badge--white-paper">White Paper</span>
+          <span class="home-report-card__date">2026-09-25</span>
+        </div>
+        <h3 class="home-report-card__title">When Routing Can't See the Failure</h3>
+        <p class="home-report-card__desc">
+          How Prisma SD-WAN and Stigix demonstrated automatic failover in ~3 minutes during a silent internet breakout failure where Layer 3 BFD keepalives remained completely blind.
+        </p>
+        <ul class="home-report-card__highlights">
+          <li>Automatic ~3 min failover during dead breakout behind active next-hop</li>
+          <li>End-to-end TCP session tracking vs blind Layer 3 tunnel keepalives</li>
+          <li>Continuous probe-driven failback once primary DC breakout is repaired</li>
+        </ul>
+        <div class="home-report-card__footer">
+          <a href="reports.html?id=prisma-sdwan-grey-failure" style="font-size:0.84rem;font-weight:600;color:var(--teal);text-decoration:none;">Read Abstract &rarr;</a>
+          <div class="home-report-card__actions">
+            <a href="reports/When_Routing_Cant_See_the_Failure_Prisma_SD-WAN.pdf" target="_blank" rel="noopener noreferrer" class="btn btn--primary" style="padding:6px 14px;font-size:0.78rem;">Download PDF (575 KB)</a>
+          </div>
+        </div>
+      </article>
+
+      <!-- Report 2 -->
+      <article class="home-report-card">
+        <div class="home-report-card__header">
+          <span class="home-report-badge home-report-badge--white-paper">White Paper</span>
+          <span class="home-report-card__date">2026-09-26</span>
+        </div>
+        <h3 class="home-report-card__title">Beyond Ping: App vs Network Latency</h3>
+        <p class="home-report-card__desc">
+          Architectural deep-dive decomposing end-to-end user latency into Network RTT and Server Response Time (SRT) without agents or SSL decryption using dual synchronized telemetry.
+        </p>
+        <ul class="home-report-card__highlights">
+          <li>5.8 ms Network RTT vs 800 ms Server Response Time (SRT) clear isolation</li>
+          <li>Eliminates the "Is it the network?" blame game in minutes</li>
+          <li>Non-intrusive dual measurement with Stigix and Prisma SD-WAN SCM</li>
+        </ul>
+        <div class="home-report-card__footer">
+          <a href="reports.html?id=whitepaper-app-vs-network" style="font-size:0.84rem;font-weight:600;color:var(--teal);text-decoration:none;">Read Abstract &rarr;</a>
+          <div class="home-report-card__actions">
+            <a href="reports/Whitepaper_AppVsNetwork_PrismaSDWAN.pdf" target="_blank" rel="noopener noreferrer" class="btn btn--primary" style="padding:6px 14px;font-size:0.78rem;">Download PDF (1.98 MB)</a>
+          </div>
+        </div>
+      </article>
+
+      <!-- Report 3 -->
+      <article class="home-report-card">
+        <div class="home-report-card__header">
+          <span class="home-report-badge home-report-badge--lab-benchmark">Lab Benchmark</span>
+          <span class="home-report-card__date">2026-09-24</span>
+        </div>
+        <h3 class="home-report-card__title">SD-WAN Multi-Circuit Failover Audit</h3>
+        <p class="home-report-card__desc">
+          Live failover benchmark between branch office BR8 and datacenter DC1 measuring sub-second packet loss and active path evolution during induced WAN circuit impairments.
+        </p>
+        <ul class="home-report-card__highlights">
+          <li>Sub-second packet loss measurement during active link disruption</li>
+          <li>Path evolution telemetry: BR8-INET2 &rarr; DC1-INET &rarr; BR8-INET1</li>
+          <li>Full flow session continuity audit with 79 MCP diagnostic tools</li>
+        </ul>
+        <div class="home-report-card__footer">
+          <a href="reports.html?id=sdwan-resilience-br8-dc1" style="font-size:0.84rem;font-weight:600;color:var(--teal);text-decoration:none;">Read Abstract &rarr;</a>
+          <div class="home-report-card__actions">
+            <a href="reports/SDWAN_Resilience_Report_BR8_DC1.pdf" target="_blank" rel="noopener noreferrer" class="btn btn--primary" style="padding:6px 14px;font-size:0.78rem;">Download PDF (79 KB)</a>
+          </div>
+        </div>
+      </article>
+
+    </div>
+
+    <!-- Bottom CTA banner -->
+    <div class="home-reports__cta">
+      <div>
+        <strong style="color:var(--white);font-size:0.95rem;display:block;margin-bottom:2px;">Automated Executive &amp; Technical Reporting</strong>
+        <span style="color:var(--muted);font-size:0.82rem;">Generate comprehensive PDF whitepapers, Markdown audit logs, and convergence benchmarks via Claude Desktop &amp; FastMCP in 1 prompt.</span>
+      </div>
+      <a href="reports.html" class="btn btn--outline" style="white-space:nowrap;">View All Sample Reports &rarr;</a>
+    </div>
+
+  </div>
+</section>
+
 
 <!-- ══════════════════════════════════════════════════════════
      GALLERY
