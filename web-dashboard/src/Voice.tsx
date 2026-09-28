@@ -202,6 +202,20 @@ export default function Voice(props: VoiceProps) {
     }, [externalStatus, isDirty]);
 
     // ════════════════════════════════════════════════
+    // Reset stale target/config state on peer switch
+    // Prevents DC1's registryVoiceTargets from being used to build
+    // targetRows for a remote peer before the new fetch completes.
+    // ════════════════════════════════════════════════
+    useEffect(() => {
+        setVoiceTargetsLoaded(false);
+        setConfigLoaded(false);
+        setRegistryVoiceTargets([]);
+        setAllRegistryTargets([]);
+        setRawServers('');
+        setTargetRows([]);
+    }, [activePeerId]);
+
+    // ════════════════════════════════════════════════
     // Initial load
     // ════════════════════════════════════════════════
     useEffect(() => {
