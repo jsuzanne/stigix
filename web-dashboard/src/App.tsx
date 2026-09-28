@@ -184,7 +184,21 @@ export default function App() {
   // isRemoteViewRef: used in async fetchDashboardData (avoids stale closure).
   // isRemoteView state: used for reactive UI (disable buttons, hide live sections).
   const isRemoteViewRef = React.useRef<boolean>(false);
+  // activePeerIdRef: the current peer ID for gateway routing in action handlers.
+  // App is rendered OUTSIDE PeerContextProvider so it cannot call usePeerContext().
+  // This ref is populated via the onActivePeerChange callback and is the only way
+  // for App-level handlers (handleTrafficToggle, etc.) to route to the active peer.
+  const activePeerIdRef = React.useRef<string | null>(null);
   const [isRemoteView, setIsRemoteView] = React.useState<boolean>(false);
+
+  // apiFetch — App-level gateway-aware fetch. Routes to /api/gateway/:peerId/* when
+  // a remote peer is active, otherwise falls back to a direct local fetch.
+  // Must stay in sync with gFetch logic in PeerContext.tsx.
+  const apiFetch = React.useCallback((url: string, options?: RequestInit): Promise<Response> => {
+    const peerId = activePeerIdRef.current;
+    if (!peerId || !url.startsWith('/')) return fetch(url, options);
+    return fetch(`/api/gateway/${peerId}${url}`, options);
+  }, []);
 
   const fetchRegistryLeaderStatus = async () => {
     if (!token) return;
@@ -578,7 +592,7 @@ export default function App() {
     if (!token) return;
     const endpoint = trafficRunning ? '/api/traffic/stop' : '/api/traffic/start';
     try {
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' }
       });
@@ -597,7 +611,7 @@ export default function App() {
     if (!token) return;
     setUpdatingRate(true);
     try {
-      const res = await fetch('/api/traffic/rate', {
+      const res = await apiFetch('/api/traffic/rate', {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ rate, client_count: clients })
@@ -885,6 +899,7 @@ export default function App() {
       token={token}
       isLeader={isLeader}
       onActivePeerChange={(peerId) => {
+        activePeerIdRef.current = peerId;
         isRemoteViewRef.current = peerId !== null;
         setIsRemoteView(peerId !== null);
       }}

@@ -345,7 +345,7 @@ export default function Voice(props: VoiceProps) {
         if (!file) return;
         try {
             const cfg = JSON.parse(await file.text());
-            const r = await fetch('/api/voice/config/import', {
+            const r = await gFetch('/api/voice/config/import', {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ config: cfg }),
@@ -360,7 +360,7 @@ export default function Voice(props: VoiceProps) {
         const target = !enabled;
         if (target) setIsStartingV(true); else setIsStoppingV(true);
         try {
-            const r = await fetch('/api/voice/control', {
+            const r = await gFetch('/api/voice/control', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ enabled: target }),
@@ -372,12 +372,12 @@ export default function Voice(props: VoiceProps) {
 
     const resetIds = async () => {
         if (!confirm('Reset CALL-XXXX counter to CALL-0000?')) return;
-        try { await fetch('/api/voice/counter', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); } catch { }
+        try { await gFetch('/api/voice/counter', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); } catch { }
     };
 
     const resetLogs = async () => {
         if (!confirm('Reset all voice call history?')) return;
-        try { await fetch('/api/voice/stats', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); } catch { }
+        try { await gFetch('/api/voice/stats', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }); } catch { }
     };
 
     const buildRawServers = (rows: TargetRow[]) =>
@@ -388,7 +388,7 @@ export default function Voice(props: VoiceProps) {
         setSaveStatus('saving');
         const servers = buildRawServers(rows);
         try {
-            const r = await fetch('/api/voice/config', {
+            const r = await gFetch('/api/voice/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ servers, control: ctrl }),

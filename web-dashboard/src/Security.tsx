@@ -516,7 +516,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             for (const t of targetsToPing) {
                 setTargetReachability(prev => ({ ...prev, [t.host]: 'loading' }));
                 try {
-                    const res = await fetch('/api/convergence/reachability', {
+                    const res = await gFetch('/api/convergence/reachability', {
                         method: 'POST',
                         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ target: t.host, port: t.port })
@@ -601,7 +601,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         (newConfig.scheduled_execution as any)[type] = { enabled, interval_minutes: minutes };
 
         try {
-            const res = await fetch('/api/security/config', {
+            const res = await gFetch('/api/security/config', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(newConfig)
@@ -716,7 +716,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const saveConfig = async (newConfig: Partial<SecurityConfig>) => {
         try {
-            const res = await fetch('/api/security/config', {
+            const res = await gFetch('/api/security/config', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(newConfig)
@@ -828,7 +828,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const runURLTest = async (category: URLCategory) => {
         setTesting({ ...testing, [`url-${category.id}`]: true });
         try {
-            const res = await fetch('/api/security/url-test', {
+            const res = await gFetch('/api/security/url-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: category.url, category: category.name })
@@ -857,7 +857,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
             const tests = enabledCategories.map(cat => ({ url: cat.url, category: cat.name }));
 
-            await fetch('/api/security/url-test-batch', {
+            await gFetch('/api/security/url-test-batch', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tests })
@@ -876,7 +876,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const runDNSTest = async (test: DNSTestDomain) => {
         setTesting({ ...testing, [`dns-${test.id}`]: true });
         try {
-            const res = await fetch('/api/security/dns-test', {
+            const res = await gFetch('/api/security/dns-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ domain: test.domain, testName: test.name })
@@ -905,7 +905,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
             const tests = enabledTests.map(test => ({ domain: test.domain, testName: test.name }));
 
-            await fetch('/api/security/dns-test-batch', {
+            await gFetch('/api/security/dns-test-batch', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tests })
@@ -930,7 +930,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const runC2Test = async (scenario: C2Scenario) => {
         setTesting(prev => ({ ...prev, [`c2-${scenario.id}`]: true }));
         try {
-            const res = await fetch('/api/security/c2-test', {
+            const res = await gFetch('/api/security/c2-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -962,7 +962,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             const selectedScenarios = securityProfile.c2_scenarios
                 .filter(s => c2SelectedScenarios.includes(s.id))
                 .map(s => ({ scenarioId: s.id, scenarioName: s.name, attackType: s.attack_type, target: s.target }));
-            await fetch('/api/security/c2-test-batch', {
+            await gFetch('/api/security/c2-test-batch', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ scenarios: selectedScenarios })
@@ -999,7 +999,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const runAITest = async (scenario: AISecurityScenario) => {
         setTesting(prev => ({ ...prev, [`ai-${scenario.id}`]: true }));
         try {
-            const res = await fetch('/api/security/ai-test', {
+            const res = await gFetch('/api/security/ai-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1032,7 +1032,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             const selectedScenarios = securityProfile.ai_security_scenarios
                 .filter(s => aiSelectedScenarios.includes(s.id))
                 .map(s => ({ scenarioId: s.id, scenarioName: s.name, attackType: s.attack_type, targets: s.targets }));
-            await fetch('/api/security/ai-test-batch', {
+            await gFetch('/api/security/ai-test-batch', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ scenarios: selectedScenarios })
@@ -1079,7 +1079,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         setLoading(true);
         showToast(`Running EICAR threat test to ${endpointsToTest.length} targets...`, 'info');
         try {
-            const res = await fetch('/api/security/threat-test', {
+            const res = await gFetch('/api/security/threat-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ endpoint: endpointsToTest })
@@ -1123,7 +1123,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         setRunningEicarTarget(endpoint);
         showToast(`Running EICAR test on ${endpoint}...`, 'info');
         try {
-            await fetch('/api/security/threat-test', {
+            await gFetch('/api/security/threat-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ endpoint: [endpoint] })
@@ -1143,7 +1143,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
         setEdlSyncing(prev => ({ ...prev, [type]: true }));
         try {
-            const res = await fetch('/api/security/edl-sync', {
+            const res = await gFetch('/api/security/edl-sync', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ type })
@@ -1169,7 +1169,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
         setEdlSyncing(prev => ({ ...prev, [type]: true }));
         try {
-            const res = await fetch('/api/security/edl-upload', {
+            const res = await gFetch('/api/security/edl-upload', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }, // No content-type for FormData
                 body: formData
@@ -1190,7 +1190,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const updateEdlConfig = async (updates: any) => {
         try {
-            const res = await fetch('/api/security/edl-config', {
+            const res = await gFetch('/api/security/edl-config', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(updates)
@@ -1208,7 +1208,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const runEdlTest = async (type: 'ip' | 'url' | 'dns') => {
         setEdlTestingState(prev => ({ ...prev, [type]: true }));
         try {
-            const res = await fetch('/api/security/edl-test', {
+            const res = await gFetch('/api/security/edl-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ type })
@@ -1244,7 +1244,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const clearHistory = async () => {
         if (!confirm('Clear all test history?')) return;
         try {
-            await fetch('/api/security/results', {
+            await gFetch('/api/security/results', {
                 method: 'DELETE',
                 headers: authHeaders()
             });
@@ -1258,7 +1258,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         if (!confirm('Are you sure you want to reset all security statistics, clear the entire test history, and reset the test counter to #1? This action cannot be undone.')) return;
         setLoading(true);
         try {
-            const res = await fetch('/api/security/statistics', {
+            const res = await gFetch('/api/security/statistics', {
                 method: 'DELETE',
                 headers: authHeaders()
             });
@@ -1335,7 +1335,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         try {
             const text = await file.text();
             const profile = JSON.parse(text);
-            const res = await fetch('/api/security/profile', {
+            const res = await gFetch('/api/security/profile', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(profile)

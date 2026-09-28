@@ -250,7 +250,7 @@ export default function Failover(props: FailoverProps) {
     const deleteEndpoint = async (id: string) => {
         if (!confirm('Are you sure you want to delete this target?')) return;
         try {
-            await fetch(`/api/convergence/endpoints/${id}`, { method: 'DELETE', headers: authHeaders() });
+            await gFetch(`/api/convergence/endpoints/${id}`, { method: 'DELETE', headers: authHeaders() });
             fetchEndpoints();
             // Fix selection counter: remove from selected if deleted
             setSelectedEndpoints(prev => prev.filter(eId => eId !== id));
@@ -262,7 +262,7 @@ export default function Failover(props: FailoverProps) {
         setIsStarting(true);
         try {
             await Promise.all(targets.map(endpoint =>
-                fetch('/api/convergence/start', {
+                gFetch('/api/convergence/start', {
                     method: 'POST',
                     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -310,7 +310,7 @@ export default function Failover(props: FailoverProps) {
         try {
             // Save metrics time series to server for historical curve rendering
             if (testId && liveMetricsSeries[testId]?.length > 0) {
-                fetch('/api/convergence/history/save-metrics', {
+                gFetch('/api/convergence/history/save-metrics', {
                     method: 'POST',
                     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -322,7 +322,7 @@ export default function Failover(props: FailoverProps) {
                 activeTests.forEach(t => {
                     const s = liveMetricsSeries[t.testId];
                     if (s && s.length > 0) {
-                        fetch('/api/convergence/history/save-metrics', {
+                        gFetch('/api/convergence/history/save-metrics', {
                             method: 'POST',
                             headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -334,7 +334,7 @@ export default function Failover(props: FailoverProps) {
                 });
             }
 
-            await fetch('/api/convergence/stop', {
+            await gFetch('/api/convergence/stop', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ testId })
@@ -349,7 +349,7 @@ export default function Failover(props: FailoverProps) {
     const resetIds = async () => {
         if (!confirm('This will reset the CONV-XXXX counter to CONV-0000. Continue?')) return;
         try {
-            await fetch('/api/convergence/counter', {
+            await gFetch('/api/convergence/counter', {
                 method: 'DELETE',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' }
             });
@@ -376,7 +376,7 @@ export default function Failover(props: FailoverProps) {
         if (!confirm(`Delete failover test record "${label}"?`)) return;
         try {
             const testId = rawId.match(/(CONV-\d+)/)?.[1] || rawId;
-            const res = await fetch(`/api/convergence/history/${encodeURIComponent(testId)}?timestamp=${encodeURIComponent(testItem.timestamp || testItem.start_time || '')}`, {
+            const res = await gFetch(`/api/convergence/history/${encodeURIComponent(testId)}?timestamp=${encodeURIComponent(testItem.timestamp || testItem.start_time || '')}`, {
                 method: 'DELETE',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' }
             });
