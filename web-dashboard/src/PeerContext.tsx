@@ -56,8 +56,8 @@ interface PeerContextProviderProps {
     token: string | null;
     isLeader: boolean;
     children: React.ReactNode;
-    /** Called whenever the active peer changes (null = local/Leader mode). */
-    onActivePeerChange?: (peerId: string | null) => void;
+    /** Called whenever the active peer changes (null = local/Leader mode). peerLabel is the human-readable site name or instance_id. */
+    onActivePeerChange?: (peerId: string | null, peerLabel: string | null) => void;
 }
 
 export function PeerContextProvider({ token, isLeader, children, onActivePeerChange }: PeerContextProviderProps) {
@@ -99,14 +99,15 @@ export function PeerContextProvider({ token, isLeader, children, onActivePeerCha
     useEffect(() => {
         if (!isLeader) {
             setActivePeerIdRaw(null);
-            onActivePeerChangeRef.current?.(null);
+            onActivePeerChangeRef.current?.(null, null);
         }
     }, [isLeader]);
 
     const setActivePeerId = useCallback((id: string | null) => {
         setActivePeerIdRaw(id);
-        onActivePeerChangeRef.current?.(id);
-    }, []);
+        const label = id ? (peers.find(p => p.instance_id === id)?.site || id) : null;
+        onActivePeerChangeRef.current?.(id, label);
+    }, [peers]);
 
     const activePeer = peers.find(p => p.instance_id === activePeerId) ?? null;
 
@@ -248,7 +249,6 @@ export function GatewayDropdown({ isLeader }: GatewayDropdownProps) {
                         >
                             <span className="w-2 h-2 rounded-full bg-purple-500 flex-shrink-0" />
                             <span className="flex-1 truncate">{localLabel}</span>
-                            {!activePeerId && <span className="text-[9px] font-black text-blue-400 ml-auto">ACTIVE</span>}
                         </button>
                     </div>
 
@@ -297,14 +297,9 @@ export function GatewayDropdown({ isLeader }: GatewayDropdownProps) {
                                             UNREACHABLE
                                         </span>
                                     ) : (
-                                        <>
-                                            <span className="text-[9px] text-text-muted font-mono ml-auto">
-                                                {peer.ip_private || ''}
-                                            </span>
-                                            {isActive && (
-                                                <span className="text-[9px] font-black text-amber-400 ml-1">ACTIVE</span>
-                                            )}
-                                        </>
+                                        <span className="text-[9px] text-text-muted font-mono ml-auto">
+                                            {peer.ip_private || ''}
+                                        </span>
                                     )}
                                 </button>
                                 );

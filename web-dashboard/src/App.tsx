@@ -190,6 +190,7 @@ export default function App() {
   // for App-level handlers (handleTrafficToggle, etc.) to route to the active peer.
   const activePeerIdRef = React.useRef<string | null>(null);
   const [isRemoteView, setIsRemoteView] = React.useState<boolean>(false);
+  const [activePeerLabel, setActivePeerLabel] = React.useState<string | null>(null);
 
   // apiFetch — App-level gateway-aware fetch. Routes to /api/gateway/:peerId/* when
   // a remote peer is active, otherwise falls back to a direct local fetch.
@@ -898,10 +899,11 @@ export default function App() {
     <PeerContextProvider
       token={token}
       isLeader={isLeader}
-      onActivePeerChange={(peerId) => {
+      onActivePeerChange={(peerId, peerLabel) => {
         activePeerIdRef.current = peerId;
         isRemoteViewRef.current = peerId !== null;
         setIsRemoteView(peerId !== null);
+        setActivePeerLabel(peerLabel);
       }}
     >
       {/* Peer-aware live status sync — patches globalConvStatus/globalVoiceStatus from remote peer */}
@@ -956,8 +958,12 @@ export default function App() {
             </h1>
             <p className="text-text-muted text-lg tracking-tight font-medium">
               The Engine for SASE Validation
-              {siteInfo?.success && siteInfo.detected_site_name && (
-                <span className="text-text-muted/60"> • <span className="text-blue-400 font-bold">{siteInfo.detected_site_name}</span></span>
+              {isRemoteView && activePeerLabel ? (
+                <span className="text-text-muted/60"> • <span className="text-amber-400 font-bold">{activePeerLabel}</span></span>
+              ) : (
+                siteInfo?.success && siteInfo.detected_site_name && (
+                  <span className="text-text-muted/60"> • <span className="text-blue-400 font-bold">{siteInfo.detected_site_name}</span></span>
+                )
               )}
               {version && <span className="text-text-muted/60"> • {version}</span>}
               {registryStatus?.is_registered && (
