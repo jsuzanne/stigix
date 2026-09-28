@@ -654,8 +654,6 @@
       <button class="gallery__tab" data-tab="remoteview" role="tab" aria-selected="false" id="tab-btn-remoteview">Remote View</button>
       <button class="gallery__tab" data-tab="cli" role="tab" aria-selected="false" id="tab-btn-cli">CLI Console</button>
       <button class="gallery__tab" data-tab="statistics" role="tab" aria-selected="false" id="tab-btn-statistics">Live Events</button>
-      <button class="gallery__tab" data-tab="config" role="tab" aria-selected="false" id="tab-btn-config">Config</button>
-      <button class="gallery__tab" data-tab="dashboard2" role="tab" aria-selected="false" id="tab-btn-dashboard2">Dashboard 2</button>
     </div>
 
     <div class="gallery__panel active" id="tab-dashboard">
@@ -665,14 +663,17 @@
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">Dashboard — Traffic Volume &amp; Application Performance</span>
+            <span class="gallery__bar-label">Dashboard — Traffic Volume &amp; Global Configuration</span>
           </div>
           <div class="gallery__bar-right">
             <div class="gallery__dots">
               <button class="gallery__dot active" aria-label="Slide 1"></button>
               <button class="gallery__dot" aria-label="Slide 2"></button>
+              <button class="gallery__dot" aria-label="Slide 3"></button>
+              <button class="gallery__dot" aria-label="Slide 4"></button>
+              <button class="gallery__dot" aria-label="Slide 5"></button>
             </div>
-            <span class="gallery__counter">1 / 2</span>
+            <span class="gallery__counter">1 / 5</span>
           </div>
         </div>
         <div class="gallery__slider">
@@ -682,9 +683,21 @@
             <img src="assets/screenshots/dashboard.png" alt="Stigix Real-Time Traffic Volume and Application Performance" loading="lazy">
             <div class="gallery__caption"><strong>Traffic Volume &amp; Application Performance:</strong> Real-time traffic volume chart, per-application request metrics, average latency, TTFB, and success rates across enterprise SaaS targets.</div>
           </div>
-          <div class="gallery__slide" data-label="Dashboard — Traffic Generator Controls &amp; Density Settings">
-            <img src="assets/screenshots/dashboard-2.png" alt="Stigix Dashboard with density controls and live stream" loading="lazy">
-            <div class="gallery__caption"><strong>Traffic Generator Controls:</strong> Live traffic generation controls, active application matrix, and real-time WebSocket telemetry.</div>
+          <div class="gallery__slide" data-label="Dashboard — Traffic Distribution Weights &amp; Application Profiles">
+            <img src="assets/screenshots/configuration.png" alt="Configuration Traffic Distribution Weights" loading="lazy">
+            <div class="gallery__caption"><strong>Traffic Distribution Weights:</strong> Adjust application weights by category or individual enterprise application with instant runtime hot-reload.</div>
+          </div>
+          <div class="gallery__slide" data-label="Dashboard — Synthetic Monitoring Probes Catalog Settings">
+            <img src="assets/screenshots/config-probes.png" alt="Synthetic Monitoring Probes Settings" loading="lazy">
+            <div class="gallery__caption"><strong>Synthetic Probes Catalog:</strong> Configure HTTP/HTTPS, ICMP, DNS, TCP, and UDP monitoring endpoints with Prisma SD-WAN sync.</div>
+          </div>
+          <div class="gallery__slide" data-label="Dashboard — Central Global Provisioning (Leader / Peer Mesh)">
+            <img src="assets/screenshots/config-leader.png" alt="Central Global Provisioning Leader Peer Mesh" loading="lazy">
+            <div class="gallery__caption"><strong>Central Global Provisioning:</strong> Zero-touch multi-node cluster topology with automatic application catalogue &amp; probe sync across peers.</div>
+          </div>
+          <div class="gallery__slide" data-label="Dashboard — State Persistence Across Reboots">
+            <img src="assets/screenshots/config-persistence.png" alt="State Persistence Across Reboots" loading="lazy">
+            <div class="gallery__caption"><strong>System State Persistence:</strong> Preserves background traffic generators, DEM probes, and custom TCP app sessions across container reboots.</div>
           </div>
         </div>
       </div>
@@ -1219,73 +1232,6 @@
           <div class="gallery__slide active" data-label="Live Events — Real-Time System Log Streaming">
             <img src="assets/screenshots/statistics.png" alt="Stigix Live Events Streaming Log" loading="lazy">
             <div class="gallery__caption"><strong>Real-Time System Log Stream:</strong> High-throughput WebSocket event streaming capturing background daemon operations, probe runs, voice RTP commands, and diagnostics.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="gallery__panel" id="tab-config">
-      <div class="gallery__frame">
-        <div class="gallery__bar">
-          <div class="gallery__bar-left">
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">Configuration — Traffic Distribution &amp; Profiles</span>
-          </div>
-          <div class="gallery__bar-right">
-            <div class="gallery__dots">
-              <button class="gallery__dot active" aria-label="Slide 1"></button>
-              <button class="gallery__dot" aria-label="Slide 2"></button>
-              <button class="gallery__dot" aria-label="Slide 3"></button>
-              <button class="gallery__dot" aria-label="Slide 4"></button>
-            </div>
-            <span class="gallery__counter">1 / 4</span>
-          </div>
-        </div>
-        <div class="gallery__slider">
-          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
-          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
-          <div class="gallery__slide active" data-label="Configuration — Traffic Distribution &amp; Profiles">
-            <img src="assets/screenshots/configuration.png" alt="Configuration Traffic Distribution Weights" loading="lazy">
-            <div class="gallery__caption"><strong>Traffic Distribution Weights:</strong> Adjust application weights by category or individual enterprise application.</div>
-          </div>
-          <div class="gallery__slide" data-label="Configuration — Synthetic Monitoring Probes Catalog">
-            <img src="assets/screenshots/config-probes.png" alt="Synthetic Monitoring Probes Settings" loading="lazy">
-            <div class="gallery__caption"><strong>Synthetic Probes Catalog:</strong> Configure HTTP/HTTPS, ICMP, DNS, TCP, and UDP monitoring endpoints with Prisma SD-WAN sync.</div>
-          </div>
-          <div class="gallery__slide" data-label="Configuration — Central Global Provisioning (Leader / Peer Mesh)">
-            <img src="assets/screenshots/config-leader.png" alt="Central Global Provisioning Leader Peer Mesh" loading="lazy">
-            <div class="gallery__caption"><strong>Central Global Provisioning:</strong> Zero-touch multi-node cluster topology with automatic application catalogue &amp; probe sync across peers.</div>
-          </div>
-          <div class="gallery__slide" data-label="Configuration — State Persistence Across Reboots">
-            <img src="assets/screenshots/config-persistence.png" alt="State Persistence Across Reboots" loading="lazy">
-            <div class="gallery__caption"><strong>System State Persistence:</strong> Preserves background traffic generators, DEM probes, and custom TCP app sessions across container reboots.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="gallery__panel" id="tab-dashboard2">
-      <div class="gallery__frame">
-        <div class="gallery__bar">
-          <div class="gallery__bar-left">
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">Dashboard — Alternate View</span>
-          </div>
-          <div class="gallery__bar-right">
-            <div class="gallery__dots">
-              <button class="gallery__dot active" aria-label="Slide 1"></button>
-            </div>
-            <span class="gallery__counter">1 / 1</span>
-          </div>
-        </div>
-        <div class="gallery__slider">
-          <div class="gallery__slide active" data-label="Dashboard — Alternate View">
-            <img src="assets/screenshots/dashboard-2.png" alt="Stigix dashboard alternate view" loading="lazy">
-            <div class="gallery__caption"><strong>High-Density Traffic Monitoring:</strong> Alternate layout showing traffic density controls, per-application breakdown, and live WebSocket log stream.</div>
           </div>
         </div>
       </div>
