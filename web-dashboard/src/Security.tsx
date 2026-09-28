@@ -426,8 +426,17 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         document.body.removeChild(textArea);
     };
 
+
     // Load configuration and start polling
     useEffect(() => {
+        // Reset stale state from previous peer so UI clears immediately on switch
+        setConfig(null);
+        setTestResults([]);
+        setSecurityProfile(null);
+        setSecurityTargets([]);
+        setCloudEicarUrl('');
+        eicarInitialized.current = false;
+
         fetchConfig();
         fetchResults();
         fetchHealth();

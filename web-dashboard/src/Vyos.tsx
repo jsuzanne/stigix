@@ -347,6 +347,11 @@ export default function Vyos(props: VyosProps) {
     };
 
     useEffect(() => {
+        // Reset stale data immediately so the UI doesn't show the previous peer's info
+        setRouters([]);
+        setSequences([]);
+        setHistory([]);
+
         fetchData();
 
         socket.on('vyos:sequence_step', (data) => {
@@ -371,7 +376,7 @@ export default function Vyos(props: VyosProps) {
             socket.off('vyos:sequence_completed');
             clearInterval(interval);
         };
-    }, []);
+    }, [activePeerId]);
 
     const startDiscovery = async () => {
         if (!discoveryHost || !discoveryKey) return;
