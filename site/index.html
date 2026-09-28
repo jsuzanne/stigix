@@ -39,7 +39,7 @@
     "description": "Open-source SASE and SD-WAN validation platform for network engineers. Generates realistic SaaS and East-West custom TCP line-of-business traffic, orchestrates zero-touch multi-node mesh provisioning, runs active DEM performance probes, executes automated security tests, measures failover convergence, automates VyOS routers, simulates voice and IoT devices, and visualizes Prisma SD-WAN overlay topology — in labs, demos, and POC environments.",
     "url": "https://stigix.io/",
     "downloadUrl": "https://github.com/jsuzanne/stigix",
-    "softwareVersion": "2.0.7",
+    "softwareVersion": "2.0.82",
     "license": "https://github.com/jsuzanne/stigix/blob/main/LICENSE",
     "author": {
       "@type": "Person",
@@ -117,7 +117,7 @@
         <span class="hero__badge-dot" aria-hidden="true"></span>
         Open-source · MIT · Multi-Node Mesh &amp; V2 Engine
       </div>
-      <span class="hero__version">current: jsuzanne/stigix:v2 &nbsp;·&nbsp; <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);text-decoration:none;">v2.0.7</a></span>
+      <span class="hero__version">current: jsuzanne/stigix:v2 &nbsp;·&nbsp; <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);text-decoration:none;">v2.0.82</a></span>
     </div>
 
     <h1 class="hero__headline">
@@ -511,21 +511,41 @@
       </div>
     </div>
 
-    <!-- 14. MCP Server -->
+    <!-- 14. MCP Server & Executive Reporting -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">MCP Server</div>
-        <div class="caps__col-category">operations · AI</div>
+        <div class="caps__col-name">MCP Server &amp; Reports</div>
+        <div class="caps__col-category">operations · AI · reporting</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Model Context Protocol (MCP) server for distributed natural language orchestration. Pilot the entire SD-WAN validation mesh (traffic generation, custom TCP apps, security testing, VyOS impairments, diagnostics) using conversational prompts in Claude Desktop. Supports SSE transport on port 3100.</div>
+        <div class="caps__col-desc">Model Context Protocol (FastMCP) server exposing 79 automated network and security diagnostic tools to AI engines (Claude Desktop). Enables autonomous end-to-end SD-WAN failover analysis, DEM latency investigations, security posture diffs, and the <strong style="color:var(--white)">automated generation of executive whitepapers and technical audit reports</strong> (PDF / DOCX / Markdown).</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
+          <span class="tag">FastMCP (79 tools)</span>
+          <span class="tag">Whitepapers</span>
+          <span class="tag">Executive Reports</span>
           <span class="tag">Claude Desktop</span>
           <span class="tag">SSE (3100)</span>
-          <span class="tag">Natural Language</span>
-          <span class="tag">Any-Node Mesh</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 15. Fleet Remote View & Gateway Proxy -->
+    <div class="caps__row" role="row">
+      <div class="caps__col" role="cell">
+        <div class="caps__col-name">Fleet Remote View</div>
+        <div class="caps__col-category">multi-site · control plane</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-desc">Centralized single-pane-of-glass observability and control across all distributed edge nodes directly from the Leader dashboard. Instant 1-click context switching, live SSE stream proxying, and full read/write management across remote branches without direct browser-to-branch IP reachability constraints.</div>
+      </div>
+      <div class="caps__col" role="cell">
+        <div class="caps__col-tags">
+          <span class="tag">Single Pane of Glass</span>
+          <span class="tag">Gateway Proxy</span>
+          <span class="tag">Context Switcher</span>
+          <span class="tag">Zero NAT Config</span>
         </div>
       </div>
     </div>
@@ -636,6 +656,7 @@
       <button class="gallery__tab" data-tab="customapps" role="tab" aria-selected="false" id="tab-btn-customapps">Custom Apps</button>
       <button class="gallery__tab" data-tab="apistudio" role="tab" aria-selected="false" id="tab-btn-apistudio">API Studio</button>
       <button class="gallery__tab" data-tab="mcpserver" role="tab" aria-selected="false" id="tab-btn-mcpserver">MCP Server</button>
+      <button class="gallery__tab" data-tab="remoteview" role="tab" aria-selected="false" id="tab-btn-remoteview">Remote View</button>
       <button class="gallery__tab" data-tab="statistics" role="tab" aria-selected="false" id="tab-btn-statistics">Live Events</button>
       <button class="gallery__tab" data-tab="config" role="tab" aria-selected="false" id="tab-btn-config">Config</button>
       <button class="gallery__tab" data-tab="dashboard2" role="tab" aria-selected="false" id="tab-btn-dashboard2">Dashboard 2</button>
@@ -1078,7 +1099,7 @@
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
             <span class="gallery__bar-dot"></span>
-            <span class="gallery__bar-label">MCP Server — Natural Language AI Orchestration</span>
+            <span class="gallery__bar-label">MCP Server — FastMCP Tools &amp; Executive Report Generation</span>
           </div>
           <div class="gallery__bar-right">
             <div class="gallery__dots">
@@ -1091,13 +1112,45 @@
         <div class="gallery__slider">
           <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
           <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
-          <div class="gallery__slide active" data-label="MCP Server — Natural Language AI Orchestration">
-            <img src="assets/screenshots/mcp-server.png" alt="Model Context Protocol MCP Server Status" loading="lazy">
-            <div class="gallery__caption"><strong>Model Context Protocol (MCP) Service:</strong> Built-in SSE transport server exposing 35+ validation tools to Claude Desktop and AI orchestrators.</div>
+          <div class="gallery__slide active" data-label="MCP Server — FastMCP Tools &amp; Executive Report Generation">
+            <img src="assets/screenshots/mcp-server.png" alt="Model Context Protocol FastMCP Server Status" loading="lazy">
+            <div class="gallery__caption"><strong>Model Context Protocol (FastMCP) Service:</strong> Built-in SSE transport server exposing 79 validation and diagnostic tools to Claude Desktop for end-to-end testing and automated whitepaper/report generation.</div>
           </div>
           <div class="gallery__slide" data-label="MCP Server — Live Interaction Audit &amp; Tool History">
             <img src="assets/screenshots/mcp-history.png" alt="MCP Server Live Interactions History" loading="lazy">
             <div class="gallery__caption"><strong>Live Interaction Audit:</strong> Real-time log of AI tool executions, response durations, and parameter inspection.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gallery__panel" id="tab-remoteview">
+      <div class="gallery__frame">
+        <div class="gallery__bar">
+          <div class="gallery__bar-left">
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-dot"></span>
+            <span class="gallery__bar-label">Remote View — Fleet Context Switcher &amp; Gateway Proxy</span>
+          </div>
+          <div class="gallery__bar-right">
+            <div class="gallery__dots">
+              <button class="gallery__dot active" aria-label="Slide 1"></button>
+              <button class="gallery__dot" aria-label="Slide 2"></button>
+            </div>
+            <span class="gallery__counter">1 / 2</span>
+          </div>
+        </div>
+        <div class="gallery__slider">
+          <button class="gallery__nav-btn gallery__nav-btn--prev" aria-label="Previous screenshot">&#8249;</button>
+          <button class="gallery__nav-btn gallery__nav-btn--next" aria-label="Next screenshot">&#8250;</button>
+          <div class="gallery__slide active" data-label="Remote View — Target Peer Context Switcher">
+            <img src="assets/screenshots/remote-view-target-dropdown.png" alt="Remote View Peer Context Switcher Dropdown" loading="lazy">
+            <div class="gallery__caption"><strong>Peer Context Switcher:</strong> Instant 1-click dropdown in the Leader header to switch the entire dashboard context to any registered remote branch (BR1, BR2, BR5, BR8).</div>
+          </div>
+          <div class="gallery__slide" data-label="Remote View — Active Remote Mode with Amber Indicators">
+            <img src="assets/screenshots/remote-view-active-frame.png" alt="Remote View Active Mode with Amber Frame" loading="lazy">
+            <div class="gallery__caption"><strong>Remote View Active Mode:</strong> Unobtrusive amber indicators (header subtitle, navbar chip, and viewport perimeter frame) confirm active remote session while all API calls proxy seamlessly through the Leader.</div>
           </div>
         </div>
       </div>

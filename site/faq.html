@@ -1807,9 +1807,23 @@ voice start --target all</pre>
   }
 }</pre>
             <p>Config file locations: <strong>macOS</strong> &rarr; <code>~/Library/Application Support/Claude/claude_desktop_config.json</code> &nbsp; <strong>Windows</strong> &rarr; <code>%APPDATA%\Claude\claude_desktop_config.json</code></p>
-            <p>After saving, <strong>fully restart Claude Desktop</strong> (Cmd+Q, reopen). Click the hammer icon &mdash; you should see Stigix with a green status and 53 tools available.</p>
+            <p>After saving, <strong>fully restart Claude Desktop</strong> (Cmd+Q, reopen). Click the hammer icon &mdash; you should see Stigix with a green status and 79 tools available.</p>
             <p>No Node.js? Use the Python bridge instead: clone the repo, run <code>./mcp-server/setup-bridge.sh</code>, then point the config to the local Python bridge script. See <a href="https://github.com/jsuzanne/stigix/blob/main/docs/MCP_SERVER.md" target="_blank" rel="noopener noreferrer">MCP_SERVER.md</a> for the full setup.</p>
             <p><strong>&#128276; Claude Pro recommended:</strong> Stigix MCP sessions are tool-heavy &mdash; a single fabric-wide report or full security audit can invoke 10&ndash;20 tools and return thousands of tokens of data. The Claude <strong>free tier</strong> hits its usage limit very quickly under this load and will stop mid-session asking you to wait until the next usage window. A <strong>Claude Pro</strong> (or Teams / Enterprise) subscription is strongly recommended for a smooth, uninterrupted experience.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">Can Claude generate executive engineering reports and whitepapers from Stigix MCP?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Yes, absolutely.</strong> This is one of the most powerful workflows enabled by the 79 FastMCP tools. Instead of manual data exports and spreadsheet charting, Claude can autonomously investigate live fabric metrics, correlate multi-site SD-WAN failover curves, analyze application-layer vs network-layer impairments, and synthesize comprehensive executive reports.</p>
+            <p><strong>Available output formats &amp; topics:</strong></p>
+            <ul>
+              <li><strong>Technical Whitepapers &amp; PoC Validation Reports</strong> (PDF / Markdown / DOCX) with executive summaries, topology diagrams, failover latency curves, and SLA compliance tables.</li>
+              <li><strong>Resilience &amp; Failover Audits</strong> (e.g. comparing BR8 to DC1 under simulated packet loss or link down conditions).</li>
+              <li><strong>DEM Path &amp; Microsoft 365 Synthetic Analysis</strong> evaluating multi-hop DNS, TLS handshakes, and TTFB degradation.</li>
+            </ul>
+            <p>Check out real examples generated via Stigix MCP in our public <a href="reports.html">Reports &amp; Whitepapers Gallery</a>.</p>
           </div></div></div>
         </div>
 
@@ -2007,6 +2021,37 @@ docker compose restart</pre>
           </div></div></div>
         </div>
 
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What is Remote View and how does the Gateway proxy work?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p><strong>Remote View</strong> allows an operator connected to a <strong>Leader node</strong> (e.g. DC1) to observe, monitor, and control any remote <strong>peer node</strong> (e.g. BR1, BR2, BR5, BR8) directly within the Leader's dashboard &mdash; without opening separate browser tabs or authenticating to each node individually.</p>
+            <p><strong>How it works under the hood:</strong></p>
+            <ul>
+              <li>The Leader acts as an API Gateway proxy (<code>/api/gateway/:peerId/*</code>).</li>
+              <li>All dashboard API calls (reads and writes) are transparently rewritten by the client-side interceptor (<code>gFetch</code>) and routed through the Leader to the target peer over the existing SD-WAN underlay/overlay.</li>
+              <li>The operator's browser stays permanently on the Leader URL &mdash; no direct IP routing from your laptop to the branch subnets is required.</li>
+              <li>Live SSE streams (Speedtest throughput graphs, log streams) are piped in real-time through the gateway.</li>
+              <li>Clear visual indicators confirm active remote mode: amber site name in the header, amber navbar chip, and an amber perimeter frame with zero layout shift.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What operations are supported in Remote View (Read vs Write)?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>All standard Stigix dashboard capabilities support full read and write actions in Remote View mode:</p>
+            <ul>
+              <li><strong>Digital Experience (DEM):</strong> Observe real-time scores + Add, edit, or delete synthetic probes on the remote peer.</li>
+              <li><strong>Failover Monitoring:</strong> Start/Stop convergence tests and manage endpoint definitions on the remote peer.</li>
+              <li><strong>Bandwidth Testing (Speedtest / XFR):</strong> Launch throughput tests, view real-time SSE progress, purge history on the remote peer.</li>
+              <li><strong>Traffic Generator &amp; Voice:</strong> Start/Stop synthetic traffic and VoIP call simulations.</li>
+              <li><strong>Custom TCP Apps:</strong> Start/Stop listeners and client session generators, edit custom protocol parameters hot-applied instantly.</li>
+              <li><strong>VyOS Control:</strong> Trigger live impairment sequences and chaos scenarios.</li>
+              <li><strong>Settings:</strong> Modify thresholds, interfaces, and configurations hot-applied directly to the remote peer.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
       </div><!-- /panel-registry -->
 
 
@@ -2149,6 +2194,18 @@ docker compose restart</pre>
               <li><strong>Link Cuts &amp; SD-WAN Failover:</strong> A broken path immediately transitions sessions to <strong><code>RECONNECTING</code></strong> with bounded exponential backoff and jitter. As soon as the SD-WAN re-routes traffic to the backup path, sessions automatically reconnect and resume traffic with zero manual intervention.</li>
             </ul>
             <p>For complete architecture details and lab testing recipes, see the <a href="https://github.com/jsuzanne/stigix/blob/main/docs/CUSTOM_TCP_NETWORK_IMPAIRMENTS.md" target="_blank" rel="noopener noreferrer">Network Impairment &amp; SD-WAN Failover Validation Guide</a>.</p>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Threat Prevention and EICAR validation work in Custom TCP Apps?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In addition to latency and throughput benchmarking, Stigix Custom TCP Apps support <strong>in-band Threat Prevention validation</strong> across custom business protocols (HL7, DICOM, FIX, Modbus, custom HTTP/TCP):</p>
+            <ul>
+              <li>When the <code>eicar_response</code> impairment mode or security profile is enabled, the server injects the standardized EICAR anti-virus test signature inside the application payload stream.</li>
+              <li>The client runtime inspects received bytes in real time. If the Next-Generation Firewall or SASE security policy (e.g. Palo Alto Networks Antivirus / WildFire) is functioning correctly, the session is reset or blocked inline.</li>
+              <li>If the payload reaches the client, the client explicitly tags the session as <strong>EICAR Detected (Security Bypass)</strong>, providing irrefutable proof for security audits.</li>
+            </ul>
           </div></div></div>
         </div>
 
