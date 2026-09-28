@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.68] - 2026-09-28
+
+### Fixed
+- **Gateway Proxy — critical body-forwarding bug**: `express.json()` middleware (global, app-level) consumed the raw `IncomingMessage` stream before the `/api/gateway/:peerId/*` handler ran. As a result, `req.pipe(proxyReq)` forwarded an **empty body** to the peer. The peer's body-parser declared a non-zero `Content-Length` but received zero bytes, causing it to hang until DC1's gateway timeout fired (504). All write operations in remote-view mode (Voice start/stop, Traffic start/stop, IoT bad-behavior, Security batch tests, VyOS actions) were silently failing. Fix: re-serialize `req.body` (already parsed by middleware) and set the correct `Content-Length` before forwarding to the peer.
+- **Gateway Proxy — timeout raised**: Bumped gateway proxy timeout from 5 s → 15 s to accommodate slower BR8 operations (batch security tests, voice simulation init, IoT batch).
+- **Playwright test suite** (`remote-view-routing.spec.ts`): Added 9 new WRITE validation tests; fixed timing for Security scores (wait for score dashboard), Bandwidth (use `waitForResponse`), Traffic (90 s budget), IoT (use `#bad-behavior-toggle` ID).
+
 ## [2.0.67] - 2026-09-27
 
 ### Added

@@ -12467,7 +12467,7 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
         path: proxyUrl,
         method: req.method,
         headers: forwardHeaders,
-        timeout: 5000
+        timeout: 15000  // 15 s — allows for slow BR8 ops (batch tests, voice start, etc.)
     };
 
     // proxyResReceived is set to true the moment BR5 starts responding.
@@ -12494,7 +12494,7 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
         if (!res.headersSent) {
             res.status(504).json({
                 error: 'gateway_timeout',
-                message: `Peer "${peerId}" did not respond within 5 seconds.`,
+                message: `Peer "${peerId}" did not respond within 15 seconds.`,
                 peer_ip: peerIp
             });
         }
@@ -12512,8 +12512,24 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
         }
     });
 
-    // Pipe the client request body to the peer (for POST/PUT/PATCH)
-    req.pipe(proxyReq, { end: true });
+    // Forward the request body to the peer.
+    // IMPORTANT: express.json() middleware (app-level, line ~2056) has already consumed
+    // the raw IncomingMessage stream before this gateway handler runs. Calling req.pipe()
+    // would therefore forward an EMPTY body — BR8's body-parser would hang waiting for the
+    // bytes declared in Content-Length and never receive them, causing a guaranteed 504.
+    // Fix: re-serialize req.body (already parsed) so BR8 receives the correct payload.
+    if (!['GET', 'HEAD'].includes(req.method)) {
+        const bodyStr = (req.body != null && typeof req.body === 'object')
+            ? JSON.stringify(req.body)
+            : typeof req.body === 'string' ? req.body : '';
+        const bodyBuf = Buffer.from(bodyStr, 'utf8');
+        // Override Content-Length so it matches the re-serialized bytes exactly
+        proxyReq.setHeader('content-length', bodyBuf.length);
+        if (bodyBuf.length > 0) proxyReq.write(bodyBuf);
+        proxyReq.end();
+    } else {
+        proxyReq.end();
+    }
 
     // Node < 18: 'aborted' fires only on genuine client cancellation.
     // Node ≥ 18: 'close' fires on every GET request (body drains immediately),
