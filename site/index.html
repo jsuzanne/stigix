@@ -1451,76 +1451,53 @@
       <p class="quickstart__sub">Stigix ships a fully interactive terminal console inside the container with support for Custom Apps, Global Provisioning, DEM probes, and Controller mesh management.</p>
     </div>
 
-    <div class="cli-showcase">
-      <!-- Left: Interactive Terminal snippet -->
-      <div class="terminal" role="region" aria-label="Stigix CLI demo">
-        <div class="terminal__bar" style="position: relative;">
-          <div class="terminal__dots">
-            <span class="terminal__dot"></span>
-            <span class="terminal__dot"></span>
-            <span class="terminal__dot"></span>
-          </div>
-          <span class="terminal__title">stigix-cli — interactive console</span>
-          <button class="terminal__copy" aria-label="Copy CLI command" id="copy-cli">Copy</button>
+    <div class="terminal" role="region" aria-label="Stigix CLI demo">
+      <div class="terminal__bar" style="position: relative;">
+        <div class="terminal__dots">
+          <span class="terminal__dot"></span>
+          <span class="terminal__dot"></span>
+          <span class="terminal__dot"></span>
         </div>
-        <div class="terminal__body">
-          <div class="terminal__line">
-            <span class="terminal__comment"># Launch the interactive console</span>
-          </div>
-          <div class="terminal__line">
-            <span class="terminal__prompt">$</span>
-            <span class="terminal__cmd">docker exec -it stigix stigix-cli</span>
-          </div>
-          <div class="terminal__line" style="margin-top: 10px;">
-            <span class="terminal__out info">stigix@localhost:8080 ›</span>
-            <span class="terminal__cmd" style="margin-left:8px;">tcp-app status erp-8443</span>
-          </div>
-          <div class="terminal__line">
-            <span class="terminal__out">━━ Application: ERP-Production (:8443) ━━━━━━━━━━</span>
-          </div>
-          <div class="terminal__line">
-            <span class="terminal__out ok">✓ Listener    [LISTENING]  (mode: fixed_delay 150ms)</span>
-          </div>
-          <div class="terminal__line">
-            <span class="terminal__out ok">✓ Outbound    [RUNNING]    (2 streams to DC1)</span>
-          </div>
-          <div class="terminal__line">
-            <span class="terminal__out info">→ Health      98/100 [OPTIMAL] (p50: 16.2ms · p95: 24.1ms)</span>
-          </div>
-          <div class="terminal__line" style="margin-top: 10px;">
-            <span class="terminal__out info">stigix@localhost:8080 ›</span>
-            <span class="terminal__cmd" style="margin-left:8px;">provision publish custom-tcp-apps</span>
-          </div>
-          <div class="terminal__line">
-            <span class="terminal__out ok">✓ Published custom-tcp-apps bundle rev-4 (diff: +1 app ~2 peers)</span>
-          </div>
-          <div class="terminal__line" style="margin-top: 10px;">
-            <span class="terminal__out info">stigix@localhost:8080 ›</span>
-            <span class="terminal__cmd" style="margin-left:8px;">controller peers</span>
-          </div>
-          <div class="terminal__line">
-            <span class="terminal__out">→ BR1 (192.168.101.50) · BR2 (192.168.102.50) · DC1 (192.168.203.100)</span>
-          </div>
-        </div>
+        <span class="terminal__title">stigix-cli — interactive console</span>
+        <button class="terminal__copy" aria-label="Copy CLI command" id="copy-cli">Copy</button>
       </div>
-
-      <!-- Right: Real screenshot preview of interactive console -->
-      <div class="cli-showcase__preview">
-        <div class="cli-showcase__bar">
-          <div class="cli-showcase__dots">
-            <span class="cli-showcase__dot"></span>
-            <span class="cli-showcase__dot"></span>
-            <span class="cli-showcase__dot"></span>
-          </div>
-          <span class="cli-showcase__title">Live Console Session &amp; Tab-Completion</span>
-          <span style="font-family:var(--mono);font-size:0.65rem;color:var(--teal);">v2.0.82</span>
+      <div class="terminal__body">
+        <div class="terminal__line">
+          <span class="terminal__comment"># Launch the interactive console</span>
         </div>
-        <div class="cli-showcase__img-wrap">
-          <img src="assets/screenshots/cli-interactive.png" alt="Stigix CLI interactive console screenshot" loading="lazy">
+        <div class="terminal__line">
+          <span class="terminal__prompt">$</span>
+          <span class="terminal__cmd">docker exec -it stigix stigix-cli</span>
         </div>
-        <div class="cli-showcase__caption">
-          <span>Auto-completion popup, status bar &amp; session tokens</span>
-          <a href="#gallery" style="color:var(--teal);font-weight:600;text-decoration:none;">View 5 CLI Screens &rarr;</a>
+        <div class="terminal__line" style="margin-top: 10px;">
+          <span class="terminal__out info">stigix@localhost:8080 ›</span>
+          <span class="terminal__cmd" style="margin-left:8px;">tcp-app status erp-8443</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__out">━━ Application: ERP-Production (:8443) ━━━━━━━━━━</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__out ok">✓ Listener    [LISTENING]  (mode: fixed_delay 150ms)</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__out ok">✓ Outbound    [RUNNING]    (2 streams to DC1)</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__out info">→ Health      98/100 [OPTIMAL] (p50: 16.2ms · p95: 24.1ms)</span>
+        </div>
+        <div class="terminal__line" style="margin-top: 10px;">
+          <span class="terminal__out info">stigix@localhost:8080 ›</span>
+          <span class="terminal__cmd" style="margin-left:8px;">provision publish custom-tcp-apps</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__out ok">✓ Published custom-tcp-apps bundle rev-4 (diff: +1 app ~2 peers)</span>
+        </div>
+        <div class="terminal__line" style="margin-top: 10px;">
+          <span class="terminal__out info">stigix@localhost:8080 ›</span>
+          <span class="terminal__cmd" style="margin-left:8px;">controller peers</span>
+        </div>
+        <div class="terminal__line">
+          <span class="terminal__out">→ BR1 (192.168.101.50) · BR2 (192.168.102.50) · DC1 (192.168.203.100)</span>
         </div>
       </div>
     </div>
