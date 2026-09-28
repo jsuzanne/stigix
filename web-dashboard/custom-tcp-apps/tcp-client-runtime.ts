@@ -419,7 +419,8 @@ export class TcpClientRuntime extends EventEmitter {
             errors: 0,
             reconnects: 0,
             bytesSent: 0,
-            bytesReceived: 0
+            bytesReceived: 0,
+            eicarReceivedCount: 0
         };
 
         const session: ActiveClientSession = {
@@ -567,6 +568,11 @@ export class TcpClientRuntime extends EventEmitter {
                     session.state.responsesReceived++;
                     session.state.lastSuccessAt = Date.now();
                     this.metricsTracker.recordClientResponse();
+
+                    // Detect EICAR not blocked: server sent EICAR but SASE let it through
+                    if (/X-Stigix-Security-Test:\s*EICAR/i.test(raw)) {
+                        session.state.eicarReceivedCount++;
+                    }
                 }
             }
 

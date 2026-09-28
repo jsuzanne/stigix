@@ -330,6 +330,7 @@ export interface OutgoingSessionState {
     rxBps?: number;
     tps?: number;
     tcpConnectMs?: number;
+    eicarReceivedCount: number; // EICAR string received by client = SASE did NOT block it
 }
 
 export interface AppRuntimeMetrics {

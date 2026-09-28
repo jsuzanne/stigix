@@ -1097,6 +1097,20 @@ const secs = seconds % 60;
                                     {liveClientTps > 0 && <span className="text-emerald-500 font-mono text-[10px] font-bold">({liveClientTps} tps)</span>}
                                 </span>
                             </div>
+                            {(() => {
+                                const totalEicarReceived = outgoingSessions.reduce((acc, s) => acc + (s.eicarReceivedCount || 0), 0);
+                                if (totalEicarReceived === 0) return null;
+                                return (
+                                    <div className="mt-2 p-2 bg-rose-500/10 border border-rose-500/30 rounded-lg flex items-center gap-2">
+                                        <span className="text-rose-400 text-sm flex-shrink-0">🛡️</span>
+                                        <div>
+                                            <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">EICAR not blocked</span>
+                                            <span className="text-[10px] text-rose-300 ml-1.5">× {totalEicarReceived}</span>
+                                            <p className="text-[9px] text-rose-400/70 leading-tight mt-0.5">SASE/NGFW did not intercept the EICAR payload</p>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         {/* 3. Latency & Jitter Card */}
