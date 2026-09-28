@@ -1056,6 +1056,14 @@ const secs = seconds % 60;
                                 <span>Mode: <strong className="text-text-secondary capitalize">{currentApp?.serverBehavior?.mode ? currentApp.serverBehavior.mode.replace(/_/g, ' ') : 'echo'}</strong></span>
                                 <span>Handled: <strong className="text-text-secondary">{serverHandled}</strong> {liveServerTps > 0 && incomingSessions.length > 0 && <span className="text-indigo-500 font-mono text-[10px]">({liveServerTps} tps)</span>}</span>
                             </div>
+                            {currentApp?.serverBehavior?.mode === 'eicar_response' && currentApp?.protocol === 'http_1_1' && (
+                                <div className="mt-2 p-2 bg-zinc-900/50 border border-zinc-700/40 rounded-lg">
+                                    <p className="text-[9px] font-bold text-text-muted uppercase tracking-widest mb-1">External curl test</p>
+                                    <code className="block text-[10px] font-mono text-emerald-400 select-all break-all">
+                                        curl -v http://&lt;node-ip&gt;:{currentApp.listener?.port}/
+                                    </code>
+                                </div>
+                            )}
                         </div>
 
                         {/* 2. Outgoing Sessions Card */}

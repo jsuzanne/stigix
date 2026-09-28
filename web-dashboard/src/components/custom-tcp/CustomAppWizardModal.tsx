@@ -840,6 +840,25 @@ export const CustomAppWizardModal: React.FC<CustomAppWizardModalProps> = ({
                                                 Server sends EICAR every <span className="font-bold text-amber-400">{currentMs / 60_000} min</span>.
                                                 Between probes, normal ACK responses keep the session alive without flooding SASE logs.
                                             </p>
+                                            {formData.protocol === 'http_1_1' ? (
+                                                <div className="mt-2 p-2.5 bg-zinc-900/60 border border-zinc-700/50 rounded-lg space-y-1">
+                                                    <p className="text-[10px] text-text-muted font-semibold uppercase tracking-widest">External curl test (HTTP mode)</p>
+                                                    <code className="block text-[11px] font-mono text-emerald-400 select-all break-all">
+                                                        curl -v http://&lt;server-ip&gt;:{formData.listener?.port || 8443}/
+                                                    </code>
+                                                    <p className="text-[10px] text-text-muted">
+                                                        Replace <span className="font-mono text-zinc-300">&lt;server-ip&gt;</span> with the listener node IP.
+                                                        Ensure the source IP is included in the listener <span className="font-mono text-zinc-300">allowCidrs</span>.
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <div className="mt-2 p-2.5 bg-zinc-900/40 border border-zinc-700/30 rounded-lg">
+                                                    <p className="text-[10px] text-text-muted">
+                                                        <span className="font-bold text-zinc-400">stigix_tcp mode</span> — raw <span className="font-mono">curl</span> won't work (requires Stigix binary handshake).
+                                                        Switch to <span className="font-mono text-sky-400">http_1_1</span> protocol to enable external curl tests.
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })()}

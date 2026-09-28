@@ -3383,6 +3383,11 @@ _For versions 1.1.2-patch.33.75 and earlier, please refer to the existing CHANGE
 
 _Full version history continues with entries for v1.1.2-patch.33.75, v1.1.2-patch.33.71-74, v1.1.2-patch.33.65-70, and all earlier releases down to v1.0.0._
 
+## [2.0.76] - 2026-09-28
+
+### Added
+- **Custom TCP Apps — EICAR curl URL**: Wizard now shows a copyable `curl -v http://<node-ip>:{port}/` command when `eicar_response` + `http_1_1` are selected. Explains that `stigix_tcp` mode requires binary handshake and won't work with raw curl. Live Incoming Sessions card also shows the curl URL when the listener is running in EICAR HTTP mode.
+
 ## [2.0.75] - 2026-09-28
 
 ### Added
