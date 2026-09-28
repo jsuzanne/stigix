@@ -1,10 +1,10 @@
 # Stigix — Specification: Fleet Management Gateway & Peer Context Switching
 
-**Last Updated:** 2026-09-26  
+**Last Updated:** 2026-09-28  
 **Creation Date:** 2026-09-26  
-**Initial Stigix Version:** v2.2 (planned)  
-**Status:** Proposal (Phase 3D Roadmap)  
-**Version:** 0.1  
+**Initial Stigix Version:** v2.0.67 (implemented M3)  
+**Status:** Milestones 1–3 Implemented (v2.0.67) — Milestone 4 Pending (M4)  
+**Version:** 0.2  
 **Author:** jsuzanne  
 **Language:** English for implementation clarity
 
@@ -12,6 +12,7 @@
 
 | Version | Date | Author | Changes |
 |---|---|---|---|
+| 0.2 | 2026-09-28 | jsuzanne / Antigravity | Implementation update: Milestones 1–3 shipped in v2.0.67. Added §8 Implementation Status, actual file references, deviations, and M4 scope. |
 | 0.1 | 2026-09-26 | jsuzanne | Initial proposal: Navbar Context Switcher, Leader BFF Gateway Reverse-Proxy, X-Peer-Context headers, SSO/Token delegation, and Remote View banner |
 
 ---
@@ -160,18 +161,12 @@ In topologies where a branch peer is behind strict CGNAT or dynamic public 4G/5G
 
 ## 6. Implementation Phasing
 
-1. **Milestone 1 — Gateway Middleware (`server.ts`):**
-   - Implement `/api/gateway/:peerId/*` proxy route.
-   - Registry IP resolution with caching and connection timeout guards (5s timeout, 504 on unreachable).
-2. **Milestone 2 — Frontend Context State (`web-dashboard`):**
-   - Add `PeerContextContext.tsx` React context to store active peer ID.
-   - Add Topbar Dropdown component in navigation bar.
-   - Add Remote View Banner when context is non-local.
-3. **Milestone 3 — API Interceptor:**
-   - Update API client utilities to route calls through `/api/gateway/:peerId/` when in remote context.
-4. **Milestone 4 — Security Delegation & Safe Mode:**
-   - Add HMAC signature verification between Leader and Peers.
-   - Enforce Read-Only mode toggle.
+| # | Milestone | Status | Shipped |
+|---|---|---|---|
+| 1 | Gateway Middleware (`gateway-routes.ts`) | ✅ Complete | v2.0.67 |
+| 2 | Frontend Context State + Dropdown + Banner | ✅ Complete | v2.0.67 |
+| 3 | API Interceptor (`gFetch`) — all views | ✅ Complete | v2.0.67 |
+| 4 | HMAC Security Delegation + Safe Mode toggle | ❌ Pending | M4 |
 
 ---
 
@@ -180,3 +175,57 @@ In topologies where a branch peer is behind strict CGNAT or dynamic public 4G/5G
 - **Phase 1 (`STIGIX_DIRECT_CONTROLLER_PEER_INSTALLATION_SPEC.md`):** Provides the local Registry on the Leader containing peer presence and management IP metadata.
 - **Phase 2 (`STIGIX_GLOBAL_CONFIGURATION_PROVISIONING_SPEC.md`):** Governs configuration replication; Context Switching does not replace Phase 2 publishing.
 - **Phase 3B (`SPECIFICATION_MULTI_INSTANCE_CONTROL_PLANE_REVISED.md`):** Governs automated asynchronous batch jobs (pull-mode with 3-tier ACK); Context Switching provides synchronous interactive inspection.
+
+---
+
+## 8. Implementation Status (v2.0.67 — M3)
+
+### 8.1 Actual Files
+
+| Component | File |
+|---|---|
+| Gateway proxy route | `web-dashboard/gateway-routes.ts` |
+| Peer context + gFetch interceptor | `web-dashboard/src/PeerContext.tsx` |
+| Peer status polling | `web-dashboard/src/App.tsx` → `PeerStatusSync` |
+| Context dropdown (§2.1) | `web-dashboard/src/components/GatewayDropdown.tsx` |
+| Remote View banner (§2.2) | `web-dashboard/src/App.tsx` → `RemoteViewChip` |
+| Implementation reference doc | `docs/REMOTE_VIEW_GATEWAY.md` |
+
+### 8.2 Routing — Method A Implemented (§3.2)
+
+URL prefix routing (`/api/gateway/:peerId/*`) was implemented as specified. Method B (X-Stigix-Peer-Context header) was not implemented — the `gFetch` interceptor approach covers the same use case at the client level without requiring backend middleware changes.
+
+### 8.3 Feature Coverage
+
+| Feature | Remote View Status |
+|---|---|
+| Traffic Generator (stats + chart) | ✅ Live |
+| Voice / Live Streams | ✅ Live |
+| Digital Experience (DX) | ✅ Live |
+| Failover Monitoring | ✅ Live |
+| Custom Apps (sessions + RTT) | ✅ Live |
+| Security Posture Score | ✅ Live |
+| IoT Device list | ✅ Live |
+| Settings config read | ✅ Live (re-fetches on peer switch) |
+| Settings config write | 🔒 Read-only (M4) |
+| Speedtest / Iperf | 🔒 Disabled — not proxiable |
+| IoT Real-time log stream (SSE) | ❌ SSE not tunnelable via HTTP proxy — M4 polling fallback |
+| Network Status (GW/Public IP) | ❌ Still DC1 local — M4 |
+
+### 8.4 Deviations from Spec
+
+| Spec Item | Actual Implementation |
+|---|---|
+| §4.1 HMAC inter-node signing | **Not yet implemented** — gateway forwards using peer registry token. Planned M4. |
+| §4.2 Safe Mode (Read-Only toggle) | Partially implemented — write actions disabled via `isRemoteView` guards. No explicit toggle in UI yet. |
+| §5.2 Reverse tunnel (WSS) | Not implemented — lab topology has direct reachability; deferred to a future milestone. |
+| PeerStatusSync polling | Not in original spec — added to handle live stats (voice, traffic) that cannot be pulled on-demand per API call. |
+
+### 8.5 M4 Scope
+
+1. **HMAC inter-node authentication** — `HMAC_SHA256(peerId + timestamp + path, cluster_secret)` as specified in §4.1.
+2. **Safe Mode toggle in UI** — explicit Read-Only / Control Mode button in Remote View banner.
+3. **Write actions enabled** — lift `isRemoteView` guards in CustomApps, Settings with confirmation dialog.
+4. **IoT log stream** — replace SSE with `gFetch` REST polling fallback.
+5. **Network Status** — fetch GW/Public IP from remote peer via PeerStatusSync.
+6. **Traffic history range** — pass `timeRange` state into PeerStatusSync history loop.
