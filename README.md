@@ -1,9 +1,9 @@
-> **Last Updated:** 2026-09-25 | **Created:** 2026-01-25 (v1.0.0)
+> **Last Updated:** 2026-09-28 | **Created:** 2026-01-25 (v1.0.0)
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-2.0.73-blue.svg)](https://github.com/jsuzanne/stigix/releases)
-[![Last Updated](https://img.shields.io/badge/Updated-2026--09--25-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.0.79-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--09--28-brightgreen.svg)](CHANGELOG.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -77,7 +77,7 @@ This project is my way to turn all that lab and demo experience into an open-sou
 - **Prisma SD-WAN Integration** - Automatic discovery of sites and LAN interfaces via API for "Zero-Config" connectivity probes and path validation. [Read more](docs/PRISMA-SDWAN_INTEGRATION.md)
 - **Convergence Lab (Performance)** - High-precision UDP failover monitoring (up to 1000 PPS) to measure SD-WAN tunnel transition times. [Read more](docs/CONVERGENCE_LAB.md)
 - **Smart Networking** - Auto-detection of default gateways and interfaces (enp2s0, eth0) for a "Zero-Config" experience on physical Linux boxes. [Read more](docs/SMART_NETWORKING.md)
-- **VyOS Control** - Orchestrate network events and perturbations (latency, loss, rate-limiting, ip blocking) on VyOS routers via Vyos API. [Read more](docs/VYOS_CONTROL.md)
+- **VyOS Control** - Orchestrate network events and perturbations (latency, loss, rate-limiting, ip blocking) on VyOS routers via Vyos API. The VyOS Control page refreshes automatically when switching between remote peers. [Read more](docs/VYOS_CONTROL.md)
 - **Autodiscovery & Registry** - Automatic peer-to-peer discovery using Cloudflare Workers. "Zero-Config" multi-node setup with stateless authentication. [Read more](docs/AUTODISCOVERY_GUIDE.md) 📡✨
 - **Central Global Provisioning** - Publish 9 core configuration bundles (`Applications Catalogue`, `Connectivity Probes`, `Convergence SLA`, `Prisma SASE`, `Security Policy`, `Voice Settings`, `IoT Simulation`, `Custom TCP Apps`, and `Cloud Probes Credentials`) centrally from the Leader to connected branch peers with pull-mode distribution (`30s` cycle), revisioning, field-level local site overrides, auto-save broadcast, and zero-touch hot reload. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🌐
 - **Direct Controller Peer Onboarding** - Single-command onboarding (`curl -sSL http://<LEADER_IP>:8080/onboard.sh | bash`) to instantly join remote Linux nodes to a Stigix Leader with zero-touch configuration. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🚀
@@ -86,7 +86,7 @@ This project is my way to turn all that lab and demo experience into an open-sou
 ### 🛡️ Security
 - **URL Filtering Tests** - Validate 66 different URL categories (malware, phishing, gambling, adult content, etc.)
 - **DNS Security Tests** - Test DNS security policies with 24 domains (malware, phishing, DGA, etc.)
-- **Threat Prevention** - EICAR file download testing for IPS validation
+- **Threat Prevention** - EICAR file download testing for IPS/Threat Prevention validation. The Custom TCP Apps **EICAR Response** server mode periodically injects the EICAR test string into live TCP sessions. The client runtime detects whether the EICAR payload was actually received (SASE failed to block it) and surfaces a **🛡️ EICAR not blocked × N** warning badge in the Outgoing Sessions dashboard — invisible when the SASE is working correctly.
 - **C2 Attack Scenarios** - 7 real-traffic attack simulations (SQL Injection, DNS C2, Greyware DNS, Compromised DNS, Sliver C2, EICAR over HTTPS, DNS Tunneling) with Enforced / Bypass / Inconclusive verdicts. [Read more](docs/SECURITY_TESTING.md)
 - **AI Security Tests (AISA)** - 5 Palo Alto AI Security simulation scenarios targeting live AI apps (ChatGPT, Grok, Gemini, Perplexity): DLP, Prompt Injection, CVE-2014-9222, EICAR Upload, and AI Volume Traffic (24 apps). [Read more](docs/SECURITY_TESTING.md)
 - **Security Score Dashboard** - Per-module security scoring (URL, DNS, Threat, C2) with trend charts, baseline pinning, gap analysis, and Latest Changes diff view. 📊

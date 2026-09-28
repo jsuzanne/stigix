@@ -2,6 +2,50 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.79] - 2026-09-28 — Hotfix: TypeScript build error in Security.tsx
+
+### Fixed
+- **TS2345 Build Failure**: `setSecurityProfile(null)` rejected by TypeScript compiler — the
+  state type does not include `null`. Replaced with an explicit reset to the local catalogue
+  defaults (`URL_CATEGORIES`, `DNS_TEST_DOMAINS`, `C2_SCENARIOS`, `AI_SECURITY_SCENARIOS`).
+  Functionally equivalent: the Security page now shows the default catalogue between peer
+  switches while the new peer's data is being fetched.
+
+---
+
+## [v2.0.78] - 2026-09-28 — Fix: Security & VyOS pages don't refresh on peer switch
+
+### Fixed
+- **VyOS Control Page (Vyos.tsx)**:
+  - Main `useEffect` had an empty `[]` dependency array — the page was mount-only and never
+    re-fetched when switching remote peers via the peer selector.
+  - Added `activePeerId` to deps so `fetchData()` fires on every peer switch.
+  - State (`routers`, `sequences`, `history`) is now cleared before re-fetching to avoid
+    showing the previous peer's data during the network round-trip.
+- **Security Page (Security.tsx)**:
+  - Main `useEffect` already included `activePeerId` in deps, but stale state remained
+    visible during the re-fetch interval.
+  - Added explicit resets for `config`, `testResults`, `securityProfile`, `securityTargets`,
+    `cloudEicarUrl`, and the `eicarInitialized` ref at the top of the effect so the UI
+    clears immediately on peer switch before new data arrives.
+
+---
+
+## [v2.0.77] - 2026-09-28 — EICAR Client-Side Detection
+
+### Added
+- **EICAR Not-Blocked Indicator** (Custom TCP Apps — Outgoing Sessions card):
+  - The `tcp-client-runtime` now inspects every HTTP response for the
+    `X-Stigix-Security-Test: EICAR` header injected by the server in EICAR Response mode.
+  - If the EICAR payload reaches the client (meaning the SASE/NGFW did **not** block it),
+    `eicarReceivedCount` is incremented in `OutgoingSessionState`.
+  - A **🛡️ EICAR not blocked × N** warning badge (red/rose) appears in the Outgoing
+    Sessions card — visible only when a security gap is detected, completely hidden
+    otherwise (zero noise in normal/blocked conditions).
+- **`OutgoingSessionState`**: New `eicarReceivedCount: number` field added to `types.ts`.
+
+---
+
 ## [v2-dev] - 2026-09-26 — Tech-Support Diagnostics Bundle, Reports & Telemetry Enrichment
 
 ### Added
