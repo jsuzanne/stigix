@@ -432,7 +432,13 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         // Reset stale state from previous peer so UI clears immediately on switch
         setConfig(null);
         setTestResults([]);
-        setSecurityProfile(null);
+        setSecurityProfile({
+            url_filtering: { items: URL_CATEGORIES },
+            dns_security: { items: DNS_TEST_DOMAINS },
+            threat_prevention: { default_eicar_endpoints: ['https://secure.eicar.org/eicar.com.txt'] },
+            c2_scenarios: C2_SCENARIOS,
+            ai_security_scenarios: AI_SECURITY_SCENARIOS
+        });
         setSecurityTargets([]);
         setCloudEicarUrl('');
         eicarInitialized.current = false;
