@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.81] - 2026-09-28
+
+### Added
+- **Fleet View Direct Context Switcher (`Fleet.tsx`)**: Replaced generic `Open UI` links in Mesh Overview table with interactive `[ ⚡ Connect ]` context switcher buttons that immediately transport the operator into the branch's Remote View via the Leader gateway. Added `[ ⚡ Connect via Remote View ]` in the Peer Detail modal.
+
+## [2.0.80] - 2026-09-28
+
+### Added
+- **Remote Peer Name in Navigation Header (`App.tsx`)**: Top-left subtitle dynamically displays the remote peer site name in amber during Remote View mode.
+- **Peer Switcher Dropdown (`PeerContext.tsx`)**: Removed redundant `ACTIVE` badge to eliminate visual clutter and avoid horizontal layout shifts.
+
 ## [2.0.74] - 2026-09-28
 
 ### Fixed

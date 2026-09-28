@@ -2,8 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Globe, RefreshCw, Search, Server, Gauge, 
     CheckCircle2, XCircle, ExternalLink, 
-    Check, X, Filter, Copy, Clock, AlertTriangle, ShieldCheck
+    Check, X, Filter, Copy, Clock, AlertTriangle, ShieldCheck,
+    Zap
 } from 'lucide-react';
+import { usePeerContext } from './PeerContext';
 
 interface FleetProps {
     token: string;
@@ -162,6 +164,7 @@ function formatLastSeen(secondsAgo: number, lastSeenIso?: string) {
 }
 
 export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
+    const { activePeerId, setActivePeerId } = usePeerContext();
     const [data, setData] = useState<FleetOverviewResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -598,9 +601,9 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 </div>
                                             </td>
 
-                                            {/* Actions: Open UI & Copy IP */}
+                                            {/* Actions: Context Switcher Connect, Open Direct UI & Copy IP */}
                                             <td className="px-6 py-3 text-right" onClick={e => e.stopPropagation()}>
-                                                <div className="inline-flex items-center gap-1.5">
+                                                <div className="inline-flex items-center gap-1.5 justify-end">
                                                     <button
                                                         onClick={(e) => handleCopy(e, peer.ip_private)}
                                                         className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 transition-all"
@@ -613,12 +616,47 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                         href={effectiveUrl}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 hover:border-neutral-600 transition-all shadow-sm"
-                                                        title={`Open UI: ${effectiveUrl}`}
+                                                        className="p-1.5 rounded-lg text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 border border-neutral-700 transition-all shadow-sm"
+                                                        title={`Open Direct URL: ${effectiveUrl}`}
                                                     >
-                                                        <span>Open UI</span>
-                                                        <ExternalLink size={12} />
+                                                        <ExternalLink size={13} />
                                                     </a>
+
+                                                    {isLeader ? (
+                                                        activePeerId === null ? (
+                                                            <span className="px-3 py-1.5 rounded-lg text-xs font-bold font-mono bg-purple-500/10 text-purple-400 border border-purple-500/20 whitespace-nowrap">
+                                                                Local Leader
+                                                            </span>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setActivePeerId(null);
+                                                                    _onNavigate?.('connectivity');
+                                                                }}
+                                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 hover:border-purple-500/50 transition-all shadow-sm active:scale-95 whitespace-nowrap"
+                                                                title="Switch back to Local Leader context"
+                                                            >
+                                                                <Zap size={12} className="text-purple-400 fill-purple-400" />
+                                                                <span>Return Local</span>
+                                                            </button>
+                                                        )
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => {
+                                                                setActivePeerId(peer.instance_id);
+                                                                _onNavigate?.('connectivity');
+                                                            }}
+                                                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 whitespace-nowrap ${
+                                                                activePeerId === peer.instance_id
+                                                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 ring-1 ring-amber-500/30'
+                                                                    : 'bg-amber-600/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 hover:border-amber-500/50'
+                                                            }`}
+                                                            title={`Switch context to ${siteName} (${peer.instance_id})`}
+                                                        >
+                                                            <Zap size={12} className="text-amber-400 fill-amber-400" />
+                                                            <span>{activePeerId === peer.instance_id ? 'Connected' : 'Connect'}</span>
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -890,20 +928,37 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                             </div>
 
                             {/* Direct Action Footer */}
-                            <div className="flex items-center justify-between pt-4 border-t border-border">
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border">
                                 <span className="text-xs font-mono text-text-muted flex items-center gap-1.5">
                                     <Clock size={12} />
                                     Last heartbeat received: {selectedPeer.last_seen ? new Date(selectedPeer.last_seen).toLocaleString() : '—'}
                                 </span>
-                                <a
-                                    href={selectedPeer.meta?.management_url || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-lg active:scale-95"
-                                >
-                                    <span>Open Full Node Dashboard</span>
-                                    <ExternalLink size={14} />
-                                </a>
+                                <div className="flex items-center gap-2">
+                                    <a
+                                        href={selectedPeer.meta?.management_url || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-xs flex items-center gap-1.5 transition-all border border-neutral-700"
+                                        title="Open direct URL in new tab"
+                                    >
+                                        <span>Direct URL</span>
+                                        <ExternalLink size={13} />
+                                    </a>
+
+                                    {!(selectedPeer.is_leader || selectedPeer.type === 'leader') && (
+                                        <button
+                                            onClick={() => {
+                                                setActivePeerId(selectedPeer.instance_id);
+                                                setSelectedPeer(null);
+                                                _onNavigate?.('connectivity');
+                                            }}
+                                            className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-lg active:scale-95"
+                                        >
+                                            <Zap size={14} className="fill-white" />
+                                            <span>Connect via Remote View</span>
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>

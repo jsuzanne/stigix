@@ -2,6 +2,17 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.81] - 2026-09-28 — Feature: Fleet Mesh context switcher direct connect
+
+### Added
+- **Fleet View Direct Context Switcher (`Fleet.tsx`)**:
+  - Replaced the generic `Open UI` external link in the Mesh Overview table with an interactive **`[ ⚡ Connect ]`** context switcher button for each remote peer (BR1, BR2, BR5, BR8).
+  - Clicking **`[ ⚡ Connect ]`** immediately sets `activePeerId` and navigates the operator to the active view in Remote View mode without opening a separate browser window or needing direct reachability to the branch IP.
+  - For the Leader node (DC1-Ubuntu), displays `Local Leader` (or a `[ ⚡ Return Local ]` button if currently in a remote peer context).
+  - Added a **`[ ⚡ Connect via Remote View ]`** button inside the Peer Details Drawer / Modal alongside the direct URL button.
+
+---
+
 ## [v2.0.80] - 2026-09-28 — UX: Remote peer name in navbar + peer switcher cleanup
 
 ### Added
