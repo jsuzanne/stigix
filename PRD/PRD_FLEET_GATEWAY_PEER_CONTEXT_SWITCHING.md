@@ -1,17 +1,18 @@
 # Stigix — Specification: Fleet Management Gateway & Peer Context Switching
 
-**Last Updated:** 2026-09-28  
-**Creation Date:** 2026-09-26  
-**Initial Stigix Version:** v2.0.67 (implemented M3)  
-**Status:** Milestones 1–3 Implemented (v2.0.67) — Milestone 4 Pending (M4)  
-**Version:** 0.2  
-**Author:** jsuzanne  
+**Last Updated:** 2026-09-28
+**Creation Date:** 2026-09-26
+**Initial Stigix Version:** v2.0.67 (implemented M3)
+**Status:** Milestones 1–3 Implemented (v2.0.67–v2.0.80) — M4 Pending — M5 Specified
+**Version:** 0.3
+**Author:** jsuzanne
 **Language:** English for implementation clarity
 
 ## Revision History
 
 | Version | Date | Author | Changes |
 |---|---|---|---|
+| 0.3 | 2026-09-28 | jsuzanne / Antigravity | M3 closed (v2.0.67–v2.0.80). Added M5 milestone: outbound WebSocket reverse tunnel for NAT traversal (§9). Updated feature coverage and phasing table. |
 | 0.2 | 2026-09-28 | jsuzanne / Antigravity | Implementation update: Milestones 1–3 shipped in v2.0.67. Added §8 Implementation Status, actual file references, deviations, and M4 scope. |
 | 0.1 | 2026-09-26 | jsuzanne | Initial proposal: Navbar Context Switcher, Leader BFF Gateway Reverse-Proxy, X-Peer-Context headers, SSO/Token delegation, and Remote View banner |
 
@@ -165,8 +166,9 @@ In topologies where a branch peer is behind strict CGNAT or dynamic public 4G/5G
 |---|---|---|---|
 | 1 | Gateway Middleware (`gateway-routes.ts`) | ✅ Complete | v2.0.67 |
 | 2 | Frontend Context State + Dropdown + Banner | ✅ Complete | v2.0.67 |
-| 3 | API Interceptor (`gFetch`) — all views | ✅ Complete | v2.0.67 |
-| 4 | HMAC Security Delegation + Safe Mode toggle | ❌ Pending | M4 |
+| 3 | API Interceptor (`gFetch`) — all views + UX polish | ✅ Complete | v2.0.67–v2.0.80 |
+| 4 | HMAC Security Delegation + Safe Mode toggle + IoT polling + Network Status | ❌ Pending | M4 |
+| 5 | Outbound WebSocket Reverse Tunnel (NAT Traversal) | ❌ Pending | M5 |
 
 ---
 
@@ -204,13 +206,16 @@ URL prefix routing (`/api/gateway/:peerId/*`) was implemented as specified. Meth
 | Digital Experience (DX) | ✅ Live |
 | Failover Monitoring | ✅ Live |
 | Custom Apps (sessions + RTT) | ✅ Live |
-| Security Posture Score | ✅ Live |
+| Security Posture Score | ✅ Live — refreshes on peer switch (v2.0.78) |
+| VyOS Control | ✅ Live — refreshes on peer switch (v2.0.78) |
 | IoT Device list | ✅ Live |
 | Settings config read | ✅ Live (re-fetches on peer switch) |
+| Peer name in top-left navbar | ✅ Live — amber label on remote view (v2.0.80) |
 | Settings config write | 🔒 Read-only (M4) |
 | Speedtest / Iperf | 🔒 Disabled — not proxiable |
 | IoT Real-time log stream (SSE) | ❌ SSE not tunnelable via HTTP proxy — M4 polling fallback |
 | Network Status (GW/Public IP) | ❌ Still DC1 local — M4 |
+| NAT-traversal reachability | ❌ Requires outbound WS tunnel — M5 |
 
 ### 8.4 Deviations from Spec
 
@@ -229,3 +234,141 @@ URL prefix routing (`/api/gateway/:peerId/*`) was implemented as specified. Meth
 4. **IoT log stream** — replace SSE with `gFetch` REST polling fallback.
 5. **Network Status** — fetch GW/Public IP from remote peer via PeerStatusSync.
 6. **Traffic history range** — pass `timeRange` state into PeerStatusSync history loop.
+
+---
+
+## 9. Milestone 5 — Outbound WebSocket Reverse Tunnel (NAT Traversal)
+
+### 9.1 Problem Statement
+
+The M3 gateway architecture assumes the Leader can initiate outbound TCP connections to each peer's management port (`peer_ip:8080`). This is valid in:
+- **Lab OOB** environments (flat management LAN, all nodes directly reachable).
+- **Corporate SD-WAN** topologies where management traffic rides the overlay.
+
+It **fails** in:
+- **Real Network In-band** deployments where branch nodes are behind CGNAT, 4G/5G dynamic IPs, or strict enterprise firewalls that block inbound connections.
+- Any topology where the branch peer IP registered in the Registry is a private address not routable from the Leader.
+
+### 9.2 Solution: Peer-Initiated Outbound WebSocket Tunnel
+
+Each peer initiates and maintains a persistent outbound WebSocket connection to the Leader at startup:
+
+```text
+  Branch Peer (BR5)                           Leader (DC1)
+  behind CGNAT / NAT                          public / reachable
+
+  1. Boot: ws.connect(STIGIX_LEADER_URL/api/fleet/tunnel)
+            ──── WSS handshake + JWT auth ────►
+            ◄─── 101 Switching Protocols ─────
+            ◄──── peerId registered in WS session table ────
+
+  2. Operator selects BR5 in Leader UI
+     Leader Gateway receives:
+       GET /api/gateway/BR5/api/traffic/stats
+
+  3. Leader resolves BR5 → WS channel (not direct HTTP)
+     Encapsulates HTTP request in JSON frame:
+       { id: "req-42", method: "GET", path: "/api/traffic/stats", headers: {...} }
+     ──── WS frame → BR5 ────────────────────►
+
+  4. BR5 processes request locally, responds:
+       { id: "req-42", status: 200, body: { ... } }
+     ◄─── WS frame ──────────────────────────
+
+  5. Leader reconstructs HTTP response → browser
+```
+
+### 9.3 Transport Protocol
+
+#### Leader side — `server.ts`
+
+```typescript
+// New endpoint: ws://leader:8080/api/fleet/tunnel
+// Registered peers connect here on boot
+app.ws('/api/fleet/tunnel', (ws, req) => {
+    const peerId = authenticate(req); // JWT validation
+    tunnelRegistry.register(peerId, ws);
+    ws.on('message', (frame) => tunnelRegistry.dispatch(frame));
+    ws.on('close', () => tunnelRegistry.unregister(peerId));
+});
+
+// Gateway proxy — updated routing logic
+function proxyToPeer(peerId, req, res) {
+    const channel = tunnelRegistry.get(peerId);
+    if (channel) {
+        // WS tunnel path (NAT scenario)
+        return forwardOverTunnel(channel, req, res);
+    }
+    // Fallback: direct HTTP (Lab/OOB scenario)
+    return forwardHTTP(peerIp, req, res);
+}
+```
+
+#### Peer side — `server.ts` (all instances)
+
+```typescript
+// On startup, if STIGIX_LEADER_URL is configured and this node is NOT the leader
+if (leaderUrl && !isLeader) {
+    const ws = new WebSocket(`${leaderUrl}/api/fleet/tunnel`, {
+        headers: { Authorization: `Bearer ${gatewayToken}` }
+    });
+    ws.on('message', (frame) => {
+        const req = JSON.parse(frame);
+        // Process locally and send response back
+        const response = await handleLocalRequest(req);
+        ws.send(JSON.stringify({ id: req.id, ...response }));
+    });
+    // Reconnect with exponential backoff on disconnect
+    ws.on('close', () => scheduleReconnect());
+}
+```
+
+### 9.4 Request Multiplexing
+
+Since WebSocket is full-duplex but not natively request/response, requests are tagged with a unique `id` (UUID). The Leader maintains a `Map<id, {resolve, reject, timer}>` for in-flight requests:
+
+```typescript
+async function forwardOverTunnel(ws, req, res) {
+    const id = crypto.randomUUID();
+    const timeout = setTimeout(() => inflight.get(id)?.reject('timeout'), 10_000);
+    const response = await new Promise((resolve, reject) => {
+        inflight.set(id, { resolve, reject, timeout });
+        ws.send(JSON.stringify({ id, method: req.method, path: req.path, body: req.body }));
+    });
+    clearTimeout(timeout);
+    res.status(response.status).json(response.body);
+}
+```
+
+### 9.5 Automatic Fallback Strategy
+
+| Gateway Resolution Logic | Transport Used |
+|---|---|
+| Peer has active WS tunnel in `tunnelRegistry` | WS reverse tunnel (M5) |
+| Peer has routable IP in Registry (direct reachable) | Direct HTTP `http.request` (M3) |
+| Neither | `503 Peer Unreachable` |
+
+This ensures **zero behavioral change** for Lab/OOB topologies where direct HTTP works fine.
+
+### 9.6 Configuration
+
+| Variable | Set on | Description |
+|---|---|---|
+| `STIGIX_LEADER_URL` | **Peer** | Full WS URL of the Leader (e.g. `ws://192.168.122.51:8080`). If absent, peer does not attempt tunnel. |
+| `STIGIX_TUNNEL_RECONNECT_MS` | Peer | Base reconnect interval (default `5000` ms, exponential backoff ×2, cap `60s`). |
+| `STIGIX_TUNNEL_TIMEOUT_MS` | Leader | Per-request timeout over the tunnel (default `10000` ms). |
+
+### 9.7 Security
+
+- The peer authenticates to the Leader using the same `gatewayToken` (JWT, shared cluster secret) used for M3 direct HTTP.
+- M4 HMAC signing is reused for WS frame authentication once implemented.
+- The Leader only accepts WS tunnel connections from peers already registered in the Fleet Registry.
+- All tunnel traffic rides the existing TLS layer if `STIGIX_HTTPS=true`.
+
+### 9.8 Rollout Plan
+
+1. **Leader** — add `ws` handler at `/api/fleet/tunnel`, implement `TunnelRegistry` and `forwardOverTunnel`.
+2. **Peer** — add startup WS client in `server.ts` (triggered by `STIGIX_LEADER_URL` env var).
+3. **Gateway Proxy** — update routing to prefer tunnel over direct HTTP.
+4. **Fleet UI** — add tunnel status indicator per peer in `GatewayDropdown` (🔌 vs 🌐).
+5. **Testing** — validate with a lab VM behind iptables NAT to simulate CGNAT.

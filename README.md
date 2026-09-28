@@ -2,7 +2,7 @@
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
-[![Version](https://img.shields.io/badge/Version-2.0.79-blue.svg)](https://github.com/jsuzanne/stigix/releases)
+[![Version](https://img.shields.io/badge/Version-2.0.80-blue.svg)](https://github.com/jsuzanne/stigix/releases)
 [![Last Updated](https://img.shields.io/badge/Updated-2026--09--28-brightgreen.svg)](CHANGELOG.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -82,6 +82,7 @@ This project is my way to turn all that lab and demo experience into an open-sou
 - **Central Global Provisioning** - Publish 9 core configuration bundles (`Applications Catalogue`, `Connectivity Probes`, `Convergence SLA`, `Prisma SASE`, `Security Policy`, `Voice Settings`, `IoT Simulation`, `Custom TCP Apps`, and `Cloud Probes Credentials`) centrally from the Leader to connected branch peers with pull-mode distribution (`30s` cycle), revisioning, field-level local site overrides, auto-save broadcast, and zero-touch hot reload. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🌐
 - **Direct Controller Peer Onboarding** - Single-command onboarding (`curl -sSL http://<LEADER_IP>:8080/onboard.sh | bash`) to instantly join remote Linux nodes to a Stigix Leader with zero-touch configuration. [Read more](docs/GLOBAL_PROVISIONING_AND_PEER_ONBOARDING.md) 🚀
 - **Smart Identity** - Automatic instance identification using system hostname. Simplifies deployment by reducing environment variables. 🆔
+- **Peer Context Switcher** - Dropdown in the top navbar allows switching the entire dashboard to any registered remote peer in one click. Active peer highlighted in amber (no redundant "ACTIVE" label — the highlight speaks for itself). Remote peer name displayed in the top-left subtitle for immediate context awareness.
 
 ### 🛡️ Security
 - **URL Filtering Tests** - Validate 66 different URL categories (malware, phishing, gambling, adult content, etc.)

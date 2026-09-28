@@ -2,6 +2,31 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.80] - 2026-09-28 — UX: Remote peer name in navbar + peer switcher cleanup
+
+### Added
+- **Remote Peer Name in Navigation Header** (`App.tsx`):
+  - When in remote view mode, the top-left subtitle now shows the active remote peer's
+    site name (or `instance_id` as fallback) in **amber** instead of the local
+    `detected_site_name`. Returns to blue local name when switching back to the Leader.
+  - Zero additional API calls — the label is read directly from the in-memory peer list
+    via an extended `onActivePeerChange(peerId, peerLabel)` callback.
+
+### Changed
+- **Peer Switcher Dropdown** (`PeerContext.tsx`):
+  - Removed the redundant `ACTIVE` text badge from both the Local Controller row and
+    Remote Sites rows. Active state is already communicated by highlighted background
+    (amber/blue) and bold typography — the badge was visual noise and was shifting IP
+    addresses off-screen.
+  - `setActivePeerId` useCallback now includes `peers` in its dependency array to
+    prevent a stale closure when resolving the peer label on switch.
+
+### Technical
+- `onActivePeerChange` callback signature extended: `(peerId, peerLabel)` — backwards-
+  compatible addition (second arg ignored by callers that don't need it).
+
+---
+
 ## [v2.0.79] - 2026-09-28 — Hotfix: TypeScript build error in Security.tsx
 
 ### Fixed
