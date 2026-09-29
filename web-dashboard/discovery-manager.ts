@@ -139,12 +139,49 @@ export class DiscoveryManager {
                         this.upsertOneProbe(newProbesList, currentProbes, selected, discoveryKey, probeName, seenKeys, result);
                     }
                 } else {
-                    // Branch logic: ONE probe (select best)
-                    let selected = candidates.find(c => c.interface_name === '1');
-                    if (!selected) {
-                        selected = candidates.sort((a, b) => this.compareIPs(a.ip, b.ip))[0];
-                    }
+                    // Branch logic: ONE probe (select best physical Ethernet / LAN gateway interface)
+                    const scoreBranchInterface = (cand: any): number => {
+                        let score = 0;
+                        const name = (cand.interface_name || '').toLowerCase();
+                        const desc = (cand.interface_description || '').toLowerCase();
+                        const label = (cand.interface_label || '').toLowerCase();
+                        const net = String(cand.network || '');
 
+                        // 1. Loopback penalties
+                        if (name.includes('loopback') || name.startsWith('lo') || desc.includes('loopback') || net.endsWith('/32')) {
+                            score -= 200;
+                        }
+
+                        // 2. Physical / Standard LAN Ethernet interface priority
+                        if (name === '1' || name === '1/1' || name === 'eth1/1' || name === 'lan') {
+                            score += 100;
+                        } else if (name.startsWith('eth') || name.startsWith('ge-') || name.startsWith('gigabit') || name.startsWith('1.')) {
+                            score += 80;
+                        } else if (name.includes('vlan')) {
+                            score += 60;
+                        }
+
+                        // 3. Descriptive clues (gateway, lan, corp, data)
+                        if (desc.includes('lan') || desc.includes('gw') || desc.includes('gateway') || desc.includes('corp') || desc.includes('data')) {
+                            score += 40;
+                        }
+
+                        // 4. Standard subnet bonus (/24, /23, etc. vs /32)
+                        if (net && !net.endsWith('/32')) {
+                            score += 20;
+                        }
+
+                        return score;
+                    };
+
+                    const sortedCandidates = [...candidates].sort((a, b) => {
+                        const scoreA = scoreBranchInterface(a);
+                        const scoreB = scoreBranchInterface(b);
+                        if (scoreB !== scoreA) return scoreB - scoreA;
+                        return this.compareIPs(a.ip, b.ip);
+                    });
+
+                    const selected = sortedCandidates[0];
                     if (selected && selected.ip) {
                         const discoveryKey = `discovery:ping:${siteId}`;
                         this.upsertOneProbe(newProbesList, currentProbes, selected, discoveryKey, selected.site_name, seenKeys, result);

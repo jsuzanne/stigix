@@ -417,7 +417,7 @@ export class ProvisioningManager {
         if (!lastBundle) return currentActiveItems && (Array.isArray(currentActiveItems) ? currentActiveItems.length > 0 : Object.keys(currentActiveItems).length > 0);
 
         const isArray = Array.isArray(currentActiveItems);
-        const normalized = isArray ? this.normalizeItemsWithIds(type as any, currentActiveItems) : currentActiveItems;
+        const normalized = isArray ? this.normalizeItemsWithIds(type as any, currentActiveItems) : this.sanitizeForProvisioning(currentActiveItems);
         const currentChecksum = this.computeChecksum(normalized);
         const publishedChecksum = this.computeChecksum(lastBundle);
         return currentChecksum !== publishedChecksum;

@@ -4706,9 +4706,14 @@ app.all('/api/network/traceroute', authenticateToken, async (req, res) => {
 
 
 const getFullEffectiveConnectivityProbes = () => {
+    const isLeader = typeof registryManager?.isLeader === 'function' 
+        ? registryManager.isLeader() 
+        : (registryManager?.getStatus?.()?.mode === 'leader');
     const envProbes = getEnvConnectivityEndpoints();
     const rawCustom = getCustomConnectivityEndpoints();
-    const custom = provisioningManager ? provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom) : rawCustom;
+    const custom = (provisioningManager && !isLeader) 
+        ? provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom) 
+        : rawCustom;
     const discovered = discoveryManager ? discoveryManager.getProbes() : [];
 
     // Merge custom state into env probes and serve them all
@@ -13182,6 +13187,18 @@ provisioningManager.onBundleApplied((type, payload) => {
     }
 });
 
+// Helper to build canonical connectivity-probes payload for provisioning checksum and publishing
+const buildConnectivityProbesPayload = () => {
+    const envProbes = getEnvConnectivityEndpoints();
+    const rawCustom = getCustomConnectivityEndpoints();
+    const mergedEnvProbes = envProbes.map((p: any) => {
+        const override = rawCustom.find((cp: any) => cp.name === p.name);
+        return override ? { ...p, ...override } : p;
+    });
+    const pureCustom = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
+    return [...mergedEnvProbes, ...pureCustom];
+};
+
 // --- Global Provisioning Management APIs ---
 app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
     let rawApps: any[] = [];
@@ -13191,14 +13208,7 @@ app.get('/api/provisioning/config', authenticateToken, (_req, res) => {
             rawApps = parsed.applications || [];
         } catch {}
     }
-    const envProbes = getEnvConnectivityEndpoints();
-    const rawCustom = getCustomConnectivityEndpoints();
-    const mergedEnvProbes = envProbes.map((p: any) => {
-        const override = rawCustom.find((cp: any) => cp.name === p.name);
-        return override ? { ...p, ...override } : p;
-    });
-    const pureCustom = rawCustom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-    const rawProbes = [...mergedEnvProbes, ...pureCustom];
+    const rawProbes = buildConnectivityProbesPayload();
 
     const readJson = (file: string, fallback: any = {}) => {
         try { if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
@@ -13385,18 +13395,6 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     if (!validTypes.includes(type)) {
         return res.status(400).json({ error: 'invalid_bundle_type' });
     }
-
-    const buildConnectivityProbesPayload = () => {
-        const envProbes = getEnvConnectivityEndpoints();
-        const rawCustom = getCustomConnectivityEndpoints();
-        const custom = provisioningManager ? provisioningManager.getEnrichedEffectiveItems('connectivity-probes', rawCustom) : rawCustom;
-        const merged = envProbes.map((p: any) => {
-            const override = custom.find((cp: any) => cp.name === p.name);
-            return override ? { ...p, ...override } : p;
-        });
-        const pure = custom.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
-        return [...merged, ...pure];
-    };
 
     let payload: any = null;
     if (type === 'applications') {

@@ -2,7 +2,15 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2.0.95] - 2026-09-29 — UX: Refined matrix status classifications and explicit probe target labeling
+## [v2.0.96] - 2026-09-29 — Fix: Authoritative probe deletions, provisioning pending loop resolution & Ethernet interface prioritization
+
+### Fixed
+- **Probe Deletion & Mesh Provisioning Pending Loop (`server.ts` & `provisioning-manager.ts`)**:
+  - Prevented Leader from resurrecting deleted local probes from old global bundles in `getFullEffectiveConnectivityProbes()`.
+  - Unified `buildConnectivityProbesPayload()` across `GET /api/provisioning/config` and `POST /api/provisioning/publish`, eliminating the perpetual `⚠️ PENDING` provisioning loop.
+  - Sanitized non-array types in `hasUnpublishedChanges` ensuring identical checksum calculation before and after publishing.
+- **Prisma SD-WAN Interface Discovery Prioritization (`discovery-manager.ts`)**:
+  - Implemented scoring heuristics prioritizing physical Ethernet LAN interfaces (`1/1`, `eth*`, `vlan*`, `lan`, gateway descriptions) and heavily penalizing loopback /32 interfaces so the primary SD-WAN gateway is selected.
 
 ### Changed
 - **Reachability Matrix Status Precision (`ReachabilityMatrix.tsx` & `server.ts`)**:
