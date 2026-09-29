@@ -12391,10 +12391,10 @@ registryManager.setTelemetryProvider(async () => {
                 target_ip: r.remoteIp || (r.url ? (r.url.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/)?.[0] ?? '') : ''),
                 type: (r.endpointType || 'PING').toUpperCase(),
                 reachable: !!r.reachable,
-                latency_ms: r.metrics?.total_ms ?? 0,
-                loss_pct: r.metrics?.loss_pct ?? (r.reachable ? 0 : 100),
-                jitter_ms: r.metrics?.jitter_ms ?? 0,
-                score: r.score ?? 0,
+                latency_ms: Math.round((r.metrics?.total_ms ?? 0) * 100) / 100,
+                loss_pct: Math.round((r.metrics?.loss_pct ?? (r.reachable ? 0 : 100)) * 100) / 100,
+                jitter_ms: Math.round((r.metrics?.jitter_ms ?? 0) * 100) / 100,
+                score: Math.round((r.score ?? 0) * 100) / 100,
                 last_tested: r.timestamp
             }));
         }
@@ -12537,10 +12537,10 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     target_ip: r.remoteIp || (r.url ? (r.url.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/)?.[0] ?? '') : ''),
                     type: (r.endpointType || 'PING').toUpperCase(),
                     reachable: !!r.reachable,
-                    latency_ms: r.metrics?.total_ms ?? 0,
-                    loss_pct: r.metrics?.loss_pct ?? (r.reachable ? 0 : 100),
-                    jitter_ms: r.metrics?.jitter_ms ?? 0,
-                    score: r.score ?? 0,
+                    latency_ms: Math.round((r.metrics?.total_ms ?? 0) * 100) / 100,
+                    loss_pct: Math.round((r.metrics?.loss_pct ?? (r.reachable ? 0 : 100)) * 100) / 100,
+                    jitter_ms: Math.round((r.metrics?.jitter_ms ?? 0) * 100) / 100,
+                    score: Math.round((r.score ?? 0) * 100) / 100,
                     last_tested: r.timestamp
                 }));
                 nodeProbesMap.set(localId, localList);
@@ -12600,10 +12600,10 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
 
                 const fwdData = fwdProbe ? {
                     reachable: !!fwdProbe.reachable,
-                    latency_ms: fwdProbe.latency_ms ?? 0,
-                    jitter_ms: fwdProbe.jitter_ms ?? 0,
-                    loss_pct: fwdProbe.loss_pct ?? 0,
-                    score: fwdProbe.score ?? 0,
+                    latency_ms: Math.round((fwdProbe.latency_ms ?? 0) * 100) / 100,
+                    jitter_ms: Math.round((fwdProbe.jitter_ms ?? 0) * 100) / 100,
+                    loss_pct: Math.round((fwdProbe.loss_pct ?? 0) * 100) / 100,
+                    score: Math.round((fwdProbe.score ?? 0) * 100) / 100,
                     last_tested: fwdProbe.last_tested,
                     type: fwdProbe.type,
                     target_url: fwdProbe.target_url,
@@ -12619,10 +12619,10 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
 
                 const revData = revProbe ? {
                     reachable: !!revProbe.reachable,
-                    latency_ms: revProbe.latency_ms ?? 0,
-                    jitter_ms: revProbe.jitter_ms ?? 0,
-                    loss_pct: revProbe.loss_pct ?? 0,
-                    score: revProbe.score ?? 0,
+                    latency_ms: Math.round((revProbe.latency_ms ?? 0) * 100) / 100,
+                    jitter_ms: Math.round((revProbe.jitter_ms ?? 0) * 100) / 100,
+                    loss_pct: Math.round((revProbe.loss_pct ?? 0) * 100) / 100,
+                    score: Math.round((revProbe.score ?? 0) * 100) / 100,
                     last_tested: revProbe.last_tested,
                     type: revProbe.type,
                     target_url: revProbe.target_url,
@@ -12643,8 +12643,8 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 let reason = '';
 
                 if (fwdData.has_data && revData.has_data) {
-                    latencyDelta = Math.round(Math.abs(fwdData.latency_ms - revData.latency_ms) * 10) / 10;
-                    lossDelta = Math.round(Math.abs(fwdData.loss_pct - revData.loss_pct) * 10) / 10;
+                    latencyDelta = Math.round(Math.abs(fwdData.latency_ms - revData.latency_ms) * 100) / 100;
+                    lossDelta = Math.round(Math.abs(fwdData.loss_pct - revData.loss_pct) * 100) / 100;
 
                     if (fwdData.reachable && revData.reachable) {
                         if (latencyDelta >= 15 || lossDelta > 0) {

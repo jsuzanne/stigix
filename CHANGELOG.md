@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.87] - 2026-09-29
+
+### Changed
+- **DEM Reachability Matrix Polish (`ReachabilityMatrix.tsx`, `server.ts`)**:
+  - Formatted all metrics (latency, jitter, deltas, scores) to at most 2 decimal digits for clean readability.
+  - Removed redundant `Probe Type` filter strip since all inter-site SD-WAN probes are dedicated fabric reachability pings.
+  - Streamlined action strip with live status indicator and `Asymmetric Only` toggle. 🚀
+
 ## [2.0.86] - 2026-09-29
 
 ### Added

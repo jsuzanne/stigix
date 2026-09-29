@@ -66,13 +66,18 @@ interface MatrixData {
     matrix: MatrixPair[];
 }
 
+const formatNum = (val: number | undefined | null, decimals = 2): string => {
+    if (val === undefined || val === null || isNaN(val)) return '0';
+    const rounded = Math.round(val * Math.pow(10, decimals)) / Math.pow(10, decimals);
+    return rounded.toLocaleString(undefined, { maximumFractionDigits: decimals });
+};
+
 export function ReachabilityMatrix({ token }: { token?: string }) {
     const { gFetch, activePeer } = usePeerContext();
     const [data, setData] = useState<MatrixData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [asymmetryOnly, setAsymmetryOnly] = useState(false);
-    const [selectedType, setSelectedType] = useState('ALL');
     const [selectedPair, setSelectedPair] = useState<MatrixPair | null>(null);
 
     const authHeaders = useCallback((): Record<string, string> => {
@@ -84,7 +89,6 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
         try {
             setLoading(true);
             const params = new URLSearchParams();
-            if (selectedType !== 'ALL') params.set('type', selectedType);
             if (asymmetryOnly) params.set('asymmetry_only', 'true');
 
             const res = await gFetch(`/api/fleet/matrix?${params.toString()}`, {
@@ -101,7 +105,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
         } finally {
             setLoading(false);
         }
-    }, [gFetch, selectedType, asymmetryOnly, authHeaders]);
+    }, [gFetch, asymmetryOnly, authHeaders]);
 
     useEffect(() => {
         fetchMatrix();
@@ -184,29 +188,14 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                 </div>
             </div>
 
-            {/* Filter & Action Strip */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-card-secondary/40 p-4 rounded-xl border border-border shadow-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-bold text-text-muted flex items-center gap-1.5 mr-2">
-                        <Filter size={14} /> Probe Type:
-                    </span>
-                    {['ALL', 'PRISMA SDWAN', 'PING', 'HTTP', 'TCP'].map(t => (
-                        <button
-                            key={t}
-                            onClick={() => setSelectedType(t)}
-                            className={twMerge(
-                                "px-3 py-1 rounded-md text-xs font-bold uppercase tracking-tight transition-all",
-                                selectedType === t 
-                                    ? "bg-blue-600 text-white shadow-md shadow-blue-500/20" 
-                                    : "bg-card-secondary/80 text-text-muted hover:text-text-primary border border-border"
-                            )}
-                        >
-                            {t === 'PRISMA SDWAN' ? 'PRISMA SD-WAN' : t}
-                        </button>
-                    ))}
+            {/* Action Strip */}
+            <div className="flex items-center justify-between gap-4 bg-card-secondary/40 p-3 rounded-xl border border-border shadow-sm">
+                <div className="flex items-center gap-2 text-xs text-text-muted font-medium">
+                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span>Continuous inter-site Prisma SD-WAN telemetry</span>
                 </div>
 
-                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                <div className="flex items-center gap-3">
                     <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-text-muted hover:text-text-primary">
                         <input
                             type="checkbox"
@@ -336,7 +325,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                                 <ArrowUpRight size={11} className="text-blue-400" /> Fwd:
                                                             </span>
                                                             <span className={forward.reachable ? "font-bold text-text-primary" : "font-black text-red-400"}>
-                                                                {forward.reachable ? `${forward.latency_ms}ms` : 'DOWN'}
+                                                                {forward.reachable ? `${formatNum(forward.latency_ms)}ms` : 'DOWN'}
                                                             </span>
                                                         </div>
 
@@ -346,14 +335,14 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                                 <ArrowDownLeft size={11} className="text-purple-400" /> Rev:
                                                             </span>
                                                             <span className={reverse.reachable ? "font-bold text-text-primary" : "font-black text-red-400"}>
-                                                                {reverse.has_data ? (reverse.reachable ? `${reverse.latency_ms}ms` : 'DOWN') : 'Pending'}
+                                                                {reverse.has_data ? (reverse.reachable ? `${formatNum(reverse.latency_ms)}ms` : 'DOWN') : 'Pending'}
                                                             </span>
                                                         </div>
 
                                                         {/* Asymmetry Badge */}
                                                         {asymmetry.is_asymmetric && (
                                                             <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 truncate">
-                                                                Δ {asymmetry.latency_delta_ms}ms
+                                                                Δ {formatNum(asymmetry.latency_delta_ms)}ms
                                                             </div>
                                                         )}
                                                     </div>
@@ -426,15 +415,15 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-text-muted">Latency:</span>
-                                        <span className="font-bold text-text-primary">{selectedPair.forward.latency_ms} ms</span>
+                                        <span className="font-bold text-text-primary">{formatNum(selectedPair.forward.latency_ms)} ms</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-text-muted">Jitter:</span>
-                                        <span className="font-bold text-text-primary">{selectedPair.forward.jitter_ms} ms</span>
+                                        <span className="font-bold text-text-primary">{formatNum(selectedPair.forward.jitter_ms)} ms</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-text-muted">Score:</span>
-                                        <span className="font-bold text-text-primary">{selectedPair.forward.score}/100</span>
+                                        <span className="font-bold text-text-primary">{formatNum(selectedPair.forward.score)}/100</span>
                                     </div>
                                 </div>
                             </div>
@@ -457,19 +446,19 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                     <div className="flex justify-between">
                                         <span className="text-text-muted">Latency:</span>
                                         <span className="font-bold text-text-primary">
-                                            {selectedPair.reverse.has_data ? `${selectedPair.reverse.latency_ms} ms` : '—'}
+                                            {selectedPair.reverse.has_data ? `${formatNum(selectedPair.reverse.latency_ms)} ms` : '—'}
                                         </span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-text-muted">Jitter:</span>
                                         <span className="font-bold text-text-primary">
-                                            {selectedPair.reverse.has_data ? `${selectedPair.reverse.jitter_ms} ms` : '—'}
+                                            {selectedPair.reverse.has_data ? `${formatNum(selectedPair.reverse.jitter_ms)} ms` : '—'}
                                         </span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-text-muted">Score:</span>
                                         <span className="font-bold text-text-primary">
-                                            {selectedPair.reverse.has_data ? `${selectedPair.reverse.score}/100` : '—'}
+                                            {selectedPair.reverse.has_data ? `${formatNum(selectedPair.reverse.score)}/100` : '—'}
                                         </span>
                                     </div>
                                 </div>
