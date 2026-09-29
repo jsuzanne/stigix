@@ -85,6 +85,8 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
     const [error, setError] = useState<string | null>(null);
     const [asymmetryOnly, setAsymmetryOnly] = useState(false);
     const [selectedPair, setSelectedPair] = useState<MatrixPair | null>(null);
+    const [statusFilter, setStatusFilter] = useState<'ALL' | 'OPTIMAL' | 'DEGRADED' | 'CRITICAL'>('ALL');
+    const [latencyThreshold, setLatencyThreshold] = useState<number>(0);
 
     const authHeaders = useCallback((): Record<string, string> => {
         const t = token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
@@ -194,23 +196,80 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                 </div>
             </div>
 
-            {/* Action Strip */}
-            <div className="flex items-center justify-between gap-4 bg-card-secondary/40 p-3 rounded-xl border border-border shadow-sm">
-                <div className="flex items-center gap-2 text-xs text-text-muted font-medium">
-                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
-                    <span>Continuous inter-site Prisma SD-WAN telemetry</span>
+            {/* Action & Filter Strip */}
+            <div className="flex flex-wrap items-center justify-between gap-4 bg-card-secondary/40 p-3.5 rounded-xl border border-border shadow-sm">
+                {/* Left: Status Filter Chips */}
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider mr-1">Status:</span>
+                    <button
+                        onClick={() => setStatusFilter('ALL')}
+                        className={twMerge(
+                            "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border",
+                            statusFilter === 'ALL'
+                                ? "bg-blue-600 text-white border-blue-500 shadow-sm"
+                                : "bg-card-secondary text-text-muted border-border hover:bg-card-secondary/80 hover:text-text-primary"
+                        )}
+                    >
+                        All ({summary.total_pairs})
+                    </button>
+                    <button
+                        onClick={() => setStatusFilter('OPTIMAL')}
+                        className={twMerge(
+                            "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5",
+                            statusFilter === 'OPTIMAL'
+                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm"
+                                : "bg-card-secondary text-emerald-400/70 border-border hover:bg-emerald-500/10 hover:text-emerald-300"
+                        )}
+                    >
+                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        Optimal ({summary.healthy_bidirectional})
+                    </button>
+                    <button
+                        onClick={() => setStatusFilter('DEGRADED')}
+                        className={twMerge(
+                            "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5",
+                            statusFilter === 'DEGRADED'
+                                ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm"
+                                : "bg-card-secondary text-amber-400/70 border-border hover:bg-amber-500/10 hover:text-amber-300"
+                        )}
+                    >
+                        <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                        Degraded ({summary.asymmetric_degraded})
+                    </button>
+                    <button
+                        onClick={() => setStatusFilter('CRITICAL')}
+                        className={twMerge(
+                            "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5",
+                            statusFilter === 'CRITICAL'
+                                ? "bg-red-500/20 text-red-300 border-red-500/50 shadow-sm"
+                                : "bg-card-secondary text-red-400/70 border-border hover:bg-red-500/10 hover:text-red-300"
+                        )}
+                    >
+                        <span className="w-2 h-2 rounded-full bg-red-400"></span>
+                        Critical ({summary.unidirectional_down + summary.full_outage})
+                    </button>
                 </div>
 
+                {/* Right: Latency Filter & Refresh */}
                 <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-text-muted hover:text-text-primary">
-                        <input
-                            type="checkbox"
-                            checked={asymmetryOnly}
-                            onChange={(e) => setAsymmetryOnly(e.target.checked)}
-                            className="rounded border-border text-blue-600 focus:ring-blue-500"
-                        />
-                        <span>Asymmetric Only</span>
-                    </label>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="latency-filter" className="text-xs font-bold text-text-muted whitespace-nowrap">
+                            Latency &gt;
+                        </label>
+                        <select
+                            id="latency-filter"
+                            value={latencyThreshold}
+                            onChange={(e) => setLatencyThreshold(Number(e.target.value))}
+                            className="bg-card-secondary border border-border text-text-primary text-xs rounded-lg px-2.5 py-1 font-mono font-bold focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                            <option value={0}>All</option>
+                            <option value={15}>&gt; 15 ms</option>
+                            <option value={30}>&gt; 30 ms</option>
+                            <option value={50}>&gt; 50 ms</option>
+                            <option value={100}>&gt; 100 ms</option>
+                            <option value={200}>&gt; 200 ms</option>
+                        </select>
+                    </div>
 
                     <button
                         onClick={fetchMatrix}
@@ -309,11 +368,21 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                             const isDeg = asymmetry.status === 'DEGRADED';
                                             const isCrit = asymmetry.status === 'CRITICAL';
 
+                                            const maxLatency = Math.max(
+                                                forward.reachable ? forward.latency_ms : 0,
+                                                reverse.has_data && reverse.reachable ? reverse.latency_ms : 0
+                                            );
+
+                                            // Filtering logic
+                                            const matchesStatus = statusFilter === 'ALL' || asymmetry.status === statusFilter;
+                                            const matchesLatency = latencyThreshold === 0 || maxLatency >= latencyThreshold;
+                                            const isFaded = !matchesStatus || !matchesLatency;
+
                                             const cellBg = isOpt 
-                                                ? "bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                                                ? "bg-emerald-950/20 hover:bg-emerald-900/35 border-emerald-500/30 text-emerald-300"
                                                 : isDeg 
-                                                ? "bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-400"
-                                                : "bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-400";
+                                                ? "bg-amber-950/25 hover:bg-amber-900/40 border-amber-500/35 text-amber-300"
+                                                : "bg-red-950/30 hover:bg-red-900/45 border-red-500/40 text-red-300";
 
                                             return (
                                                 <td
@@ -321,7 +390,8 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                     onClick={() => setSelectedPair(pair)}
                                                     className={twMerge(
                                                         "p-2.5 text-center border-r border-border/50 cursor-pointer transition-all border",
-                                                        cellBg
+                                                        cellBg,
+                                                        isFaded && "opacity-15 grayscale hover:opacity-100 hover:grayscale-0"
                                                     )}
                                                 >
                                                     <div className="flex flex-col gap-1">
@@ -330,7 +400,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                             <span className="flex items-center gap-0.5 text-text-muted text-[10px]">
                                                                 <ArrowUpRight size={11} className="text-blue-400" /> Fwd:
                                                             </span>
-                                                            <span className={forward.reachable ? "font-bold text-text-primary" : "font-black text-red-400"}>
+                                                            <span className={forward.reachable ? (isOpt ? "font-bold text-emerald-300" : isDeg ? "font-bold text-amber-300" : "font-black text-red-400") : "font-black text-red-400"}>
                                                                 {forward.reachable ? `${formatNum(forward.latency_ms)}ms` : 'DOWN'}
                                                             </span>
                                                         </div>
@@ -340,15 +410,25 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                             <span className="flex items-center gap-0.5 text-text-muted text-[10px]">
                                                                 <ArrowDownLeft size={11} className="text-purple-400" /> Rev:
                                                             </span>
-                                                            <span className={reverse.reachable ? "font-bold text-text-primary" : "font-black text-red-400"}>
+                                                            <span className={reverse.reachable ? (isOpt ? "font-bold text-emerald-300" : isDeg ? "font-bold text-amber-300" : "font-black text-red-400") : "font-black text-red-400"}>
                                                                 {reverse.has_data ? (reverse.reachable ? `${formatNum(reverse.latency_ms)}ms` : 'DOWN') : 'Pending'}
                                                             </span>
                                                         </div>
 
-                                                        {/* Asymmetry Badge */}
-                                                        {asymmetry.is_asymmetric && (
+                                                        {/* Status / Delta Badge */}
+                                                        {isOpt && (
+                                                            <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 truncate">
+                                                                Optimal
+                                                            </div>
+                                                        )}
+                                                        {isDeg && (
                                                             <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 truncate">
                                                                 Δ {formatNum(asymmetry.latency_delta_ms)}ms
+                                                            </div>
+                                                        )}
+                                                        {isCrit && (
+                                                            <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-300 border border-red-500/30 truncate">
+                                                                {asymmetry.reason?.includes('DOWN') ? 'Path Down' : 'Critical'}
                                                             </div>
                                                         )}
                                                     </div>
