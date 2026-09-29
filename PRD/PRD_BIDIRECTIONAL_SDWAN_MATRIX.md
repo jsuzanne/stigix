@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-09-29 | **Created:** 2026-09-29 (v2.0.82)
+> **Last Updated:** 2026-09-29 (source IP clarification, A→A self-health, scale note) | **Created:** 2026-09-29 (v2.0.82)
 
 # PRD: Bidirectional Cross-Instance SD-WAN Reachability Matrix
 
@@ -57,9 +57,11 @@ The **Bidirectional Cross-Instance SD-WAN Reachability Matrix** collects probe r
 ## 3. Architecture & Data Flow
 
 ### 3.1 Source IP & Interface Traversal
-- **Probe Execution**: When Stigix Node A pings Node B, it executes `ping -c 1 -I <interface> <target_ip>` (bound to the interface configured in `interfaces.txt`, e.g., `eth1`, `ens192`, `vlan100`, or default LAN interface).
-- **Traffic Path**: The probe packet originates from Node A's local LAN IP (e.g., `192.168.10.50`), traverses the local Prisma SD-WAN ION branch device, routes across the SD-WAN VPN Overlay, and terminates on Node B's LAN IP (`192.168.20.50`).
+- **Co-location Context**: Stigix is deployed in the same LAN or VLAN as the Prisma SD-WAN ION device (router, firewall, or CPE). The probe therefore uses the **same source IP Stigix uses for all its general traffic** — its local LAN/VLAN IP — without any special configuration or policy exception. This is inherently consistent with how the SD-WAN device itself sees local traffic.
+- **Probe Execution**: When Stigix Node A pings Node B, it executes `ping -c 1 -I <interface> <target_ip>` (bound to the interface configured in `interfaces.txt`, e.g., `eth1`, `ens192`, `vlan100`, or the default LAN interface).
+- **Traffic Path**: The probe packet originates from Node A's local LAN IP (e.g., `192.168.10.50`), traverses the co-located Prisma SD-WAN ION branch device, routes across the SD-WAN VPN Overlay, and terminates on Node B's LAN IP (`192.168.20.50`).
 - **Return Path**: Symmetrically, Node B executes its probe from `192.168.20.50` toward `192.168.10.50`.
+- **Design Rationale**: Because Stigix and the Prisma ION share the same L2 segment, the probe path is **representative of real application traffic**, making latency and loss measurements directly actionable without correction factors.
 
 ### 3.2 Telemetry Collection Pipeline
 1. **Local Node Telemetry (`telemetryProvider`)**: Every 5 seconds, each Stigix node samples its active synthetic probes (filtered to peer targets or Prisma SD-WAN endpoints) and bundles a compact `peer_probes` array into its registry heartbeat payload:
@@ -169,7 +171,7 @@ The matrix will be placed as a high-visibility tab or toggle within **Digital Ex
 - **Component Design**:
   1. **$N \times N$ Interactive Heatmap Grid**:
      - Rows = Source Nodes ($A$), Columns = Destination Nodes ($B$).
-     - Diagonal = Self ($A \to A = \text{N/A}$).
+     - Diagonal = Self ($A \to A$) — displays **node self-health** (CPU load, memory usage, probe engine uptime) rather than N/A, turning the matrix into a combined path health *and* node health view at a glance.
      - Cell coloring:
        - 🟢 **Solid Green**: Bidirectionally healthy ($< 5\text{ms}$ delta, score $\ge 90$).
        - 🟡 **Split Amber/Green**: Performance asymmetry (e.g. forward 12ms, return 65ms).
@@ -177,6 +179,9 @@ The matrix will be placed as a high-visibility tab or toggle within **Digital Ex
        - ⬛ **Dark Grey / Red**: Full bidirectional outage.
   2. **Hover / Click Detail Popover**: Clicking a cell opens a split inspector showing side-by-side forward vs. reverse packet timings, TTL, and Prisma circuit tags.
   3. **Filter Bar**: Quick toggles for `Show Asymmetric Links Only`, `Filter by Site Type (Hub vs Spoke)`, and `Protocol (PING / TCP / HTTP)`.
+
+> [!NOTE]
+> **Scale Consideration**: Stigix is not designed today for large-scale deployments (50+ nodes). At $N$ nodes the matrix contains $N^2$ cells; rendering and telemetry overhead grows accordingly. For the current lab-scale use case (5–15 nodes) this is not a concern. Future releases should introduce **site-group filtering** (e.g., display only Hub↔Branch pairs, or a specific region subset) to keep the UI tractable as the fleet grows.
 
 ### 5.2 Secondary Placement: Topology Overlay Integration
 - In the **Topology Overlay** canvas, links connecting two Stigix/Prisma sites render as **dual directional conduits ($A \rightleftarrows B$)**:
@@ -224,3 +229,4 @@ gantt
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
 | 2026-09-29 | `v2.0.82` | Stigix Core Team | Initial creation of the Bidirectional Cross-Instance SD-WAN Reachability Matrix PRD. |
+| 2026-09-29 | `v2.0.82` | User Review | Clarified source IP (Stigix LAN co-location with Prisma ION); repurposed A→A diagonal for node self-health; added scale limitation note with future site-group filtering recommendation. |

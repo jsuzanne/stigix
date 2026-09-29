@@ -12360,78 +12360,66 @@ registryManager.setTelemetryProvider(async () => {
         xfrActive = Array.from((xfrManager as any).jobs.values()).some((j: any) => j.status === 'running');
     } catch {}
 
-        // Peer Probes for Fleet Reachability Matrix
-        let peerProbes: Array<{
-            target_name: string;
-            target_id: string;
-            target_url: string;
-            target_ip?: string;
-            type: string;
-            reachable: boolean;
-            latency_ms: number;
-            loss_pct: number;
-            jitter_ms: number;
-            score: number;
-            last_tested: number;
-        }> = [];
+    // Peer Probes for Fleet Reachability Matrix
+    let peerProbes: Array<{
+        target_name: string;
+        target_id: string;
+        target_url: string;
+        target_ip?: string;
+        type: string;
+        reachable: boolean;
+        latency_ms: number;
+        loss_pct: number;
+        jitter_ms: number;
+        score: number;
+        last_tested: number;
+    }> = [];
 
-        try {
-            const recent = await connectivityLogger.getResults({ limit: 120 });
-            const latestByEndpoint = new Map<string, any>();
-            if (recent && Array.isArray(recent.results)) {
-                for (const r of recent.results) {
-                    if (!latestByEndpoint.has(r.endpointId)) {
-                        latestByEndpoint.set(r.endpointId, r);
-                    }
+    try {
+        const recent = await connectivityLogger.getResults({ limit: 120 });
+        const latestByEndpoint = new Map<string, any>();
+        if (recent && Array.isArray(recent.results)) {
+            for (const r of recent.results) {
+                if (!latestByEndpoint.has(r.endpointId)) {
+                    latestByEndpoint.set(r.endpointId, r);
                 }
-                peerProbes = Array.from(latestByEndpoint.values()).map(r => ({
-                    target_name: r.endpointName || r.endpointId,
-                    target_id: r.endpointId,
-                    target_url: r.url || '',
-                    target_ip: r.remoteIp || (r.url ? (r.url.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/)?.[0] ?? '') : ''),
-                    type: (r.endpointType || 'PING').toUpperCase(),
-                    reachable: !!r.reachable,
-                    latency_ms: r.metrics?.total_ms ?? 0,
-                    loss_pct: r.metrics?.loss_pct ?? (r.reachable ? 0 : 100),
-                    jitter_ms: r.metrics?.jitter_ms ?? 0,
-                    score: r.score ?? 0,
-                    last_tested: r.timestamp
-                }));
             }
-        } catch (e) {
-            log('REGISTRY', `Telemetry peer_probes calculation error: ${e}`, 'warn');
+            peerProbes = Array.from(latestByEndpoint.values()).map(r => ({
+                target_name: r.endpointName || r.endpointId,
+                target_id: r.endpointId,
+                target_url: r.url || '',
+                target_ip: r.remoteIp || (r.url ? (r.url.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/)?.[0] ?? '') : ''),
+                type: (r.endpointType || 'PING').toUpperCase(),
+                reachable: !!r.reachable,
+                latency_ms: r.metrics?.total_ms ?? 0,
+                loss_pct: r.metrics?.loss_pct ?? (r.reachable ? 0 : 100),
+                jitter_ms: r.metrics?.jitter_ms ?? 0,
+                score: r.score ?? 0,
+                last_tested: r.timestamp
+            }));
         }
-
-        return {
-            probes_global_health: probesGlobalHealth,
-            probes_total: probesTotal,
-            probes_passing: probesPassing,
-            failing_probes: failingProbes,
-            peer_probes: peerProbes,
-            traffic_state: trafficState,
-            traffic_rate_mbps: trafficRateMbps,
-            traffic_tx_mbps: trafficTxMbps,
-            traffic_rx_mbps: trafficRxMbps,
-            voice_active: voiceActive,
-            voice_mos: voiceMos,
-            convergence_active: convergenceActive,
-            xfr_active: xfrActive,
-            provisioning_status: provisioningManager?.getState(),
-            uptime_seconds: Math.floor(process.uptime())
-        };
     } catch (e) {
-        log('REGISTRY', `Telemetry probe calculation error: ${e}`, 'warn');
-        return {
-            probes_global_health: 0,
-            probes_total: 0,
-            probes_passing: 0,
-            failing_probes: [],
-            peer_probes: [],
-            traffic_state: 'STOPPED',
-            traffic_rate_mbps: 0,
-            uptime_seconds: Math.floor(process.uptime())
-        };
+        log('REGISTRY', `Telemetry peer_probes calculation error: ${e}`, 'warn');
     }
+
+    return {
+        probes_global_health: probesGlobalHealth,
+        probes_total: probesTotal,
+        probes_passing: probesPassing,
+        failing_probes: failingProbes,
+        peer_probes: peerProbes,
+        traffic_state: trafficState,
+        traffic_rate_mbps: trafficRateMbps,
+        traffic_tx_mbps: trafficTxMbps,
+        traffic_rx_mbps: trafficRxMbps,
+        voice_active: voiceActive,
+        voice_mos: voiceMos,
+        convergence_active: convergenceActive,
+        xfr_active: xfrActive,
+        provisioning_status: provisioningManager?.getState(),
+        uptime_seconds: Math.floor(process.uptime())
+    };
+
 });
 
 // --- Stigix Fleet Control Plane API (Phase 3A - Leader Only) ---
