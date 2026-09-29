@@ -74,6 +74,19 @@ export interface RegistryInstanceSummary {
     probes_global_health?: number; // 0-100 Global Experience score
     probes_total?: number;
     probes_passing?: number;
+    peer_probes?: Array<{
+        target_name: string;
+        target_id: string;
+        target_url: string;
+        target_ip?: string;
+        type: string;
+        reachable: boolean;
+        latency_ms: number;
+        loss_pct: number;
+        jitter_ms: number;
+        score: number;
+        last_tested: number;
+    }>;
     traffic_state?: 'RUNNING' | 'STOPPED' | 'IDLE';
     traffic_rate_mbps?: number;
     traffic_tx_mbps?: number;

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePeerContext } from './PeerContext';
-import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route } from 'lucide-react';
+import { Gauge, Activity, Clock, Filter, Download, Zap, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, ChevronUp, ChevronDown, Flame, Plus, XCircle, CheckCircle, RefreshCw, Globe, Play, Pause, TrendingUp, Pencil, Route, Grid } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, AreaChart, Area, ReferenceLine, ReferenceArea } from 'recharts';
 import { twMerge } from 'tailwind-merge';
 import { TracerouteModal } from './components/TracerouteModal';
+import { ReachabilityMatrix } from './components/ReachabilityMatrix';
 
 // ── Inline SVG sparkline (no recharts dependency) ───────────────────────────
 const Sparkline = ({ data, color, width = 80, height = 20 }: { data: number[]; color: string; width?: number; height?: number }) => {
@@ -404,6 +405,7 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isSavingProbe, setIsSavingProbe] = useState(false);
     const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
+    const [viewMode, setViewMode] = useState<'catalog' | 'matrix'>('catalog');
 
     const formatDisplayUrl = (endpoint: any) => {
         const target = endpoint.lastResult?.url || '';
@@ -991,6 +993,42 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 </div>
             </div>
 
+            {/* View Mode Switcher: Probes Catalog vs Full-Mesh Matrix */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-card-secondary/30 p-2.5 rounded-xl border border-border mb-2">
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setViewMode('catalog')}
+                        className={cn(
+                            "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2",
+                            viewMode === 'catalog'
+                                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                                : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
+                        )}
+                    >
+                        <Activity size={15} /> Probes Catalog ({endpoints.length})
+                    </button>
+                    <button
+                        onClick={() => setViewMode('matrix')}
+                        className={cn(
+                            "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2",
+                            viewMode === 'matrix'
+                                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                                : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
+                        )}
+                    >
+                        <Grid size={15} className="text-blue-400" /> Full-Mesh Reachability Matrix
+                    </button>
+                </div>
+                <div className="text-[11px] font-bold text-text-muted hidden md:flex items-center gap-2 pr-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Bidirectional Cross-Instance Telemetry</span>
+                </div>
+            </div>
+
+            {viewMode === 'matrix' ? (
+                <ReachabilityMatrix token={token} />
+            ) : (
+                <>
             {/* Filters & Export */}
             <div className="bg-blue-600/5 border border-blue-500/20 p-4 rounded-xl flex items-start gap-3 mb-2 shadow-sm">
                 <Info size={18} className="text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
@@ -1339,6 +1377,8 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                     </div>
                 )}
             </div>
+        </>
+    )}
 
             {/* Detailed Modal */}
             {showDetailModal && selectedEndpoint && (

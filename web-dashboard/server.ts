@@ -12360,22 +12360,78 @@ registryManager.setTelemetryProvider(async () => {
         xfrActive = Array.from((xfrManager as any).jobs.values()).some((j: any) => j.status === 'running');
     } catch {}
 
-    return {
-        probes_global_health: probesGlobalHealth,
-        probes_total: probesTotal,
-        probes_passing: probesPassing,
-        failing_probes: failingProbes,
-        traffic_state: trafficState,
-        traffic_rate_mbps: trafficRateMbps,
-        traffic_tx_mbps: trafficTxMbps,
-        traffic_rx_mbps: trafficRxMbps,
-        voice_active: voiceActive,
-        voice_mos: voiceMos,
-        convergence_active: convergenceActive,
-        xfr_active: xfrActive,
-        provisioning_status: provisioningManager?.getState(),
-        uptime_seconds: Math.floor(process.uptime())
-    };
+        // Peer Probes for Fleet Reachability Matrix
+        let peerProbes: Array<{
+            target_name: string;
+            target_id: string;
+            target_url: string;
+            target_ip?: string;
+            type: string;
+            reachable: boolean;
+            latency_ms: number;
+            loss_pct: number;
+            jitter_ms: number;
+            score: number;
+            last_tested: number;
+        }> = [];
+
+        try {
+            const recent = await connectivityLogger.getResults({ limit: 120 });
+            const latestByEndpoint = new Map<string, any>();
+            if (recent && Array.isArray(recent.results)) {
+                for (const r of recent.results) {
+                    if (!latestByEndpoint.has(r.endpointId)) {
+                        latestByEndpoint.set(r.endpointId, r);
+                    }
+                }
+                peerProbes = Array.from(latestByEndpoint.values()).map(r => ({
+                    target_name: r.endpointName || r.endpointId,
+                    target_id: r.endpointId,
+                    target_url: r.url || '',
+                    target_ip: r.remoteIp || (r.url ? (r.url.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/)?.[0] ?? '') : ''),
+                    type: (r.endpointType || 'PING').toUpperCase(),
+                    reachable: !!r.reachable,
+                    latency_ms: r.metrics?.total_ms ?? 0,
+                    loss_pct: r.metrics?.loss_pct ?? (r.reachable ? 0 : 100),
+                    jitter_ms: r.metrics?.jitter_ms ?? 0,
+                    score: r.score ?? 0,
+                    last_tested: r.timestamp
+                }));
+            }
+        } catch (e) {
+            log('REGISTRY', `Telemetry peer_probes calculation error: ${e}`, 'warn');
+        }
+
+        return {
+            probes_global_health: probesGlobalHealth,
+            probes_total: probesTotal,
+            probes_passing: probesPassing,
+            failing_probes: failingProbes,
+            peer_probes: peerProbes,
+            traffic_state: trafficState,
+            traffic_rate_mbps: trafficRateMbps,
+            traffic_tx_mbps: trafficTxMbps,
+            traffic_rx_mbps: trafficRxMbps,
+            voice_active: voiceActive,
+            voice_mos: voiceMos,
+            convergence_active: convergenceActive,
+            xfr_active: xfrActive,
+            provisioning_status: provisioningManager?.getState(),
+            uptime_seconds: Math.floor(process.uptime())
+        };
+    } catch (e) {
+        log('REGISTRY', `Telemetry probe calculation error: ${e}`, 'warn');
+        return {
+            probes_global_health: 0,
+            probes_total: 0,
+            probes_passing: 0,
+            failing_probes: [],
+            peer_probes: [],
+            traffic_state: 'STOPPED',
+            traffic_rate_mbps: 0,
+            uptime_seconds: Math.floor(process.uptime())
+        };
+    }
 });
 
 // --- Stigix Fleet Control Plane API (Phase 3A - Leader Only) ---
@@ -12391,6 +12447,286 @@ app.get('/api/fleet/overview', authenticateToken, (req, res) => {
     res.json(overview);
 });
 log('FLEET', `🏢 Fleet Control Plane mounted at /api/fleet/overview (Leader only)`);
+
+// --- Stigix Fleet Bidirectional Reachability Matrix API (PRD v2.0.82) ---
+app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
+    try {
+        const typeFilter = ((req.query.type as string) || 'ALL').toUpperCase();
+        const asymmetryOnly = req.query.asymmetry_only === 'true';
+        const siteFilter = (req.query.site as string || '').toLowerCase();
+
+        const status = registryManager.getStatus();
+        const localId = status?.instance_id || 'local-node';
+        const localName = (process.env.STIGIX_SITE_NAME || status?.instance_id || 'Local Node').toUpperCase();
+        const localIp = status?.detected_ip || '127.0.0.1';
+        const isLeader = typeof registryManager?.isLeader === 'function' ? registryManager.isLeader() : false;
+
+        // 1. Gather all active nodes (Self + Peers)
+        const rawPeers = typeof registryManager?.getPeers === 'function' ? registryManager.getPeers() : [];
+        const isHubSite = (name: string) => name.toLowerCase().includes('dc') || name.toLowerCase().includes('hub') || name.toLowerCase().includes('core');
+
+        const nodes: Array<{ id: string; name: string; ip: string; site_type: 'HUB' | 'BRANCH' | 'CLOUD'; is_local: boolean; last_seen?: string }> = [
+            {
+                id: localId,
+                name: localName,
+                ip: localIp,
+                site_type: isHubSite(localName) ? 'HUB' : 'BRANCH',
+                is_local: true,
+                last_seen: new Date().toISOString()
+            }
+        ];
+
+        for (const peer of rawPeers) {
+            if (!nodes.find(n => n.id === peer.instance_id)) {
+                const peerName = (peer.meta?.site || peer.instance_id || 'PEER').toUpperCase();
+                nodes.push({
+                    id: peer.instance_id,
+                    name: peerName,
+                    ip: peer.ip_private,
+                    site_type: isHubSite(peerName) ? 'HUB' : 'BRANCH',
+                    is_local: false,
+                    last_seen: peer.last_seen
+                });
+            }
+        }
+
+        // 2. Collect probe map per node
+        const nodeProbesMap = new Map<string, Array<any>>();
+
+        // Local probes
+        try {
+            const recent = await connectivityLogger.getResults({ limit: 120 });
+            const localByEndpoint = new Map<string, any>();
+            if (recent && Array.isArray(recent.results)) {
+                for (const r of recent.results) {
+                    if (!localByEndpoint.has(r.endpointId)) {
+                        localByEndpoint.set(r.endpointId, r);
+                    }
+                }
+                const localList = Array.from(localByEndpoint.values()).map(r => ({
+                    target_name: r.endpointName || r.endpointId,
+                    target_id: r.endpointId,
+                    target_url: r.url || '',
+                    target_ip: r.remoteIp || (r.url ? (r.url.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/)?.[0] ?? '') : ''),
+                    type: (r.endpointType || 'PING').toUpperCase(),
+                    reachable: !!r.reachable,
+                    latency_ms: r.metrics?.total_ms ?? 0,
+                    loss_pct: r.metrics?.loss_pct ?? (r.reachable ? 0 : 100),
+                    jitter_ms: r.metrics?.jitter_ms ?? 0,
+                    score: r.score ?? 0,
+                    last_tested: r.timestamp
+                }));
+                nodeProbesMap.set(localId, localList);
+
+                // Auto-discover extra remote nodes from synthetic endpoint probes if no cluster peers exist yet
+                for (const p of localList) {
+                    if (p.target_ip && !nodes.find(n => n.ip === p.target_ip)) {
+                        const candidateName = p.target_name.toUpperCase();
+                        nodes.push({
+                            id: p.target_id,
+                            name: candidateName,
+                            ip: p.target_ip,
+                            site_type: isHubSite(candidateName) ? 'HUB' : (candidateName.includes('CLOUD') ? 'CLOUD' : 'BRANCH'),
+                            is_local: false,
+                            last_seen: new Date(p.last_tested || Date.now()).toISOString()
+                        });
+                    }
+                }
+            }
+        } catch {}
+
+        // Peer probes from summaries
+        for (const peer of rawPeers) {
+            const probes = peer.summary?.peer_probes || [];
+            nodeProbesMap.set(peer.instance_id, probes);
+        }
+
+        // Helper to find probe from node A targeting node B
+        const findProbeToNode = (sourceId: string, targetNode: { id: string; name: string; ip: string }) => {
+            const probes = nodeProbesMap.get(sourceId) || [];
+            return probes.find(p => {
+                if (typeFilter !== 'ALL') {
+                    if (typeFilter === 'PRISMA SDWAN' || typeFilter === 'PRISMA') {
+                        if (p.type !== 'PRISMA' && p.type !== 'PRISMA SDWAN' && !p.target_name.toLowerCase().includes('prisma')) return false;
+                    } else if (p.type !== typeFilter) {
+                        return false;
+                    }
+                }
+                const targetIp = (targetNode.ip || '').trim();
+                const pIp = (p.target_ip || '').trim();
+                if (targetIp && pIp && targetIp === pIp) return true;
+                if (targetIp && p.target_url && p.target_url.includes(targetIp)) return true;
+                
+                const tName = targetNode.name.toLowerCase();
+                const pName = p.target_name.toLowerCase();
+                if (pName.includes(tName) || tName.includes(pName)) return true;
+                if (p.target_id.toLowerCase().includes(targetNode.id.toLowerCase())) return true;
+                return false;
+            });
+        };
+
+        // 3. Assemble N x N Matrix Pairs
+        const matrixPairs: Array<any> = [];
+        let healthyBidirectional = 0;
+        let asymmetricDegraded = 0;
+        let unidirectionalDown = 0;
+        let fullOutage = 0;
+
+        for (let i = 0; i < nodes.length; i++) {
+            for (let j = 0; j < nodes.length; j++) {
+                if (i === j) continue;
+                const source = nodes[i];
+                const target = nodes[j];
+
+                if (siteFilter && !source.name.toLowerCase().includes(siteFilter) && !target.name.toLowerCase().includes(siteFilter) &&
+                    !source.id.toLowerCase().includes(siteFilter) && !target.id.toLowerCase().includes(siteFilter)) {
+                    continue;
+                }
+
+                const fwdProbe = findProbeToNode(source.id, target);
+                const revProbe = findProbeToNode(target.id, source);
+
+                const fwdData = fwdProbe ? {
+                    reachable: !!fwdProbe.reachable,
+                    latency_ms: fwdProbe.latency_ms ?? 0,
+                    jitter_ms: fwdProbe.jitter_ms ?? 0,
+                    loss_pct: fwdProbe.loss_pct ?? 0,
+                    score: fwdProbe.score ?? 0,
+                    last_tested: fwdProbe.last_tested,
+                    type: fwdProbe.type,
+                    target_url: fwdProbe.target_url,
+                    has_data: true
+                } : {
+                    reachable: false,
+                    latency_ms: 0,
+                    jitter_ms: 0,
+                    loss_pct: 100,
+                    score: 0,
+                    has_data: false
+                };
+
+                const revData = revProbe ? {
+                    reachable: !!revProbe.reachable,
+                    latency_ms: revProbe.latency_ms ?? 0,
+                    jitter_ms: revProbe.jitter_ms ?? 0,
+                    loss_pct: revProbe.loss_pct ?? 0,
+                    score: revProbe.score ?? 0,
+                    last_tested: revProbe.last_tested,
+                    type: revProbe.type,
+                    target_url: revProbe.target_url,
+                    has_data: true
+                } : {
+                    reachable: false,
+                    latency_ms: 0,
+                    jitter_ms: 0,
+                    loss_pct: 100,
+                    score: 0,
+                    has_data: false
+                };
+
+                let isAsymmetric = false;
+                let latencyDelta = 0;
+                let lossDelta = 0;
+                let statusStr: 'OPTIMAL' | 'DEGRADED' | 'CRITICAL' | 'UNKNOWN' = 'UNKNOWN';
+                let reason = '';
+
+                if (fwdData.has_data && revData.has_data) {
+                    latencyDelta = Math.round(Math.abs(fwdData.latency_ms - revData.latency_ms) * 10) / 10;
+                    lossDelta = Math.round(Math.abs(fwdData.loss_pct - revData.loss_pct) * 10) / 10;
+
+                    if (fwdData.reachable && revData.reachable) {
+                        if (latencyDelta >= 15 || lossDelta > 0) {
+                            isAsymmetric = true;
+                            statusStr = 'DEGRADED';
+                            reason = latencyDelta >= 15 ? `Latency Asymmetry (+${latencyDelta}ms)` : `Packet Loss Asymmetry (${lossDelta}% delta)`;
+                            asymmetricDegraded++;
+                        } else {
+                            isAsymmetric = false;
+                            statusStr = 'OPTIMAL';
+                            reason = 'Symmetric Path Optimal';
+                            healthyBidirectional++;
+                        }
+                    } else if (fwdData.reachable && !revData.reachable) {
+                        isAsymmetric = true;
+                        statusStr = 'CRITICAL';
+                        reason = `Return Path Blocked (${target.name} ➔ ${source.name} DOWN)`;
+                        unidirectionalDown++;
+                    } else if (!fwdData.reachable && revData.reachable) {
+                        isAsymmetric = true;
+                        statusStr = 'CRITICAL';
+                        reason = `Forward Path Blocked (${source.name} ➔ ${target.name} DOWN)`;
+                        unidirectionalDown++;
+                    } else {
+                        isAsymmetric = false;
+                        statusStr = 'CRITICAL';
+                        reason = 'Bidirectional Outage';
+                        fullOutage++;
+                    }
+                } else if (fwdData.has_data && !revData.has_data) {
+                    latencyDelta = 0;
+                    lossDelta = 0;
+                    if (fwdData.reachable) {
+                        statusStr = 'OPTIMAL';
+                        reason = `Forward Egress UP (Awaiting return telemetry from ${target.name})`;
+                        healthyBidirectional++;
+                    } else {
+                        statusStr = 'CRITICAL';
+                        reason = `Forward Egress DOWN (${source.name} ➔ ${target.name})`;
+                        fullOutage++;
+                    }
+                } else if (!fwdData.has_data && revData.has_data) {
+                    if (revData.reachable) {
+                        statusStr = 'OPTIMAL';
+                        reason = `Return Ingress UP (${target.name} ➔ ${source.name})`;
+                        healthyBidirectional++;
+                    } else {
+                        statusStr = 'CRITICAL';
+                        reason = `Return Ingress DOWN (${target.name} ➔ ${source.name})`;
+                        fullOutage++;
+                    }
+                }
+
+                if (asymmetryOnly && !isAsymmetric) {
+                    continue;
+                }
+
+                matrixPairs.push({
+                    source_id: source.id,
+                    source_name: source.name,
+                    target_id: target.id,
+                    target_name: target.name,
+                    forward: fwdData,
+                    reverse: revData,
+                    asymmetry: {
+                        is_asymmetric: isAsymmetric,
+                        latency_delta_ms: latencyDelta,
+                        loss_delta_pct: lossDelta,
+                        reason: reason,
+                        status: statusStr
+                    }
+                });
+            }
+        }
+
+        res.json({
+            timestamp: Date.now(),
+            local_node_id: localId,
+            nodes,
+            summary: {
+                total_pairs: matrixPairs.length,
+                healthy_bidirectional: healthyBidirectional,
+                asymmetric_degraded: asymmetricDegraded,
+                unidirectional_down: unidirectionalDown,
+                full_outage: fullOutage
+            },
+            matrix: matrixPairs
+        });
+    } catch (err: any) {
+        log('FLEET', `Error generating reachability matrix: ${err.message}`, 'error');
+        res.status(500).json({ error: 'matrix_computation_failed', message: err.message });
+    }
+});
+log('FLEET', `🌐 Bidirectional SD-WAN Reachability Matrix mounted at /api/fleet/matrix`);
 
 // --- Stigix Fleet Gateway BFF Reverse Proxy (Peer Context Switcher - M1) ---
 //

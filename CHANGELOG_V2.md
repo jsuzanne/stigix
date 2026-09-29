@@ -2,6 +2,23 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2-dev] - 2026-09-29 — Feature: Bidirectional Cross-Instance SD-WAN Reachability Matrix
+
+### Added
+- **Fleet Bidirectional Reachability Matrix (`ReachabilityMatrix.tsx` & `ConnectivityPerformance.tsx`)**:
+  - Implemented full-mesh $N \times N$ cross-instance reachability matrix correlating forward egress path ($A \to B$) with return ingress telemetry ($B \to A$).
+  - Added dedicated view mode switcher in Digital Experience (DEM) / Performance: `[ Probes Catalog | Full-Mesh Reachability Matrix ]`.
+  - Color-coded cell matrix: Green (Symmetric & Healthy), Amber (Asymmetric latency delta $\ge 15\text{ms}$ or packet loss skew), Red (One-way blocked / Half-open outage).
+  - Interactive cell inspection modal displaying side-by-side Forward vs. Return latency, jitter, loss, and DEM scores with automated root-cause explanations.
+- **Backend Matrix Aggregator & Telemetry Extension (`server.ts` & `stigix-registry-client.ts`)**:
+  - Extended `registryManager.setTelemetryProvider` with `peer_probes` array to bundle latest probe results into node heartbeats.
+  - Implemented `GET /api/fleet/matrix` endpoint supporting filtering by probe type (`ALL`, `PRISMA SDWAN`, `PING`, `HTTP`, `TCP`), site filter, and `asymmetry_only=true`.
+  - Auto-discovery of remote target sites from synthetic probes when running in standalone mode.
+- **PRD Documentation (`docs/PRD_BIDIRECTIONAL_SDWAN_MATRIX.md`)**:
+  - Full architectural specifications, data model, and roadmap for bidirectional cross-instance SD-WAN reachability validation.
+
+---
+
 ## [v2.0.82] - 2026-09-28 — UX: Clean target selection cards in Speedtest
 
 ### Changed
