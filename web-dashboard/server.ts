@@ -12553,38 +12553,40 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
             nodeProbesMap.set(peer.instance_id, probes);
         }
 
-        // Helper to find probe from node A targeting node B with robust scoring (IP match > PING type > Name match)
+        // Helper to find probe from node A targeting node B with robust scoring (PING/ICMP strictly enforced for SD-WAN matrix)
         const findProbeToNode = (sourceId: string, targetNode: { id: string; name: string; ip: string }) => {
             const probes = nodeProbesMap.get(sourceId) || [];
             if (!probes.length) return undefined;
 
             const targetIp = (targetNode.ip || '').trim();
-            const tName = targetNode.name.toLowerCase().replace(/[\s\-_]/g, '');
+            const tName = targetNode.name.toLowerCase().replace(/[\s\-_]/g, '').replace(/ubuntu|stigix/g, '');
 
             const scored = probes.map(p => {
-                let score = 0;
                 const pIp = (p.target_ip || '').trim();
-                const pName = (p.target_name || '').toLowerCase().replace(/[\s\-_]/g, '');
+                const pName = (p.target_name || '').toLowerCase().replace(/[\s\-_]/g, '').replace(/ubuntu|stigix/g, '');
                 const pType = (p.type || '').toUpperCase();
 
-                if (typeFilter !== 'ALL') {
-                    if (typeFilter === 'PRISMA SDWAN' || typeFilter === 'PRISMA') {
-                        if (pType !== 'PRISMA' && pType !== 'PRISMA SDWAN' && !pName.includes('prisma')) return { probe: p, score: -1 };
-                    } else if (pType !== typeFilter) {
+                // Inter-site SD-WAN reachability matrix strictly requires PING / ICMP probes.
+                // Throughput (UDP/iperf3) or HTTP application probes must never be evaluated as path latency.
+                if (typeFilter === 'ALL' || typeFilter === 'PRISMA SDWAN' || typeFilter === 'PRISMA') {
+                    if (pType !== 'PING' && pType !== 'ICMP' && pType !== 'PRISMA' && pType !== 'PRISMA SDWAN') {
                         return { probe: p, score: -1 };
                     }
+                } else if (pType !== typeFilter) {
+                    return { probe: p, score: -1 };
                 }
 
-                // Exact IP match is highest priority
+                let score = 0;
+                // Exact IP match
                 if (targetIp && pIp && targetIp === pIp) score += 100;
                 else if (targetIp && p.target_url && p.target_url.includes(targetIp)) score += 90;
 
-                // Strongly prefer ICMP/PING probe for inter-site reachability
-                if (pType === 'PING' || pType === 'ICMP') score += 30;
+                // Name matches (e.g. "DC1" or "DC1 (192.168.201.3)")
+                if (tName && pName && (pName === tName || pName.includes(tName) || tName.includes(pName))) score += 50;
+                if (p.target_id && targetNode.id && p.target_id.toLowerCase().includes(targetNode.id.toLowerCase())) score += 30;
 
-                // Name matches
-                if (tName && pName && (pName === tName || pName.includes(tName) || tName.includes(pName))) score += 40;
-                if (p.target_id && targetNode.id && p.target_id.toLowerCase().includes(targetNode.id.toLowerCase())) score += 20;
+                // Tie breaker: prefer reachable probes
+                if (p.reachable) score += 10;
 
                 return { probe: p, score };
             }).filter(item => item.score > 0);
