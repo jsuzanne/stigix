@@ -350,7 +350,10 @@ const SiteNode = ({ data }: any) => {
     const renderSubnetPill = (subnet: string, sIdx: number) => {
         const stigixNode = fleetNodes.find((n: any) => {
             if (isIpInSubnet(n.ip, subnet) || isIpInSubnet(n.ip_private, subnet)) return true;
-            if (isExactSiteMatch(data.name, n.name || n.id || n.site) && uniqueSubeNets.length === 1) return true;
+            if (isExactSiteMatch(data.name, n.name || n.id || n.site)) {
+                const hasDirectIpMatch = uniqueSubeNets.some(s => isIpInSubnet(n.ip, s) || isIpInSubnet(n.ip_private, s));
+                if (!hasDirectIpMatch && sIdx === 0) return true;
+            }
             return false;
         });
 
@@ -470,7 +473,7 @@ const SiteNode = ({ data }: any) => {
                                         <path
                                             key={wan.name}
                                             d={isHub
-                                                ? `M ${portX} 338 L ${blockX} 380` // Hub: Bottom Port down to Circuit Block
+                                                ? `M ${portX} 350 L ${blockX} 420` // Hub: Bottom Port down to Circuit Block
                                                 : `M ${portX} 18 L ${blockX} -20`  // Spoke: Top Port up to Circuit Block
                                             }
                                             stroke={isMpls ? "rgba(168, 85, 247, 0.4)" : "rgba(59, 130, 246, 0.4)"}
@@ -484,11 +487,11 @@ const SiteNode = ({ data }: any) => {
 
                                 {/* LAN Wiring */}
                                 {isHub ? (
-                                    // Hub: Shared LAN Block (top Y=70) down to LAN Port 3 (Y=98)
+                                    // Hub: Shared LAN Block (top Y=95) down to LAN Port 3 (Y=110)
                                     <path
                                         d={deviceCount === 1
-                                            ? `M 0 70 L 0 98`
-                                            : `M 0 70 L 0 84 M 0 84 L ${devX} 84 L ${devX} 98`
+                                            ? `M 0 95 L 0 110`
+                                            : `M 0 95 L 0 102 M 0 102 L ${devX} 102 L ${devX} 110`
                                         }
                                         stroke="rgba(34, 197, 94, 0.45)"
                                         strokeWidth="2"

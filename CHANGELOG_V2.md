@@ -2,6 +2,14 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.104] - 2026-09-29 — UX: Precision Hub Wiring & DC1 Leader Badge Fix
+
+### Fixed
+- **Hub WAN Circuit & LAN Wiring Geometry (`Topology.tsx`)**:
+  - Calibrated Hub WAN bottom wiring paths to land directly on the top edge of Circuit Blocks (`Y=350 -> Y=420`).
+  - Aligned Hub LAN top distribution bus from router Port 3 up into the shared LAN subnets (`Y=95 -> Y=110`).
+  - Enabled primary LAN subnet matching on multi-subnet Hubs so `DC1` displays the high-tech Blue `⚡ 192.168.201.0/24 [LEADER]` badge.
+
 ## [v2.0.103] - 2026-09-29 — UX: Hub WAN & LAN SVG Math Alignment
 
 ### Fixed
