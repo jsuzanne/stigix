@@ -2023,7 +2023,6 @@ export async function executeCopilotTool(
                     const stopRes = await fetch(`${nodeCtx.baseUrl}/api/convergence/stop`, {
                         method: 'POST',
                         headers: nodeCtx.headers,
-                        headers: nodeCtx.headers,
                         body: JSON.stringify({ enabled: false })
                     }).catch(() => {});
 
