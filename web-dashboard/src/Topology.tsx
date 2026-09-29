@@ -205,7 +205,17 @@ const SiteEdge = ({
 };
 
 // --- Custom Port Marker component ---
-const Port = ({ num, label, status = 'unknown' }: { num: string, label?: string, status?: 'up' | 'down' | 'unknown' }) => {
+const Port = ({
+    num,
+    label,
+    status = 'unknown',
+    labelPosition = 'bottom',
+}: {
+    num: string;
+    label?: string;
+    status?: 'up' | 'down' | 'unknown';
+    labelPosition?: 'top' | 'bottom';
+}) => {
     let bgClass = "bg-card border-border text-text-muted";
 
     // Status color coding for port badges
@@ -214,14 +224,19 @@ const Port = ({ num, label, status = 'unknown' }: { num: string, label?: string,
 
     return (
         <div className="flex flex-col items-center gap-1 relative z-20 group">
+            {label && labelPosition === 'top' && (
+                <div className="absolute -top-[20px] whitespace-nowrap bg-card/90 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-mono font-bold text-text-muted uppercase tracking-tighter shadow-sm border border-border/50 text-center pointer-events-none">
+                    {label}
+                </div>
+            )}
             <div className={cn(
                 "w-5 h-5 rounded-md border flex items-center justify-center text-[9px] font-black shadow-sm",
                 bgClass
             )}>
                 {num}
             </div>
-            {label && (
-                <div className="absolute top-[26px] whitespace-nowrap bg-card/80 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-mono font-bold text-text-muted uppercase tracking-tighter shadow-sm border border-border/50 text-center">
+            {label && labelPosition === 'bottom' && (
+                <div className="absolute top-[22px] whitespace-nowrap bg-card/90 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-mono font-bold text-text-muted uppercase tracking-tighter shadow-sm border border-border/50 text-center pointer-events-none">
                     {label}
                 </div>
             )}
@@ -469,22 +484,28 @@ const SiteNode = ({ data }: any) => {
 
                                 {/* LAN Wiring */}
                                 {isHub ? (
-                                    // Hub: Shared LAN Block (bottom Y=160) down to LAN Port (Y=195)
+                                    // Hub: Shared LAN Block (top Y=160) down to LAN Port 3 (Y=195)
                                     <path
-                                        d={`M 0 160 L ${devX} 195`}
-                                        stroke="rgba(34, 197, 94, 0.5)"
-                                        strokeWidth="2.5"
+                                        d={deviceCount === 1
+                                            ? `M 0 160 L 0 195`
+                                            : `M 0 160 L 0 175 M 0 175 L ${devX} 175 L ${devX} 195`
+                                        }
+                                        stroke="rgba(34, 197, 94, 0.45)"
+                                        strokeWidth="2"
                                         fill="none"
                                         strokeLinejoin="round"
                                         strokeLinecap="round"
                                         strokeDasharray="4 4"
                                     />
                                 ) : (
-                                    // Spoke: LAN Port (Y=268) down to Shared LAN Box (Y=295)
+                                    // Spoke: LAN Port 3 (Y=242) down to Shared LAN Box (Y=268)
                                     <path
-                                        d={`M ${devX} 268 L 0 295`}
-                                        stroke="rgba(34, 197, 94, 0.5)"
-                                        strokeWidth="2.5"
+                                        d={deviceCount === 1
+                                            ? `M 0 242 L 0 268`
+                                            : `M ${devX} 242 L ${devX} 256 L 0 256 M 0 256 L 0 268`
+                                        }
+                                        stroke="rgba(34, 197, 94, 0.45)"
+                                        strokeWidth="2"
                                         fill="none"
                                         strokeLinejoin="round"
                                         strokeLinecap="round"
@@ -510,7 +531,7 @@ const SiteNode = ({ data }: any) => {
                 )}
 
                 {/* Horizontal Device Clusters */}
-                <div className="flex items-center justify-center gap-16 relative z-10 w-full mb-6">
+                <div className="flex items-center justify-center gap-16 relative z-10 w-full mb-8">
                     {devices.map((dev: any, dIdx: number) => (
                         <div key={dIdx} className="flex flex-col items-center group relative">
 
@@ -523,7 +544,7 @@ const SiteNode = ({ data }: any) => {
                                 {/* HUB: LAN Port Top */}
                                 {isHub && (
                                     <div className="absolute -top-[10px] w-full flex justify-center z-20">
-                                        <Port num="3" label={shortIp(dev.lan_interfaces?.[0]?.ip)} status={getStatus(dev.lan_interfaces?.[0])} />
+                                        <Port num="3" label={shortIp(dev.lan_interfaces?.[0]?.ip)} status={getStatus(dev.lan_interfaces?.[0])} labelPosition="bottom" />
                                     </div>
                                 )}
 
@@ -531,7 +552,7 @@ const SiteNode = ({ data }: any) => {
                                 {!isHub && (
                                     <div className="absolute -top-[10px] w-full flex justify-center gap-4 z-20">
                                         {dev.wan_interfaces?.map((wan: any, wIdx: number) => (
-                                            <Port key={wIdx} num={(wIdx + 1).toString()} status={getStatus(wan)} />
+                                            <Port key={wIdx} num={(wIdx + 1).toString()} status={getStatus(wan)} labelPosition="bottom" />
                                         ))}
                                     </div>
                                 )}
@@ -554,7 +575,7 @@ const SiteNode = ({ data }: any) => {
                                 {isHub && (
                                     <div className="absolute -bottom-[10px] w-full flex justify-center gap-4 z-20">
                                         {dev.wan_interfaces?.map((wan: any, wIdx: number) => (
-                                            <Port key={wIdx} num={(wIdx + 1).toString()} status={getStatus(wan)} />
+                                            <Port key={wIdx} num={(wIdx + 1).toString()} status={getStatus(wan)} labelPosition="top" />
                                         ))}
                                     </div>
                                 )}
@@ -562,7 +583,7 @@ const SiteNode = ({ data }: any) => {
                                 {/* SPOKE: LAN Port Bottom */}
                                 {!isHub && (
                                     <div className="absolute -bottom-[10px] w-full flex justify-center z-20">
-                                        <Port num="3" label={shortIp(dev.lan_interfaces?.[0]?.ip)} status={getStatus(dev.lan_interfaces?.[0])} />
+                                        <Port num="3" label={shortIp(dev.lan_interfaces?.[0]?.ip)} status={getStatus(dev.lan_interfaces?.[0])} labelPosition="top" />
                                     </div>
                                 )}
                             </div>
@@ -572,7 +593,7 @@ const SiteNode = ({ data }: any) => {
 
                 {/* Spoke-Specific: Shared LAN Block at the Bottom */}
                 {!isHub && (
-                    <div className="flex flex-col items-center relative z-10 w-full mb-2">
+                    <div className="flex flex-col items-center relative z-20 w-full mb-2">
                         <div className="flex gap-2.5 items-center justify-center flex-wrap max-w-full">
                             {uniqueSubeNets.map((subnet, sIdx) => renderSubnetPill(subnet, sIdx))}
                         </div>

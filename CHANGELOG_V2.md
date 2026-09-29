@@ -2,6 +2,14 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.102] - 2026-09-29 — UX: Refined LAN Wiring Bus & Port Label Layout
+
+### Fixed
+- **LAN Interface Label & Pill Overlap (`Topology.tsx`)**:
+  - Inverted bottom LAN port IP labels (`labelPosition="top"`) so they sit cleanly tucked inside the router block, eliminating overlap with the top border of LAN subnet pills.
+  - Re-engineered dual-router Spoke and Hub internal SVG LAN wiring with an elevated horizontal bus bar (`strokeDasharray="4 4"`, `z-0`) and single central drop, preventing green dashed lines from slicing through the middle of the LAN subnet pills.
+  - Increased router-to-LAN vertical margin to `mb-8` and elevated the subnet pill container to `z-20` for crisp visual hierarchy.
+
 ## [v2.0.101] - 2026-09-29 — UX: Direct Stigix Subnet Integration & Exact Site Matching
 
 ### Added
