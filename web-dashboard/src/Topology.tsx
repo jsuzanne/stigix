@@ -1634,9 +1634,16 @@ function TopologyContent({ token }: TopologyProps) {
             setLastRefresh(new Date());
 
             // Fetch fleet nodes for Stigix mesh overlay
-            gFetch('/api/fleet/matrix')
+            gFetch('/api/fleet/matrix', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
                 .then(r => r.json())
-                .then(d => { if (d?.nodes && Array.isArray(d.nodes)) setFleetNodes(d.nodes); })
+                .then(d => {
+                    const nodesList = d?.nodes || d?.data?.nodes;
+                    if (Array.isArray(nodesList)) {
+                        setFleetNodes(nodesList);
+                    }
+                })
                 .catch(() => {});
 
             if (data.underlay) {
