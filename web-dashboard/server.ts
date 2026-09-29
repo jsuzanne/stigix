@@ -13119,27 +13119,71 @@ app.post('/api/fleet/matrix/flow-trace', authenticateToken, async (req, res) => 
         const srcIp = cleanIp(source_ip);
         const tgtIp = cleanIp(target_ip);
 
-        log('FLEET', `🔍 Tracing SD-WAN Flow Path: ${srcSite} (${srcIp}) ⇄ ${tgtSite} (${tgtIp})`);
+        const isDcOrHub = (site: string) => site.startsWith('DC') || site.startsWith('HUB') || site.includes('DATACENTER') || site.includes('CORE');
+        const srcIsDc = isDcOrHub(srcSite);
+        const tgtIsDc = isDcOrHub(tgtSite);
 
-        // Forward and Return flow inspection in parallel
-        const [fwdResult, revResult] = await Promise.all([
-            runGetflow({ siteName: srcSite, dstIp: tgtIp, minutes: 20 }),
-            runGetflow({ siteName: tgtSite, dstIp: srcIp, minutes: 20 })
-        ]);
+        log('FLEET', `🔍 Tracing SD-WAN Flow Path: ${srcSite} (${srcIp}, DC=${srcIsDc}) ⇄ ${tgtSite} (${tgtIp}, DC=${tgtIsDc})`);
+
+        // Prisma SD-WAN architecture: Path policies & flow telemetry exist on Branch IONs, NOT on DC/HUB IONs.
+        // If one endpoint is a DC, we query getflow ONLY on the Branch site.
+        let fwdResult: any = null;
+        let revResult: any = null;
+
+        if (!srcIsDc && tgtIsDc) {
+            // Branch -> DC: Query getflow on the Branch (srcSite)
+            fwdResult = await runGetflow({ siteName: srcSite, dstIp: tgtIp, minutes: 20 });
+        } else if (srcIsDc && !tgtIsDc) {
+            // DC -> Branch: Query getflow on the Branch (tgtSite)
+            revResult = await runGetflow({ siteName: tgtSite, dstIp: srcIp, minutes: 20 });
+        } else if (!srcIsDc && !tgtIsDc) {
+            // Branch -> Branch: Query both in parallel
+            [fwdResult, revResult] = await Promise.all([
+                runGetflow({ siteName: srcSite, dstIp: tgtIp, minutes: 20 }),
+                runGetflow({ siteName: tgtSite, dstIp: srcIp, minutes: 20 })
+            ]);
+        } else if (srcIsDc && tgtIsDc) {
+            // DC -> DC: Neither site has Branch path policies.
+            log('FLEET', `ℹ️ DC-to-DC flow trace requested for ${srcSite} ⇄ ${tgtSite} (bypassing getflow, using core routing)`);
+        }
 
         const fwdFlow = fwdResult?.flows && fwdResult.flows.length > 0 ? fwdResult.flows[0] : null;
         const revFlow = revResult?.flows && revResult.flows.length > 0 ? revResult.flows[0] : null;
 
-        const formatCircuit = (rawPath: string, siteType: string) => {
-            if (!rawPath) {
-                return siteType.includes('DC') || siteType.includes('HUB') ? 'MPLS-1 (1Gbps Core)' : 'INET-1 (Direct Fabric)';
-            }
-            const clean = rawPath.replace(/ to /g, ' → ');
-            return clean;
+        const formatCircuit = (rawPath: string, defaultName: string) => {
+            if (!rawPath) return defaultName;
+            return rawPath.replace(/ to /g, ' → ');
         };
 
-        const fwdEgress = fwdFlow?.egress_path ? fwdFlow.egress_path.replace(/ to /g, ' → ') : formatCircuit('', srcSite);
-        const revEgress = revFlow?.egress_path ? revFlow.egress_path.replace(/ to /g, ' → ') : formatCircuit('', tgtSite);
+        // If DC was target and Branch returned a flow, the reverse path is derived from the symmetric session
+        let fwdEgress = '';
+        let revEgress = '';
+
+        if (srcIsDc && tgtIsDc) {
+            fwdEgress = 'DC-Interconnect (Core MPLS Fabric)';
+            revEgress = 'DC-Interconnect (Core MPLS Fabric)';
+        } else {
+            if (fwdFlow?.egress_path) {
+                fwdEgress = formatCircuit(fwdFlow.egress_path, 'Direct Fabric');
+                if (tgtIsDc && !revFlow) {
+                    // Invert the branch path for DC return: "BR5-INET → DC1-INET" becomes "DC1-INET → BR5-INET"
+                    const parts = fwdEgress.split(' → ');
+                    revEgress = parts.length === 2 ? `${parts[1]} → ${parts[0]}` : 'MPLS-1 (1Gbps Core)';
+                }
+            } else {
+                fwdEgress = srcIsDc ? 'MPLS-1 (1Gbps Core)' : 'INET-1 (Direct Fabric)';
+            }
+
+            if (revFlow?.egress_path) {
+                revEgress = formatCircuit(revFlow.egress_path, 'Direct Fabric');
+                if (srcIsDc && !fwdFlow) {
+                    const parts = revEgress.split(' → ');
+                    fwdEgress = parts.length === 2 ? `${parts[1]} → ${parts[0]}` : 'MPLS-1 (1Gbps Core)';
+                }
+            } else if (!revEgress) {
+                revEgress = tgtIsDc ? 'MPLS-1 (1Gbps Core)' : 'INET-1 (Direct Fabric)';
+            }
+        }
 
         const fwdHistory = (fwdFlow?.path_history || []).map((p: any) => ({
             ...p,
