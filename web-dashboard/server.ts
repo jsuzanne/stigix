@@ -12736,13 +12736,14 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
             ? localRegistryServer.getInstances()
             : (typeof registryManager?.getPeers === 'function' ? registryManager.getPeers() : []);
 
-        const nodes: Array<{ id: string; name: string; ip: string; site_type: 'HUB' | 'BRANCH' | 'CLOUD'; is_local: boolean; last_seen?: string }> = [
+        const nodes: Array<{ id: string; name: string; ip: string; site_type: 'HUB' | 'BRANCH' | 'CLOUD'; is_local: boolean; is_leader: boolean; last_seen?: string }> = [
             {
                 id: localId,
                 name: localName,
                 ip: localIp,
                 site_type: isHubSite(localName) ? 'HUB' : 'BRANCH',
                 is_local: true,
+                is_leader: isLeader,
                 last_seen: new Date().toISOString()
             }
         ];
@@ -12757,6 +12758,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     ip: peer.ip_private,
                     site_type: isHubSite(peerName, peer.site_type) ? 'HUB' : 'BRANCH',
                     is_local: false,
+                    is_leader: Boolean(peer.is_leader || peer.meta?.is_leader),
                     last_seen: peer.last_seen
                 });
             }

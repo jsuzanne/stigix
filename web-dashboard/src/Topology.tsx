@@ -229,6 +229,45 @@ const Port = ({ num, label, status = 'unknown' }: { num: string, label?: string,
     );
 };
 
+// Helper to check if an IP is inside a CIDR subnet (e.g. 192.168.207.10 in 192.168.207.0/24)
+function isIpInSubnet(ip?: string | null, subnet?: string | null): boolean {
+    if (!ip || !subnet) return false;
+    const cleanIp = ip.split('/')[0].trim();
+    const [subIp, maskStr] = subnet.trim().split('/');
+    if (!subIp) return false;
+    const mask = maskStr ? parseInt(maskStr, 10) : 24;
+
+    const ipToLong = (v: string) => {
+        const parts = v.split('.').map(Number);
+        if (parts.length !== 4 || parts.some(isNaN)) return null;
+        return ((parts[0] << 24) >>> 0) + ((parts[1] << 16) >>> 0) + ((parts[2] << 8) >>> 0) + (parts[3] >>> 0);
+    };
+
+    const ipNum = ipToLong(cleanIp);
+    const subNum = ipToLong(subIp);
+    if (ipNum === null || subNum === null) return false;
+
+    if (mask === 0) return true;
+    const netmask = mask === 32 ? 0xFFFFFFFF : (((0xFFFFFFFF << (32 - mask)) >>> 0));
+    return (ipNum & netmask) === (subNum & netmask);
+}
+
+function normalizeSiteName(name?: string | null): string {
+    if (!name) return '';
+    return name
+        .replace(/[-_]?(ubuntu|node|linux|srv|core|hub).*$/i, '')
+        .replace(/[^A-Z0-9]/gi, '')
+        .toUpperCase();
+}
+
+function isExactSiteMatch(siteName?: string | null, nodeName?: string | null): boolean {
+    if (!siteName || !nodeName) return false;
+    const s1 = normalizeSiteName(siteName);
+    const s2 = normalizeSiteName(nodeName);
+    if (!s1 || !s2) return false;
+    return s1 === s2;
+}
+
 // --- Custom Site Node Component (The "Physical" Schematic) ---
 const SiteNode = ({ data }: any) => {
     const isHub = data.role === 'HUB';
@@ -272,18 +311,6 @@ const SiteNode = ({ data }: any) => {
     // Stigix Fleet Node matching
     const fleetNodes = (data.fleetNodes as any[]) || [];
 
-    const cleanSiteName = (name: string) => (name || '').replace(/[-_]?(ubuntu|node|linux|srv|core|hub).*$/i, '').trim().toUpperCase();
-    const siteKey = cleanSiteName(data.name || '');
-
-    const matchedStigixNode = fleetNodes.find((n: any) => {
-        const nSite = cleanSiteName(n.name || n.id || '');
-        if (nSite && siteKey && (nSite === siteKey || siteKey.includes(nSite) || nSite.includes(siteKey))) return true;
-        return uniqueSubeNets.some((sub: string) => {
-            const prefix = sub.split('/')[0].replace(/\.\d+$/, '');
-            return n.ip && n.ip.startsWith(prefix);
-        });
-    });
-
     // Underlay badge helpers
     const underlayMode = data.underlayMode as ('off' | 'badges') | undefined;
     const underlayResolutionMap = data.underlayResolutionMap as Map<string, any> | undefined;
@@ -304,6 +331,44 @@ const SiteNode = ({ data }: any) => {
         return { r, c };
     };
 
+    // Subnet Pill Renderer: highlights the subnet hosting a Stigix node in high-tech Blue with Stigix symbol
+    const renderSubnetPill = (subnet: string, sIdx: number) => {
+        const stigixNode = fleetNodes.find((n: any) => {
+            if (isIpInSubnet(n.ip, subnet) || isIpInSubnet(n.ip_private, subnet)) return true;
+            if (isExactSiteMatch(data.name, n.name || n.id || n.site) && uniqueSubeNets.length === 1) return true;
+            return false;
+        });
+
+        if (stigixNode) {
+            const isLeader = Boolean(stigixNode.is_leader || stigixNode.role === 'LEADER' || (stigixNode.id && stigixNode.id.toLowerCase().includes('dc1') && !stigixNode.id.toLowerCase().includes('dc2')));
+            return (
+                <div
+                    key={sIdx}
+                    className="bg-blue-600/20 px-3.5 py-1 rounded-xl border-2 border-blue-400 text-[11px] font-mono font-bold text-blue-200 shadow-lg shadow-blue-500/25 relative z-10 group transition-all hover:scale-105 hover:bg-blue-500/30 hover:border-blue-300 flex items-center gap-2 cursor-pointer h-[32px]"
+                    title={`⚡ Stigix SASE Agent: ${stigixNode.name || stigixNode.id} (${stigixNode.ip || stigixNode.ip_private}) • ${isLeader ? 'LEADER' : 'PEER'}`}
+                >
+                    <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                    <Zap size={13} className="text-blue-300" />
+                    <span>{subnet}</span>
+                    <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-400/25 border border-blue-300/40 text-blue-100 uppercase font-black tracking-wider ml-0.5">
+                        {isLeader ? 'LEADER' : 'PEER'}
+                    </span>
+                </div>
+            );
+        }
+
+        return (
+            <div
+                key={sIdx}
+                className="bg-green-500/10 px-3 py-1 rounded-xl border border-green-500/30 text-[11px] font-mono font-bold text-green-400 shadow-md shadow-green-500/10 relative z-10 group transition-all hover:scale-105 hover:bg-green-500/20 hover:border-green-500 h-[30px] flex items-center cursor-default"
+            >
+                {subnet}
+            </div>
+        );
+    };
 
     return (
         <div className={cn(
@@ -439,27 +504,7 @@ const SiteNode = ({ data }: any) => {
                         </div>
                         <div className="text-[20px] font-black text-text-primary uppercase tracking-[0.4em] opacity-85 mb-3 drop-shadow-lg relative z-10">{data.name}</div>
                         <div className="flex gap-2.5 items-center justify-center flex-wrap max-w-full">
-                            {uniqueSubeNets.map((subnet, sIdx) => (
-                                <div key={sIdx} className="bg-green-500/10 px-3 py-1 rounded-xl border border-green-500/30 text-[11px] font-mono font-bold text-green-400 shadow-md shadow-green-500/10 relative z-10 group transition-all hover:scale-105 hover:bg-green-500/20 hover:border-green-500 h-[30px] flex items-center cursor-default">
-                                    {subnet}
-                                </div>
-                            ))}
-                            {matchedStigixNode && (
-                                <div
-                                    className="px-2.5 py-1 rounded-xl border border-cyan-500/40 bg-cyan-500/10 text-[11px] font-mono font-bold text-cyan-300 flex items-center gap-2 shadow-md shadow-cyan-500/10 relative z-10 transition-all hover:scale-105 hover:bg-cyan-500/20 hover:border-cyan-400 cursor-pointer h-[30px]"
-                                    title={`Stigix SASE Agent: ${matchedStigixNode.name} (${matchedStigixNode.ip}) • ${matchedStigixNode.site_type || 'AGENT'}`}
-                                >
-                                    <span className="relative flex h-2 w-2">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-                                    </span>
-                                    <Zap size={13} className="text-cyan-400" />
-                                    <span>Stigix: <strong className="text-text-primary">{matchedStigixNode.ip}</strong></span>
-                                    <span className="text-[8px] px-1 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 uppercase font-black tracking-wider">
-                                        {matchedStigixNode.site_type === 'HUB' ? 'LEADER' : 'PEER'}
-                                    </span>
-                                </div>
-                            )}
+                            {uniqueSubeNets.map((subnet, sIdx) => renderSubnetPill(subnet, sIdx))}
                         </div>
                     </div>
                 )}
@@ -529,27 +574,7 @@ const SiteNode = ({ data }: any) => {
                 {!isHub && (
                     <div className="flex flex-col items-center relative z-10 w-full mb-2">
                         <div className="flex gap-2.5 items-center justify-center flex-wrap max-w-full">
-                            {uniqueSubeNets.map((subnet, sIdx) => (
-                                <div key={sIdx} className="bg-green-500/10 px-3 py-1 rounded-xl border border-green-500/30 text-[11px] font-mono font-bold text-green-400 shadow-md shadow-green-500/10 relative z-10 group transition-all hover:scale-105 hover:bg-green-500/20 hover:border-green-500 h-[30px] flex items-center cursor-default">
-                                    {subnet}
-                                </div>
-                            ))}
-                            {matchedStigixNode && (
-                                <div
-                                    className="px-2.5 py-1 rounded-xl border border-cyan-500/40 bg-cyan-500/10 text-[11px] font-mono font-bold text-cyan-300 flex items-center gap-2 shadow-md shadow-cyan-500/10 relative z-10 transition-all hover:scale-105 hover:bg-cyan-500/20 hover:border-cyan-400 cursor-pointer h-[30px]"
-                                    title={`Stigix SASE Agent: ${matchedStigixNode.name} (${matchedStigixNode.ip}) • ${matchedStigixNode.site_type || 'AGENT'}`}
-                                >
-                                    <span className="relative flex h-2 w-2">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-                                    </span>
-                                    <Zap size={13} className="text-cyan-400" />
-                                    <span>Stigix: <strong className="text-text-primary">{matchedStigixNode.ip}</strong></span>
-                                    <span className="text-[8px] px-1 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 uppercase font-black tracking-wider">
-                                        {matchedStigixNode.site_type === 'HUB' ? 'LEADER' : 'PEER'}
-                                    </span>
-                                </div>
-                            )}
+                            {uniqueSubeNets.map((subnet, sIdx) => renderSubnetPill(subnet, sIdx))}
                         </div>
                         <div className="absolute inset-x-0 -bottom-6 flex justify-center w-full z-0 overflow-hidden pointer-events-none">
                             <div className="text-[72px] font-black text-white/[0.02] select-none uppercase tracking-[0.2em] whitespace-nowrap px-6">{data.name}</div>
@@ -1275,7 +1300,7 @@ function TopologyContent({ token }: TopologyProps) {
             ) || 1;
             const circuitsWidth = numCircuits * 120 + Math.max(0, numCircuits - 1) * 16;
 
-            // Calculate Subnets & Stigix badge required width
+            // Calculate Subnets required width (pills with integrated Stigix badge)
             const allSubnets = new Set<string>();
             (site.devices || []).forEach((d: any) => {
                 d.lan_interfaces?.forEach((l: any) => {
@@ -1286,7 +1311,7 @@ function TopologyContent({ token }: TopologyProps) {
                 });
             });
             const subnetsCount = Math.max(1, allSubnets.size);
-            const subnetsWidth = subnetsCount * 120 + 180;
+            const subnetsWidth = subnetsCount * 145 + Math.max(0, subnetsCount - 1) * 12;
 
             const contentWidth = Math.max(devicesWidth, circuitsWidth, subnetsWidth);
             return Math.max(340, contentWidth + 96);

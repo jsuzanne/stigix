@@ -2,6 +2,19 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.101] - 2026-09-29 — UX: Direct Stigix Subnet Integration & Exact Site Matching
+
+### Added
+- **Integrated Stigix LAN Subnet Highlight (`Topology.tsx`)**:
+  - Eliminated standalone Stigix badge box next to LAN subnets; now directly highlights the specific LAN subnet hosting the Stigix node in high-tech Blue/Cyan (`bg-blue-600/20 border-2 border-blue-400 text-blue-200`) with an active status beacon, `Zap` icon, and role chip (`[LEADER]` / `[PEER]`).
+  - Standard LAN subnets not hosting a Stigix agent remain clean in traditional green pills.
+  - Subnet matching powered by precise IPv4 CIDR bitwise calculation (`isIpInSubnet`).
+
+### Fixed
+- **DC2 False Leader Status Resolution (`Topology.tsx` & `server.ts`)**:
+  - Replaced loose substring normalization with strict site token normalization (`isExactSiteMatch`) preventing `DC 2` from erroneously matching `DC1-Ubuntu`.
+  - Enforced Leader status validation via matrix payload `is_leader` flags and explicit DC1 leader checks.
+
 ## [v2.0.100] - 2026-09-29 — UX: Dynamic Site Autoscale, Compact Stigix Badges & Clean Overlay Layout
 
 ### Fixed
