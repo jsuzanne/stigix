@@ -12449,6 +12449,45 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
         const localIp = status?.detected_ip || '127.0.0.1';
         const isLeader = typeof registryManager?.isLeader === 'function' ? registryManager.isLeader() : false;
 
+        // 0. Spoke Proxy: If running on a Spoke, forward query to Leader for full-mesh fleet visibility
+        if (!isLeader) {
+            let leaderHost = status?.leader_info?.ip;
+            if (!leaderHost && status?.registry_url) {
+                try {
+                    const u = new URL(status.registry_url);
+                    if (u.hostname && u.hostname !== 'registry.stigix.io') {
+                        leaderHost = u.hostname;
+                    }
+                } catch {}
+            }
+
+            if (leaderHost && leaderHost !== '127.0.0.1' && leaderHost !== localIp) {
+                try {
+                    const queryString = req.url.includes('?') ? '?' + req.url.split('?')[1] : '';
+                    const leaderUrl = `http://${leaderHost}:8080/api/fleet/matrix${queryString}`;
+                    const leaderRes = await fetch(leaderUrl, {
+                        headers: {
+                            'Authorization': (req.headers['authorization'] as string) || ''
+                        },
+                        signal: AbortSignal.timeout(4000)
+                    });
+                    if (leaderRes.ok) {
+                        const json: any = await leaderRes.json();
+                        if (json && Array.isArray(json.nodes)) {
+                            json.local_node_id = localId;
+                            json.nodes = json.nodes.map((n: any) => ({
+                                ...n,
+                                is_local: n.id === localId
+                            }));
+                        }
+                        return res.json(json);
+                    }
+                } catch (proxyErr) {
+                    log('FLEET', `Spoke matrix proxy to Leader (${leaderHost}) fallback to local: ${proxyErr}`, 'warn');
+                }
+            }
+        }
+
         // 1. Gather all active nodes (Self + Peers)
         const rawPeers = typeof registryManager?.getPeers === 'function' ? registryManager.getPeers() : [];
         const isHubSite = (name: string) => name.toLowerCase().includes('dc') || name.toLowerCase().includes('hub') || name.toLowerCase().includes('core');

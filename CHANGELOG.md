@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.86] - 2026-09-29
+
+### Added
+- **Spoke-to-Leader Matrix Proxying (`server.ts`)**: Spoke instances (BR8, BR1, BR2, BR5) automatically proxy `GET /api/fleet/matrix` queries to the Leader (DC1). Operators viewing the matrix on any branch now see the full-mesh $N \times N$ reachability matrix with local node dynamic contextualization ("YOU"). 🚀
+
 ## [2.0.85] - 2026-09-29
 
 ### Changed
