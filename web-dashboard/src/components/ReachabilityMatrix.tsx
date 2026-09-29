@@ -3,7 +3,7 @@ import { usePeerContext } from '../PeerContext';
 import { 
     Grid, Activity, AlertTriangle, CheckCircle2, XCircle, ArrowRightLeft, 
     RefreshCw, Filter, Shield, Info, ArrowUpRight, ArrowDownLeft, Clock,
-    Layers, Zap, Globe, Sparkles, Sliders, Settings as SettingsIcon, Save, Check
+    Layers, Zap, Globe, Sparkles, Sliders, Settings as SettingsIcon, Save, Check, Search
 } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 
@@ -105,6 +105,11 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
     const [latencyThreshold, setLatencyThreshold] = useState<number>(0);
     const [switchingTopology, setSwitchingTopology] = useState(false);
     
+    // Flow Path Trace State (getflow.py / Prisma SD-WAN)
+    const [tracingFlow, setTracingFlow] = useState(false);
+    const [flowTraceData, setFlowTraceData] = useState<any | null>(null);
+    const [flowTraceError, setFlowTraceError] = useState<string | null>(null);
+    
     // SLA Thresholds Modal State
     const [showThresholdsModal, setShowThresholdsModal] = useState(false);
     const [thresholds, setThresholds] = useState<MatrixThresholdsConfig>({
@@ -125,6 +130,39 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
         const t = token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
         return t ? { Authorization: `Bearer ${t}` } : {};
     }, [token]);
+
+    const handleTraceFlow = async (pair: MatrixPair) => {
+        try {
+            setTracingFlow(true);
+            setFlowTraceError(null);
+            setFlowTraceData(null);
+            const res = await gFetch('/api/fleet/matrix/flow-trace', {
+                method: 'POST',
+                headers: {
+                    ...authHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    source_id: pair.source_id,
+                    source_name: pair.source_name,
+                    source_ip: pair.forward.source_ip || pair.source_ip,
+                    target_id: pair.target_id,
+                    target_name: pair.target_name,
+                    target_ip: pair.forward.target_ip || pair.target_ip
+                })
+            });
+            const d = await res.json();
+            if (res.ok && d.success) {
+                setFlowTraceData(d);
+            } else {
+                setFlowTraceError(d.error || 'No active flow recorded or unable to contact Prisma SD-WAN API');
+            }
+        } catch (e: any) {
+            setFlowTraceError(e.message || 'Failed to query getflow flow path');
+        } finally {
+            setTracingFlow(false);
+        }
+    };
 
     const handleSetTopology = async (newTopology: 'full_mesh' | 'hub_and_spoke' | 'disabled') => {
         try {
@@ -864,10 +902,129 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             </div>
                         </div>
 
+                        {/* On-Demand Prisma SD-WAN Flow Path & Circuit Attribution */}
+                        <div className="bg-card-secondary/50 border border-border rounded-xl p-4 space-y-3">
+                            <div className="flex items-center justify-between gap-3 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                        <Zap size={14} />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">
+                                            SD-WAN Flow Path & Circuit Attribution (getflow)
+                                        </h4>
+                                        <p className="text-[10px] text-text-muted">
+                                            Query live Prisma SD-WAN flow table to identify active physical WAN circuits (MPLS vs INET vs LTE) and failover history.
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled={tracingFlow}
+                                    onClick={() => handleTraceFlow(selectedPair)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                                >
+                                    {tracingFlow ? (
+                                        <>
+                                            <RefreshCw size={12} className="animate-spin" />
+                                            <span>Querying getflow.py...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Search size={12} />
+                                            <span>Trace Live Flow Path</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+
+                            {flowTraceError && (
+                                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 text-xs font-mono">
+                                    ⚠️ {flowTraceError}
+                                </div>
+                            )}
+
+                            {flowTraceData && (
+                                <div className="space-y-3 animate-fade-in pt-1">
+                                    <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                                        {/* Forward Circuit */}
+                                        <div className="p-3 rounded-xl bg-card-secondary border border-border space-y-1.5 shadow-sm">
+                                            <div className="text-text-muted text-[10px] uppercase font-bold flex items-center justify-between">
+                                                <span className="flex items-center gap-1">
+                                                    <ArrowUpRight size={11} className="text-blue-400" /> Forward WAN Circuit:
+                                                </span>
+                                                <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500/10 text-blue-400 font-bold">
+                                                    {flowTraceData.forward_flow?.path_type || 'VPN'}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs font-black text-blue-300">
+                                                {flowTraceData.forward_flow?.egress_path || 'Direct Fabric'}
+                                            </div>
+                                            <div className="text-[10px] text-text-muted truncate">
+                                                Policy: {flowTraceData.forward_flow?.policy_rule || 'Default-Fabric-Path'}
+                                            </div>
+                                        </div>
+
+                                        {/* Return Circuit */}
+                                        <div className="p-3 rounded-xl bg-card-secondary border border-border space-y-1.5 shadow-sm">
+                                            <div className="text-text-muted text-[10px] uppercase font-bold flex items-center justify-between">
+                                                <span className="flex items-center gap-1">
+                                                    <ArrowDownLeft size={11} className="text-purple-400" /> Return WAN Circuit:
+                                                </span>
+                                                <span className="text-[9px] px-1 py-0.2 rounded bg-purple-500/10 text-purple-400 font-bold">
+                                                    {flowTraceData.return_flow?.path_type || 'VPN'}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs font-black text-purple-300">
+                                                {flowTraceData.return_flow?.egress_path || 'Direct Fabric'}
+                                            </div>
+                                            <div className="text-[10px] text-text-muted truncate">
+                                                Policy: {flowTraceData.return_flow?.policy_rule || 'Default-Fabric-Path'}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Automated RCA Diagnosis */}
+                                    <div className={twMerge(
+                                        "p-3 rounded-xl border text-xs shadow-sm",
+                                        flowTraceData.diagnosis?.is_asymmetric_circuit
+                                            ? "bg-amber-500/10 border-amber-500/30 text-amber-200"
+                                            : "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
+                                    )}>
+                                        <div className="font-black flex items-center gap-1.5 mb-1">
+                                            {flowTraceData.diagnosis?.is_asymmetric_circuit ? (
+                                                <>
+                                                    <AlertTriangle size={14} className="text-amber-400" />
+                                                    <span>⚠️ Asymmetric Circuit Routing Detected</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <CheckCircle2 size={14} className="text-emerald-400" />
+                                                    <span>✅ Symmetric Circuit Routing</span>
+                                                </>
+                                            )}
+                                        </div>
+                                        <div className="text-[11px] text-text-muted leading-relaxed">
+                                            {flowTraceData.diagnosis?.summary}
+                                        </div>
+                                        {flowTraceData.diagnosis?.recommendation && (
+                                            <div className="text-[10.5px] text-text-muted/80 mt-1 italic">
+                                                💡 {flowTraceData.diagnosis?.recommendation}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         <div className="flex justify-end pt-2">
                             <button
-                                onClick={() => setSelectedPair(null)}
-                                className="bg-card-secondary hover:bg-card-secondary/80 border border-border text-text-primary px-4 py-2 rounded-xl text-xs font-bold transition-all"
+                                onClick={() => {
+                                    setSelectedPair(null);
+                                    setFlowTraceData(null);
+                                    setFlowTraceError(null);
+                                }}
+                                className="bg-card-secondary hover:bg-card-secondary/80 border border-border text-text-primary px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer"
                             >
                                 Close
                             </button>

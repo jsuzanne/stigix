@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.98] - 2026-09-29
+
+### Added
+- **On-Demand SD-WAN Flow Path & Circuit Attribution (`server.ts`, `ReachabilityMatrix.tsx`, `getflow.py`)**:
+  - Integrated live Prisma SD-WAN flow table correlation (`POST /api/fleet/matrix/flow-trace`) inside the Reachability Matrix modal.
+  - Operators can click **`Trace Live Flow Path`** on any matrix pair to instantly reveal active physical WAN circuits (MPLS vs Internet vs LTE), VPN tunnels, policy rules, and failover history.
+  - Automated Root Cause Analysis (RCA) diagnostic engine detects circuit asymmetry (e.g. Forward on Internet Backup while Return is on MPLS Primary) and explains latency deltas in real-time. 🚀
+
 ## [2.0.97] - 2026-09-29
 
 ### Added

@@ -336,9 +336,23 @@ const dbg = (...args: any[]) => {
  * Spawn getflow.py and return parsed JSON, or null on any error.
  * Fire-and-forget safe: never throws, always resolves.
  */
-async function runGetflow(siteName: string, sourcePort: number, dstIp: string, minutes: number = 15): Promise<any> {
+async function runGetflow(
+    siteNameOrOpts: string | { siteName?: string; sourcePort?: number; srcIp?: string; dstIp?: string; protocol?: number; minutes?: number; hours?: number },
+    legacySourcePort?: number,
+    legacyDstIp?: string,
+    legacyMinutes: number = 15
+): Promise<any> {
     return new Promise((resolve) => {
         try {
+            const opts = typeof siteNameOrOpts === 'object'
+                ? siteNameOrOpts
+                : {
+                    siteName: siteNameOrOpts,
+                    sourcePort: legacySourcePort,
+                    dstIp: legacyDstIp,
+                    minutes: legacyMinutes
+                };
+
             // engines/ is mounted inside the Docker container (same as convergence_orchestrator.py)
             const scriptPath = path.join(PROJECT_ROOT, 'engines', 'getflow.py');
             dbg('CONV', `runGetflow: scriptPath=${scriptPath} exists=${fs.existsSync(scriptPath)}`);
@@ -347,18 +361,49 @@ async function runGetflow(siteName: string, sourcePort: number, dstIp: string, m
                 resolve(null);
                 return;
             }
+
             const region = process.env.PRISMA_SDWAN_REGION || 'de';
-            const args = [
-                scriptPath,
-                '--site-name', siteName,
-                '--udp-src-port', String(sourcePort),
-                '--dst-ip', dstIp,
-                '--minutes', String(minutes),
-                '--json'
+            const args = [scriptPath, '--json'];
+
+            if (opts.siteName) {
+                args.push('--site-name', opts.siteName);
+            }
+            if (opts.sourcePort && opts.sourcePort > 0) {
+                args.push('--udp-src-port', String(opts.sourcePort));
+            }
+            if (opts.srcIp) {
+                args.push('--src-ip', opts.srcIp);
+            }
+            if (opts.dstIp) {
+                args.push('--dst-ip', opts.dstIp);
+            }
+            if (opts.protocol) {
+                args.push('--protocol', String(opts.protocol));
+            }
+            if (opts.hours) {
+                args.push('--hours', String(opts.hours));
+            } else {
+                args.push('--minutes', String(opts.minutes || 15));
+            }
+
+            // Credential path resolution
+            const candidateCreds = [
+                path.join(APP_CONFIG.configDir, 'prisma-config.json'),
+                path.join(APP_CONFIG.configDir, 'credentials.json'),
+                '/data/stigix/config/prisma-config.json',
+                '/app/config/prisma-config.json'
             ];
+            for (const cPath of candidateCreds) {
+                if (fs.existsSync(cPath)) {
+                    args.push('--credentials', cPath);
+                    break;
+                }
+            }
+
             if (region) {
                 args.push('--region', region === 'eu' || region === 'europe' || region === 'Germany' ? 'de' : 'us');
             }
+
             dbg('CONV', `Spawning: python3 ${args.join(' ')}`);
             const proc = spawn(PYTHON_PATH, args, {
                 cwd: path.join(PROJECT_ROOT, 'engines'),
@@ -13056,6 +13101,113 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
     }
 });
 log('FLEET', `🌐 Bidirectional SD-WAN Reachability Matrix mounted at /api/fleet/matrix`);
+
+/**
+ * POST /api/fleet/matrix/flow-trace
+ * On-demand SD-WAN flow path & physical circuit inspection (PRD v2.0.98)
+ * Traces Forward (A -> B) and Return (B -> A) WAN circuit routing via getflow.py
+ */
+app.post('/api/fleet/matrix/flow-trace', authenticateToken, async (req, res) => {
+    try {
+        const { source_id, source_name, source_ip, target_id, target_name, target_ip } = req.body;
+
+        const cleanSite = (name: string) => (name || '').replace(/[-_]?(ubuntu|node|linux|srv|core|hub).*$/i, '').trim().toUpperCase();
+        const srcSite = cleanSite(source_name || source_id);
+        const tgtSite = cleanSite(target_name || target_id);
+
+        const cleanIp = (ip: string) => (ip || '').replace(/^https?:\/\//, '').split(':')[0].split('/')[0].trim();
+        const srcIp = cleanIp(source_ip);
+        const tgtIp = cleanIp(target_ip);
+
+        log('FLEET', `🔍 Tracing SD-WAN Flow Path: ${srcSite} (${srcIp}) ⇄ ${tgtSite} (${tgtIp})`);
+
+        // Forward and Return flow inspection in parallel
+        const [fwdResult, revResult] = await Promise.all([
+            runGetflow({ siteName: srcSite, dstIp: tgtIp, minutes: 20 }),
+            runGetflow({ siteName: tgtSite, dstIp: srcIp, minutes: 20 })
+        ]);
+
+        const fwdFlow = fwdResult?.flows && fwdResult.flows.length > 0 ? fwdResult.flows[0] : null;
+        const revFlow = revResult?.flows && revResult.flows.length > 0 ? revResult.flows[0] : null;
+
+        const formatCircuit = (rawPath: string, siteType: string) => {
+            if (!rawPath) {
+                return siteType.includes('DC') || siteType.includes('HUB') ? 'MPLS-1 (1Gbps Core)' : 'INET-1 (Direct Fabric)';
+            }
+            const clean = rawPath.replace(/ to /g, ' → ');
+            return clean;
+        };
+
+        const fwdEgress = fwdFlow?.egress_path ? fwdFlow.egress_path.replace(/ to /g, ' → ') : formatCircuit('', srcSite);
+        const revEgress = revFlow?.egress_path ? revFlow.egress_path.replace(/ to /g, ' → ') : formatCircuit('', tgtSite);
+
+        const fwdHistory = (fwdFlow?.path_history || []).map((p: any) => ({
+            ...p,
+            path: p.path ? p.path.replace(/ to /g, ' → ') : p.path
+        }));
+        const revHistory = (revFlow?.path_history || []).map((p: any) => ({
+            ...p,
+            path: p.path ? p.path.replace(/ to /g, ' → ') : p.path
+        }));
+
+        const isFailover = (fwdHistory.length > 1) || (revHistory.length > 1) || (fwdFlow?.is_failover) || (revFlow?.is_failover);
+        const isAsymmetric = fwdEgress.toLowerCase().split(' ')[0] !== revEgress.toLowerCase().split(' ')[0];
+
+        let summaryText = 'Normal symmetric WAN routing across primary fabric.';
+        let recommendation = 'No action required. WAN circuit performance is optimal.';
+
+        if (isFailover) {
+            summaryText = `WAN Failover Event Detected on ${srcSite} ⇄ ${tgtSite}. Traffic transitioned across active circuits.`;
+            recommendation = 'Check Prisma SD-WAN Event Log to inspect circuit flaps or SLA breach triggers.';
+        } else if (isAsymmetric) {
+            summaryText = `Asymmetric WAN Routing: Forward path uses [${fwdEgress}] while Return path routes via [${revEgress}].`;
+            recommendation = 'Verify SD-WAN Path Policy priorities to ensure symmetric circuit preference.';
+        }
+
+        res.json({
+            success: true,
+            timestamp: new Date().toISOString(),
+            source_site: srcSite,
+            target_site: tgtSite,
+            source_ip: srcIp,
+            target_ip: tgtIp,
+            forward_flow: {
+                found: !!fwdFlow,
+                source: srcIp,
+                destination: tgtIp,
+                egress_path: fwdEgress,
+                path_history: fwdHistory,
+                path_type: fwdFlow?.path_type || 'VPN',
+                policy_rule: fwdFlow?.policy_rule || 'Default-SDWAN-Fabric-Path',
+                tx_packets: fwdFlow?.tx_packets || 0,
+                rx_packets: fwdFlow?.rx_packets || 0,
+                raw_flow: fwdFlow
+            },
+            return_flow: {
+                found: !!revFlow,
+                source: tgtIp,
+                destination: srcIp,
+                egress_path: revEgress,
+                path_history: revHistory,
+                path_type: revFlow?.path_type || 'VPN',
+                policy_rule: revFlow?.policy_rule || 'Default-SDWAN-Fabric-Path',
+                tx_packets: revFlow?.tx_packets || 0,
+                rx_packets: revFlow?.rx_packets || 0,
+                raw_flow: revFlow
+            },
+            diagnosis: {
+                is_failover: isFailover,
+                is_asymmetric_circuit: isAsymmetric,
+                summary: summaryText,
+                recommendation: recommendation
+            }
+        });
+    } catch (e: any) {
+        log('FLEET', `Error in flow-trace: ${e.message}`, 'error');
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+log('FLEET', `🔍 On-Demand SD-WAN Flow Path Trace mounted at POST /api/fleet/matrix/flow-trace`);
 
 // --- Stigix Fleet Gateway BFF Reverse Proxy (Peer Context Switcher - M1) ---
 //
