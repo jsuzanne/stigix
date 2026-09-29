@@ -2,7 +2,18 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2.0.96] - 2026-09-29 — Fix: Authoritative probe deletions, provisioning pending loop resolution & Ethernet interface prioritization
+## [v2.0.100] - 2026-09-29 — UX: Dynamic Site Autoscale, Compact Stigix Badges & Clean Overlay Layout
+
+### Fixed
+- **Site Block Overlapping on Topology Canvas (`Topology.tsx`)**:
+  - Replaced rigid width estimations in `getSiteWidth` with dynamic multi-factor autoscale calculating required dimensions across devices, WAN circuits, LAN subnets, and Stigix anchor badges.
+  - Enforced strict bounding-box horizontal gap spacing (`HORIZONTAL_GAP_PX = 100`) preventing any overlap between Branch or Data Center blocks regardless of subnet count.
+
+### Changed
+- **Sleek & Compact Site Elements (`Topology.tsx`)**:
+  - Redesigned LAN subnets into compact, modern pills (`h-[30px]`, `px-3 py-1`) with refined typography.
+  - Streamlined the Stigix anchor badge into a sleek status pill (`⚡ Stigix: <IP> [ROLE]`) embedded directly in site LAN sections without layout expansion.
+  - Removed cluttered cross-canvas Stigix mesh overlay lines, keeping the focus cleanly on SD-WAN overlay and VyOS underlay paths.
 
 ### Fixed
 - **Probe Deletion & Mesh Provisioning Pending Loop (`server.ts` & `provisioning-manager.ts`)**:
