@@ -5,7 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.87] - 2026-09-29
+## [2.0.97] - 2026-09-29
+
+### Added
+- **SD-WAN Topology Policy Support (`server.ts`, `ReachabilityMatrix.tsx`)**:
+  - Added topology toggle (`Hub & Spoke` vs `Full-Mesh` vs `Manual`).
+  - In **Hub & Spoke** mode (default for SD-WAN architecture), direct Spoke-to-Spoke pairs (e.g. `BR5 ⇄ BR8`, `BR1 ⇄ BR2`) are recognized as intentional SD-WAN routing bypasses and labeled as **`🏛️ Hub & Spoke (Bypassed)`** instead of false critical outages.
+  - Added `/api/fleet/matrix/topology` endpoint to dynamically switch topology across the fleet with automatic Leader synchronization.
+
+### Changed
+- **AutoMesh Fleet Telemetry Engine (`server.ts`)**:
+  - Automatically synthesizes active host-to-host ICMP reachability probes to all registered fleet peers in `startConnectivityMonitor()` and `GET /api/connectivity/test`.
+  - Prioritizes direct peer instance ID and node host IP matching in `/api/fleet/matrix` aggregation.
+- **Node Host vs SD-WAN Target Clarification (`ReachabilityMatrix.tsx`)**:
+  - Matrix table headers and modal inspection cards clearly distinguish between the **Stigix Host Container** (`source_name` / `source_ip`) and the **SD-WAN Target** (`target_ip` / probed interface). 🚀
+
+## [2.0.96] - 2026-09-29
+
+### Fixed
+- **Connectivity Probes Deletion & Mesh Loop (`server.ts`, `provisioning-manager.ts`)**:
+  - Prevented Leader from resurrecting deleted probes from old global bundles.
+  - Unified payload formatting across config and publish routes to resolve false pending checksum loops.
+- **Prisma SD-WAN LAN Interface Discovery (`discovery-manager.ts`)**:
+  - Prioritized physical Ethernet LAN gateway interfaces over loopback `/32` interfaces. 🚀
+
 
 ### Changed
 - **DEM Reachability Matrix Polish (`ReachabilityMatrix.tsx`, `server.ts`)**:

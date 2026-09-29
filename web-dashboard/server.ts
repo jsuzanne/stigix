@@ -4387,6 +4387,104 @@ const getEnvConnectivityEndpoints = () => {
     return endpoints;
 };
 
+// --- SD-WAN Reachability Matrix SLA Thresholds & Auto-Mesh Policy (PRD v2.0.97) ---
+const MATRIX_THRESHOLDS_FILE = path.join(APP_CONFIG.configDir, 'matrix-thresholds.json');
+
+export interface MatrixThresholds {
+    latency_warning_ms: number;
+    latency_critical_ms: number;
+    asymmetry_warning_delta_ms: number;
+    asymmetry_critical_delta_ms: number;
+    loss_warning_pct: number;
+    loss_critical_pct: number;
+    jitter_warning_ms: number;
+    jitter_critical_ms: number;
+    mesh_topology?: 'full_mesh' | 'hub_and_spoke' | 'disabled';
+}
+
+const DEFAULT_MATRIX_THRESHOLDS: MatrixThresholds = {
+    latency_warning_ms: 60,
+    latency_critical_ms: 150,
+    asymmetry_warning_delta_ms: 20,
+    asymmetry_critical_delta_ms: 80,
+    loss_warning_pct: 1.0,
+    loss_critical_pct: 5.0,
+    jitter_warning_ms: 10,
+    jitter_critical_ms: 30,
+    mesh_topology: 'hub_and_spoke'
+};
+
+function getMatrixThresholds(): MatrixThresholds {
+    try {
+        if (fs.existsSync(MATRIX_THRESHOLDS_FILE)) {
+            const raw = fs.readFileSync(MATRIX_THRESHOLDS_FILE, 'utf8');
+            return { ...DEFAULT_MATRIX_THRESHOLDS, ...JSON.parse(raw) };
+        }
+    } catch {}
+    return DEFAULT_MATRIX_THRESHOLDS;
+}
+
+const isHubSite = (name: string, siteType?: string): boolean => {
+    if (siteType === 'HUB') return true;
+    const n = (name || '').toLowerCase();
+    return n.includes('dc') || n.includes('hub') || n.includes('core') || n.includes('azure') || n.includes('aws') || n.includes('cloud');
+};
+
+const getAutoMeshProbes = (): any[] => {
+    try {
+        const thresholds = getMatrixThresholds();
+        const topology = thresholds.mesh_topology || 'hub_and_spoke';
+        if (topology === 'disabled') return [];
+
+        const status = typeof registryManager?.getStatus === 'function' ? registryManager.getStatus() : null;
+        const localId = status?.instance_id || 'local-node';
+        const localName = (process.env.STIGIX_SITE_NAME || status?.instance_id || 'Local Node').toUpperCase();
+        const localIp = status?.detected_ip || '127.0.0.1';
+        const isLeader = typeof registryManager?.isLeader === 'function' ? registryManager.isLeader() : false;
+
+        const rawPeers = (isLeader && typeof localRegistryServer?.getInstances === 'function')
+            ? localRegistryServer.getInstances()
+            : (typeof registryManager?.getPeers === 'function' ? registryManager.getPeers() : []);
+
+        const isLocalHub = isHubSite(localName);
+        const probes: any[] = [];
+
+        for (const peer of rawPeers) {
+            if (!peer || peer.instance_id === localId) continue;
+            const peerName = (peer.meta?.site || peer.instance_id || 'PEER').toUpperCase();
+            const peerIp = (peer.ip_private || '').trim();
+            if (!peerIp || peerIp === '127.0.0.1' || peerIp === localIp) continue;
+
+            const isPeerHub = isHubSite(peerName, peer.site_type);
+
+            // Hub & Spoke policy:
+            // - If local node is a Spoke: only probe Hub peers
+            // - If local node is a Hub: probe all peers (Hubs + Spokes)
+            if (topology === 'hub_and_spoke' && !isLocalHub && !isPeerHub) {
+                continue;
+            }
+
+            probes.push({
+                id: `mesh-${peer.instance_id}`,
+                name: `[AutoMesh] ${peerName}`,
+                type: 'PING',
+                target: peerIp,
+                url: peerIp,
+                target_ip: peerIp,
+                peer_instance_id: peer.instance_id,
+                frequency: 20,
+                timeout: 4000,
+                enabled: true,
+                source: 'auto-mesh',
+                scope: 'fleet-mesh'
+            });
+        }
+        return probes;
+    } catch (e) {
+        return [];
+    }
+};
+
 // Helper: Get custom endpoints from file (used for custom added probes, plus state overrides for env/discovery probes)
 const getCustomConnectivityEndpoints = () => {
     try {
@@ -4434,6 +4532,7 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
         const envProbes = getEnvConnectivityEndpoints();
         const customProbes = getCustomConnectivityEndpoints();
         const discoveredProbes = discoveryManager.getProbes();
+        const autoMeshProbes = getAutoMeshProbes();
 
         // Merge env state with custom
         const mergedEnvProbes = envProbes.map((p: any) => {
@@ -4445,7 +4544,7 @@ app.get('/api/connectivity/active-probes', authenticateToken, (req, res) => {
         const pureCustom = customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name));
 
         // Return all known probes so the frontend knows they exist (even if paused/disabled)
-        const allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes];
+        const allProbes = [...mergedEnvProbes, ...pureCustom, ...discoveredProbes, ...autoMeshProbes];
 
         res.json({
             success: true,
@@ -4474,7 +4573,8 @@ app.get('/api/connectivity/test', authenticateToken, async (req, res) => {
 
     const testEndpoints: any[] = [
         ...mergedEnvProbes.filter((p: any) => p.enabled !== false),
-        ...customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name) && p.enabled !== false)
+        ...customProbes.filter((p: any) => !envProbes.find(ep => ep.name === p.name) && p.enabled !== false),
+        ...getAutoMeshProbes()
     ];
 
     const results = [];
@@ -4969,7 +5069,8 @@ const startConnectivityMonitor = () => {
         const testEndpoints: any[] = [
             ...getEnvConnectivityEndpoints(),
             ...getCustomConnectivityEndpoints(),
-            ...discoveryManager.getProbes()
+            ...discoveryManager.getProbes(),
+            ...getAutoMeshProbes()
         ].filter(p => p.enabled !== false); // Only run probes that are not disabled
 
         if (testEndpoints.length === 0) return;
@@ -12441,41 +12542,7 @@ app.get('/api/fleet/overview', authenticateToken, (req, res) => {
 });
 log('FLEET', `🏢 Fleet Control Plane mounted at /api/fleet/overview (Leader only)`);
 
-// --- SD-WAN Reachability Matrix SLA Thresholds (PRD v2.0.92) ---
-const MATRIX_THRESHOLDS_FILE = path.join(APP_CONFIG.configDir, 'matrix-thresholds.json');
-
-export interface MatrixThresholds {
-    latency_warning_ms: number;
-    latency_critical_ms: number;
-    asymmetry_warning_delta_ms: number;
-    asymmetry_critical_delta_ms: number;
-    loss_warning_pct: number;
-    loss_critical_pct: number;
-    jitter_warning_ms: number;
-    jitter_critical_ms: number;
-}
-
-const DEFAULT_MATRIX_THRESHOLDS: MatrixThresholds = {
-    latency_warning_ms: 60,
-    latency_critical_ms: 150,
-    asymmetry_warning_delta_ms: 20,
-    asymmetry_critical_delta_ms: 80,
-    loss_warning_pct: 1.0,
-    loss_critical_pct: 5.0,
-    jitter_warning_ms: 10,
-    jitter_critical_ms: 30
-};
-
-function getMatrixThresholds(): MatrixThresholds {
-    try {
-        if (fs.existsSync(MATRIX_THRESHOLDS_FILE)) {
-            const raw = fs.readFileSync(MATRIX_THRESHOLDS_FILE, 'utf8');
-            return { ...DEFAULT_MATRIX_THRESHOLDS, ...JSON.parse(raw) };
-        }
-    } catch {}
-    return DEFAULT_MATRIX_THRESHOLDS;
-}
-
+// --- SD-WAN Reachability Matrix SLA Thresholds & Topology (PRD v2.0.97) ---
 app.get('/api/fleet/matrix/thresholds', authenticateToken, async (req, res) => {
     const isLeader = typeof registryManager?.isLeader === 'function' ? registryManager.isLeader() : false;
     const status = registryManager.getStatus();
@@ -12526,11 +12593,47 @@ app.post('/api/fleet/matrix/thresholds', authenticateToken, async (req, res) => 
     }
     const updated = { ...DEFAULT_MATRIX_THRESHOLDS, ...req.body };
     fs.writeFileSync(MATRIX_THRESHOLDS_FILE, JSON.stringify(updated, null, 2));
-    log('REGISTRY', `Updated SD-WAN reachability matrix thresholds: ${JSON.stringify(updated)}`);
+    log('REGISTRY', `Updated SD-WAN reachability matrix thresholds & topology: ${JSON.stringify(updated)}`);
     res.json({ success: true, thresholds: updated });
 });
 
-// --- Stigix Fleet Bidirectional Reachability Matrix API (PRD v2.0.82) ---
+app.post('/api/fleet/matrix/topology', authenticateToken, async (req, res) => {
+    const { topology } = req.body;
+    if (!['full_mesh', 'hub_and_spoke', 'disabled'].includes(topology)) {
+        return res.status(400).json({ error: 'Invalid topology mode' });
+    }
+    const isLeader = typeof registryManager?.isLeader === 'function' ? registryManager.isLeader() : false;
+    const status = registryManager.getStatus();
+    let leaderHost = status?.leader_info?.ip;
+    if (!leaderHost && status?.registry_url) {
+        try {
+            const u = new URL(status.registry_url);
+            if (u.hostname && u.hostname !== 'registry.stigix.io') leaderHost = u.hostname;
+        } catch {}
+    }
+    if (!isLeader && leaderHost && leaderHost !== '127.0.0.1') {
+        try {
+            const internalToken = jwt.sign({ username: 'system-proxy' }, process.env.JWT_SECRET || 'stigix-secret-key-12345', { expiresIn: '1h' });
+            const leaderRes = await fetch(`http://${leaderHost}:8080/api/fleet/matrix/topology`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${internalToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ topology }),
+                signal: AbortSignal.timeout(3000)
+            });
+            if (leaderRes.ok) return res.json(await leaderRes.json());
+        } catch {}
+    }
+    const current = getMatrixThresholds();
+    const updated = { ...current, mesh_topology: topology };
+    fs.writeFileSync(MATRIX_THRESHOLDS_FILE, JSON.stringify(updated, null, 2));
+    log('REGISTRY', `Updated fleet mesh topology to: ${topology}`);
+    res.json({ success: true, topology, thresholds: updated });
+});
+
+// --- Stigix Fleet Bidirectional Reachability Matrix API (PRD v2.0.97) ---
 app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
     try {
         const typeFilter = ((req.query.type as string) || 'ALL').toUpperCase();
@@ -12587,7 +12690,6 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
         const rawPeers = (isLeader && typeof localRegistryServer?.getInstances === 'function')
             ? localRegistryServer.getInstances()
             : (typeof registryManager?.getPeers === 'function' ? registryManager.getPeers() : []);
-        const isHubSite = (name: string) => name.toLowerCase().includes('dc') || name.toLowerCase().includes('hub') || name.toLowerCase().includes('core');
 
         const nodes: Array<{ id: string; name: string; ip: string; site_type: 'HUB' | 'BRANCH' | 'CLOUD'; is_local: boolean; last_seen?: string }> = [
             {
@@ -12601,13 +12703,14 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
         ];
 
         for (const peer of rawPeers) {
+            if (!peer || !peer.instance_id) continue;
             if (!nodes.find(n => n.id === peer.instance_id)) {
                 const peerName = (peer.meta?.site || peer.instance_id || 'PEER').toUpperCase();
                 nodes.push({
                     id: peer.instance_id,
                     name: peerName,
                     ip: peer.ip_private,
-                    site_type: isHubSite(peerName) ? 'HUB' : 'BRANCH',
+                    site_type: isHubSite(peerName, peer.site_type) ? 'HUB' : 'BRANCH',
                     is_local: false,
                     last_seen: peer.last_seen
                 });
@@ -12619,7 +12722,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
 
         // Local probes
         try {
-            const recent = await connectivityLogger.getResults({ limit: 120 });
+            const recent = await connectivityLogger.getResults({ limit: 140 });
             const localByEndpoint = new Map<string, any>();
             if (recent && Array.isArray(recent.results)) {
                 for (const r of recent.results) {
@@ -12636,19 +12739,21 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
             const envProbes = getEnvConnectivityEndpoints();
             const customProbes = getCustomConnectivityEndpoints();
             const discoveredProbes = discoveryManager.getProbes();
-            const allActiveProbes = [...envProbes, ...customProbes, ...discoveredProbes];
+            const autoMeshProbes = getAutoMeshProbes();
+            const allActiveProbes = [...envProbes, ...customProbes, ...discoveredProbes, ...autoMeshProbes];
 
             const localProbesList: Array<any> = [];
             for (const ep of allActiveProbes) {
                 const epKey = ep.name.toLowerCase().replace(/\s+/g, '-');
                 const lastRes = localByEndpoint.get(epKey) || localByEndpoint.get(ep.id);
-                const targetIp = (ep.url || '').replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
+                const targetIp = (ep.url || ep.target || '').replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
                 localProbesList.push({
                     probe_id: ep.id || ep.name,
                     target_name: ep.name,
                     name: ep.name,
-                    target_url: ep.url,
+                    target_url: ep.url || ep.target,
                     target_ip: targetIp,
+                    peer_instance_id: (ep as any).peer_instance_id || '',
                     target_id: (ep as any).peer_instance_id || '',
                     type: (ep.type || 'PING').toUpperCase(),
                     reachable: lastRes ? !!lastRes.reachable : false,
@@ -12666,6 +12771,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
 
         // Peer probes from registry telemetry cache
         for (const peer of rawPeers) {
+            if (!peer) continue;
             const peerProbes = peer.summary?.peer_probes || peer.telemetry?.peer_probes || peer.telemetry?.probes || peer.peer_probes || [];
             if (peerProbes.length > 0) {
                 nodeProbesMap.set(peer.instance_id, peerProbes);
@@ -12699,13 +12805,19 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 let score = 0;
                 let matched = false;
 
-                // Exact IP match
-                if (targetIp && (targetIp === pIp || pUrl.includes(targetIp))) {
-                    score += 100;
+                // 1. Direct Peer ID Match from AutoMesh Fleet
+                if (p.peer_instance_id && targetNode.id && (p.peer_instance_id === targetNode.id || p.peer_instance_id.toLowerCase() === targetNode.id.toLowerCase())) {
+                    score += 150;
                     matched = true;
                 }
 
-                // Site name match (e.g. "dc1" in "DC1 (192.168.201.3)" or "br5" in "UbuntuBR5" or "BR8")
+                // 2. Exact Host IP Match (Stigix Node host-to-host)
+                if (targetIp && (targetIp === pIp || pUrl.includes(targetIp))) {
+                    score += 120;
+                    matched = true;
+                }
+
+                // 3. Site name match (e.g. "dc1" in "DC1 (192.168.201.3)" or "br5" in "UbuntuBR5" or "BR8")
                 if (tKey && (pName === tKey || pName.startsWith(tKey + ' ') || pName.startsWith(tKey + '(') || pName.startsWith(tKey + '-') || pName.includes(' ' + tKey) || pName.includes('(' + tKey) || pName.includes('-' + tKey) || pName === 'ubuntu' + tKey || pName.includes(tKey))) {
                     score += 60;
                     matched = true;
@@ -12734,6 +12846,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
         };
 
         const thresholds = getMatrixThresholds();
+        const topology = thresholds.mesh_topology || 'hub_and_spoke';
 
         // 3. Assemble N x N Matrix Pairs
         const matrixPairs: Array<any> = [];
@@ -12742,6 +12855,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
         let unidirectionalDown = 0;
         let fullOutage = 0;
         let partialTelemetry = 0;
+        let policyExcluded = 0;
 
         for (let i = 0; i < nodes.length; i++) {
             for (let j = 0; j < nodes.length; j++) {
@@ -12753,6 +12867,8 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     !source.id.toLowerCase().includes(siteFilter) && !target.id.toLowerCase().includes(siteFilter)) {
                     continue;
                 }
+
+                const isSpokeToSpoke = topology === 'hub_and_spoke' && !isHubSite(source.name, source.site_type) && !isHubSite(target.name, target.site_type);
 
                 const fwdProbe = findProbeToNode(source.id, target);
                 const revProbe = findProbeToNode(target.id, source);
@@ -12808,10 +12924,14 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 let isAsymmetric = false;
                 let latencyDelta = 0;
                 let lossDelta = 0;
-                let statusStr: 'OPTIMAL' | 'DEGRADED' | 'CRITICAL' | 'PARTIAL' | 'UNKNOWN' = 'UNKNOWN';
+                let statusStr: 'OPTIMAL' | 'DEGRADED' | 'CRITICAL' | 'PARTIAL' | 'POLICY_EXCLUDED' | 'UNKNOWN' = 'UNKNOWN';
                 let reason = '';
 
-                if (fwdData.has_data && revData.has_data) {
+                if (isSpokeToSpoke) {
+                    statusStr = 'POLICY_EXCLUDED';
+                    reason = `Hub & Spoke Policy: Direct Spoke-to-Spoke path (${source.name} ⇄ ${target.name}) is bypassed. Egress routes through Hub.`;
+                    policyExcluded++;
+                } else if (fwdData.has_data && revData.has_data) {
                     latencyDelta = Math.round(Math.abs(fwdData.latency_ms - revData.latency_ms) * 100) / 100;
                     lossDelta = Math.round(Math.abs(fwdData.loss_pct - revData.loss_pct) * 100) / 100;
 
@@ -12896,8 +13016,10 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 matrixPairs.push({
                     source_id: source.id,
                     source_name: source.name,
+                    source_ip: source.ip,
                     target_id: target.id,
                     target_name: target.name,
+                    target_ip: target.ip,
                     forward: fwdData,
                     reverse: revData,
                     asymmetry: {
@@ -12916,13 +13038,15 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
             local_node_id: localId,
             nodes,
             thresholds,
+            topology,
             summary: {
                 total_pairs: matrixPairs.length,
                 healthy_bidirectional: healthyBidirectional,
                 asymmetric_degraded: asymmetricDegraded,
                 unidirectional_down: unidirectionalDown,
                 full_outage: fullOutage,
-                partial_telemetry: partialTelemetry
+                partial_telemetry: partialTelemetry,
+                policy_excluded: policyExcluded
             },
             matrix: matrixPairs
         });
