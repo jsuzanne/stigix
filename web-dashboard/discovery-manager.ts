@@ -152,14 +152,20 @@ export class DiscoveryManager {
                 }
             }
 
-            // Handle stale probes
+            // Handle stale probes: auto-purge obsolete probes if active probes exist for this site
             currentProbes.forEach(existing => {
                 if (!seenKeys.has(existing.discoveryKey)) {
-                    if (!existing.stale) {
-                        existing.stale = true;
-                        result.staleMarked++;
+                    // Check if this site already has active discovered probes in newProbesList
+                    const siteHasActive = newProbesList.some(p => p.site_id === existing.site_id && !p.stale);
+                    if (!siteHasActive) {
+                        if (!existing.stale) {
+                            existing.stale = true;
+                            result.staleMarked++;
+                        }
+                        newProbesList.push(existing);
+                    } else {
+                        log('DISCOVERY', `Purged obsolete superseded probe key ${existing.discoveryKey} (${existing.name}) for ${existing.site_name}`);
                     }
-                    newProbesList.push(existing);
                 }
             });
 

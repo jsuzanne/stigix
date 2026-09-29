@@ -19,8 +19,10 @@ interface MatrixNode {
 interface MatrixPair {
     source_id: string;
     source_name: string;
+    source_ip?: string;
     target_id: string;
     target_name: string;
+    target_ip?: string;
     forward: {
         reachable: boolean;
         latency_ms: number;
@@ -29,6 +31,8 @@ interface MatrixPair {
         score: number;
         last_tested?: number;
         type?: string;
+        source_ip?: string;
+        target_ip?: string;
         target_url?: string;
         has_data: boolean;
     };
@@ -40,6 +44,8 @@ interface MatrixPair {
         score: number;
         last_tested?: number;
         type?: string;
+        source_ip?: string;
+        target_ip?: string;
         target_url?: string;
         has_data: boolean;
     };
@@ -400,13 +406,28 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                         <div className="grid grid-cols-2 gap-4">
                             {/* Forward */}
                             <div className="bg-card-secondary/60 border border-border p-4 rounded-xl space-y-3">
-                                <div className="text-xs font-bold text-blue-400 flex items-center gap-1.5 uppercase tracking-wider">
-                                    <ArrowUpRight size={14} /> Forward Path
+                                <div className="text-xs font-bold text-blue-400 flex items-center justify-between uppercase tracking-wider">
+                                    <div className="flex items-center gap-1.5">
+                                        <ArrowUpRight size={14} /> Forward Path
+                                    </div>
+                                    {selectedPair.forward.type && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 font-mono font-bold">
+                                            {selectedPair.forward.type}
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="text-[11px] text-text-muted font-mono truncate">
                                     {selectedPair.source_name} ➔ {selectedPair.target_name}
                                 </div>
                                 <div className="space-y-1.5 text-xs font-mono">
+                                    <div className="flex justify-between">
+                                        <span className="text-text-muted">Source IP:</span>
+                                        <span className="font-bold text-text-primary">{selectedPair.forward.source_ip || selectedPair.source_ip || '—'}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-text-muted">Destination IP:</span>
+                                        <span className="font-bold text-text-primary">{selectedPair.forward.target_ip || selectedPair.target_ip || '—'}</span>
+                                    </div>
                                     <div className="flex justify-between">
                                         <span className="text-text-muted">Status:</span>
                                         <span className={selectedPair.forward.reachable ? "text-emerald-400 font-bold" : "text-red-400 font-bold"}>
@@ -430,13 +451,28 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
 
                             {/* Return */}
                             <div className="bg-card-secondary/60 border border-border p-4 rounded-xl space-y-3">
-                                <div className="text-xs font-bold text-purple-400 flex items-center gap-1.5 uppercase tracking-wider">
-                                    <ArrowDownLeft size={14} /> Return Path
+                                <div className="text-xs font-bold text-purple-400 flex items-center justify-between uppercase tracking-wider">
+                                    <div className="flex items-center gap-1.5">
+                                        <ArrowDownLeft size={14} /> Return Path
+                                    </div>
+                                    {selectedPair.reverse.type && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 font-mono font-bold">
+                                            {selectedPair.reverse.type}
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="text-[11px] text-text-muted font-mono truncate">
                                     {selectedPair.target_name} ➔ {selectedPair.source_name}
                                 </div>
                                 <div className="space-y-1.5 text-xs font-mono">
+                                    <div className="flex justify-between">
+                                        <span className="text-text-muted">Source IP:</span>
+                                        <span className="font-bold text-text-primary">{selectedPair.reverse.source_ip || selectedPair.target_ip || '—'}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-text-muted">Destination IP:</span>
+                                        <span className="font-bold text-text-primary">{selectedPair.reverse.target_ip || selectedPair.source_ip || '—'}</span>
+                                    </div>
                                     <div className="flex justify-between">
                                         <span className="text-text-muted">Status:</span>
                                         <span className={selectedPair.reverse.has_data ? (selectedPair.reverse.reachable ? "text-emerald-400 font-bold" : "text-red-400 font-bold") : "text-text-muted"}>

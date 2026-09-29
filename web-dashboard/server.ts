@@ -12553,28 +12553,44 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
             nodeProbesMap.set(peer.instance_id, probes);
         }
 
-        // Helper to find probe from node A targeting node B
+        // Helper to find probe from node A targeting node B with robust scoring (IP match > PING type > Name match)
         const findProbeToNode = (sourceId: string, targetNode: { id: string; name: string; ip: string }) => {
             const probes = nodeProbesMap.get(sourceId) || [];
-            return probes.find(p => {
+            if (!probes.length) return undefined;
+
+            const targetIp = (targetNode.ip || '').trim();
+            const tName = targetNode.name.toLowerCase().replace(/[\s\-_]/g, '');
+
+            const scored = probes.map(p => {
+                let score = 0;
+                const pIp = (p.target_ip || '').trim();
+                const pName = (p.target_name || '').toLowerCase().replace(/[\s\-_]/g, '');
+                const pType = (p.type || '').toUpperCase();
+
                 if (typeFilter !== 'ALL') {
                     if (typeFilter === 'PRISMA SDWAN' || typeFilter === 'PRISMA') {
-                        if (p.type !== 'PRISMA' && p.type !== 'PRISMA SDWAN' && !p.target_name.toLowerCase().includes('prisma')) return false;
-                    } else if (p.type !== typeFilter) {
-                        return false;
+                        if (pType !== 'PRISMA' && pType !== 'PRISMA SDWAN' && !pName.includes('prisma')) return { probe: p, score: -1 };
+                    } else if (pType !== typeFilter) {
+                        return { probe: p, score: -1 };
                     }
                 }
-                const targetIp = (targetNode.ip || '').trim();
-                const pIp = (p.target_ip || '').trim();
-                if (targetIp && pIp && targetIp === pIp) return true;
-                if (targetIp && p.target_url && p.target_url.includes(targetIp)) return true;
-                
-                const tName = targetNode.name.toLowerCase();
-                const pName = p.target_name.toLowerCase();
-                if (pName.includes(tName) || tName.includes(pName)) return true;
-                if (p.target_id.toLowerCase().includes(targetNode.id.toLowerCase())) return true;
-                return false;
-            });
+
+                // Exact IP match is highest priority
+                if (targetIp && pIp && targetIp === pIp) score += 100;
+                else if (targetIp && p.target_url && p.target_url.includes(targetIp)) score += 90;
+
+                // Strongly prefer ICMP/PING probe for inter-site reachability
+                if (pType === 'PING' || pType === 'ICMP') score += 30;
+
+                // Name matches
+                if (tName && pName && (pName === tName || pName.includes(tName) || tName.includes(pName))) score += 40;
+                if (p.target_id && targetNode.id && p.target_id.toLowerCase().includes(targetNode.id.toLowerCase())) score += 20;
+
+                return { probe: p, score };
+            }).filter(item => item.score > 0);
+
+            scored.sort((a, b) => b.score - a.score);
+            return scored.length > 0 ? scored[0].probe : undefined;
         };
 
         // 3. Assemble N x N Matrix Pairs
@@ -12606,6 +12622,8 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     score: Math.round((fwdProbe.score ?? 0) * 100) / 100,
                     last_tested: fwdProbe.last_tested,
                     type: fwdProbe.type,
+                    source_ip: source.ip || '',
+                    target_ip: fwdProbe.target_ip || target.ip || '',
                     target_url: fwdProbe.target_url,
                     has_data: true
                 } : {
@@ -12614,6 +12632,9 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     jitter_ms: 0,
                     loss_pct: 100,
                     score: 0,
+                    type: 'PING',
+                    source_ip: source.ip || '',
+                    target_ip: target.ip || '',
                     has_data: false
                 };
 
@@ -12625,6 +12646,8 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     score: Math.round((revProbe.score ?? 0) * 100) / 100,
                     last_tested: revProbe.last_tested,
                     type: revProbe.type,
+                    source_ip: target.ip || '',
+                    target_ip: revProbe.target_ip || source.ip || '',
                     target_url: revProbe.target_url,
                     has_data: true
                 } : {
@@ -12633,6 +12656,9 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     jitter_ms: 0,
                     loss_pct: 100,
                     score: 0,
+                    type: 'PING',
+                    source_ip: target.ip || '',
+                    target_ip: source.ip || '',
                     has_data: false
                 };
 
