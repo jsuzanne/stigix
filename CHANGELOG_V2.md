@@ -14,7 +14,7 @@ All notable changes made specifically on the `v2` branch are documented in this 
   - Extended `registryManager.setTelemetryProvider` with `peer_probes` array to bundle latest probe results into node heartbeats.
   - Implemented `GET /api/fleet/matrix` endpoint supporting filtering by probe type (`ALL`, `PRISMA SDWAN`, `PING`, `HTTP`, `TCP`), site filter, and `asymmetry_only=true`.
   - Auto-discovery of remote target sites from synthetic probes when running in standalone mode.
-- **PRD Documentation (`docs/PRD_BIDIRECTIONAL_SDWAN_MATRIX.md`)**:
+- **PRD Documentation (`PRD/PRD_BIDIRECTIONAL_SDWAN_MATRIX.md`)**:
   - Full architectural specifications, data model, and roadmap for bidirectional cross-instance SD-WAN reachability validation.
 
 ---
