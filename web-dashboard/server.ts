@@ -12535,7 +12535,9 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
         }
 
         // 1. Gather all active nodes (Self + Peers)
-        const rawPeers = typeof registryManager?.getPeers === 'function' ? registryManager.getPeers() : [];
+        const rawPeers = (isLeader && typeof localRegistryServer?.getInstances === 'function')
+            ? localRegistryServer.getInstances()
+            : (typeof registryManager?.getPeers === 'function' ? registryManager.getPeers() : []);
         const isHubSite = (name: string) => name.toLowerCase().includes('dc') || name.toLowerCase().includes('hub') || name.toLowerCase().includes('core');
 
         const nodes: Array<{ id: string; name: string; ip: string; site_type: 'HUB' | 'BRANCH' | 'CLOUD'; is_local: boolean; last_seen?: string }> = [
@@ -12575,25 +12577,36 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     if (!localByEndpoint.has(r.endpointId)) {
                         localByEndpoint.set(r.endpointId, r);
                     }
+                    const nameKey = (r.endpointName || '').toLowerCase().replace(/\s+/g, '-');
+                    if (nameKey && !localByEndpoint.has(nameKey)) {
+                        localByEndpoint.set(nameKey, r);
+                    }
                 }
             }
 
-            const activeProbes = connectivityLogger.getEndpoints() || [];
+            const envProbes = getEnvConnectivityEndpoints();
+            const customProbes = getCustomConnectivityEndpoints();
+            const discoveredProbes = discoveryManager.getProbes();
+            const allActiveProbes = [...envProbes, ...customProbes, ...discoveredProbes];
+
             const localProbesList: Array<any> = [];
-            for (const ep of activeProbes) {
-                const lastRes = localByEndpoint.get(ep.id);
+            for (const ep of allActiveProbes) {
+                const epKey = ep.name.toLowerCase().replace(/\s+/g, '-');
+                const lastRes = localByEndpoint.get(epKey) || localByEndpoint.get(ep.id);
+                const targetIp = (ep.url || '').replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
                 localProbesList.push({
-                    probe_id: ep.id,
+                    probe_id: ep.id || ep.name,
+                    target_name: ep.name,
                     name: ep.name,
                     target_url: ep.url,
-                    target_ip: ep.url ? ep.url.replace(/^https?:\/\//, '').split(':')[0] : '',
+                    target_ip: targetIp,
                     target_id: (ep as any).peer_instance_id || '',
-                    type: ep.type || 'PING',
-                    reachable: lastRes ? (lastRes.status === 'UP' || lastRes.status === 'optimal' || lastRes.status === 'healthy') : false,
-                    latency_ms: lastRes?.latencyMs ?? 0,
-                    jitter_ms: lastRes?.jitterMs ?? 0,
-                    loss_pct: lastRes?.packetLoss ?? (lastRes?.status === 'DOWN' ? 100 : 0),
-                    score: lastRes?.score ?? 100,
+                    type: (ep.type || 'PING').toUpperCase(),
+                    reachable: lastRes ? !!lastRes.reachable : false,
+                    latency_ms: Math.round((lastRes?.metrics?.total_ms ?? lastRes?.latencyMs ?? 0) * 100) / 100,
+                    jitter_ms: Math.round((lastRes?.metrics?.jitter_ms ?? lastRes?.jitterMs ?? 0) * 100) / 100,
+                    loss_pct: Math.round((lastRes?.metrics?.loss_pct ?? (lastRes?.reachable ? 0 : 100)) * 100) / 100,
+                    score: Math.round((lastRes?.score ?? 100) * 100) / 100,
                     last_tested: lastRes?.timestamp ? new Date(lastRes.timestamp).toISOString() : new Date().toISOString()
                 });
             }
@@ -12604,23 +12617,27 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
 
         // Peer probes from registry telemetry cache
         for (const peer of rawPeers) {
-            const peerProbes = peer.telemetry?.probes || [];
+            const peerProbes = peer.summary?.peer_probes || peer.telemetry?.peer_probes || peer.telemetry?.probes || peer.peer_probes || [];
             if (peerProbes.length > 0) {
                 nodeProbesMap.set(peer.instance_id, peerProbes);
             }
         }
+
+        const cleanSite = (name: string) => name.toLowerCase().replace(/[-_]?(ubuntu|node|linux|srv|core|hub).*$/, '').trim();
 
         const findProbeToNode = (fromNodeId: string, targetNode: { id: string; name: string; ip: string }) => {
             const probes = nodeProbesMap.get(fromNodeId) || [];
             if (!probes.length) return undefined;
 
             const targetIp = (targetNode.ip || '').trim();
-            const tName = (targetNode.name || '').trim().toLowerCase();
+            const tKey = cleanSite(targetNode.name);
+            const tId = targetNode.id ? cleanSite(targetNode.id) : '';
 
             // Score candidate probes
             const scored = probes.map((p: any) => {
                 const pIp = (p.target_ip || '').trim();
-                const pName = (p.name || '').trim().toLowerCase();
+                const pUrl = (p.target_url || '').trim();
+                const pName = (p.target_name || p.name || '').trim().toLowerCase();
                 const pType = (p.type || 'PING').toUpperCase();
 
                 // Strictly enforce ICMP / PING probe types for SD-WAN reachability matrix
@@ -12631,13 +12648,31 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 }
 
                 let score = 0;
-                // Exact IP match
-                if (targetIp && pIp && targetIp === pIp) score += 100;
-                else if (targetIp && p.target_url && p.target_url.includes(targetIp)) score += 90;
+                let matched = false;
 
-                // Name matches (e.g. "DC1" or "DC1 (192.168.201.3)")
-                if (tName && pName && (pName === tName || pName.includes(tName) || tName.includes(pName))) score += 50;
-                if (p.target_id && targetNode.id && p.target_id.toLowerCase().includes(targetNode.id.toLowerCase())) score += 30;
+                // Exact IP match
+                if (targetIp && (targetIp === pIp || pUrl.includes(targetIp))) {
+                    score += 100;
+                    matched = true;
+                }
+
+                // Site name match (e.g. "dc1" in "DC1 (192.168.201.3)" or "br5" in "UbuntuBR5" or "BR8")
+                if (tKey && (pName === tKey || pName.startsWith(tKey + ' ') || pName.startsWith(tKey + '(') || pName.startsWith(tKey + '-') || pName.includes(' ' + tKey) || pName.includes('(' + tKey) || pName.includes('-' + tKey) || pName === 'ubuntu' + tKey || pName.includes(tKey))) {
+                    score += 60;
+                    matched = true;
+                }
+
+                if (tId && pName.includes(tId)) {
+                    score += 40;
+                    matched = true;
+                }
+
+                if (p.target_id && targetNode.id && p.target_id.toLowerCase().includes(tId)) {
+                    score += 30;
+                    matched = true;
+                }
+
+                if (!matched) return { probe: p, score: -1 };
 
                 // Prefer reachable probes
                 if (p.reachable) score += 10;
@@ -12777,24 +12812,31 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     latencyDelta = 0;
                     lossDelta = 0;
                     if (fwdData.reachable) {
-                        statusStr = 'OPTIMAL';
-                        reason = `Forward Egress UP (Awaiting return telemetry from ${target.name})`;
-                        healthyBidirectional++;
+                        const isDegraded = fwdData.latency_ms >= thresholds.latency_warning_ms || fwdData.loss_pct >= thresholds.loss_warning_pct;
+                        statusStr = isDegraded ? 'DEGRADED' : 'OPTIMAL';
+                        reason = isDegraded ? `Forward Path Latency High (${fwdData.latency_ms}ms)` : `Forward Path UP (Return telemetry pending from ${target.name})`;
+                        if (isDegraded) asymmetricDegraded++; else healthyBidirectional++;
                     } else {
                         statusStr = 'CRITICAL';
-                        reason = `Forward Egress DOWN (${source.name} ➔ ${target.name})`;
-                        fullOutage++;
+                        reason = `Forward Path DOWN (${source.name} ➔ ${target.name})`;
+                        unidirectionalDown++;
                     }
                 } else if (!fwdData.has_data && revData.has_data) {
+                    latencyDelta = 0;
+                    lossDelta = 0;
                     if (revData.reachable) {
-                        statusStr = 'OPTIMAL';
-                        reason = `Return Ingress UP (${target.name} ➔ ${source.name})`;
-                        healthyBidirectional++;
+                        const isDegraded = revData.latency_ms >= thresholds.latency_warning_ms || revData.loss_pct >= thresholds.loss_warning_pct;
+                        statusStr = isDegraded ? 'DEGRADED' : 'OPTIMAL';
+                        reason = isDegraded ? `Return Path Latency High (${revData.latency_ms}ms)` : `Return Path UP (${target.name} ➔ ${source.name})`;
+                        if (isDegraded) asymmetricDegraded++; else healthyBidirectional++;
                     } else {
                         statusStr = 'CRITICAL';
-                        reason = `Return Ingress DOWN (${target.name} ➔ ${source.name})`;
-                        fullOutage++;
+                        reason = `Return Path DOWN (${target.name} ➔ ${source.name})`;
+                        unidirectionalDown++;
                     }
+                } else {
+                    statusStr = 'UNKNOWN';
+                    reason = 'No active telemetry probe between these sites';
                 }
 
                 if (asymmetryOnly && !isAsymmetric) {

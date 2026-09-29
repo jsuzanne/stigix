@@ -476,9 +476,10 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                             const isOpt = asymmetry.status === 'OPTIMAL';
                                             const isDeg = asymmetry.status === 'DEGRADED';
                                             const isCrit = asymmetry.status === 'CRITICAL';
+                                            const isUnknown = asymmetry.status === 'UNKNOWN' || (!forward.has_data && !reverse.has_data);
 
                                             const maxLatency = Math.max(
-                                                forward.reachable ? forward.latency_ms : 0,
+                                                forward.has_data && forward.reachable ? forward.latency_ms : 0,
                                                 reverse.has_data && reverse.reachable ? reverse.latency_ms : 0
                                             );
 
@@ -491,7 +492,9 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                 ? "bg-emerald-950/20 hover:bg-emerald-900/35 border-emerald-500/30 text-emerald-300"
                                                 : isDeg 
                                                 ? "bg-amber-950/25 hover:bg-amber-900/40 border-amber-500/35 text-amber-300"
-                                                : "bg-red-950/30 hover:bg-red-900/45 border-red-500/40 text-red-300";
+                                                : isCrit
+                                                ? "bg-red-950/30 hover:bg-red-900/45 border-red-500/40 text-red-300"
+                                                : "bg-card-secondary/20 hover:bg-card-secondary/40 border-border/40 text-text-muted";
 
                                             return (
                                                 <td
@@ -509,8 +512,8 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                             <span className="flex items-center gap-0.5 text-text-muted text-[10px]">
                                                                 <ArrowUpRight size={11} className="text-blue-400" /> Fwd:
                                                             </span>
-                                                            <span className={forward.reachable ? (isOpt ? "font-bold text-emerald-300" : isDeg ? "font-bold text-amber-300" : "font-black text-red-400") : "font-black text-red-400"}>
-                                                                {forward.reachable ? `${formatNum(forward.latency_ms)}ms` : 'DOWN'}
+                                                            <span className={forward.has_data ? (forward.reachable ? (isOpt ? "font-bold text-emerald-300" : isDeg ? "font-bold text-amber-300" : "font-black text-red-400") : "font-black text-red-400") : "text-text-muted text-[10px]"}>
+                                                                {forward.has_data ? (forward.reachable ? `${formatNum(forward.latency_ms)}ms` : 'DOWN') : 'Pending'}
                                                             </span>
                                                         </div>
 
@@ -519,7 +522,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                             <span className="flex items-center gap-0.5 text-text-muted text-[10px]">
                                                                 <ArrowDownLeft size={11} className="text-purple-400" /> Rev:
                                                             </span>
-                                                            <span className={reverse.reachable ? (isOpt ? "font-bold text-emerald-300" : isDeg ? "font-bold text-amber-300" : "font-black text-red-400") : "font-black text-red-400"}>
+                                                            <span className={reverse.has_data ? (reverse.reachable ? (isOpt ? "font-bold text-emerald-300" : isDeg ? "font-bold text-amber-300" : "font-black text-red-400") : "font-black text-red-400") : "text-text-muted text-[10px]"}>
                                                                 {reverse.has_data ? (reverse.reachable ? `${formatNum(reverse.latency_ms)}ms` : 'DOWN') : 'Pending'}
                                                             </span>
                                                         </div>
@@ -532,12 +535,17 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                         )}
                                                         {isDeg && (
                                                             <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 truncate">
-                                                                Δ {formatNum(asymmetry.latency_delta_ms)}ms
+                                                                {asymmetry.latency_delta_ms > 0 ? `Δ ${formatNum(asymmetry.latency_delta_ms)}ms` : 'Degraded'}
                                                             </div>
                                                         )}
                                                         {isCrit && (
                                                             <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-300 border border-red-500/30 truncate">
                                                                 {asymmetry.reason?.includes('DOWN') ? 'Path Down' : 'Critical'}
+                                                            </div>
+                                                        )}
+                                                        {isUnknown && (
+                                                            <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-card-secondary text-text-muted border border-border/40 truncate">
+                                                                Pending
                                                             </div>
                                                         )}
                                                     </div>
