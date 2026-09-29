@@ -446,6 +446,7 @@ export class TcpClientRuntime extends EventEmitter {
 
         session.state.state = 'connecting';
         session.handshakeCompleted = false;
+        session.parser.removeAllListeners();
         session.parser.reset();
 
         const socket = new net.Socket();

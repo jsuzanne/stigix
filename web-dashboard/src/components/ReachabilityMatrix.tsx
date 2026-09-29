@@ -66,7 +66,7 @@ interface MatrixData {
     matrix: MatrixPair[];
 }
 
-export function ReachabilityMatrix({ token: _token }: { token?: string }) {
+export function ReachabilityMatrix({ token }: { token?: string }) {
     const { gFetch, activePeer } = usePeerContext();
     const [data, setData] = useState<MatrixData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -75,6 +75,11 @@ export function ReachabilityMatrix({ token: _token }: { token?: string }) {
     const [selectedType, setSelectedType] = useState('ALL');
     const [selectedPair, setSelectedPair] = useState<MatrixPair | null>(null);
 
+    const authHeaders = useCallback((): Record<string, string> => {
+        const t = token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
+        return t ? { Authorization: `Bearer ${t}` } : {};
+    }, [token]);
+
     const fetchMatrix = useCallback(async () => {
         try {
             setLoading(true);
@@ -82,7 +87,9 @@ export function ReachabilityMatrix({ token: _token }: { token?: string }) {
             if (selectedType !== 'ALL') params.set('type', selectedType);
             if (asymmetryOnly) params.set('asymmetry_only', 'true');
 
-            const res = await gFetch(`/api/fleet/matrix?${params.toString()}`);
+            const res = await gFetch(`/api/fleet/matrix?${params.toString()}`, {
+                headers: authHeaders()
+            });
             if (!res.ok) {
                 throw new Error(`Failed to load matrix (HTTP ${res.status})`);
             }
@@ -94,7 +101,7 @@ export function ReachabilityMatrix({ token: _token }: { token?: string }) {
         } finally {
             setLoading(false);
         }
-    }, [gFetch, selectedType, asymmetryOnly]);
+    }, [gFetch, selectedType, asymmetryOnly, authHeaders]);
 
     useEffect(() => {
         fetchMatrix();
@@ -227,10 +234,10 @@ export function ReachabilityMatrix({ token: _token }: { token?: string }) {
                     <div>
                         <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
                             <Grid size={16} className="text-blue-500" />
-                            Full-Mesh Bidirectional Reachability Grid ($N \times N$)
+                            Full-Mesh Bidirectional Reachability Grid (N × N)
                         </h3>
                         <p className="text-xs text-text-muted mt-0.5">
-                            Cross-correlating forward egress SLA ($A \to B$) with return ingress telemetry ($B \to A$) across all SD-WAN endpoints.
+                            Cross-correlating forward egress SLA (A → B) with return ingress telemetry (B → A) across all SD-WAN endpoints.
                         </p>
                     </div>
                     {data?.timestamp && (
