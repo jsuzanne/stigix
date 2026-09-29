@@ -12471,11 +12471,54 @@ function getMatrixThresholds(): MatrixThresholds {
     return DEFAULT_MATRIX_THRESHOLDS;
 }
 
-app.get('/api/fleet/matrix/thresholds', authenticateToken, (req, res) => {
+app.get('/api/fleet/matrix/thresholds', authenticateToken, async (req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' ? registryManager.isLeader() : false;
+    const status = registryManager.getStatus();
+    let leaderHost = status?.leader_info?.ip;
+    if (!leaderHost && status?.registry_url) {
+        try {
+            const u = new URL(status.registry_url);
+            if (u.hostname && u.hostname !== 'registry.stigix.io') leaderHost = u.hostname;
+        } catch {}
+    }
+    if (!isLeader && leaderHost && leaderHost !== '127.0.0.1') {
+        try {
+            const internalToken = jwt.sign({ username: 'system-proxy' }, process.env.JWT_SECRET || 'stigix-secret-key-12345', { expiresIn: '1h' });
+            const leaderRes = await fetch(`http://${leaderHost}:8080/api/fleet/matrix/thresholds`, {
+                headers: { 'Authorization': `Bearer ${internalToken}` },
+                signal: AbortSignal.timeout(3000)
+            });
+            if (leaderRes.ok) return res.json(await leaderRes.json());
+        } catch {}
+    }
     res.json(getMatrixThresholds());
 });
 
-app.post('/api/fleet/matrix/thresholds', authenticateToken, (req, res) => {
+app.post('/api/fleet/matrix/thresholds', authenticateToken, async (req, res) => {
+    const isLeader = typeof registryManager?.isLeader === 'function' ? registryManager.isLeader() : false;
+    const status = registryManager.getStatus();
+    let leaderHost = status?.leader_info?.ip;
+    if (!leaderHost && status?.registry_url) {
+        try {
+            const u = new URL(status.registry_url);
+            if (u.hostname && u.hostname !== 'registry.stigix.io') leaderHost = u.hostname;
+        } catch {}
+    }
+    if (!isLeader && leaderHost && leaderHost !== '127.0.0.1') {
+        try {
+            const internalToken = jwt.sign({ username: 'system-proxy' }, process.env.JWT_SECRET || 'stigix-secret-key-12345', { expiresIn: '1h' });
+            const leaderRes = await fetch(`http://${leaderHost}:8080/api/fleet/matrix/thresholds`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${internalToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(req.body),
+                signal: AbortSignal.timeout(3000)
+            });
+            if (leaderRes.ok) return res.json(await leaderRes.json());
+        } catch {}
+    }
     const updated = { ...DEFAULT_MATRIX_THRESHOLDS, ...req.body };
     fs.writeFileSync(MATRIX_THRESHOLDS_FILE, JSON.stringify(updated, null, 2));
     log('REGISTRY', `Updated SD-WAN reachability matrix thresholds: ${JSON.stringify(updated)}`);
@@ -12511,9 +12554,10 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 try {
                     const queryString = req.url.includes('?') ? '?' + req.url.split('?')[1] : '';
                     const leaderUrl = `http://${leaderHost}:8080/api/fleet/matrix${queryString}`;
+                    const internalToken = jwt.sign({ username: 'system-proxy' }, process.env.JWT_SECRET || 'stigix-secret-key-12345', { expiresIn: '1h' });
                     const leaderRes = await fetch(leaderUrl, {
                         headers: {
-                            'Authorization': (req.headers['authorization'] as string) || ''
+                            'Authorization': `Bearer ${internalToken}`
                         },
                         signal: AbortSignal.timeout(4000)
                     });
