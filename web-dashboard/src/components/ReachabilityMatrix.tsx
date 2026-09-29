@@ -763,7 +763,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
             {/* Detailed Inspection Modal */}
             {selectedPair && (
                 <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-card border border-border rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-6">
+                    <div className="bg-card border border-border rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
                         <div className="flex items-center justify-between border-b border-border pb-4">
                             <div className="flex items-center gap-2">
                                 <ArrowRightLeft className="text-blue-500" size={20} />
@@ -820,14 +820,18 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                 <div className="text-[11px] text-text-muted font-mono truncate">
                                     {selectedPair.source_name} ➔ {selectedPair.target_name}
                                 </div>
-                                <div className="space-y-1.5 text-xs font-mono">
+                                <div className="space-y-2 text-xs font-mono">
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-text-muted whitespace-nowrap">Source Node:</span>
-                                        <span className="font-bold text-text-primary text-right">{selectedPair.source_name} ({selectedPair.forward.source_ip || selectedPair.source_ip || '—'})</span>
+                                        <span className="font-bold text-text-primary text-right">{selectedPair.source_name}</span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className="text-text-muted whitespace-nowrap">SD-WAN Target:</span>
-                                        <span className="font-bold text-text-primary text-right">{selectedPair.forward.target_ip || selectedPair.target_ip || '—'}</span>
+                                        <span className="text-text-muted whitespace-nowrap">Node Host IP:</span>
+                                        <span className="font-mono text-text-secondary text-right">{selectedPair.forward.source_ip || selectedPair.source_ip || '—'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">SD-WAN Probed IP:</span>
+                                        <span className="font-bold font-mono text-blue-400 text-right">{selectedPair.forward.target_ip || selectedPair.target_ip || '—'}</span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-text-muted whitespace-nowrap">Status:</span>
@@ -865,14 +869,18 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                 <div className="text-[11px] text-text-muted font-mono truncate">
                                     {selectedPair.target_name} ➔ {selectedPair.source_name}
                                 </div>
-                                <div className="space-y-1.5 text-xs font-mono">
+                                <div className="space-y-2 text-xs font-mono">
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-text-muted whitespace-nowrap">Source Node:</span>
-                                        <span className="font-bold text-text-primary text-right">{selectedPair.target_name} ({selectedPair.reverse.source_ip || selectedPair.target_ip || '—'})</span>
+                                        <span className="font-bold text-text-primary text-right">{selectedPair.target_name}</span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className="text-text-muted whitespace-nowrap">SD-WAN Target:</span>
-                                        <span className="font-bold text-text-primary text-right">{selectedPair.reverse.has_data ? (selectedPair.reverse.target_ip || selectedPair.source_ip || '—') : '— (No probe)'}</span>
+                                        <span className="text-text-muted whitespace-nowrap">Node Host IP:</span>
+                                        <span className="font-mono text-text-secondary text-right">{selectedPair.reverse.source_ip || selectedPair.target_ip || '—'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">SD-WAN Probed IP:</span>
+                                        <span className="font-bold font-mono text-purple-400 text-right">{selectedPair.reverse.has_data ? (selectedPair.reverse.target_ip || selectedPair.source_ip || '—') : '— (No probe)'}</span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-text-muted whitespace-nowrap">Status:</span>

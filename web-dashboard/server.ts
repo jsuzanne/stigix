@@ -13195,17 +13195,36 @@ app.post('/api/fleet/matrix/flow-trace', authenticateToken, async (req, res) => 
         }));
 
         const isFailover = (fwdHistory.length > 1) || (revHistory.length > 1) || (fwdFlow?.is_failover) || (revFlow?.is_failover);
-        const isAsymmetric = fwdEgress.toLowerCase().split(' ')[0] !== revEgress.toLowerCase().split(' ')[0];
+
+        const extractCircuitType = (pathStr: string) => {
+            const upper = (pathStr || '').toUpperCase();
+            if (upper.includes('MPLS')) return 'MPLS';
+            if (upper.includes('INET') || upper.includes('INTERNET') || upper.includes('BROADBAND')) return 'INET';
+            if (upper.includes('LTE') || upper.includes('CELLULAR') || upper.includes('5G')) return 'LTE';
+            return 'FABRIC';
+        };
+
+        const fwdCircuitType = extractCircuitType(fwdEgress);
+        const revCircuitType = extractCircuitType(revEgress);
+        const isAsymmetric = fwdCircuitType !== revCircuitType;
 
         let summaryText = 'Normal symmetric WAN routing across primary fabric.';
         let recommendation = 'No action required. WAN circuit performance is optimal.';
 
-        if (isFailover) {
+        if (srcIsDc && tgtIsDc) {
+            summaryText = 'Core Datacenter Interconnect: DC-to-DC links route via core fabric / direct WAN circuits without Branch path policy inspection.';
+            recommendation = 'Path policies and flow telemetry in Prisma SD-WAN are only enforced on Branch sites.';
+        } else if (isFailover) {
             summaryText = `WAN Failover Event Detected on ${srcSite} ⇄ ${tgtSite}. Traffic transitioned across active circuits.`;
             recommendation = 'Check Prisma SD-WAN Event Log to inspect circuit flaps or SLA breach triggers.';
         } else if (isAsymmetric) {
-            summaryText = `Asymmetric WAN Routing: Forward path uses [${fwdEgress}] while Return path routes via [${revEgress}].`;
+            summaryText = `Asymmetric WAN Routing: Forward path uses [${fwdEgress}] (${fwdCircuitType}) while Return path routes via [${revEgress}] (${revCircuitType}).`;
             recommendation = 'Verify SD-WAN Path Policy priorities to ensure symmetric circuit preference.';
+        } else if (srcIsDc || tgtIsDc) {
+            const branchSite = srcIsDc ? tgtSite : srcSite;
+            const dcSite = srcIsDc ? srcSite : tgtSite;
+            summaryText = `Symmetric Datacenter Routing: Session on Branch [${branchSite}] forwards on [${fwdEgress}], and Datacenter [${dcSite}] returns symmetrically over the established SD-WAN fabric path [${revEgress}].`;
+            recommendation = 'No action required. SD-WAN session routing is symmetric and optimal.';
         }
 
         res.json({
