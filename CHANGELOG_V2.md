@@ -2,6 +2,13 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.103] - 2026-09-29 — UX: Hub WAN & LAN SVG Math Alignment
+
+### Fixed
+- **Hub WAN Circuit & LAN Wiring Coordinates (`Topology.tsx`)**:
+  - Corrected SVG path geometry for Hub nodes where WAN ports at the bottom of the router card (`Y=338`) connect directly to Circuit Blocks (`Y=380`) below the Hub container.
+  - Aligned Hub LAN top wiring from the shared LAN subnets (`Y=70`) to router Port 3 (`Y=98`).
+
 ## [v2.0.102] - 2026-09-29 — UX: Refined LAN Wiring Bus & Port Label Layout
 
 ### Fixed

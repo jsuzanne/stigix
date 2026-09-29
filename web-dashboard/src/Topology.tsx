@@ -470,8 +470,8 @@ const SiteNode = ({ data }: any) => {
                                         <path
                                             key={wan.name}
                                             d={isHub
-                                                ? `M ${portX} 410 L ${blockX} 510` // Hub: Bottom Port down to Circuit
-                                                : `M ${portX} 48 L ${blockX} -24`  // Spoke: Top Port up to Circuit
+                                                ? `M ${portX} 338 L ${blockX} 380` // Hub: Bottom Port down to Circuit Block
+                                                : `M ${portX} 18 L ${blockX} -20`  // Spoke: Top Port up to Circuit Block
                                             }
                                             stroke={isMpls ? "rgba(168, 85, 247, 0.4)" : "rgba(59, 130, 246, 0.4)"}
                                             strokeWidth="2.5"
@@ -484,11 +484,11 @@ const SiteNode = ({ data }: any) => {
 
                                 {/* LAN Wiring */}
                                 {isHub ? (
-                                    // Hub: Shared LAN Block (top Y=160) down to LAN Port 3 (Y=195)
+                                    // Hub: Shared LAN Block (top Y=70) down to LAN Port 3 (Y=98)
                                     <path
                                         d={deviceCount === 1
-                                            ? `M 0 160 L 0 195`
-                                            : `M 0 160 L 0 175 M 0 175 L ${devX} 175 L ${devX} 195`
+                                            ? `M 0 70 L 0 98`
+                                            : `M 0 70 L 0 84 M 0 84 L ${devX} 84 L ${devX} 98`
                                         }
                                         stroke="rgba(34, 197, 94, 0.45)"
                                         strokeWidth="2"
@@ -498,11 +498,11 @@ const SiteNode = ({ data }: any) => {
                                         strokeDasharray="4 4"
                                     />
                                 ) : (
-                                    // Spoke: LAN Port 3 (Y=242) down to Shared LAN Box (Y=268)
+                                    // Spoke: LAN Port 3 (Y=248) down to Shared LAN Box (Y=274)
                                     <path
                                         d={deviceCount === 1
-                                            ? `M 0 242 L 0 268`
-                                            : `M ${devX} 242 L ${devX} 256 L 0 256 M 0 256 L 0 268`
+                                            ? `M 0 248 L 0 274`
+                                            : `M ${devX} 248 L ${devX} 262 L 0 262 M 0 262 L 0 274`
                                         }
                                         stroke="rgba(34, 197, 94, 0.45)"
                                         strokeWidth="2"
