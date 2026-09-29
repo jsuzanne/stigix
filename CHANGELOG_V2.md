@@ -2,6 +2,14 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.95] - 2026-09-29 — UX: Refined matrix status classifications and explicit probe target labeling
+
+### Changed
+- **Reachability Matrix Status Precision (`ReachabilityMatrix.tsx` & `server.ts`)**:
+  - Reclassified unidirectional active paths where return telemetry is pending/unconfigured as **`PARTIAL` / `One-Way`** (neutral sky-blue badge) instead of false `OPTIMAL` green, preserving `OPTIMAL` strictly for validated bidirectional symmetry.
+  - Added `One-Way` status filter chip showing pairs with partial telemetry.
+  - Clarified grid headers and detail modal with explicit labels: `Node: <IP>` (Stigix management container IP) vs. `SD-WAN Target: <IP>` (actual probed destination target).
+
 ## [v2-dev] - 2026-09-29 — Feature: Bidirectional Cross-Instance SD-WAN Reachability Matrix
 
 ### Added

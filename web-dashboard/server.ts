@@ -12736,6 +12736,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
         let asymmetricDegraded = 0;
         let unidirectionalDown = 0;
         let fullOutage = 0;
+        let partialTelemetry = 0;
 
         for (let i = 0; i < nodes.length; i++) {
             for (let j = 0; j < nodes.length; j++) {
@@ -12802,7 +12803,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 let isAsymmetric = false;
                 let latencyDelta = 0;
                 let lossDelta = 0;
-                let statusStr: 'OPTIMAL' | 'DEGRADED' | 'CRITICAL' | 'UNKNOWN' = 'UNKNOWN';
+                let statusStr: 'OPTIMAL' | 'DEGRADED' | 'CRITICAL' | 'PARTIAL' | 'UNKNOWN' = 'UNKNOWN';
                 let reason = '';
 
                 if (fwdData.has_data && revData.has_data) {
@@ -12857,9 +12858,9 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     lossDelta = 0;
                     if (fwdData.reachable) {
                         const isDegraded = fwdData.latency_ms >= thresholds.latency_warning_ms || fwdData.loss_pct >= thresholds.loss_warning_pct;
-                        statusStr = isDegraded ? 'DEGRADED' : 'OPTIMAL';
-                        reason = isDegraded ? `Forward Path Latency High (${fwdData.latency_ms}ms)` : `Forward Path UP (Return telemetry pending from ${target.name})`;
-                        if (isDegraded) asymmetricDegraded++; else healthyBidirectional++;
+                        statusStr = isDegraded ? 'DEGRADED' : 'PARTIAL';
+                        reason = isDegraded ? `Forward Path Latency High (${fwdData.latency_ms}ms)` : `Forward Path UP (Return telemetry unconfigured from ${target.name})`;
+                        if (isDegraded) asymmetricDegraded++; else partialTelemetry++;
                     } else {
                         statusStr = 'CRITICAL';
                         reason = `Forward Path DOWN (${source.name} ➔ ${target.name})`;
@@ -12870,9 +12871,9 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     lossDelta = 0;
                     if (revData.reachable) {
                         const isDegraded = revData.latency_ms >= thresholds.latency_warning_ms || revData.loss_pct >= thresholds.loss_warning_pct;
-                        statusStr = isDegraded ? 'DEGRADED' : 'OPTIMAL';
+                        statusStr = isDegraded ? 'DEGRADED' : 'PARTIAL';
                         reason = isDegraded ? `Return Path Latency High (${revData.latency_ms}ms)` : `Return Path UP (${target.name} ➔ ${source.name})`;
-                        if (isDegraded) asymmetricDegraded++; else healthyBidirectional++;
+                        if (isDegraded) asymmetricDegraded++; else partialTelemetry++;
                     } else {
                         statusStr = 'CRITICAL';
                         reason = `Return Path DOWN (${target.name} ➔ ${source.name})`;
@@ -12915,7 +12916,8 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 healthy_bidirectional: healthyBidirectional,
                 asymmetric_degraded: asymmetricDegraded,
                 unidirectional_down: unidirectionalDown,
-                full_outage: fullOutage
+                full_outage: fullOutage,
+                partial_telemetry: partialTelemetry
             },
             matrix: matrixPairs
         });

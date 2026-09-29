@@ -54,7 +54,7 @@ interface MatrixPair {
         latency_delta_ms: number;
         loss_delta_pct: number;
         reason?: string;
-        status: 'OPTIMAL' | 'DEGRADED' | 'CRITICAL' | 'UNKNOWN';
+        status: 'OPTIMAL' | 'DEGRADED' | 'CRITICAL' | 'PARTIAL' | 'UNKNOWN';
     };
 }
 
@@ -80,6 +80,7 @@ interface MatrixData {
         asymmetric_degraded: number;
         unidirectional_down: number;
         full_outage: number;
+        partial_telemetry?: number;
     };
     matrix: MatrixPair[];
 }
@@ -97,7 +98,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
     const [error, setError] = useState<string | null>(null);
     const [asymmetryOnly, setAsymmetryOnly] = useState(false);
     const [selectedPair, setSelectedPair] = useState<MatrixPair | null>(null);
-    const [statusFilter, setStatusFilter] = useState<'ALL' | 'OPTIMAL' | 'DEGRADED' | 'CRITICAL'>('ALL');
+    const [statusFilter, setStatusFilter] = useState<'ALL' | 'OPTIMAL' | 'DEGRADED' | 'CRITICAL' | 'PARTIAL'>('ALL');
     const [latencyThreshold, setLatencyThreshold] = useState<number>(0);
     
     // SLA Thresholds Modal State
@@ -225,7 +226,8 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
         healthy_bidirectional: 0,
         asymmetric_degraded: 0,
         unidirectional_down: 0,
-        full_outage: 0
+        full_outage: 0,
+        partial_telemetry: 0
     };
 
     const getPair = (sourceId: string, targetId: string): MatrixPair | undefined => {
@@ -345,6 +347,20 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                         <span className="w-2 h-2 rounded-full bg-red-400"></span>
                         Critical ({summary.unidirectional_down + summary.full_outage})
                     </button>
+                    {(summary.partial_telemetry || 0) > 0 && (
+                        <button
+                            onClick={() => setStatusFilter('PARTIAL')}
+                            className={twMerge(
+                                "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5",
+                                statusFilter === 'PARTIAL'
+                                    ? "bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-sm"
+                                    : "bg-card-secondary text-sky-400/70 border-border hover:bg-sky-500/10 hover:text-sky-300"
+                            )}
+                        >
+                            <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+                            One-Way ({summary.partial_telemetry})
+                        </button>
+                    )}
                 </div>
 
                 {/* Right: Latency Filter & Refresh */}
@@ -432,7 +448,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                         <th key={node.id} className="p-3 text-center border-r border-border/50 min-w-[140px]">
                                             <div className="flex flex-col items-center">
                                                 <span className="text-text-primary font-mono">{node.name}</span>
-                                                <span className="text-[9.5px] text-text-muted font-normal font-mono">{node.ip}</span>
+                                                <span className="text-[9.5px] text-text-muted font-normal font-mono">Node: {node.ip}</span>
                                             </div>
                                         </th>
                                     ))}
@@ -445,7 +461,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                             <div className="flex items-center justify-between">
                                                 <div>
                                                     <div className="font-mono">{sourceNode.name}</div>
-                                                    <div className="text-[9.5px] text-text-muted font-normal font-mono">{sourceNode.ip}</div>
+                                                    <div className="text-[9.5px] text-text-muted font-normal font-mono">Node: {sourceNode.ip}</div>
                                                 </div>
                                                 {sourceNode.is_local && (
                                                     <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
@@ -476,6 +492,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                             const isOpt = asymmetry.status === 'OPTIMAL';
                                             const isDeg = asymmetry.status === 'DEGRADED';
                                             const isCrit = asymmetry.status === 'CRITICAL';
+                                            const isPartial = asymmetry.status === 'PARTIAL';
                                             const isUnknown = asymmetry.status === 'UNKNOWN' || (!forward.has_data && !reverse.has_data);
 
                                             const maxLatency = Math.max(
@@ -494,6 +511,8 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                 ? "bg-amber-950/25 hover:bg-amber-900/40 border-amber-500/35 text-amber-300"
                                                 : isCrit
                                                 ? "bg-red-950/30 hover:bg-red-900/45 border-red-500/40 text-red-300"
+                                                : isPartial
+                                                ? "bg-sky-950/20 hover:bg-sky-900/35 border-sky-500/30 text-sky-200"
                                                 : "bg-card-secondary/20 hover:bg-card-secondary/40 border-border/40 text-text-muted";
 
                                             return (
@@ -512,7 +531,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                             <span className="flex items-center gap-0.5 text-text-muted text-[10px]">
                                                                 <ArrowUpRight size={11} className="text-blue-400" /> Fwd:
                                                             </span>
-                                                            <span className={forward.has_data ? (forward.reachable ? (isOpt ? "font-bold text-emerald-300" : isDeg ? "font-bold text-amber-300" : "font-black text-red-400") : "font-black text-red-400") : "text-text-muted text-[10px]"}>
+                                                            <span className={forward.has_data ? (forward.reachable ? (isOpt ? "font-bold text-emerald-300" : isDeg ? "font-bold text-amber-300" : isPartial ? "font-bold text-sky-300" : "font-black text-red-400") : "font-black text-red-400") : "text-text-muted text-[10px]"}>
                                                                 {forward.has_data ? (forward.reachable ? `${formatNum(forward.latency_ms)}ms` : 'DOWN') : 'Pending'}
                                                             </span>
                                                         </div>
@@ -522,7 +541,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                             <span className="flex items-center gap-0.5 text-text-muted text-[10px]">
                                                                 <ArrowDownLeft size={11} className="text-purple-400" /> Rev:
                                                             </span>
-                                                            <span className={reverse.has_data ? (reverse.reachable ? (isOpt ? "font-bold text-emerald-300" : isDeg ? "font-bold text-amber-300" : "font-black text-red-400") : "font-black text-red-400") : "text-text-muted text-[10px]"}>
+                                                            <span className={reverse.has_data ? (reverse.reachable ? (isOpt ? "font-bold text-emerald-300" : isDeg ? "font-bold text-amber-300" : isPartial ? "font-bold text-sky-300" : "font-black text-red-400") : "font-black text-red-400") : "text-text-muted text-[10px]"}>
                                                                 {reverse.has_data ? (reverse.reachable ? `${formatNum(reverse.latency_ms)}ms` : 'DOWN') : 'Pending'}
                                                             </span>
                                                         </div>
@@ -541,6 +560,11 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                         {isCrit && (
                                                             <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-300 border border-red-500/30 truncate">
                                                                 {asymmetry.reason?.includes('DOWN') ? 'Path Down' : 'Critical'}
+                                                            </div>
+                                                        )}
+                                                        {isPartial && (
+                                                            <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-500/15 text-sky-300 border border-sky-500/25 truncate">
+                                                                {forward.has_data ? 'One-Way (Fwd)' : 'One-Way (Rev)'}
                                                             </div>
                                                         )}
                                                         {isUnknown && (
@@ -586,12 +610,14 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
                                 : selectedPair.asymmetry.status === 'DEGRADED'
                                 ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                                : selectedPair.asymmetry.status === 'PARTIAL'
+                                ? "bg-sky-500/10 border-sky-500/20 text-sky-400"
                                 : "bg-red-500/10 border-red-500/20 text-red-400"
                         )}>
                             <Info size={20} className="flex-shrink-0 mt-0.5" />
                             <div>
                                 <div className="text-xs font-black uppercase tracking-wider">
-                                    Path Status: {selectedPair.asymmetry.status}
+                                    Path Status: {selectedPair.asymmetry.status === 'PARTIAL' ? 'ONE-WAY / PARTIAL TELEMETRY' : selectedPair.asymmetry.status}
                                 </div>
                                 <div className="text-xs mt-1 text-text-muted leading-relaxed">
                                     {selectedPair.asymmetry.reason || 'Normal symmetric routing.'}
@@ -618,11 +644,11 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                 </div>
                                 <div className="space-y-1.5 text-xs font-mono">
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className="text-text-muted whitespace-nowrap">Source IP:</span>
+                                        <span className="text-text-muted whitespace-nowrap">Source Node:</span>
                                         <span className="font-bold text-text-primary text-right">{selectedPair.forward.source_ip || selectedPair.source_ip || '—'}</span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className="text-text-muted whitespace-nowrap">Dest IP:</span>
+                                        <span className="text-text-muted whitespace-nowrap">SD-WAN Target:</span>
                                         <span className="font-bold text-text-primary text-right">{selectedPair.forward.target_ip || selectedPair.target_ip || '—'}</span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
@@ -663,12 +689,12 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                 </div>
                                 <div className="space-y-1.5 text-xs font-mono">
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className="text-text-muted whitespace-nowrap">Source IP:</span>
+                                        <span className="text-text-muted whitespace-nowrap">Source Node:</span>
                                         <span className="font-bold text-text-primary text-right">{selectedPair.reverse.source_ip || selectedPair.target_ip || '—'}</span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className="text-text-muted whitespace-nowrap">Dest IP:</span>
-                                        <span className="font-bold text-text-primary text-right">{selectedPair.reverse.target_ip || selectedPair.source_ip || '—'}</span>
+                                        <span className="text-text-muted whitespace-nowrap">SD-WAN Target:</span>
+                                        <span className="font-bold text-text-primary text-right">{selectedPair.reverse.has_data ? (selectedPair.reverse.target_ip || selectedPair.source_ip || '—') : '— (No probe)'}</span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-text-muted whitespace-nowrap">Status:</span>
