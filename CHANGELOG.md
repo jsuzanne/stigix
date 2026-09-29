@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.83] - 2026-09-29
+
+### Added
+- **Bidirectional SD-WAN Reachability Matrix (`DEM.tsx`, `server.ts`)**: Cross-instance N×N mesh matrix displaying bidirectional probe telemetry (latency, jitter, packet loss) and SLA statuses between all registered fleet nodes. 🚀
+
+### Fixed
+- **DEM Telemetry Catch Block (`server.ts`)**: Resolved indentation error on `catch` block in `peer_probes` telemetry block that caused tsx/esbuild parse errors.
+- **AI Copilot Convergence Stop Tool (`ai-tools.ts`)**: Removed duplicate `headers` property in fetch call.
+
 ## [2.0.82] - 2026-09-28
 
 ### Changed
