@@ -12436,6 +12436,52 @@ app.get('/api/fleet/overview', authenticateToken, (req, res) => {
 });
 log('FLEET', `🏢 Fleet Control Plane mounted at /api/fleet/overview (Leader only)`);
 
+// --- SD-WAN Reachability Matrix SLA Thresholds (PRD v2.0.92) ---
+const MATRIX_THRESHOLDS_FILE = path.join(APP_CONFIG.configDir, 'matrix-thresholds.json');
+
+export interface MatrixThresholds {
+    latency_warning_ms: number;
+    latency_critical_ms: number;
+    asymmetry_warning_delta_ms: number;
+    asymmetry_critical_delta_ms: number;
+    loss_warning_pct: number;
+    loss_critical_pct: number;
+    jitter_warning_ms: number;
+    jitter_critical_ms: number;
+}
+
+const DEFAULT_MATRIX_THRESHOLDS: MatrixThresholds = {
+    latency_warning_ms: 60,
+    latency_critical_ms: 150,
+    asymmetry_warning_delta_ms: 20,
+    asymmetry_critical_delta_ms: 80,
+    loss_warning_pct: 1.0,
+    loss_critical_pct: 5.0,
+    jitter_warning_ms: 10,
+    jitter_critical_ms: 30
+};
+
+function getMatrixThresholds(): MatrixThresholds {
+    try {
+        if (fs.existsSync(MATRIX_THRESHOLDS_FILE)) {
+            const raw = fs.readFileSync(MATRIX_THRESHOLDS_FILE, 'utf8');
+            return { ...DEFAULT_MATRIX_THRESHOLDS, ...JSON.parse(raw) };
+        }
+    } catch {}
+    return DEFAULT_MATRIX_THRESHOLDS;
+}
+
+app.get('/api/fleet/matrix/thresholds', authenticateToken, (req, res) => {
+    res.json(getMatrixThresholds());
+});
+
+app.post('/api/fleet/matrix/thresholds', authenticateToken, (req, res) => {
+    const updated = { ...DEFAULT_MATRIX_THRESHOLDS, ...req.body };
+    fs.writeFileSync(MATRIX_THRESHOLDS_FILE, JSON.stringify(updated, null, 2));
+    log('REGISTRY', `Updated SD-WAN reachability matrix thresholds: ${JSON.stringify(updated)}`);
+    res.json({ success: true, thresholds: updated });
+});
+
 // --- Stigix Fleet Bidirectional Reachability Matrix API (PRD v2.0.82) ---
 app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
     try {
@@ -12530,49 +12576,57 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                         localByEndpoint.set(r.endpointId, r);
                     }
                 }
-                const localList = Array.from(localByEndpoint.values()).map(r => ({
-                    target_name: r.endpointName || r.endpointId,
-                    target_id: r.endpointId,
-                    target_url: r.url || '',
-                    target_ip: r.remoteIp || (r.url ? (r.url.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/)?.[0] ?? '') : ''),
-                    type: (r.endpointType || 'PING').toUpperCase(),
-                    reachable: !!r.reachable,
-                    latency_ms: Math.round((r.metrics?.total_ms ?? 0) * 100) / 100,
-                    loss_pct: Math.round((r.metrics?.loss_pct ?? (r.reachable ? 0 : 100)) * 100) / 100,
-                    jitter_ms: Math.round((r.metrics?.jitter_ms ?? 0) * 100) / 100,
-                    score: Math.round((r.score ?? 0) * 100) / 100,
-                    last_tested: r.timestamp
-                }));
-                nodeProbesMap.set(localId, localList);
             }
-        } catch {}
 
-        // Peer probes from summaries
-        for (const peer of rawPeers) {
-            const probes = peer.summary?.peer_probes || [];
-            nodeProbesMap.set(peer.instance_id, probes);
+            const activeProbes = connectivityLogger.getEndpoints() || [];
+            const localProbesList: Array<any> = [];
+            for (const ep of activeProbes) {
+                const lastRes = localByEndpoint.get(ep.id);
+                localProbesList.push({
+                    probe_id: ep.id,
+                    name: ep.name,
+                    target_url: ep.url,
+                    target_ip: ep.url ? ep.url.replace(/^https?:\/\//, '').split(':')[0] : '',
+                    target_id: (ep as any).peer_instance_id || '',
+                    type: ep.type || 'PING',
+                    reachable: lastRes ? (lastRes.status === 'UP' || lastRes.status === 'optimal' || lastRes.status === 'healthy') : false,
+                    latency_ms: lastRes?.latencyMs ?? 0,
+                    jitter_ms: lastRes?.jitterMs ?? 0,
+                    loss_pct: lastRes?.packetLoss ?? (lastRes?.status === 'DOWN' ? 100 : 0),
+                    score: lastRes?.score ?? 100,
+                    last_tested: lastRes?.timestamp ? new Date(lastRes.timestamp).toISOString() : new Date().toISOString()
+                });
+            }
+            nodeProbesMap.set(localId, localProbesList);
+        } catch (e: any) {
+            log('FLEET', `Error collecting local matrix probes: ${e.message}`, 'warn');
         }
 
-        // Helper to find probe from node A targeting node B with robust scoring (PING/ICMP strictly enforced for SD-WAN matrix)
-        const findProbeToNode = (sourceId: string, targetNode: { id: string; name: string; ip: string }) => {
-            const probes = nodeProbesMap.get(sourceId) || [];
+        // Peer probes from registry telemetry cache
+        for (const peer of rawPeers) {
+            const peerProbes = peer.telemetry?.probes || [];
+            if (peerProbes.length > 0) {
+                nodeProbesMap.set(peer.instance_id, peerProbes);
+            }
+        }
+
+        const findProbeToNode = (fromNodeId: string, targetNode: { id: string; name: string; ip: string }) => {
+            const probes = nodeProbesMap.get(fromNodeId) || [];
             if (!probes.length) return undefined;
 
             const targetIp = (targetNode.ip || '').trim();
-            const tName = targetNode.name.toLowerCase().replace(/[\s\-_]/g, '').replace(/ubuntu|stigix/g, '');
+            const tName = (targetNode.name || '').trim().toLowerCase();
 
-            const scored = probes.map(p => {
+            // Score candidate probes
+            const scored = probes.map((p: any) => {
                 const pIp = (p.target_ip || '').trim();
-                const pName = (p.target_name || '').toLowerCase().replace(/[\s\-_]/g, '').replace(/ubuntu|stigix/g, '');
-                const pType = (p.type || '').toUpperCase();
+                const pName = (p.name || '').trim().toLowerCase();
+                const pType = (p.type || 'PING').toUpperCase();
 
-                // Inter-site SD-WAN reachability matrix strictly requires PING / ICMP probes.
-                // Throughput (UDP/iperf3) or HTTP application probes must never be evaluated as path latency.
-                if (typeFilter === 'ALL' || typeFilter === 'PRISMA SDWAN' || typeFilter === 'PRISMA') {
-                    if (pType !== 'PING' && pType !== 'ICMP' && pType !== 'PRISMA' && pType !== 'PRISMA SDWAN') {
-                        return { probe: p, score: -1 };
-                    }
-                } else if (pType !== typeFilter) {
+                // Strictly enforce ICMP / PING probe types for SD-WAN reachability matrix
+                if (pType !== 'PING' && pType !== 'ICMP') {
+                    return { probe: p, score: -1 };
+                } else if (typeFilter !== 'ALL' && pType !== typeFilter) {
                     return { probe: p, score: -1 };
                 }
 
@@ -12585,7 +12639,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 if (tName && pName && (pName === tName || pName.includes(tName) || tName.includes(pName))) score += 50;
                 if (p.target_id && targetNode.id && p.target_id.toLowerCase().includes(targetNode.id.toLowerCase())) score += 30;
 
-                // Tie breaker: prefer reachable probes
+                // Prefer reachable probes
                 if (p.reachable) score += 10;
 
                 return { probe: p, score };
@@ -12594,6 +12648,8 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
             scored.sort((a, b) => b.score - a.score);
             return scored.length > 0 ? scored[0].probe : undefined;
         };
+
+        const thresholds = getMatrixThresholds();
 
         // 3. Assemble N x N Matrix Pairs
         const matrixPairs: Array<any> = [];
@@ -12675,10 +12731,25 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     lossDelta = Math.round(Math.abs(fwdData.loss_pct - revData.loss_pct) * 100) / 100;
 
                     if (fwdData.reachable && revData.reachable) {
-                        if (latencyDelta >= 15 || lossDelta > 0) {
-                            isAsymmetric = true;
+                        const maxLatency = Math.max(fwdData.latency_ms, revData.latency_ms);
+                        const maxLoss = Math.max(fwdData.loss_pct, revData.loss_pct);
+                        const maxJitter = Math.max(fwdData.jitter_ms, revData.jitter_ms);
+
+                        if (maxLoss >= thresholds.loss_critical_pct || maxLatency >= thresholds.latency_critical_ms || latencyDelta >= thresholds.asymmetry_critical_delta_ms) {
+                            isAsymmetric = latencyDelta >= thresholds.asymmetry_warning_delta_ms;
+                            statusStr = 'CRITICAL';
+                            if (maxLoss >= thresholds.loss_critical_pct) reason = `Critical Packet Loss (${maxLoss}% >= ${thresholds.loss_critical_pct}%)`;
+                            else if (maxLatency >= thresholds.latency_critical_ms) reason = `Critical Latency (${maxLatency}ms >= ${thresholds.latency_critical_ms}ms)`;
+                            else reason = `Severe Asymmetry (+${latencyDelta}ms >= ${thresholds.asymmetry_critical_delta_ms}ms)`;
+                            fullOutage++;
+                        } else if (latencyDelta >= thresholds.asymmetry_warning_delta_ms || lossDelta >= thresholds.loss_warning_pct || maxLatency >= thresholds.latency_warning_ms || maxLoss >= thresholds.loss_warning_pct || maxJitter >= thresholds.jitter_warning_ms) {
+                            isAsymmetric = latencyDelta >= thresholds.asymmetry_warning_delta_ms;
                             statusStr = 'DEGRADED';
-                            reason = latencyDelta >= 15 ? `Latency Asymmetry (+${latencyDelta}ms)` : `Packet Loss Asymmetry (${lossDelta}% delta)`;
+                            if (latencyDelta >= thresholds.asymmetry_warning_delta_ms) reason = `Latency Asymmetry (+${latencyDelta}ms)`;
+                            else if (lossDelta >= thresholds.loss_warning_pct) reason = `Packet Loss Asymmetry (${lossDelta}% delta)`;
+                            else if (maxLatency >= thresholds.latency_warning_ms) reason = `Elevated Latency (${maxLatency}ms >= ${thresholds.latency_warning_ms}ms)`;
+                            else if (maxLoss >= thresholds.loss_warning_pct) reason = `Elevated Packet Loss (${maxLoss}%)`;
+                            else reason = `Elevated Jitter (${maxJitter}ms >= ${thresholds.jitter_warning_ms}ms)`;
                             asymmetricDegraded++;
                         } else {
                             isAsymmetric = false;
@@ -12752,6 +12823,7 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
             timestamp: Date.now(),
             local_node_id: localId,
             nodes,
+            thresholds,
             summary: {
                 total_pairs: matrixPairs.length,
                 healthy_bidirectional: healthyBidirectional,

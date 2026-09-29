@@ -3,7 +3,7 @@ import { usePeerContext } from '../PeerContext';
 import { 
     Grid, Activity, AlertTriangle, CheckCircle2, XCircle, ArrowRightLeft, 
     RefreshCw, Filter, Shield, Info, ArrowUpRight, ArrowDownLeft, Clock,
-    Layers, Zap, Globe, Sparkles
+    Layers, Zap, Globe, Sparkles, Sliders, Settings as SettingsIcon, Save, Check
 } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 
@@ -58,10 +58,22 @@ interface MatrixPair {
     };
 }
 
+interface MatrixThresholdsConfig {
+    latency_warning_ms: number;
+    latency_critical_ms: number;
+    asymmetry_warning_delta_ms: number;
+    asymmetry_critical_delta_ms: number;
+    loss_warning_pct: number;
+    loss_critical_pct: number;
+    jitter_warning_ms: number;
+    jitter_critical_ms: number;
+}
+
 interface MatrixData {
     timestamp: number;
     local_node_id: string;
     nodes: MatrixNode[];
+    thresholds?: MatrixThresholdsConfig;
     summary: {
         total_pairs: number;
         healthy_bidirectional: number;
@@ -87,11 +99,96 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
     const [selectedPair, setSelectedPair] = useState<MatrixPair | null>(null);
     const [statusFilter, setStatusFilter] = useState<'ALL' | 'OPTIMAL' | 'DEGRADED' | 'CRITICAL'>('ALL');
     const [latencyThreshold, setLatencyThreshold] = useState<number>(0);
+    
+    // SLA Thresholds Modal State
+    const [showThresholdsModal, setShowThresholdsModal] = useState(false);
+    const [thresholds, setThresholds] = useState<MatrixThresholdsConfig>({
+        latency_warning_ms: 60,
+        latency_critical_ms: 150,
+        asymmetry_warning_delta_ms: 20,
+        asymmetry_critical_delta_ms: 80,
+        loss_warning_pct: 1.0,
+        loss_critical_pct: 5.0,
+        jitter_warning_ms: 10,
+        jitter_critical_ms: 30
+    });
+    const [savingThresholds, setSavingThresholds] = useState(false);
+    const [thresholdsSaved, setThresholdsSaved] = useState(false);
 
     const authHeaders = useCallback((): Record<string, string> => {
         const t = token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
         return t ? { Authorization: `Bearer ${t}` } : {};
     }, [token]);
+
+    const fetchThresholds = useCallback(async () => {
+        try {
+            const res = await gFetch('/api/fleet/matrix/thresholds', { headers: authHeaders() });
+            if (res.ok) {
+                const t = await res.json();
+                setThresholds(t);
+            }
+        } catch {}
+    }, [gFetch, authHeaders]);
+
+    const handleSaveThresholds = async () => {
+        try {
+            setSavingThresholds(true);
+            const res = await gFetch('/api/fleet/matrix/thresholds', {
+                method: 'POST',
+                headers: {
+                    ...authHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(thresholds)
+            });
+            if (res.ok) {
+                setThresholdsSaved(true);
+                setTimeout(() => setThresholdsSaved(false), 2500);
+                fetchMatrix();
+            }
+        } catch (e) {
+            console.error('Failed to save thresholds:', e);
+        } finally {
+            setSavingThresholds(false);
+        }
+    };
+
+    const applyPreset = (preset: 'strict' | 'standard' | 'relaxed') => {
+        if (preset === 'strict') {
+            setThresholds({
+                latency_warning_ms: 25,
+                latency_critical_ms: 60,
+                asymmetry_warning_delta_ms: 10,
+                asymmetry_critical_delta_ms: 30,
+                loss_warning_pct: 0.5,
+                loss_critical_pct: 2.0,
+                jitter_warning_ms: 5,
+                jitter_critical_ms: 15
+            });
+        } else if (preset === 'standard') {
+            setThresholds({
+                latency_warning_ms: 60,
+                latency_critical_ms: 150,
+                asymmetry_warning_delta_ms: 20,
+                asymmetry_critical_delta_ms: 80,
+                loss_warning_pct: 1.0,
+                loss_critical_pct: 5.0,
+                jitter_warning_ms: 10,
+                jitter_critical_ms: 30
+            });
+        } else {
+            setThresholds({
+                latency_warning_ms: 120,
+                latency_critical_ms: 250,
+                asymmetry_warning_delta_ms: 40,
+                asymmetry_critical_delta_ms: 120,
+                loss_warning_pct: 2.5,
+                loss_critical_pct: 10.0,
+                jitter_warning_ms: 20,
+                jitter_critical_ms: 60
+            });
+        }
+    };
 
     const fetchMatrix = useCallback(async () => {
         try {
@@ -270,6 +367,18 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             <option value={200}>&gt; 200 ms</option>
                         </select>
                     </div>
+
+                    <button
+                        onClick={() => {
+                            fetchThresholds();
+                            setShowThresholdsModal(true);
+                        }}
+                        className="flex items-center gap-1.5 bg-card-secondary hover:bg-card-secondary/80 text-text-primary border border-border px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm"
+                        title="Configure SLA Health Thresholds (Optimal / Degraded / Critical)"
+                    >
+                        <Sliders size={13} className="text-amber-400" />
+                        <span>SLA Thresholds</span>
+                    </button>
 
                     <button
                         onClick={fetchMatrix}
@@ -588,6 +697,287 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             >
                                 Close
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* SLA Health Thresholds Modal */}
+            {showThresholdsModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in">
+                    <div className="bg-card-secondary border border-border w-full max-w-2xl rounded-2xl p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between border-b border-border pb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                    <Sliders size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-text-primary">
+                                        SD-WAN SLA & Health Thresholds
+                                    </h3>
+                                    <p className="text-xs text-text-muted">
+                                        Define SLA boundaries for Green (Optimal), Yellow (Degraded), and Red (Critical).
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowThresholdsModal(false)}
+                                className="text-text-muted hover:text-text-primary p-1.5 rounded-lg hover:bg-card-secondary/60 transition-colors"
+                            >
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+
+                        {/* Presets Strip */}
+                        <div className="bg-card-secondary/40 border border-border p-3.5 rounded-xl space-y-2">
+                            <div className="text-xs font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                                <Sparkles size={13} className="text-blue-400" /> Quick Profile Presets
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => applyPreset('strict')}
+                                    className="p-2.5 rounded-xl border border-border bg-card-secondary hover:border-emerald-500/50 hover:bg-emerald-500/10 text-left transition-all group"
+                                >
+                                    <div className="text-xs font-bold text-emerald-400 group-hover:text-emerald-300">Strict (DC / Campus)</div>
+                                    <div className="text-[10px] text-text-muted">Warn &gt;25ms, Asym &gt;10ms</div>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => applyPreset('standard')}
+                                    className="p-2.5 rounded-xl border border-blue-500/40 bg-blue-500/10 text-left transition-all"
+                                >
+                                    <div className="text-xs font-bold text-blue-400">Standard (SD-WAN)</div>
+                                    <div className="text-[10px] text-text-muted">Warn &gt;60ms, Asym &gt;20ms</div>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => applyPreset('relaxed')}
+                                    className="p-2.5 rounded-xl border border-border bg-card-secondary hover:border-purple-500/50 hover:bg-purple-500/10 text-left transition-all group"
+                                >
+                                    <div className="text-xs font-bold text-purple-400 group-hover:text-purple-300">Relaxed (Cloud / WAN)</div>
+                                    <div className="text-[10px] text-text-muted">Warn &gt;120ms, Asym &gt;40ms</div>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Status Legend / Rules Summary */}
+                        <div className="grid grid-cols-3 gap-3 text-xs">
+                            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 space-y-1">
+                                <div className="font-bold flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span> 🟢 Optimal
+                                </div>
+                                <div className="text-[11px] text-emerald-300/80 leading-relaxed">
+                                    Bidirectional UP, symmetric latency (Δ &lt; {thresholds.asymmetry_warning_delta_ms}ms), loss &lt; {thresholds.loss_warning_pct}%.
+                                </div>
+                            </div>
+                            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 space-y-1">
+                                <div className="font-bold flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-amber-400"></span> 🟡 Degraded
+                                </div>
+                                <div className="text-[11px] text-amber-300/80 leading-relaxed">
+                                    Latency &gt; {thresholds.latency_warning_ms}ms, Δ &gt; {thresholds.asymmetry_warning_delta_ms}ms, or loss &gt; {thresholds.loss_warning_pct}%.
+                                </div>
+                            </div>
+                            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 space-y-1">
+                                <div className="font-bold flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-red-400"></span> 🔴 Critical
+                                </div>
+                                <div className="text-[11px] text-red-300/80 leading-relaxed">
+                                    Unidirectional outage, latency &gt; {thresholds.latency_critical_ms}ms, loss &gt; {thresholds.loss_critical_pct}%, or severe Δ &gt; {thresholds.asymmetry_critical_delta_ms}ms.
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Threshold Inputs Grid */}
+                        <div className="grid grid-cols-2 gap-4">
+                            {/* Latency Thresholds */}
+                            <div className="bg-card-secondary/40 border border-border p-4 rounded-xl space-y-3">
+                                <div className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                                    <Activity size={13} className="text-blue-400" /> Latency Thresholds (ms)
+                                </div>
+                                <div className="space-y-2.5">
+                                    <div>
+                                        <div className="flex justify-between text-xs mb-1">
+                                            <span className="text-amber-400 font-semibold">Warning (Degraded):</span>
+                                            <span className="font-mono font-bold text-text-primary">{thresholds.latency_warning_ms} ms</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            value={thresholds.latency_warning_ms}
+                                            onChange={(e) => setThresholds({ ...thresholds, latency_warning_ms: Number(e.target.value) })}
+                                            className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            min={1}
+                                            max={1000}
+                                        />
+                                    </div>
+                                    <div>
+                                        <div className="flex justify-between text-xs mb-1">
+                                            <span className="text-red-400 font-semibold">Critical (Severe):</span>
+                                            <span className="font-mono font-bold text-text-primary">{thresholds.latency_critical_ms} ms</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            value={thresholds.latency_critical_ms}
+                                            onChange={(e) => setThresholds({ ...thresholds, latency_critical_ms: Number(e.target.value) })}
+                                            className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-red-500"
+                                            min={1}
+                                            max={2000}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Asymmetry Delta Thresholds */}
+                            <div className="bg-card-secondary/40 border border-border p-4 rounded-xl space-y-3">
+                                <div className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                                    <ArrowRightLeft size={13} className="text-purple-400" /> Asymmetry Delta (ms)
+                                </div>
+                                <div className="space-y-2.5">
+                                    <div>
+                                        <div className="flex justify-between text-xs mb-1">
+                                            <span className="text-amber-400 font-semibold">Warning Delta (Δ):</span>
+                                            <span className="font-mono font-bold text-text-primary">{thresholds.asymmetry_warning_delta_ms} ms</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            value={thresholds.asymmetry_warning_delta_ms}
+                                            onChange={(e) => setThresholds({ ...thresholds, asymmetry_warning_delta_ms: Number(e.target.value) })}
+                                            className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            min={1}
+                                            max={500}
+                                        />
+                                    </div>
+                                    <div>
+                                        <div className="flex justify-between text-xs mb-1">
+                                            <span className="text-red-400 font-semibold">Critical Delta (Δ):</span>
+                                            <span className="font-mono font-bold text-text-primary">{thresholds.asymmetry_critical_delta_ms} ms</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            value={thresholds.asymmetry_critical_delta_ms}
+                                            onChange={(e) => setThresholds({ ...thresholds, asymmetry_critical_delta_ms: Number(e.target.value) })}
+                                            className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-red-500"
+                                            min={1}
+                                            max={1000}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Packet Loss Thresholds */}
+                            <div className="bg-card-secondary/40 border border-border p-4 rounded-xl space-y-3">
+                                <div className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                                    <Shield size={13} className="text-emerald-400" /> Packet Loss (%)
+                                </div>
+                                <div className="space-y-2.5">
+                                    <div>
+                                        <div className="flex justify-between text-xs mb-1">
+                                            <span className="text-amber-400 font-semibold">Warning Loss:</span>
+                                            <span className="font-mono font-bold text-text-primary">{thresholds.loss_warning_pct}%</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            value={thresholds.loss_warning_pct}
+                                            onChange={(e) => setThresholds({ ...thresholds, loss_warning_pct: Number(e.target.value) })}
+                                            className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            min={0}
+                                            max={100}
+                                        />
+                                    </div>
+                                    <div>
+                                        <div className="flex justify-between text-xs mb-1">
+                                            <span className="text-red-400 font-semibold">Critical Loss:</span>
+                                            <span className="font-mono font-bold text-text-primary">{thresholds.loss_critical_pct}%</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            step="0.5"
+                                            value={thresholds.loss_critical_pct}
+                                            onChange={(e) => setThresholds({ ...thresholds, loss_critical_pct: Number(e.target.value) })}
+                                            className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-red-500"
+                                            min={0}
+                                            max={100}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Jitter Thresholds */}
+                            <div className="bg-card-secondary/40 border border-border p-4 rounded-xl space-y-3">
+                                <div className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                                    <Zap size={13} className="text-amber-400" /> Jitter Thresholds (ms)
+                                </div>
+                                <div className="space-y-2.5">
+                                    <div>
+                                        <div className="flex justify-between text-xs mb-1">
+                                            <span className="text-amber-400 font-semibold">Warning Jitter:</span>
+                                            <span className="font-mono font-bold text-text-primary">{thresholds.jitter_warning_ms} ms</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            value={thresholds.jitter_warning_ms}
+                                            onChange={(e) => setThresholds({ ...thresholds, jitter_warning_ms: Number(e.target.value) })}
+                                            className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            min={1}
+                                            max={200}
+                                        />
+                                    </div>
+                                    <div>
+                                        <div className="flex justify-between text-xs mb-1">
+                                            <span className="text-red-400 font-semibold">Critical Jitter:</span>
+                                            <span className="font-mono font-bold text-text-primary">{thresholds.jitter_critical_ms} ms</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            value={thresholds.jitter_critical_ms}
+                                            onChange={(e) => setThresholds({ ...thresholds, jitter_critical_ms: Number(e.target.value) })}
+                                            className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-text-primary focus:outline-none focus:ring-1 focus:ring-red-500"
+                                            min={1}
+                                            max={500}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Action Buttons */}
+                        <div className="flex items-center justify-between border-t border-border pt-4">
+                            <button
+                                type="button"
+                                onClick={() => applyPreset('standard')}
+                                className="text-xs text-text-muted hover:text-text-primary underline"
+                            >
+                                Reset to Defaults
+                            </button>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowThresholdsModal(false)}
+                                    className="bg-card-secondary hover:bg-card-secondary/80 border border-border text-text-primary px-4 py-2 rounded-xl text-xs font-bold transition-all"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveThresholds}
+                                    disabled={savingThresholds}
+                                    className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md disabled:opacity-50"
+                                >
+                                    {thresholdsSaved ? (
+                                        <>
+                                            <Check size={14} className="text-emerald-300" />
+                                            <span>Saved!</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Save size={14} />
+                                            <span>{savingThresholds ? 'Saving...' : 'Apply Thresholds'}</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
