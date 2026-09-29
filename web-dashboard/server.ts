@@ -12505,21 +12505,6 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                     last_tested: r.timestamp
                 }));
                 nodeProbesMap.set(localId, localList);
-
-                // Auto-discover extra remote nodes from synthetic endpoint probes if no cluster peers exist yet
-                for (const p of localList) {
-                    if (p.target_ip && !nodes.find(n => n.ip === p.target_ip)) {
-                        const candidateName = p.target_name.toUpperCase();
-                        nodes.push({
-                            id: p.target_id,
-                            name: candidateName,
-                            ip: p.target_ip,
-                            site_type: isHubSite(candidateName) ? 'HUB' : (candidateName.includes('CLOUD') ? 'CLOUD' : 'BRANCH'),
-                            is_local: false,
-                            last_seen: new Date(p.last_tested || Date.now()).toISOString()
-                        });
-                    }
-                }
             }
         } catch {}
 

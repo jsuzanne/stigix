@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.85] - 2026-09-29
+
+### Changed
+- **DEM Reachability Matrix Scope (`server.ts`)**: Strictly restricted the N×N reachability matrix to registered SD-WAN fleet instances (DC1, BR1, BR2, BR5, BR8, etc.) and inter-site SD-WAN probes. Removed automatic inclusion of general Internet/SaaS synthetic targets. 🚀
+
 ## [2.0.84] - 2026-09-29
 
 ### Fixed
