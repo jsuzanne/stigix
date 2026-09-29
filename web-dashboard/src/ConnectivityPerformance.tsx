@@ -1016,7 +1016,11 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                 : "text-text-muted hover:text-text-primary hover:bg-card-secondary"
                         )}
                     >
-                        <Grid size={15} className="text-blue-400" /> Full-Mesh Reachability Matrix
+                        <Grid size={15} className="text-blue-400" />
+                        <span>Full-Mesh Reachability Matrix</span>
+                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 tracking-wider">
+                            BETA
+                        </span>
                     </button>
                 </div>
                 <div className="text-[11px] font-bold text-text-muted hidden md:flex items-center gap-2 pr-2">

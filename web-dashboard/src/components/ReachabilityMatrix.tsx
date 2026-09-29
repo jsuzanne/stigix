@@ -400,14 +400,17 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             onClick={() => handleSetTopology('full_mesh')}
                             disabled={switchingTopology}
                             className={twMerge(
-                                "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1",
+                                "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1.5",
                                 thresholds.mesh_topology === 'full_mesh'
                                     ? "bg-blue-600 text-white shadow-sm font-black"
                                     : "text-text-muted hover:text-text-primary hover:bg-white/5"
                             )}
-                            title="Every node probes every other node (Full-Mesh VPN architecture)"
+                            title="Every node probes every other node (Full-Mesh VPN architecture - Beta)"
                         >
-                            🌐 Full-Mesh
+                            <span>🌐 Full-Mesh</span>
+                            <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                BETA
+                            </span>
                         </button>
                         <button
                             type="button"

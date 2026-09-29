@@ -269,6 +269,22 @@ const SiteNode = ({ data }: any) => {
     };
     const shortIp = (ip?: string) => ip ? ip.split('/')[0] : '';
 
+    // Stigix Fleet Node matching
+    const fleetNodes = (data.fleetNodes as any[]) || [];
+    const stigixMeshActive = Boolean(data.stigixMeshActive);
+
+    const cleanSiteName = (name: string) => (name || '').replace(/[-_]?(ubuntu|node|linux|srv|core|hub).*$/i, '').trim().toUpperCase();
+    const siteKey = cleanSiteName(data.name || '');
+
+    const matchedStigixNode = fleetNodes.find((n: any) => {
+        const nSite = cleanSiteName(n.name || n.id || '');
+        if (nSite && siteKey && (nSite === siteKey || siteKey.includes(nSite) || nSite.includes(siteKey))) return true;
+        return uniqueSubeNets.some((sub: string) => {
+            const prefix = sub.split('/')[0].replace(/\.\d+$/, '');
+            return n.ip && n.ip.startsWith(prefix);
+        });
+    });
+
     // Underlay badge helpers
     const underlayMode = data.underlayMode as ('off' | 'badges') | undefined;
     const underlayResolutionMap = data.underlayResolutionMap as Map<string, any> | undefined;
@@ -350,7 +366,8 @@ const SiteNode = ({ data }: any) => {
             {/* Site Rectangle (Physical Box) */}
             <div className={cn(
                 "p-12 rounded-[52px] border-2 transition-all shadow-2xl backdrop-blur-3xl bg-card/40 flex flex-col relative",
-                isHub ? "border-blue-500/30 shadow-blue-500/5 shadow-[0_0_50px_-12px_rgba(59,130,246,0.15)]" : "border-border shadow-black/40 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)]"
+                isHub ? "border-blue-500/30 shadow-blue-500/5 shadow-[0_0_50px_-12px_rgba(59,130,246,0.15)]" : "border-border shadow-black/40 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)]",
+                stigixMeshActive && matchedStigixNode && "border-cyan-400/80 shadow-[0_0_60px_-10px_rgba(6,182,212,0.35)] ring-2 ring-cyan-400/40"
             )}>
 
                 {/* SVG Layer for ALL internal wiring (1:1 Exact Math Coordinates) */}
@@ -423,12 +440,32 @@ const SiteNode = ({ data }: any) => {
                             <div className="text-[140px] font-black text-white/[0.015] select-none pointer-events-none uppercase tracking-[0.2em] whitespace-nowrap px-10">{data.name}</div>
                         </div>
                         <div className="text-[24px] font-black text-text-primary uppercase tracking-[0.5em] opacity-80 mb-4 drop-shadow-2xl relative z-10">{data.name}</div>
-                        <div className="flex gap-4">
+                        <div className="flex gap-4 items-center justify-center flex-wrap">
                             {uniqueSubeNets.map((subnet, sIdx) => (
                                 <div key={sIdx} className="bg-green-500/10 px-6 py-3 rounded-[20px] border-2 border-green-500/40 text-[14px] font-black text-green-400 shadow-2xl shadow-green-500/20 relative z-10 group transition-all hover:scale-105 hover:bg-green-500/20 hover:border-green-500 h-[44px] flex items-center cursor-default">
                                     {subnet}
                                 </div>
                             ))}
+                            {matchedStigixNode && (
+                                <div className={cn(
+                                    "px-4 py-2.5 rounded-[20px] border-2 text-[13px] font-mono font-bold flex items-center gap-2.5 shadow-2xl relative z-10 transition-all cursor-pointer h-[44px]",
+                                    stigixMeshActive
+                                        ? "bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-cyan-500/40 ring-2 ring-cyan-400/50 scale-105"
+                                        : "bg-cyan-500/10 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400 shadow-cyan-500/10"
+                                )}
+                                title={`Stigix SASE Agent: ${matchedStigixNode.name} (${matchedStigixNode.ip}) • ${matchedStigixNode.site_type || 'AGENT'}`}
+                                >
+                                    <span className="relative flex h-2.5 w-2.5">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
+                                    </span>
+                                    <Zap size={14} className="text-cyan-400" />
+                                    <span>Stigix: <strong className="text-text-primary">{matchedStigixNode.ip}</strong></span>
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 uppercase font-black tracking-wider">
+                                        {matchedStigixNode.site_type === 'HUB' ? 'LEADER' : 'PEER'}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -464,7 +501,7 @@ const SiteNode = ({ data }: any) => {
                                 <div className={cn(
                                     "p-5 rounded-3xl shadow-2xl transition-transform group-hover:rotate-12",
                                     isHub ? "bg-blue-500 text-white shadow-blue-500/40" : "bg-card text-blue-500 shadow-black/20"
-                                )}>
+                                    )}>
                                     {isHub ? <Server size={32} /> : <Home size={32} />}
                                 </div>
 
@@ -497,12 +534,32 @@ const SiteNode = ({ data }: any) => {
                 {/* Spoke-Specific: Shared LAN Block at the Bottom */}
                 {!isHub && (
                     <div className="flex flex-col items-center relative z-10 w-full mb-4">
-                        <div className="flex gap-4">
+                        <div className="flex gap-4 items-center justify-center flex-wrap">
                             {uniqueSubeNets.map((subnet, sIdx) => (
                                 <div key={sIdx} className="bg-green-500/10 px-6 py-3 rounded-[20px] border-2 border-green-500/40 text-[14px] font-black text-green-400 shadow-2xl shadow-green-500/20 relative z-10 group transition-all hover:scale-105 hover:bg-green-500/20 hover:border-green-500 h-[44px] flex items-center cursor-default">
                                     {subnet}
                                 </div>
                             ))}
+                            {matchedStigixNode && (
+                                <div className={cn(
+                                    "px-4 py-2.5 rounded-[20px] border-2 text-[13px] font-mono font-bold flex items-center gap-2.5 shadow-2xl relative z-10 transition-all cursor-pointer h-[44px]",
+                                    stigixMeshActive
+                                        ? "bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-cyan-500/40 ring-2 ring-cyan-400/50 scale-105"
+                                        : "bg-cyan-500/10 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400 shadow-cyan-500/10"
+                                )}
+                                title={`Stigix SASE Agent: ${matchedStigixNode.name} (${matchedStigixNode.ip}) • ${matchedStigixNode.site_type || 'AGENT'}`}
+                                >
+                                    <span className="relative flex h-2.5 w-2.5">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
+                                    </span>
+                                    <Zap size={14} className="text-cyan-400" />
+                                    <span>Stigix: <strong className="text-text-primary">{matchedStigixNode.ip}</strong></span>
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 uppercase font-black tracking-wider">
+                                        {matchedStigixNode.site_type === 'HUB' ? 'LEADER' : 'PEER'}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                         <div className="absolute inset-x-0 -bottom-8 flex justify-center w-full z-0 overflow-visible">
                             <div className="text-[120px] font-black text-white/[0.015] select-none pointer-events-none uppercase tracking-[0.2em] whitespace-nowrap px-10">{data.name}</div>
@@ -844,6 +901,10 @@ function TopologyContent({ token }: TopologyProps) {
     const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
     const { fitView, getViewport, setViewport } = useReactFlow();
+
+    // Stigix SASE Mesh State
+    const [stigixMeshActive, setStigixMeshActive] = useState(false);
+    const [fleetNodes, setFleetNodes] = useState<any[]>([]);
 
     // View & Underlay state
     const [topologyViewMode, setTopologyViewMode] = useState<'overlay' | 'underlay'>('overlay');
@@ -1239,7 +1300,7 @@ function TopologyContent({ token }: TopologyProps) {
                     type: 'site',
                     position: { x, y: yPos },
                     origin: [0.5, 0.5],
-                    data: { ...site, name: site.site_name, role },
+                    data: { ...site, name: site.site_name, role, fleetNodes, stigixMeshActive },
                 });
             });
         };
@@ -1519,9 +1580,46 @@ function TopologyContent({ token }: TopologyProps) {
             });
         }
 
+        // If Stigix Mesh mode is active, add mesh connectivity links between all sites hosting a Stigix agent
+        if (stigixMeshActive && fleetNodes.length > 1) {
+            const cleanSiteName = (name: string) => (name || '').replace(/[-_]?(ubuntu|node|linux|srv|core|hub).*$/i, '').trim().toUpperCase();
+            const stigixSiteMap: { siteId: string; node: any }[] = [];
+
+            filteredSites.forEach((s: any) => {
+                const sKey = cleanSiteName(s.site_name || '');
+                const mNode = fleetNodes.find((n: any) => {
+                    const nKey = cleanSiteName(n.name || n.id || '');
+                    return nKey && sKey && (nKey === sKey || sKey.includes(nKey) || nKey.includes(sKey));
+                });
+                if (mNode) {
+                    stigixSiteMap.push({ siteId: s.site_id, node: mNode });
+                }
+            });
+
+            for (let i = 0; i < stigixSiteMap.length; i++) {
+                for (let j = i + 1; j < stigixSiteMap.length; j++) {
+                    const src = stigixSiteMap[i];
+                    const dst = stigixSiteMap[j];
+                    newEdges.push({
+                        id: `stigix-mesh:${src.siteId}-${dst.siteId}`,
+                        type: 'default',
+                        source: `site:${src.siteId}`,
+                        target: `site:${dst.siteId}`,
+                        animated: true,
+                        style: {
+                            stroke: '#06b6d4',
+                            strokeWidth: 2.5,
+                            strokeDasharray: '6 4',
+                            opacity: 0.85
+                        }
+                    });
+                }
+            }
+        }
+
         setNodes(newNodes);
         setEdges(newEdges);
-    }, [logicalViewSiteId, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData]);
+    }, [logicalViewSiteId, setNodes, setEdges, visibleSiteIds, isHubLike, siteHubStatus, topologyViewMode, underlayData, fleetNodes, stigixMeshActive, pathFilter, bgAsHub, getVyosInterfaceStatus]);
 
     const fetchTopology = useCallback(async () => {
         setLoading(true);
@@ -1534,6 +1632,13 @@ function TopologyContent({ token }: TopologyProps) {
             if (data.error) throw new Error(data.error);
             setTopology(data);
             setLastRefresh(new Date());
+
+            // Fetch fleet nodes for Stigix mesh overlay
+            gFetch('/api/fleet/matrix')
+                .then(r => r.json())
+                .then(d => { if (d?.nodes && Array.isArray(d.nodes)) setFleetNodes(d.nodes); })
+                .catch(() => {});
+
             if (data.underlay) {
                 setUnderlayData(data.underlay);
             } else {
@@ -1550,7 +1655,7 @@ function TopologyContent({ token }: TopologyProps) {
         } finally {
             setLoading(false);
         }
-    }, [token, processTopology]);
+    }, [token, processTopology, gFetch]);
 
     useEffect(() => {
         if (!topology) {
@@ -1558,7 +1663,7 @@ function TopologyContent({ token }: TopologyProps) {
         } else {
             processTopology(topology);
         }
-    }, [topology, logicalViewSiteId, fetchTopology, processTopology, visibleSiteIds, topologyViewMode, underlayData]);
+    }, [topology, logicalViewSiteId, fetchTopology, processTopology, visibleSiteIds, topologyViewMode, underlayData, stigixMeshActive, fleetNodes]);
 
     const onNodeClick = useCallback((_: any, node: Node) => {
         setSelectedObject({ type: 'node', ...node.data });
@@ -1967,6 +2072,29 @@ function TopologyContent({ token }: TopologyProps) {
                                             topologyViewMode === 'underlay' ? "bg-slate-950/20 text-slate-950" : "bg-amber-500/20 text-amber-300"
                                         )}>
                                             {underlayData.summary.matched}
+                                        </span>
+                                    ) : null}
+                                </button>
+                                <button
+                                    onClick={() => setStigixMeshActive(prev => !prev)}
+                                    className={cn(
+                                        "w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-between gap-2 cursor-pointer mt-0.5 border",
+                                        stigixMeshActive
+                                            ? "bg-cyan-500 text-slate-950 font-black border-cyan-400 shadow-md shadow-cyan-500/25"
+                                            : "text-text-muted hover:text-cyan-400 hover:bg-card-secondary border-border/50"
+                                    )}
+                                    title="Toggle Stigix SASE Agent Overlay & Live Mesh Links"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Zap size={14} />
+                                        <span>Stigix</span>
+                                    </div>
+                                    {fleetNodes.length > 0 ? (
+                                        <span className={cn(
+                                            "px-1.5 py-0.5 rounded-full text-[8px] font-mono font-black",
+                                            stigixMeshActive ? "bg-slate-950/20 text-slate-950" : "bg-cyan-500/20 text-cyan-300"
+                                        )}>
+                                            {fleetNodes.length}
                                         </span>
                                     ) : null}
                                 </button>
