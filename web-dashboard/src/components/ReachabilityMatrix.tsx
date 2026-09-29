@@ -366,7 +366,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
             {/* Detailed Inspection Modal */}
             {selectedPair && (
                 <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-card border border-border rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-6">
+                    <div className="bg-card border border-border rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-6">
                         <div className="flex items-center justify-between border-b border-border pb-4">
                             <div className="flex items-center gap-2">
                                 <ArrowRightLeft className="text-blue-500" size={20} />
@@ -376,7 +376,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             </div>
                             <button
                                 onClick={() => setSelectedPair(null)}
-                                className="text-text-muted hover:text-text-primary p-1 rounded-lg hover:bg-card-secondary"
+                                className="text-text-muted hover:text-text-primary p-1 rounded-lg hover:bg-card-secondary transition-colors"
                             >
                                 <XCircle size={20} />
                             </button>
@@ -420,30 +420,30 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                     {selectedPair.source_name} ➔ {selectedPair.target_name}
                                 </div>
                                 <div className="space-y-1.5 text-xs font-mono">
-                                    <div className="flex justify-between">
-                                        <span className="text-text-muted">Source IP:</span>
-                                        <span className="font-bold text-text-primary">{selectedPair.forward.source_ip || selectedPair.source_ip || '—'}</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">Source IP:</span>
+                                        <span className="font-bold text-text-primary text-right">{selectedPair.forward.source_ip || selectedPair.source_ip || '—'}</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-text-muted">Destination IP:</span>
-                                        <span className="font-bold text-text-primary">{selectedPair.forward.target_ip || selectedPair.target_ip || '—'}</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">Dest IP:</span>
+                                        <span className="font-bold text-text-primary text-right">{selectedPair.forward.target_ip || selectedPair.target_ip || '—'}</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-text-muted">Status:</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">Status:</span>
                                         <span className={selectedPair.forward.reachable ? "text-emerald-400 font-bold" : "text-red-400 font-bold"}>
                                             {selectedPair.forward.reachable ? 'ONLINE' : 'DOWN'}
                                         </span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-text-muted">Latency:</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">Latency:</span>
                                         <span className="font-bold text-text-primary">{formatNum(selectedPair.forward.latency_ms)} ms</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-text-muted">Jitter:</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">Jitter:</span>
                                         <span className="font-bold text-text-primary">{formatNum(selectedPair.forward.jitter_ms)} ms</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-text-muted">Score:</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">Score:</span>
                                         <span className="font-bold text-text-primary">{formatNum(selectedPair.forward.score)}/100</span>
                                     </div>
                                 </div>
@@ -465,34 +465,34 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                     {selectedPair.target_name} ➔ {selectedPair.source_name}
                                 </div>
                                 <div className="space-y-1.5 text-xs font-mono">
-                                    <div className="flex justify-between">
-                                        <span className="text-text-muted">Source IP:</span>
-                                        <span className="font-bold text-text-primary">{selectedPair.reverse.source_ip || selectedPair.target_ip || '—'}</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">Source IP:</span>
+                                        <span className="font-bold text-text-primary text-right">{selectedPair.reverse.source_ip || selectedPair.target_ip || '—'}</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-text-muted">Destination IP:</span>
-                                        <span className="font-bold text-text-primary">{selectedPair.reverse.target_ip || selectedPair.source_ip || '—'}</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">Dest IP:</span>
+                                        <span className="font-bold text-text-primary text-right">{selectedPair.reverse.target_ip || selectedPair.source_ip || '—'}</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-text-muted">Status:</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">Status:</span>
                                         <span className={selectedPair.reverse.has_data ? (selectedPair.reverse.reachable ? "text-emerald-400 font-bold" : "text-red-400 font-bold") : "text-text-muted"}>
                                             {selectedPair.reverse.has_data ? (selectedPair.reverse.reachable ? 'ONLINE' : 'DOWN') : 'Pending Telemetry'}
                                         </span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-text-muted">Latency:</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">Latency:</span>
                                         <span className="font-bold text-text-primary">
                                             {selectedPair.reverse.has_data ? `${formatNum(selectedPair.reverse.latency_ms)} ms` : '—'}
                                         </span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-text-muted">Jitter:</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">Jitter:</span>
                                         <span className="font-bold text-text-primary">
                                             {selectedPair.reverse.has_data ? `${formatNum(selectedPair.reverse.jitter_ms)} ms` : '—'}
                                         </span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-text-muted">Score:</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-text-muted whitespace-nowrap">Score:</span>
                                         <span className="font-bold text-text-primary">
                                             {selectedPair.reverse.has_data ? `${formatNum(selectedPair.reverse.score)}/100` : '—'}
                                         </span>
