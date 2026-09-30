@@ -69,6 +69,7 @@ Le concept repose sur un **Join Token universel** et un mécanisme d'**aiguillag
 
 ## 4. 🧠 Comment ça marche sous le capot (L'Aiguillage Invisible)
 
+### 4.1 La Négociation d'Acheminement Automatique
 Le Token `STX-7842-K9X` est un conteneur sécurisé éphémère qui encapsule :
 1. **Les adresses IP privées et publiques connues du Leader** (`192.168.1.120`, `sdwandc1.carenaje.fr`, etc.).
 2. **L'identifiant de Realm unique du lab** (`Realm-Hash` cryptographique).
@@ -84,10 +85,41 @@ flowchart TD
     
     Step1 -- "NON (Hetzner, AWS, 4G NAT)" --> CloudPath["☁️ Chemin Cloud (Aiguillage Rendez-vous)<br/>• Le nœud signale son IP au Worker Cloudflare<br/>• Inscription sécurisée dans le Realm du lab<br/>• 1 seul appel unique (Zéro surconsommation)"]
     
-    CloudPath --> DialM6["⚡ Le Leader privé détecte le nœud dans son Realm<br/>et déclenche l'appel WebSocket sortant vers la VM Cloud"]
+    CloudPath --> DialM6["⚡ Le Leader privé reçoit la notification Push instantanée<br/>et déclenche l'appel WebSocket sortant vers la VM Cloud"]
     
     FastPath --> Done["✅ Nœud en ligne, prêt pour les tests SD-WAN & SASE"]
     DialM6 --> Done
+```
+
+---
+
+### 4.2 Le Canal d'Écoute Passive Push (0 Polling, 0 Surcharge Réseau)
+
+Pour éviter que le Leader n'ait à interroger Cloudflare en boucle (polling continu), Stigix utilise un **canal d'écoute passif en temps réel (Server-Sent Events / WebSocket)** :
+
+1. **Écoute silencieuse :** Le Leader maintient une connexion d'écoute passive ouverte vers son Realm Cloudflare (`WSS registry.stigix.io/realms/:realmHash/stream`). Le Leader ne consomme aucune requête et aucun CPU en attente.
+2. **Notification instantanée (Push en 5ms) :** Dès qu'un nouveau nœud (ex: Hetzner) s'enregistre, Cloudflare **pousse immédiatement** l'événement au Leader.
+3. **Appel sortant direct :** Le Leader ouvre aussitôt le tunnel WebSocket direct `DC1 <--> Hetzner`. Cloudflare s'efface complètement et 100% des échanges ultérieurs restent en direct entre les deux machines.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant DC1 as Leader Privé (DC1)
+    participant CF as Cloudflare Worker (Canal d'écoute)
+    participant HZ as Nouveau Nœud (Hetzner)
+
+    Note over DC1,CF: 1. Le Leader ouvre une écoute passive sur son Realm (Silencieux)
+    DC1->>CF: Connexion d'écoute passive (0 requête périodique, 0 CPU)
+
+    Note over HZ: 2. L'ingénieur démarre Hetzner avec la commande 1-ligne
+    HZ->>CF: POST /register (IP: 159.69.x.x, Realm: mon-lab)
+
+    Note over CF,DC1: 3. Cloudflare PUSH instantanément la notification au Leader !
+    CF-->>DC1: ⚡ PUSH (5ms) : "Nouveau nœud Hetzner en ligne sur 159.69.x.x !"
+
+    Note over DC1,HZ: 4. Le Leader compose le tunnel direct vers Hetzner
+    DC1->>HZ: Appel sortant WebSocket direct (M6)
+    Note over DC1,HZ: ✅ Connecté en direct ! Zéro polling, zéro quota consommé.
 ```
 
 ---
