@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.110] - 2026-09-30
+
+### Fixed
+- **Leader Outbound Reverse Dialing Persistent Retention (`fleet-tunnel.ts`)**:
+  - Fixed a race condition where dialed cloud peers (e.g. Hetzner) were mistakenly classified as candidates to close because `knownPeerKeys` was checking `localRegistryServer.getInstances()` instead of only inbound M5 spokes.
+  - Ensures persistent, uninterrupted connection to external Cloud and Home LAN peers with continuous telemetry streaming. 🚀
+
 ## [2.0.109] - 2026-09-30
 
 ### Fixed / Improved

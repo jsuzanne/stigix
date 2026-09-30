@@ -392,30 +392,20 @@ export class FleetTunnelManager {
         const localIp = (localStatus.detected_ip || '127.0.0.1').toLowerCase();
         const ownInstanceId = (localStatus.instance_id || '').toLowerCase();
 
-        // Collect all known peer keys (inbound tunnels, local registry instances, or self)
-        const knownPeerKeys = new Set<string>();
-        if (ownInstanceId) knownPeerKeys.add(ownInstanceId);
-        if (localIp) knownPeerKeys.add(localIp);
+        // Collect keys of peers that already connected INBOUND to Leader (M5 spokes)
+        const inboundSpokeKeys = new Set<string>();
+        if (ownInstanceId) inboundSpokeKeys.add(ownInstanceId);
+        if (localIp) inboundSpokeKeys.add(localIp);
 
-        // Inbound active tunnels (Spokes connected to Leader via M5)
         for (const [id, entry] of this.activeTunnels) {
             if (entry.socket.connected && entry.info.direction === 'inbound') {
-                knownPeerKeys.add(id.toLowerCase());
-                if (entry.info.siteName) knownPeerKeys.add(entry.info.siteName.toLowerCase());
-                if (entry.info.ip) knownPeerKeys.add(entry.info.ip.toLowerCase());
+                inboundSpokeKeys.add(id.toLowerCase());
+                if (entry.info.siteName) inboundSpokeKeys.add(entry.info.siteName.toLowerCase());
+                if (entry.info.ip) inboundSpokeKeys.add(entry.info.ip.toLowerCase());
             }
         }
 
-        // Instances already registered in localRegistryServer via HTTP heartbeats
-        if (this.localRegistryServer) {
-            for (const inst of this.localRegistryServer.getInstances()) {
-                if (inst.instance_id) knownPeerKeys.add(inst.instance_id.toLowerCase());
-                if (inst.meta?.site) knownPeerKeys.add(inst.meta.site.toLowerCase());
-                if (inst.ip_private) knownPeerKeys.add(inst.ip_private.toLowerCase());
-            }
-        }
-
-        // Candidate targets: enabled, valid host, and NOT in knownPeerKeys
+        // Candidate targets: enabled, valid host, not self, and not already connected inbound
         const externalTargets = targets.filter(t => {
             if (t.enabled === false) return false;
             if (!t.host) return false;
@@ -425,8 +415,8 @@ export class FleetTunnelManager {
 
             if (h === '127.0.0.1' || h === 'localhost' || h === localIp) return false;
 
-            // If already known as an active local spoke or self, do not dial
-            if (knownPeerKeys.has(h) || (tid && knownPeerKeys.has(tid)) || (tname && knownPeerKeys.has(tname))) {
+            // If already known as an active inbound spoke or self, do not dial
+            if (inboundSpokeKeys.has(h) || (tid && inboundSpokeKeys.has(tid)) || (tname && inboundSpokeKeys.has(tname))) {
                 return false;
             }
             return true;
@@ -436,7 +426,7 @@ export class FleetTunnelManager {
         for (const [targetKey, socket] of this.outboundDialedSockets) {
             const stillTarget = externalTargets.some(t => {
                 const port = t.ports?.http || 8080;
-                return `${t.host.trim()}:${port}` === targetKey;
+                return `${t.host.trim().toLowerCase()}:${port}` === targetKey.toLowerCase();
             });
             if (!stillTarget) {
                 log('TUNNEL', `[M6 DIAL] Closing dialed connection for target no longer needing dial: ${targetKey}`);
@@ -449,7 +439,7 @@ export class FleetTunnelManager {
         for (const target of externalTargets) {
             const host = target.host.trim();
             const port = target.ports?.http || 8080;
-            const targetKey = `${host}:${port}`;
+            const targetKey = `${host.toLowerCase()}:${port}`;
 
             if (!this.outboundDialedSockets.has(targetKey)) {
                 this.dialOutboundPeer(target, host, port, targetKey);
