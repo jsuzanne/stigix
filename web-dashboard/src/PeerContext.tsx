@@ -323,16 +323,9 @@ export function GatewayDropdown({ isLeader }: GatewayDropdownProps) {
                                             UNREACHABLE
                                         </span>
                                     ) : (
-                                        <div className="ml-auto flex items-center gap-1.5">
-                                            {peer.has_tunnel && (
-                                                <span className="text-[8px] font-black tracking-wider uppercase text-amber-300 bg-amber-500/20 border border-amber-500/40 rounded px-1 py-0.5" title="Reverse WebSocket Tunnel Connected (Firewall/NAT Traversal)">
-                                                    ⚡ WS TUNNEL
-                                                </span>
-                                            )}
-                                            <span className="text-[9px] text-text-muted font-mono">
-                                                {peer.ip_private || ''}
-                                            </span>
-                                        </div>
+                                        <span className="text-[9px] text-text-muted font-mono ml-auto">
+                                            {peer.ip_private || ''}
+                                        </span>
                                     )}
                                 </button>
                                 );

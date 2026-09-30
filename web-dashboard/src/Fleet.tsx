@@ -19,6 +19,7 @@ interface PeerInstance {
     ip_private: string;
     ip_public?: string;
     is_leader?: boolean;
+    has_tunnel?: boolean;
     status: 'online' | 'offline';
     is_stale: boolean;
     last_seen_seconds_ago: number;
@@ -185,9 +186,15 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
     const fetchFleetOverview = async (isManual = false) => {
         if (isManual) setLoading(true);
         try {
-            const res = await fetch('/api/fleet/overview', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const [res, tunnelsRes] = await Promise.all([
+                fetch('/api/fleet/overview', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }),
+                fetch('/api/fleet/tunnels', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }).catch(() => null)
+            ]);
+
             if (!res.ok) {
                 if (res.status === 403) {
                     throw new Error('This node is not in Leader mode. Mesh Overview is only accessible on the Leader.');
@@ -195,6 +202,29 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                 throw new Error(`Failed to fetch mesh overview (${res.status})`);
             }
             const json: FleetOverviewResponse = await res.json();
+
+            const tunnelKeys = new Set<string>();
+            if (tunnelsRes && tunnelsRes.ok) {
+                try {
+                    const tData = await tunnelsRes.json();
+                    (tData.tunnels || []).forEach((t: any) => {
+                        if (t.instanceId) tunnelKeys.add(t.instanceId.toLowerCase());
+                        if (t.siteName) tunnelKeys.add(t.siteName.toLowerCase());
+                    });
+                } catch {}
+            }
+
+            if (Array.isArray(json.instances)) {
+                json.instances = json.instances.map(inst => {
+                    const id = (inst.instance_id || '').toLowerCase();
+                    const site = (inst.meta?.site || inst.instance_id || '').toLowerCase();
+                    return {
+                        ...inst,
+                        has_tunnel: tunnelKeys.has(id) || tunnelKeys.has(site)
+                    };
+                });
+            }
+
             setData(json);
             setError(null);
             setLastRefreshTime(new Date());
@@ -480,19 +510,32 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 </div>
                                             </td>
 
-                                            {/* Status Badge (Pure Online / Offline) */}
+                                            {/* Status Badge + Transport Mode */}
                                             <td className="px-6 py-3">
-                                                {peer.status === 'online' ? (
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                                        Online
-                                                    </span>
-                                                ) : (
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-500/10 text-red-400 border border-red-500/20">
-                                                        <XCircle size={12} />
-                                                        Offline
-                                                    </span>
-                                                )}
+                                                <div className="flex flex-col items-start gap-1">
+                                                    {peer.status === 'online' ? (
+                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                                            Online
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold bg-red-500/10 text-red-400 border border-red-500/20">
+                                                            <XCircle size={12} />
+                                                            Offline
+                                                        </span>
+                                                    )}
+                                                    {!isLeader && peer.status === 'online' && (
+                                                        peer.has_tunnel ? (
+                                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30" title="Connected via Outbound WebSocket Reverse Tunnel (NAT/Firewall Traversal)">
+                                                                ⚡ WS Tunnel
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold text-text-muted bg-neutral-800/80 border border-neutral-700/60" title="Direct LAN HTTP Connection">
+                                                                🌐 Direct HTTP
+                                                            </span>
+                                                        )
+                                                    )}
+                                                </div>
                                             </td>
 
                                             {/* Global Experience Score (Single line, no wrap) */}
