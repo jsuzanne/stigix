@@ -2065,6 +2065,33 @@ docker compose restart</pre>
           </div></div></div>
         </div>
 
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Global Provisioning sync configuration bundles over WebSocket Reverse Tunnels?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix provides end-to-end <strong>Bidirectional Global Provisioning</strong> that functions transparently over persistent WebSocket reverse tunnels (both inbound NAT spokes and outbound dialed Cloud peers):</p>
+            <ul>
+              <li><strong>Instant Change Broadcast:</strong> Whenever an operator edits or publishes configuration bundles (Custom TCP Apps, synthetic probes, VoIP simulation, security policies, IoT devices) on the Leader, the Leader broadcasts a <code>peer:bundle_updated</code> push notification over active WebSocket tunnels.</li>
+              <li><strong>Tunnel Pull Sync:</strong> Remote peers immediately request the latest bundle revisions directly through the existing multiplexed tunnel &mdash; requiring zero direct IP routing back to the private Leader.</li>
+              <li><strong>Zero-Downtime Hot Reload:</strong> Spoke daemons and workload generators update their in-memory configurations dynamically without container restarts.</li>
+              <li><strong>Visual State Tracking:</strong> In <strong>Settings &rarr; Target Controller</strong>, remote nodes display a <strong><code>⚡ WS Tunnel Synced</code></strong> status badge confirming automated synchronization from the controlling Leader.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What private deployment topologies are supported in Stigix?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>Stigix natively supports 4 distinct deployment models tailored to enterprise security constraints:</p>
+            <ol>
+              <li><strong>Topology 1 &mdash; Pure Private Corporate WAN / SD-WAN / MPLS:</strong> Full bidirectional IP reachability between all branches and datacenters. Leader and peers communicate over direct HTTP with automated peer discovery.</li>
+              <li><strong>Topology 2 &mdash; NAT / CGNAT Branch Spokes to Private DC Leader:</strong> Remote branches behind egress-only firewalls initiate outbound WebSocket reverse tunnels (M5) to the private Leader.</li>
+              <li><strong>Topology 3 &mdash; Zero-Inbound Private Leader + External Cloud Peers:</strong> Private DC Leader initiates outbound reverse dialing (M6) to public cloud VMs (Hetzner, AWS) or home labs, keeping the DC Leader completely hidden from the public Internet.</li>
+              <li><strong>Topology 4 &mdash; Public Cloud SaaS Leader + Distributed Private Spokes:</strong> Central cloud-hosted Stigix controller with branches dialing in over reverse tunnels.</li>
+            </ol>
+            <p>For complete architectural diagrams, port matrices, and step-by-step configuration guides, see <a href="https://github.com/jsuzanne/stigix/blob/main/docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md" target="_blank" rel="noopener noreferrer">docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md</a>.</p>
+          </div></div></div>
+        </div>
+
       </div><!-- /panel-registry -->
 
 
@@ -2418,7 +2445,7 @@ stigix-cli provision peers</pre>
       </ul>
     </div>
     <p class="footer__note" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke);font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
-      Site last updated: <strong id="faq-footer-date" style="color:var(--mid)">2026-09-05</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v2.0.7</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View V2 changelog &rarr;</a>
+      Site last updated: <strong id="faq-footer-date" style="color:var(--mid)">2026-09-30</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v2.0.111</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View V2 changelog &rarr;</a>
     </p>
     <script>var fd=new Date(document.lastModified);if(fd.getFullYear()>2000){document.getElementById('faq-footer-date').textContent=fd.toISOString().slice(0,10);}</script>
     <p class="footer__note" style="margin-top:8px;font-family:var(--mono);font-size:0.72rem;color:var(--muted);">

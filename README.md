@@ -1,9 +1,9 @@
-> **Last Updated:** 2026-09-28 | **Created:** 2026-01-25 (v1.0.0)
+> **Last Updated:** 2026-09-30 | **Created:** 2026-01-25 (v1.0.0)
 
 # 🕸️ Stigix — Advanced Networking & Security Simulation Environment
 
 [![Version](https://img.shields.io/badge/Version-2.0.111-blue.svg)](https://github.com/jsuzanne/stigix/releases)
-[![Last Updated](https://img.shields.io/badge/Updated-2026--09--28-brightgreen.svg)](CHANGELOG.md)
+[![Last Updated](https://img.shields.io/badge/Updated-2026--09--30-brightgreen.svg)](CHANGELOG.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jlsuzanne/stigix)](https://hub.docker.com/r/jlsuzanne/stigix)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -893,6 +893,7 @@ Comprehensive guides organized by your journey with the Stigix.
 - **[Digital Experience Testing](docs/DIGITAL_EXPERIENCE_TESTING.md)** - System health monitoring and synthetic probes
 
 ### 🔬 Advanced Features
+- **[Private Deployment Topologies & Reverse Tunnels](docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md)** - Architectural guide for LAN/MPLS, NAT Spokes, and Zero-Inbound Leader + Multi-Cloud Peers (Hetzner, AWS) via WebSocket reverse dialing.
 - **[Custom TCP Applications Guide](docs/CUSTOM_TCP_APPS.md)** - East-West TCP workload simulation, wire protocol, and p50/p95 latency
 - **[Custom TCP User Guide & Recipes](docs/CUSTOM_TCP_APPS_USER_GUIDE.md)** - Step-by-step creation wizard, chaos injection, 7 real-world recipes
 - **[Custom TCP Network Impairments](docs/CUSTOM_TCP_NETWORK_IMPAIRMENTS.md)** - SD-WAN VyOS netem impairments, packet loss, and L7 failover validation

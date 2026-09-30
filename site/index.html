@@ -117,7 +117,7 @@
         <span class="hero__badge-dot" aria-hidden="true"></span>
         Open-source · MIT · Multi-Node Mesh &amp; V2 Engine
       </div>
-      <span class="hero__version">current: jsuzanne/stigix:v2 &nbsp;·&nbsp; <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);text-decoration:none;">v2.0.82</a></span>
+      <span class="hero__version">current: jsuzanne/stigix:v2 &nbsp;·&nbsp; <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);text-decoration:none;">v2.0.111</a></span>
     </div>
 
     <h1 class="hero__headline">
@@ -528,18 +528,19 @@
     <!-- 15. Fleet Remote View & Gateway Proxy -->
     <div class="caps__row" role="row">
       <div class="caps__col" role="cell">
-        <div class="caps__col-name">Fleet Remote View</div>
+        <div class="caps__col-name">Fleet Gateway &amp; Remote View</div>
         <div class="caps__col-category">multi-site · control plane</div>
       </div>
       <div class="caps__col" role="cell">
-        <div class="caps__col-desc">Centralized single-pane-of-glass observability and control across all distributed edge nodes directly from the Leader dashboard. Instant 1-click context switching, live SSE stream proxying, and full read/write management across remote branches without direct browser-to-branch IP reachability constraints.</div>
+        <div class="caps__col-desc">Centralized single-pane-of-glass observability and control across all distributed edge nodes directly from the Leader dashboard. Multiplexes API traffic over persistent WebSocket reverse tunnels (traversing NAT/CGNAT/firewalls with zero inbound ports) and Leader outbound dialing for external Cloud VMs (Hetzner, AWS, Home LAN) with instant bidirectional provisioning push/pull.</div>
       </div>
       <div class="caps__col" role="cell">
         <div class="caps__col-tags">
           <span class="tag">Single Pane of Glass</span>
-          <span class="tag">Gateway Proxy</span>
+          <span class="tag">WebSocket Reverse Tunnel</span>
           <span class="tag">Context Switcher</span>
-          <span class="tag">Zero NAT Config</span>
+          <span class="tag">Zero-Inbound Multi-Cloud</span>
+          <span class="tag">Global Provisioning</span>
         </div>
       </div>
     </div>
@@ -1612,6 +1613,12 @@
         <span class="doc-link__arr">→</span>
       </a>
 
+      <a href="https://github.com/jsuzanne/stigix/blob/main/docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-topologies-link">
+        <span class="doc-link__ico">🛡️</span>
+        <div class="doc-link__text"><strong>Deployment Topologies</strong><span>LAN, NAT, Multi-Cloud Reverse Tunnels</span></div>
+        <span class="doc-link__arr">→</span>
+      </a>
+
       <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer" class="doc-link" id="docs-changelog-link">
         <span class="doc-link__ico">📋</span>
         <div class="doc-link__text"><strong>Changelog</strong><span>Full release history</span></div>
@@ -1642,7 +1649,7 @@
       </ul>
     </div>
     <p class="footer__note" id="footer-last-updated" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke);font-family:var(--mono);font-size:0.72rem;color:var(--muted);">
-      Site last updated: <strong id="footer-date" style="color:var(--mid)">2026-09-05</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v2.0.7</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View V2 changelog &rarr;</a>
+      Site last updated: <strong id="footer-date" style="color:var(--mid)">2026-09-30</strong> &nbsp;&middot;&nbsp; Covers release <a href="https://github.com/jsuzanne/stigix/releases" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">v2.0.111</a> &nbsp;&middot;&nbsp; <a href="https://github.com/jsuzanne/stigix/blob/main/CHANGELOG_V2.md" target="_blank" rel="noopener noreferrer" style="color:var(--teal);">View V2 changelog &rarr;</a>
     </p>
     <script>var d=new Date(document.lastModified);if(d.getFullYear()>2000){document.getElementById('footer-date').textContent=d.toISOString().slice(0,10);}</script>
     <p class="footer__note" id="footer-disclaimer">
