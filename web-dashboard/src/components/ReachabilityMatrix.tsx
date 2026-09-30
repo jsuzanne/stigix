@@ -256,9 +256,11 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
         }
     };
 
-    const fetchMatrix = useCallback(async () => {
+    const fetchMatrix = useCallback(async (isManualRefresh = false) => {
         try {
-            setLoading(true);
+            if (isManualRefresh || !data) {
+                setLoading(true);
+            }
             const params = new URLSearchParams();
             if (asymmetryOnly) params.set('asymmetry_only', 'true');
 
@@ -269,18 +271,38 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                 throw new Error(`Failed to load matrix (HTTP ${res.status})`);
             }
             const json: MatrixData = await res.json();
-            setData(json);
+            if (json && Array.isArray(json.nodes)) {
+                // If response is a single-node fallback but we already have multi-node data, keep existing data
+                if (json.nodes.length > 1 || !data || (data.nodes && data.nodes.length <= 1)) {
+                    setData(json);
+                    try {
+                        sessionStorage.setItem('stigix_fleet_matrix_cache', JSON.stringify(json));
+                    } catch {}
+                }
+            }
             setError(null);
         } catch (err: any) {
             setError(err.message || 'Error fetching reachability matrix');
         } finally {
             setLoading(false);
         }
-    }, [gFetch, asymmetryOnly, authHeaders]);
+    }, [gFetch, asymmetryOnly, authHeaders, data]);
 
     useEffect(() => {
+        // Load fast session cache on initial mount for instant 0ms rendering
+        try {
+            const cached = sessionStorage.getItem('stigix_fleet_matrix_cache');
+            if (cached && !data) {
+                const parsed = JSON.parse(cached);
+                if (parsed && Array.isArray(parsed.nodes) && parsed.nodes.length > 1) {
+                    setData(parsed);
+                    setLoading(false);
+                }
+            }
+        } catch {}
+
         fetchMatrix();
-        const interval = setInterval(fetchMatrix, 10000); // 10s auto-refresh
+        const interval = setInterval(() => fetchMatrix(false), 10000); // 10s silent background auto-refresh
         return () => clearInterval(interval);
     }, [fetchMatrix]);
 
@@ -544,7 +566,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                     </button>
 
                     <button
-                        onClick={fetchMatrix}
+                        onClick={() => fetchMatrix(true)}
                         disabled={loading}
                         className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm disabled:opacity-50"
                     >

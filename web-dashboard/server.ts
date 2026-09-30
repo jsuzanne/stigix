@@ -12678,6 +12678,9 @@ app.post('/api/fleet/matrix/topology', authenticateToken, async (req, res) => {
     res.json({ success: true, topology, thresholds: updated });
 });
 
+// Global in-memory cache for Spoke fleet matrix to prevent single-node fallback flushes
+let cachedFleetMatrixSpoke: { data: any; timestamp: number } | null = null;
+
 // --- Stigix Fleet Bidirectional Reachability Matrix API (PRD v2.0.97) ---
 app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
     try {
@@ -12703,6 +12706,15 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 } catch {}
             }
 
+            // Fallback leader discovery from known peers or targets
+            if (!leaderHost) {
+                const knownPeers = typeof registryManager?.getPeers === 'function' ? registryManager.getPeers() : [];
+                const leaderPeer = knownPeers.find((p: any) => p.is_leader || p.role === 'leader' || (p.instance_id && p.instance_id.toLowerCase().includes('dc1')));
+                if (leaderPeer && leaderPeer.ip_private) {
+                    leaderHost = leaderPeer.ip_private;
+                }
+            }
+
             if (leaderHost && leaderHost !== '127.0.0.1' && leaderHost !== localIp) {
                 try {
                     const queryString = req.url.includes('?') ? '?' + req.url.split('?')[1] : '';
@@ -12712,22 +12724,36 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                         headers: {
                             'Authorization': `Bearer ${internalToken}`
                         },
-                        signal: AbortSignal.timeout(4000)
+                        signal: AbortSignal.timeout(5000)
                     });
                     if (leaderRes.ok) {
                         const json: any = await leaderRes.json();
-                        if (json && Array.isArray(json.nodes)) {
+                        if (json && Array.isArray(json.nodes) && json.nodes.length > 1) {
+                            cachedFleetMatrixSpoke = { data: JSON.parse(JSON.stringify(json)), timestamp: Date.now() };
                             json.local_node_id = localId;
                             json.nodes = json.nodes.map((n: any) => ({
                                 ...n,
                                 is_local: n.id === localId
                             }));
+                            return res.json(json);
                         }
-                        return res.json(json);
                     }
                 } catch (proxyErr) {
-                    log('FLEET', `Spoke matrix proxy to Leader (${leaderHost}) fallback to local: ${proxyErr}`, 'warn');
+                    log('FLEET', `Spoke matrix proxy to Leader (${leaderHost}) error: ${proxyErr}`, 'warn');
                 }
+            }
+
+            // If proxy failed or timed out, serve from fresh spoke cache (up to 3 minutes)
+            if (cachedFleetMatrixSpoke && (Date.now() - cachedFleetMatrixSpoke.timestamp < 180000)) {
+                const cached = JSON.parse(JSON.stringify(cachedFleetMatrixSpoke.data));
+                cached.local_node_id = localId;
+                if (Array.isArray(cached.nodes)) {
+                    cached.nodes = cached.nodes.map((n: any) => ({
+                        ...n,
+                        is_local: n.id === localId
+                    }));
+                }
+                return res.json(cached);
             }
         }
 

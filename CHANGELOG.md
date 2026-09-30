@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.106] - 2026-09-30
+
+### Performance / Changed
+- **Reachability Matrix Instant 0ms Render & Spoke Caching (`server.ts`, `ReachabilityMatrix.tsx`)**:
+  - Implemented Stale-While-Revalidate in-memory cache for `/api/fleet/matrix` proxy on Spoke nodes to completely eliminate transient `1x1` grid collapses during leader polling or micro-latencies.
+  - Added multi-node matrix guard in `ReachabilityMatrix.tsx` preventing single-node local fallback overwrite when multi-node telemetry is already present.
+  - Optimized 10s auto-refresh polling into a silent background cycle, avoiding UI flickers and unnecessary loading states.
+  - Added instant session storage hydration for immediate 0ms matrix display upon tab navigation. 🚀
+
 ## [2.0.105] - 2026-09-30
 
 ### Added
