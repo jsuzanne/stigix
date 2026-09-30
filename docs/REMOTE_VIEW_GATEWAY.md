@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-09-28 | **Created:** 2026-09-28 (v2.0.67)
+> **Last Updated:** 2026-09-30 | **Created:** 2026-09-28 (v2.0.67)
 
 # Remote View Gateway — Implementation Reference
 
@@ -232,14 +232,43 @@ grep -n "fetch('/api\|fetch(\`/api" src/MyComponent.tsx
 
 ## Security Model
 
-> ⚠️ **Current state is permissive.** The gateway proxy accepts any request from authenticated DC1 users and forwards it using the peer's own credentials.
+> ⚠️ **Current state (M5):** The gateway proxy authenticates operators with DC1 JWT. WebSocket tunnels are authenticated via JWT handshake over local SD-WAN IPsec transport.
 
-| Aspect | Current Status | Planned |
+| Aspect | Current Status (M5) | Planned (M4) |
 |---|---|---|
-| Authentication | DC1 JWT required | Add per-peer HMAC signing |
-| Authorization | Any DC1 user can proxy to any peer | Role-based peer access |
-| Peer credential exposure | Peer token used internally, never sent to browser | Unchanged |
-| Audit log | None | Add gateway access audit trail |
+| Authentication | DC1 JWT required | Per-peer HMAC SHA-256 signing |
+| Transport Layer | WebSocket reverse tunnel / Direct HTTP | AES-256-GCM session payload encryption |
+| Authorization | Any DC1 admin can proxy to any peer | Role-based peer access |
+| Peer credential exposure | Gateway token used internally, never sent to browser | Unchanged |
+| Audit log | None | Gateway access audit trail |
+
+---
+
+## Fleet Gateway Architecture & Milestones Roadmap
+
+The Fleet Gateway / Remote View subsystem is structured across 6 progressive engineering milestones:
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                    STIGIX FLEET GATEWAY & CONTEXT SWITCHER                   │
+└──────────────────────────────────────────────────────────────────────────────┘
+  │
+  ├─ [x] M1 — Core BFF Gateway Reverse Proxy (`/api/gateway/:peerId/*path`) [v2.0.67]
+  ├─ [x] M2 — React Context Switcher & Dropdown Widget (`PeerContext.tsx`) [v2.0.70]
+  ├─ [x] M3 — Full Read/Write Support, SSE Streaming & Body Forwarding [v2.0.73]
+  ├─ [ ] M4 — Zero-Trust Inter-Node HMAC Request Signing & AES-256-GCM Session Encryption
+  ├─ [x] M5 — Outbound Spoke Reverse WebSocket Tunnel (`/fleet-tunnel`) [v2.0.107]
+  │           • Spoke nodes behind NAT/CGNAT/firewall connect outbound to Leader.
+  │           • Zero `.env` config needed: auto-discovered from local registry.
+  │           • Visual transport badges in Mesh Overview (`⚡ WS Tunnel` vs `🌐 Direct HTTP`).
+  │
+  └─ [ ] M6 — Leader Outbound Reverse Dialing for Manual/Cloud Peers (In Design)
+              • Scenario: Private Leader (in protected lab/LAN) + Cloud VM on Internet (e.g., Hetzner, AWS, Home LAN).
+              • The Private Leader initiates an outbound connection (`Leader ➔ Cloud VM`) to the target's public IP/FQDN.
+              • Once established, the full-duplex tunnel allows the Cloud VM to stream telemetry/metrics to the Leader,
+                and the Leader operator to switch context and manage the Cloud VM seamlessly.
+              • Key Benefit: Zero inbound ports or public IP required on the Leader — total isolation and protection.
+```
 
 ---
 
@@ -247,12 +276,13 @@ grep -n "fetch('/api\|fetch(\`/api" src/MyComponent.tsx
 
 The Remote View Gateway is a **pragmatic bootstrap** satisfying observability and basic control without a full agent-pull job model:
 
-| Capability | Remote View Gateway | PRD Phase 3 (planned) |
+| Capability | Remote View Gateway (M1–M5) | PRD Phase 3 (planned) |
 |---|---|---|
-| Read peer state | ✅ Live polling | ✅ Enriched heartbeat telemetry |
-| Trigger remote actions | ✅ Synchronous gateway proxy | ✅ Durable jobs with ACK lifecycle |
+| Read peer state | ✅ Live polling & WS tunnels | ✅ Enriched heartbeat telemetry |
+| Trigger remote actions | ✅ Synchronous gateway proxy & reverse tunnel | ✅ Durable jobs with ACK lifecycle |
 | Offline peer last-known state | ❌ | ✅ Persisted in controller |
-| Multi-peer fleet view | ❌ | ✅ Consolidated fleet dashboard |
+| Multi-peer fleet view | ✅ Consolidated Mesh Overview table | ✅ Consolidated fleet dashboard |
+| NAT / CGNAT Traversal | ✅ Bidirectional WebSocket Reverse Tunnel | ✅ Agent-pull task queue |
 | Job scheduling | ❌ | ✅ `start_at` synchronized jobs |
 | Audit trail | ❌ | ✅ Full job + result history |
 
@@ -262,6 +292,7 @@ The Remote View Gateway is a **pragmatic bootstrap** satisfying observability an
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-09-30 | `v2.0.107` | Stigix Core Team / Antigravity | Added Milestone 5 (WebSocket Reverse Tunnel for NAT/CGNAT traversal), updated Mesh Overview transport indicators, and specified Milestone 6 (Leader Outbound Reverse Dialing for Cloud/Internet peers) |
 | 2026-09-28 | `v2.0.80` | Stigix Core Team / Antigravity | Documented top-left amber site name subtitle indicator and added UI screenshot |
 | 2026-09-28 | `v2.0.73` | Stigix Core Team / Antigravity | Major update: write operations coverage, body forwarding fix, SSE proxying, EventSource URL pattern, updated feature matrix, new UX indicators (chip + inset border) |
 | 2026-09-28 | `v2.0.67` | Stigix Core Team / Antigravity | Initial document creation — M3 Remote View Gateway implementation reference |
