@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.105] - 2026-09-30
+
+### Added
+- **Failover Monitoring Target Auto-Focus (`Failover.tsx`)**:
+  - Automatically filters and focuses on active target endpoints during a running failover test, collapsing unused targets to reduce visual noise during live testing.
+  - Added an interactive focus banner with an on-demand **`Show all targets`** button to view all targets at any time.
+  - Preserves full target list in non-testing mode and restores all endpoints automatically when tests conclude. 🚀
+
 ## [2.0.98] - 2026-09-29
 
 ### Added

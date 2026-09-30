@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { usePeerContext } from './PeerContext';
 import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'recharts';
-import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera } from 'lucide-react';
+import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera, Eye, EyeOff } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { isValidIpOrFqdn } from './utils/validation';
 
@@ -22,6 +22,7 @@ export default function Failover(props: FailoverProps) {
     const [historySearch, setHistorySearch] = useState('');
     const [nowTs, setNowTs] = useState(Date.now());
     const [exportingPocId, setExportingPocId] = useState<string | null>(null);
+    const [showAllTargetsDuringTest, setShowAllTargetsDuringTest] = useState(false);
 
     const allTargets = useMemo(() => {
         const combined = [...endpoints];
@@ -669,12 +670,41 @@ export default function Failover(props: FailoverProps) {
                         <div className="flex items-center gap-2">
                             <Server size={14} className="text-blue-500" />
                             <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">Stigix Targets</h3>
-                            {allTargets.length > 0 && (
+                            {activeTests.length > 0 && !showAllTargetsDuringTest ? (
+                                <span className="text-[10px] font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20 flex items-center gap-1.5 shadow-sm">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping"></span>
+                                    {(() => {
+                                        const isTargetActive = (tItem: any) => activeTests.some(t => 
+                                            (t.target === tItem.target && String(t.port || 6100) === String(tItem.port || 6100)) ||
+                                            (t.label && t.label === tItem.label) ||
+                                            (t.test_id && (t.test_id.includes(tItem.label) || (tItem.target && t.test_id.includes(tItem.target))))
+                                        );
+                                        const count = allTargets.filter(isTargetActive).length;
+                                        return `${count} ACTIVE • ${allTargets.length - count} HIDDEN`;
+                                    })()}
+                                </span>
+                            ) : allTargets.length > 0 && (
                                 <span className="text-[10px] font-bold text-text-muted bg-card px-1.5 py-0.5 rounded border border-border">
                                     {allTargets.length}
                                 </span>
                             )}
                         </div>
+
+                        {activeTests.length > 0 && (
+                            <button
+                                onClick={() => setShowAllTargetsDuringTest(prev => !prev)}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg border transition-all cursor-pointer shadow-sm ${
+                                    showAllTargetsDuringTest 
+                                        ? 'bg-card text-text-muted border-border hover:text-text-primary' 
+                                        : 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20'
+                                }`}
+                                title={showAllTargetsDuringTest ? "Focus on active running target only" : "Show all idle targets"}
+                            >
+                                {showAllTargetsDuringTest ? <EyeOff size={12} /> : <Eye size={12} />}
+                                <span>{showAllTargetsDuringTest ? 'Focus Active' : `Show All (${allTargets.length})`}</span>
+                            </button>
+                        )}
+
                         <div className="relative">
                             <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
                             <input
@@ -726,10 +756,23 @@ export default function Failover(props: FailoverProps) {
                 </div>
                 <div className="flex flex-wrap gap-3 max-h-[360px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
                 {(() => {
-                    const filteredTargets = allTargets.filter(t => 
+                    const hasActiveTests = activeTests.length > 0;
+                    const isTargetActive = (tItem: any) => activeTests.some(t => 
+                        (t.target === tItem.target && String(t.port || 6100) === String(tItem.port || 6100)) ||
+                        (t.label && t.label === tItem.label) ||
+                        (t.test_id && (t.test_id.includes(tItem.label) || (tItem.target && t.test_id.includes(tItem.target))))
+                    );
+
+                    const baseFiltered = allTargets.filter(t => 
                         t.label.toLowerCase().includes(searchQuery.toLowerCase()) || 
                         t.target.toLowerCase().includes(searchQuery.toLowerCase())
                     );
+
+                    const activeFiltered = baseFiltered.filter(isTargetActive);
+                    const isFocusMode = hasActiveTests && !showAllTargetsDuringTest;
+                    const filteredTargets = (isFocusMode && activeFiltered.length > 0) 
+                        ? activeFiltered 
+                        : baseFiltered;
                     
                     if (filteredTargets.length === 0) {
                         return (
@@ -739,86 +782,104 @@ export default function Failover(props: FailoverProps) {
                         );
                     }
 
-                    return filteredTargets.map((e) => {
-                        const isSelected = selectedEndpoints.includes(e.id);
-                        const status = reachability[e.id];
-                        return (
-                            <div
-                                key={e.id}
-                                onClick={() => {
-                                    if (isSelected) setSelectedEndpoints(selectedEndpoints.filter(id => id !== e.id));
-                                    else setSelectedEndpoints([...selectedEndpoints, e.id]);
-                                }}
-                                className={`bg-card border px-3 py-2 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-blue-500 bg-blue-600/5 shadow-blue-500/10' : 'border-border'}`}
-                            >
-                                <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
-                                    {isSelected && <Zap size={8} className="text-white" fill="currentColor" />}
-                                </div>
-
-                                {/* Reachability Dot */}
-                                <div className="shrink-0 flex items-center justify-center w-4">
-                                    {status === 'loading' || status === undefined ? (
-                                        <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse" title="Checking reachability..." />
-                                    ) : status ? (
-                                        <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
-                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                    return (
+                        <>
+                            {filteredTargets.map((e) => {
+                                const isSelected = selectedEndpoints.includes(e.id);
+                                const status = reachability[e.id];
+                                return (
+                                    <div
+                                        key={e.id}
+                                        onClick={() => {
+                                            if (isSelected) setSelectedEndpoints(selectedEndpoints.filter(id => id !== e.id));
+                                            else setSelectedEndpoints([...selectedEndpoints, e.id]);
+                                        }}
+                                        className={`bg-card border px-3 py-2 rounded-xl group cursor-pointer transition-all flex items-center gap-3 shadow-sm hover:shadow-md ${isSelected ? 'border-blue-500 bg-blue-600/5 shadow-blue-500/10' : 'border-border'}`}
+                                    >
+                                        <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-blue-600 border-blue-500' : 'bg-card-secondary border-border'}`}>
+                                            {isSelected && <Zap size={8} className="text-white" fill="currentColor" />}
                                         </div>
-                                    ) : (
-                                        <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" title="Unreachable" />
-                                    )}
-                                </div>
 
-                                <div className="flex flex-col flex-1 min-w-0">
-                                    <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{e.label}</h4>
-                                    <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{e.target}:{e.port}</p>
-                                </div>
-                                <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
-                                    {!e.isRegistry && (
-                                        <button
-                                            onClick={(e_stop) => { e_stop.stopPropagation(); deleteEndpoint(e.id); }}
-                                            className="text-text-muted hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1"
-                                        >
-                                            <Trash2 size={12} />
-                                        </button>
-                                    )}
-                                    {(() => {
-                                        const activeTestForTarget = activeTests.find(t => t.target === e.target && String(t.port || 6100) === String(e.port || 6100));
-                                        const isTesting = !!activeTestForTarget;
+                                        {/* Reachability Dot */}
+                                        <div className="shrink-0 flex items-center justify-center w-4">
+                                            {status === 'loading' || status === undefined ? (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-border animate-pulse" title="Checking reachability..." />
+                                            ) : status ? (
+                                                <div className="relative flex h-2 w-2 items-center justify-center shrink-0" title="Reachable">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '3s' }}></span>
+                                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                                                </div>
+                                            ) : (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" title="Unreachable" />
+                                            )}
+                                        </div>
 
-                                        return (
-                                            <>
+                                        <div className="flex flex-col flex-1 min-w-0">
+                                            <h4 className={`text-xs font-bold transition-colors tracking-tight truncate ${isSelected ? 'text-blue-500' : 'text-text-primary'}`}>{e.label}</h4>
+                                            <p className="text-[9px] text-text-muted font-mono mt-0.5 truncate">{e.target}:{e.port}</p>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 ml-2 border-l border-border/50 pl-3">
+                                            {!e.isRegistry && (
                                                 <button
-                                                    onClick={(e_play) => { e_play.stopPropagation(); startTest([e.id]); }}
-                                                    disabled={isStarting || isTesting}
-                                                    className={`ml-2 p-1.5 rounded-md transition-colors border shadow-sm ${
-                                                        isTesting 
-                                                            ? 'bg-card-secondary text-text-muted border-transparent opacity-50 cursor-not-allowed' 
-                                                            : 'bg-blue-500/10 text-blue-500 hover:bg-blue-600 hover:text-white border-blue-500/20 hover:border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed'
-                                                    }`}
-                                                    title={isTesting ? "Test already running" : "Launch Failover Test"}
+                                                    onClick={(e_stop) => { e_stop.stopPropagation(); deleteEndpoint(e.id); }}
+                                                    className="text-text-muted hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1"
                                                 >
-                                                    <Play size={10} fill="currentColor" />
+                                                    <Trash2 size={12} />
                                                 </button>
-                                                <button
-                                                    onClick={(e_stop_test) => { e_stop_test.stopPropagation(); stopTest(activeTestForTarget?.testId); }}
-                                                    disabled={!isTesting}
-                                                    className={`p-1.5 rounded-md transition-all border shadow-sm ${
-                                                        isTesting
-                                                            ? 'bg-red-500 text-white hover:bg-red-600 border-red-500 shadow-red-500/40 cursor-pointer scale-110'
-                                                            : 'bg-card-secondary text-text-muted border-transparent opacity-30 cursor-not-allowed'
-                                                    }`}
-                                                    title={isTesting ? "Stop this test" : "No active test to stop"}
-                                                >
-                                                    <Square size={10} fill="currentColor" />
-                                                </button>
-                                            </>
-                                        );
-                                    })()}
+                                            )}
+                                            {(() => {
+                                                const activeTestForTarget = activeTests.find(t => t.target === e.target && String(t.port || 6100) === String(e.port || 6100));
+                                                const isTesting = !!activeTestForTarget;
+
+                                                return (
+                                                    <>
+                                                        <button
+                                                            onClick={(e_play) => { e_play.stopPropagation(); startTest([e.id]); }}
+                                                            disabled={isStarting || isTesting}
+                                                            className={`ml-2 p-1.5 rounded-md transition-colors border shadow-sm ${
+                                                                isTesting 
+                                                                    ? 'bg-card-secondary text-text-muted border-transparent opacity-50 cursor-not-allowed' 
+                                                                    : 'bg-blue-500/10 text-blue-500 hover:bg-blue-600 hover:text-white border-blue-500/20 hover:border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed'
+                                                            }`}
+                                                            title={isTesting ? "Test already running" : "Launch Failover Test"}
+                                                        >
+                                                            <Play size={10} fill="currentColor" />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e_stop_test) => { e_stop_test.stopPropagation(); stopTest(activeTestForTarget?.testId); }}
+                                                            disabled={!isTesting}
+                                                            className={`p-1.5 rounded-md transition-all border shadow-sm ${
+                                                                isTesting
+                                                                    ? 'bg-red-500 text-white hover:bg-red-600 border-red-500 shadow-red-500/40 cursor-pointer scale-110'
+                                                                    : 'bg-card-secondary text-text-muted border-transparent opacity-30 cursor-not-allowed'
+                                                            }`}
+                                                            title={isTesting ? "Stop this test" : "No active test to stop"}
+                                                        >
+                                                            <Square size={10} fill="currentColor" />
+                                                        </button>
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {isFocusMode && allTargets.length > filteredTargets.length && (
+                                <div className="w-full flex items-center justify-between px-3.5 py-2 bg-blue-500/5 border border-blue-500/20 rounded-xl text-xs mt-1 animate-in fade-in-50">
+                                    <span className="text-[11px] flex items-center gap-2 text-text-muted">
+                                        <Info size={13} className="text-blue-400 shrink-0" />
+                                        <span>Auto-focused on <b>{filteredTargets.length} active target{filteredTargets.length > 1 ? 's' : ''}</b> during live test.</span>
+                                    </span>
+                                    <button
+                                        onClick={() => setShowAllTargetsDuringTest(true)}
+                                        className="text-[11px] font-bold text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 ml-2"
+                                    >
+                                        <Eye size={12} /> Show all {allTargets.length} targets
+                                    </button>
                                 </div>
-                            </div>
-                        );
-                    });
+                            )}
+                        </>
+                    );
                 })()}
                 </div>
             </div>
