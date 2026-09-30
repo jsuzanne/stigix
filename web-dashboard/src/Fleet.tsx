@@ -98,7 +98,7 @@ const CAPABILITIES_CONFIG = [
 function ScoreMiniBadge({ score, isStale, isOnline }: { score?: number | null; isStale?: boolean; isOnline?: boolean }) {
     if (isStale || !isOnline) {
         return (
-            <span className="px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-neutral-800 text-neutral-500 border border-neutral-700 whitespace-nowrap">
+            <span className="px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-card-secondary text-text-muted border border-border whitespace-nowrap">
                 — Offline
             </span>
         );
@@ -106,7 +106,7 @@ function ScoreMiniBadge({ score, isStale, isOnline }: { score?: number | null; i
 
     if (score === undefined || score === null) {
         return (
-            <span className="px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-neutral-800/80 text-neutral-400 border border-neutral-700/60 whitespace-nowrap" title="No probe telemetry reported">
+            <span className="px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-card-secondary/80 text-text-muted border border-border/60 whitespace-nowrap" title="No probe telemetry reported">
                 — N/A
             </span>
         );
@@ -121,7 +121,7 @@ function ScoreMiniBadge({ score, isStale, isOnline }: { score?: number | null; i
         : isGood
         ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
         : isDegraded
-        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+        ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30'
         : 'bg-red-500/10 text-red-400 border-red-500/30';
 
     const label = isOptimal ? 'Optimal' : isGood ? 'Good' : isDegraded ? 'Degraded' : 'Critical';
@@ -302,7 +302,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 ${
                             autoRefresh 
                                 ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' 
-                                : 'bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-neutral-200'
+                                : 'bg-card-secondary text-text-muted border-border hover:text-text-primary'
                         }`}
                         title="Toggle 15s auto-refresh"
                     >
@@ -336,7 +336,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
             {/* KPI Metrics Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-card/50 backdrop-blur-md p-4 rounded-xl border border-border flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-neutral-800 flex items-center justify-center text-neutral-400">
+                    <div className="w-10 h-10 rounded-lg bg-card-secondary flex items-center justify-center text-text-muted">
                         <Server size={20} />
                     </div>
                     <div>
@@ -404,7 +404,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                             className={`px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider transition-all ${
                                 statusFilter === f
                                     ? 'bg-blue-600 text-white shadow-sm'
-                                    : 'bg-neutral-800/60 text-text-muted hover:text-text hover:bg-neutral-800'
+                                    : 'bg-card-secondary text-text-muted hover:text-text-primary hover:bg-card-hover'
                             }`}
                         >
                             {f}
@@ -417,7 +417,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
             <div className="bg-card/60 backdrop-blur-md rounded-2xl border border-border overflow-hidden shadow-xl">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
-                        <thead className="bg-neutral-900/60 border-b border-border text-xs uppercase font-mono tracking-wider text-text-muted">
+                        <thead className="bg-card-secondary border-b border-border text-xs uppercase font-mono tracking-wider text-text-muted">
                             <tr>
                                 <th className="px-6 py-3">Site / Node</th>
                                 <th className="px-6 py-3">Status</th>
@@ -472,7 +472,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                     <div className={`w-8 h-8 rounded-lg border flex items-center justify-center font-bold text-xs transition-all shrink-0 ${
                                                         isLeader 
                                                             ? 'bg-purple-500/10 border-purple-500/30 text-purple-400' 
-                                                            : 'bg-neutral-800/80 border-neutral-700 text-neutral-300 group-hover:border-blue-500/40 group-hover:text-blue-400'
+                                                            : 'bg-card-secondary/80 border-border text-text-secondary group-hover:border-blue-500/40 group-hover:text-blue-400'
                                                     }`}>
                                                         {isLeader ? '👑' : siteName.slice(0, 3).toUpperCase()}
                                                     </div>
@@ -507,7 +507,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                                             key={cap.key}
                                                                             title={`${cap.label}: ${enabled ? 'Enabled' : 'Disabled'}`}
                                                                             className={`w-1.5 h-1.5 rounded-full transition-all ${
-                                                                                enabled ? cap.dotClass : 'bg-neutral-700/40'
+                                                                                enabled ? cap.dotClass : 'bg-card-hover/40'
                                                                             }`}
                                                                         />
                                                                     );
@@ -534,11 +534,11 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                     )}
                                                     {!isLeader && peer.status === 'online' && (
                                                         peer.has_tunnel ? (
-                                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30" title="Connected via Outbound WebSocket Reverse Tunnel (NAT/Firewall Traversal)">
+                                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30" title="Connected via Outbound WebSocket Reverse Tunnel (NAT/Firewall Traversal)">
                                                                 ⚡ WS Tunnel
                                                             </span>
                                                         ) : (
-                                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold text-text-muted bg-neutral-800/80 border border-neutral-700/60" title="Direct LAN HTTP Connection">
+                                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold text-text-muted bg-card-secondary/80 border border-border/60" title="Direct LAN HTTP Connection">
                                                                 🌐 Direct HTTP
                                                             </span>
                                                         )
@@ -558,7 +558,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             {/* Probes Summary with descriptive tooltip */}
                                             <td className="px-6 py-3">
                                                 {peer.is_stale || peer.summary?.probes_total === undefined ? (
-                                                    <span className="text-xs text-neutral-500 font-mono">—</span>
+                                                    <span className="text-xs text-text-muted font-mono">—</span>
                                                 ) : (() => {
                                                     const total = peer.summary.probes_total;
                                                     const passing = peer.summary.probes_passing ?? total;
@@ -585,7 +585,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             {/* Traffic State */}
                                             <td className="px-6 py-3">
                                                 {peer.is_stale || !peer.summary?.traffic_state ? (
-                                                    <span className="text-xs text-neutral-500 font-mono">—</span>
+                                                    <span className="text-xs text-text-muted font-mono">—</span>
                                                 ) : peer.summary.traffic_state === 'RUNNING' ? (
                                                     <div className="flex items-center gap-1.5 text-xs font-mono whitespace-nowrap">
                                                         {peer.summary.traffic_tx_mbps !== undefined && peer.summary.traffic_rx_mbps !== undefined ? (
@@ -593,11 +593,11 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                                 <span className="text-emerald-400" title={`Transmitted: ${peer.summary.traffic_tx_mbps} Mbps`}>
                                                                     ▲ {peer.summary.traffic_tx_mbps}
                                                                 </span>
-                                                                <span className="text-neutral-500 font-normal">·</span>
-                                                                <span className={peer.summary.traffic_rx_mbps === 0 ? 'text-amber-400/90' : 'text-cyan-400'} title={`Received: ${peer.summary.traffic_rx_mbps} Mbps`}>
+                                                                <span className="text-text-muted font-normal">·</span>
+                                                                <span className={peer.summary.traffic_rx_mbps === 0 ? 'text-amber-600/90 dark:text-amber-400/90' : 'text-cyan-400'} title={`Received: ${peer.summary.traffic_rx_mbps} Mbps`}>
                                                                     ▼ {peer.summary.traffic_rx_mbps}
                                                                 </span>
-                                                                <span className="text-neutral-400 text-[10px] font-normal">Mbps</span>
+                                                                <span className="text-text-muted text-[10px] font-normal">Mbps</span>
                                                             </span>
                                                         ) : (
                                                             <>
@@ -609,7 +609,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                         )}
                                                     </div>
                                                 ) : (
-                                                    <div className="flex items-center gap-1.5 text-xs text-neutral-400 font-mono">
+                                                    <div className="flex items-center gap-1.5 text-xs text-text-muted font-mono">
                                                         <span>■</span>
                                                         <span>Stopped</span>
                                                     </div>
@@ -619,7 +619,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             {/* Voice MOS */}
                                             <td className="px-6 py-3">
                                                 {peer.is_stale || !peer.summary?.voice_mos ? (
-                                                    <span className="text-xs text-neutral-500 font-mono">—</span>
+                                                    <span className="text-xs text-text-muted font-mono">—</span>
                                                 ) : (
                                                     <span className="text-xs font-bold font-mono text-cyan-400">
                                                         {peer.summary.voice_mos.toFixed(2)}
@@ -635,12 +635,12 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                         Synced
                                                     </span>
                                                 ) : peer.config_sync_status === 'behind' ? (
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20" title={`${peer.behind_bundles_count || 1} bundle(s) behind Leader`}>
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20" title={`${peer.behind_bundles_count || 1} bundle(s) behind Leader`}>
                                                         <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                                                         Behind ({peer.behind_bundles_count || '!'})
                                                     </span>
                                                 ) : (
-                                                    <span className="text-xs font-mono text-neutral-500">—</span>
+                                                    <span className="text-xs font-mono text-text-muted">—</span>
                                                 )}
                                             </td>
 
@@ -657,7 +657,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 <div className="inline-flex items-center gap-1.5 justify-end">
                                                     <button
                                                         onClick={(e) => handleCopy(e, peer.ip_private)}
-                                                        className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 transition-all"
+                                                        className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-card-secondary hover:bg-card-hover text-text-secondary border border-border transition-all"
                                                         title="Copy Traffic IP"
                                                     >
                                                         {copiedIp === peer.ip_private ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
@@ -667,7 +667,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                         href={effectiveUrl}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="p-1.5 rounded-lg text-xs font-bold bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 border border-neutral-700 transition-all shadow-sm"
+                                                        className="p-1.5 rounded-lg text-xs font-bold bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary border border-border transition-all shadow-sm"
                                                         title={`Open Direct URL: ${effectiveUrl}`}
                                                     >
                                                         <ExternalLink size={13} />
@@ -699,8 +699,8 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                             }}
                                                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 whitespace-nowrap ${
                                                                 activePeerId === peer.instance_id
-                                                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 ring-1 ring-amber-500/30'
-                                                                    : 'bg-amber-600/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 hover:border-amber-500/50'
+                                                                    ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 ring-1 ring-amber-500/30'
+                                                                    : 'bg-amber-600/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:border-amber-500/50'
                                                             }`}
                                                             title={`Switch context to ${siteName} (${peer.instance_id})`}
                                                         >
@@ -723,8 +723,8 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
             {selectedPeer && (() => {
                 const score = selectedPeer.summary?.probes_global_health;
                 const scoreColor = score !== undefined && score !== null
-                    ? score >= 80 ? 'text-emerald-400' : score >= 65 ? 'text-cyan-400' : score >= 50 ? 'text-amber-400' : 'text-red-400'
-                    : 'text-neutral-400';
+                    ? score >= 80 ? 'text-emerald-400' : score >= 65 ? 'text-cyan-400' : score >= 50 ? 'text-amber-600 dark:text-amber-400' : 'text-red-400'
+                    : 'text-text-muted';
                 const label = score !== undefined && score !== null
                     ? score >= 80 ? 'Optimal' : score >= 65 ? 'Good' : score >= 50 ? 'Degraded' : 'Critical'
                     : 'N/A';
@@ -772,7 +772,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
 
                                 <button 
                                     onClick={() => setSelectedPeer(null)}
-                                    className="w-8 h-8 rounded-lg bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center text-neutral-400 hover:text-white transition-colors"
+                                    className="w-8 h-8 rounded-lg bg-card-secondary hover:bg-card-hover flex items-center justify-center text-text-muted hover:text-text-primary transition-colors"
                                 >
                                     <X size={16} />
                                 </button>
@@ -784,21 +784,21 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                     Network & Management Addresses
                                 </h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <div className="p-3 rounded-xl bg-neutral-900/60 border border-border flex items-center justify-between">
+                                    <div className="p-3 rounded-xl bg-card/60 border border-border flex items-center justify-between">
                                         <div>
                                             <div className="text-[10px] uppercase font-bold text-text-muted">Traffic IP (Data Plane)</div>
                                             <div className="text-sm font-mono font-bold text-text mt-0.5">{selectedPeer.ip_private}</div>
                                         </div>
                                         <button
                                             onClick={(e) => handleCopy(e, selectedPeer.ip_private)}
-                                            className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
+                                            className="p-1.5 rounded-lg bg-card-secondary hover:bg-card-hover text-text-secondary"
                                             title="Copy IP"
                                         >
                                             {copiedIp === selectedPeer.ip_private ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                                         </button>
                                     </div>
 
-                                    <div className="p-3 rounded-xl bg-neutral-900/60 border border-border flex items-center justify-between">
+                                    <div className="p-3 rounded-xl bg-card/60 border border-border flex items-center justify-between">
                                         <div>
                                             <div className="text-[10px] uppercase font-bold text-text-muted">Management URL</div>
                                             <div className="text-sm font-mono font-bold text-text mt-0.5 truncate max-w-[180px]">
@@ -810,7 +810,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             href={selectedPeer.meta?.management_url || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
+                                            className="p-1.5 rounded-lg bg-card-secondary hover:bg-card-hover text-text-secondary"
                                             title="Open UI"
                                         >
                                             <ExternalLink size={14} />
@@ -823,7 +823,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                             </div>
 
                             {/* Top Telemetry Highlight (Clean typography, no wrap, proportional widths) */}
-                            <div className="grid grid-cols-2 sm:grid-cols-[1.3fr_1.4fr_0.7fr_0.6fr] gap-3 bg-neutral-900/40 p-4 rounded-xl border border-border">
+                            <div className="grid grid-cols-2 sm:grid-cols-[1.3fr_1.4fr_0.7fr_0.6fr] gap-3 bg-card-secondary/40 p-4 rounded-xl border border-border">
                                 <div>
                                     <div className="text-[11px] uppercase tracking-wider text-text-muted font-bold">Global Exp.</div>
                                     <div className="mt-1 font-mono text-sm font-bold flex items-baseline gap-1 whitespace-nowrap">
@@ -839,7 +839,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             <span className="text-emerald-400 inline-flex items-center gap-1.5 flex-wrap">
                                                 <span>▶ Active</span>
                                                 {selectedPeer.summary.traffic_tx_mbps !== undefined && selectedPeer.summary.traffic_rx_mbps !== undefined ? (
-                                                    <span className="text-xs font-normal opacity-90 text-neutral-300">
+                                                    <span className="text-xs font-normal opacity-90 text-text-secondary">
                                                         (▲ {selectedPeer.summary.traffic_tx_mbps} TX · ▼ {selectedPeer.summary.traffic_rx_mbps} RX Mbps)
                                                     </span>
                                                 ) : selectedPeer.summary.traffic_rate_mbps && selectedPeer.summary.traffic_rate_mbps > 0 ? (
@@ -847,7 +847,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 ) : null}
                                             </span>
                                         ) : (
-                                            <span className="text-neutral-400">■ Stopped</span>
+                                            <span className="text-text-muted">■ Stopped</span>
                                         )}
                                     </div>
                                 </div>
@@ -879,7 +879,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-2 transition-all shadow-sm ${
                                                     enabled 
                                                         ? cap.activeClass 
-                                                        : 'bg-neutral-900/60 text-neutral-500 border-neutral-800'
+                                                        : 'bg-card-secondary text-text-muted border-border'
                                                 }`}
                                             >
                                                 <span className={`w-2 h-2 rounded-full ${enabled ? cap.dotClass : 'bg-neutral-600'}`} />
@@ -902,7 +902,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                         <span className="text-text-muted"> | Passing: </span>
                                         <span className="font-bold text-emerald-400">{selectedPeer.summary?.probes_passing ?? 0}</span>
                                         <span className="text-text-muted"> | Failing: </span>
-                                        <span className={`font-bold ${(selectedPeer.summary?.probes_total ?? 0) - (selectedPeer.summary?.probes_passing ?? 0) > 0 ? 'text-amber-400' : 'text-text-muted'}`}>
+                                        <span className={`font-bold ${(selectedPeer.summary?.probes_total ?? 0) - (selectedPeer.summary?.probes_passing ?? 0) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-text-muted'}`}>
                                             {Math.max(0, (selectedPeer.summary?.probes_total ?? 0) - (selectedPeer.summary?.probes_passing ?? 0))}
                                         </span>
                                     </div>
@@ -913,12 +913,12 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                         {selectedPeer.summary.failing_probes.map((p, idx) => (
                                             <div key={idx} className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs font-mono flex items-center justify-between">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-amber-400">⚠️</span>
+                                                    <span className="text-amber-600 dark:text-amber-400">⚠️</span>
                                                     <span className="font-bold text-text">{p.name}</span>
-                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 uppercase font-black">{p.type}</span>
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-card-secondary text-text-muted uppercase font-black">{p.type}</span>
                                                     {p.target && <span className="text-text-muted text-[11px]">{p.target}</span>}
                                                 </div>
-                                                <div className="text-amber-400 text-right text-[11px] font-semibold">
+                                                <div className="text-amber-600 dark:text-amber-400 text-right text-[11px] font-semibold">
                                                     {p.error} {p.reliability !== undefined && p.reliability > 0 ? `(${p.reliability}%)` : ''}
                                                 </div>
                                             </div>
@@ -945,7 +945,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 All Synced (Matches Leader)
                                             </span>
                                         ) : selectedPeer.config_sync_status === 'behind' ? (
-                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                                                 Behind Leader ({selectedPeer.behind_bundles_count || 1} bundle(s) out of date)
                                             </span>
@@ -964,12 +964,12 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                             const isBundleSynced = selectedPeer.is_leader || !leaderRev || rev >= leaderRev;
                                             return (
                                                 <div key={bundle} className={`p-2.5 rounded-xl border text-xs font-mono flex items-center justify-between ${
-                                                    isBundleSynced ? 'bg-neutral-900/50 border-neutral-800' : 'bg-amber-500/5 border-amber-500/20'
+                                                    isBundleSynced ? 'bg-card-secondary/50 border-border' : 'bg-amber-500/5 border-amber-500/20'
                                                 }`}>
-                                                    <span className="text-neutral-400 capitalize">{bundle.replace(/_/g, ' ')}</span>
-                                                    <span className={`font-bold flex items-center gap-1.5 ${isBundleSynced ? 'text-blue-400' : 'text-amber-400'}`}>
+                                                    <span className="text-text-muted capitalize">{bundle.replace(/_/g, ' ')}</span>
+                                                    <span className={`font-bold flex items-center gap-1.5 ${isBundleSynced ? 'text-blue-400' : 'text-amber-600 dark:text-amber-400'}`}>
                                                         r{String(rev)}
-                                                        {isBundleSynced ? <Check size={12} className="text-emerald-400" /> : <AlertTriangle size={12} className="text-amber-400" />}
+                                                        {isBundleSynced ? <Check size={12} className="text-emerald-400" /> : <AlertTriangle size={12} className="text-amber-600 dark:text-amber-400" />}
                                                     </span>
                                                 </div>
                                             );
@@ -989,7 +989,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                         href={selectedPeer.meta?.management_url || (selectedPeer.meta?.management_ip ? `http://${selectedPeer.meta.management_ip}:8080` : `http://${selectedPeer.ip_private}:8080`)}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-xs flex items-center gap-1.5 transition-all border border-neutral-700"
+                                        className="px-3 py-2 rounded-xl bg-card-secondary hover:bg-card-hover text-text-secondary font-bold text-xs flex items-center gap-1.5 transition-all border border-neutral-700"
                                         title="Open direct URL in new tab"
                                     >
                                         <span>Direct URL</span>

@@ -911,8 +911,8 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                                             className={cn(
                                                 "p-2.5 rounded-xl border transition-all cursor-pointer group flex flex-col gap-1.5 shadow-sm",
                                                 isOffline 
-                                                    ? "bg-red-500/5 border-red-500/20 hover:border-red-500/40 hover:bg-red-500/10" 
-                                                    : "bg-amber-500/5 border-amber-500/20 hover:border-amber-500/40 hover:bg-amber-500/10"
+                                                    ? "bg-card-secondary border-red-500/30 hover:border-red-500/50 hover:bg-red-500/8" 
+                                                    : "bg-card-secondary border-amber-500/25 hover:border-amber-500/45 hover:bg-amber-500/8"
                                             )}
                                         >
                                             <div className="flex items-center justify-between gap-2">

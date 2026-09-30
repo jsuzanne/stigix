@@ -37,16 +37,20 @@
 }
 
 :root[data-theme='light'] {
-  --background: #f8fafc;
+  /* Cool blue-gray background — cards (#fff) pop clearly against it */
+  --background: #eef2f7;
   --foreground: #0f172a;
-  --border: #e2e8f0;
+  /* Crisp border — slate-300 shade for clear card edges */
+  --border: #c5d2de;
 
-  /* Cartes */
+  /* Cards */
   --card: #ffffff;
-  --card-secondary: #f1f5f9;
-  --card-hover: #e2e8f0;
+  /* Subtle off-white secondary — clearly distinct from white cards */
+  --card-secondary: #f5f8fb;
+  /* Stronger hover than background */
+  --card-hover: #dce7f0;
 
-  /* Text — light mode: keep original Slate-500 (no contrast issue reported in light) */
+  /* Text */
   --text-primary: #0f172a;
   --text-secondary: #334155;
   --text-muted: #64748b;
@@ -176,4 +180,13 @@ body {
 .scrollbar-thin {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+}
+
+/* ─── Topology: ReactFlow background dots — light mode override ──────────────
+   The <Background color="#1e293b"> prop is dark-only. In light mode we override
+   the SVG pattern fill via CSS using the [data-theme="light"] selector set by App.tsx.
+────────────────────────────────────────────────────────────────────────────── */
+[data-theme="light"] .topology-bg pattern circle,
+[data-theme="light"] .topology-bg pattern rect {
+  fill: #b0c4d8 !important;
 }

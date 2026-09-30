@@ -1848,7 +1848,7 @@ function TopologyContent({ token }: TopologyProps) {
     }, [filteredNodes.length, logicalViewSiteId, fitView]);
 
     return (
-        <div className="h-[calc(100vh-140px)] w-full relative bg-black/20 rounded-3xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-500">
+        <div className="h-[calc(100vh-140px)] w-full relative dark:bg-black/20 bg-card-secondary/30 rounded-3xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-500">
             {loading ? (
                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-md">
                     <div className="relative w-24 h-24 mb-6">
@@ -2027,9 +2027,9 @@ function TopologyContent({ token }: TopologyProps) {
                         onEdgeClick={onEdgeClick}
                         nodeTypes={nodeTypes}
                         edgeTypes={edgeTypes}
-                        className="bg-slate-950/40"
+                        className="dark:bg-slate-950/40 bg-card-secondary/20"
                     >
-                        <Background color="#1e293b" gap={20} size={1} />
+                        <Background color="#1e293b" gap={20} size={1} className="topology-bg" />
                         <Controls className="!bg-card !border-border !rounded-xl !shadow-xl" />
 
                         {/* Upper Toolbar */}

@@ -933,15 +933,21 @@ export default function App() {
       <TopLoadingBar isLoading={isNavigating} />
       <Toaster position="top-right" />
 
-      {/* Remote-view inset frame — subtle amber border on all 4 edges.
+      {/* Remote-view inset frame — amber border on all 4 edges.
+          Light mode: stronger opacity + thicker border because contrast is lower on light backgrounds.
           position:fixed + pointer-events:none = zero layout impact, never shifts content. */}
       {isRemoteView && (
         <div
           className="fixed inset-0 z-[9998] pointer-events-none"
-          style={{ boxShadow: 'inset 0 0 0 2px rgba(251,191,36,0.40)' }}
+          style={{
+            boxShadow: theme === 'light'
+              ? 'inset 0 0 0 3px rgba(217,119,6,0.75)'   /* amber-600 at 75% — clearly visible on #eef2f7 */
+              : 'inset 0 0 0 2px rgba(251,191,36,0.40)'   /* amber-300 at 40% — subtle on dark */
+          }}
           aria-hidden="true"
         />
       )}
+
 
       <header className="mb-8 flex justify-between items-center">
         <div>

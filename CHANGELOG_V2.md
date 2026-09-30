@@ -2,6 +2,60 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.112] - 2026-09-30 — UX: Light Mode Full Pass, Skeleton Shimmer & SSE Tunnel Stream
+
+### Fixed
+- **Light Mode (index.css)**: Replaced quasi-white `#f8fafc` background with cool blue-gray `#eef2f7`; strengthened border token `#c5d2de` for better card separation.
+- **Light Mode (Fleet.tsx)**: Bulk refactor of hardcoded `bg-neutral-800/900` → `bg-card-secondary`; `text-neutral-300/400` → `text-text-secondary/muted`; amber text colors now use `dark:` variants (`text-amber-600 dark:text-amber-400`) for proper contrast on light backgrounds.
+- **Light Mode (ConnectivityPerformance.tsx)**: Flaky/down probe cards changed from `bg-red-500/5` (pink on white) to `bg-card-secondary` neutral base with colored border.
+- **Light Mode (App.tsx)**: Remote View inset frame now uses `3px / 75% amber-600` in light mode vs `2px / 40%` in dark — clearly visible on the new light background.
+- **Light Mode (Topology.tsx)**: Canvas wrapper and ReactFlow background use `dark:` prefix; dots overridden via CSS to `#b0c4d8` in light mode.
+
+### Added
+- **feat(tunnel)**: Real-time chunked SSE stream pump over Fleet WebSocket tunnels — enables streaming endpoints through NAT/CGNAT.
+- **feat(ui)**: Unified `PageLoader` skeleton component across DEM, Security, Settings, VyOS, Voice, Failover, Fleet, CustomApps.
+- **feat(ui)**: Replaced all full-page spinners with Skeleton Shimmer + Top Laser loading bar.
+
+## [v2.0.111] - 2026-09-30 — Fleet: Bidirectional Provisioning Sync over Tunnels
+
+### Added
+- **feat(fleet)**: Bidirectional provisioning sync over fleet WebSocket tunnels; Settings test mode; topology guide updates.
+
+## [v2.0.110] - 2026-09-29 — Fix: Leader Reverse Dial Persistent Connection Retention
+
+### Fixed
+- **fix(fleet)**: Leader reverse dial now retains persistent connections for cloud peers across reconnects.
+- **docs**: Updated README, Remote View operator guide, and stigix.io FAQ with M5/M6 WebSocket Reverse Tunnel and Leader Reverse Dialing details.
+
+## [v2.0.109] - 2026-09-29 — Fix: Peer Dedup, Spoke Dial Exclusion & Tunnel Keepalive
+
+### Fixed
+- **fix(fleet)**: Peer deduplication on reconnect; spoke nodes excluded from leader outbound dialing; dialed tunnel keepalive telemetry.
+
+## [v2.0.108] - 2026-09-29 — Fleet: Leader Outbound Reverse Dialing (M6)
+
+### Added
+- **feat(fleet)**: Leader Outbound Reverse Dialing for Cloud/Manual Peers (Milestone 6) — leader initiates outbound WS tunnel to reach NAT-isolated cloud instances.
+- **docs**: Updated Remote View Gateway roadmap with M4, M5, M6 milestones.
+
+## [v2.0.107] - 2026-09-29 — Fleet: WebSocket Reverse Tunnel for NAT/CGNAT Traversal (M5)
+
+### Added
+- **feat(fleet)**: WebSocket reverse tunnel for NAT/CGNAT traversal — branch nodes connect outbound to the leader.
+- **feat(ui)**: WS Tunnel indicator moved to Fleet table status column; dropdown cleaned up.
+- **fix(docker)**: Include `fleet-tunnel.ts` in stigix-all-in-one Dockerfile.
+- **ci**: Restrict multi-arch builds to `main` branch; `v2` builds AMD64 only.
+
+## [v2.0.106] - 2026-09-29 — Perf: SD-WAN Matrix Instant Render & Spoke Caching
+
+### Performance
+- **perf(matrix)**: Instant 0ms render with spoke caching; silent background refresh on interval.
+
+## [v2.0.105] - 2026-09-29 — Failover: Auto-Hide Unused Targets During Test
+
+### Added
+- **feat(failover)**: Targets not selected for a test are automatically hidden from the test view to reduce visual noise.
+
 ## [v2.0.104] - 2026-09-29 — UX: Precision Hub Wiring & DC1 Leader Badge Fix
 
 ### Fixed
