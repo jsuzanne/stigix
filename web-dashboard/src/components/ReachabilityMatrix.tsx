@@ -306,7 +306,17 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
         return () => clearInterval(interval);
     }, [fetchMatrix]);
 
-    const nodes = data?.nodes || [];
+    const nodes = React.useMemo(() => {
+        const raw = data?.nodes || [];
+        return [...raw].sort((a, b) => {
+            const isHubA = a.site_type === 'HUB' || a.name.toLowerCase().includes('dc') || a.name.toLowerCase().includes('hub');
+            const isHubB = b.site_type === 'HUB' || b.name.toLowerCase().includes('dc') || b.name.toLowerCase().includes('hub');
+            if (isHubA && !isHubB) return -1;
+            if (!isHubA && isHubB) return 1;
+            return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        });
+    }, [data?.nodes]);
+
     const matrix = data?.matrix || [];
     const summary = data?.summary || {
         total_pairs: 0,

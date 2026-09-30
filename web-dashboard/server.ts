@@ -12790,6 +12790,15 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
             }
         }
 
+        // Sort nodes: HUBs first (DC1, DC2...), then Branches (BR1, BR2, BR5, BR8...), using natural alphanumeric ordering
+        nodes.sort((a, b) => {
+            const isHubA = a.site_type === 'HUB' || isHubSite(a.name, a.site_type);
+            const isHubB = b.site_type === 'HUB' || isHubSite(b.name, b.site_type);
+            if (isHubA && !isHubB) return -1;
+            if (!isHubA && isHubB) return 1;
+            return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        });
+
         // 2. Collect probe map per node
         const nodeProbesMap = new Map<string, Array<any>>();
 
