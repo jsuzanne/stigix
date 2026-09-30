@@ -13408,6 +13408,8 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
         fleetTunnelManager.hasTunnel(peerInstanceId) ||
         (peerSiteName ? fleetTunnelManager.hasTunnel(peerSiteName) : false);
 
+    const isStream = ((req.headers.accept as string) || '').includes('text/event-stream') || proxyUrl.includes('/stream');
+
     if (hasWsTunnel) {
         const tunnelTargetId = fleetTunnelManager.hasTunnel(peerId)
             ? peerId
@@ -13415,32 +13417,49 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
                 ? peerInstanceId
                 : peerSiteName;
 
-        try {
-            const tunnelRes = await fleetTunnelManager.forwardRequest(tunnelTargetId, {
-                method: req.method,
-                path: proxyUrl,
-                headers: forwardHeaders,
-                body: req.body
-            }, 15000);
+        if (isStream) {
+            try {
+                const streamed = await fleetTunnelManager.forwardStream(tunnelTargetId, {
+                    method: req.method,
+                    path: proxyUrl,
+                    headers: forwardHeaders,
+                    body: req.body
+                }, req, res);
 
-            if (tunnelRes) {
-                res.status(tunnelRes.status);
-                for (const [k, v] of Object.entries(tunnelRes.headers)) {
-                    if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
-                        res.setHeader(k, v as string | string[]);
+                if (streamed) {
+                    return; // Handled directly by stream pump
+                }
+            } catch (streamErr: any) {
+                log('GATEWAY', `⚡ WebSocket stream forwarding to "${peerId}" failed (${streamErr.message}) — falling back to direct HTTP`, 'warn');
+            }
+        } else {
+            try {
+                const tunnelRes = await fleetTunnelManager.forwardRequest(tunnelTargetId, {
+                    method: req.method,
+                    path: proxyUrl,
+                    headers: forwardHeaders,
+                    body: req.body
+                }, 15000);
+
+                if (tunnelRes) {
+                    res.status(tunnelRes.status);
+                    for (const [k, v] of Object.entries(tunnelRes.headers)) {
+                        if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
+                            res.setHeader(k, v as string | string[]);
+                        }
+                    }
+                    res.setHeader('x-gateway-peer', peerId);
+                    res.setHeader('x-gateway-transport', 'websocket-tunnel');
+
+                    if (tunnelRes.isBase64) {
+                        return res.send(Buffer.from(tunnelRes.body, 'base64'));
+                    } else {
+                        return res.send(tunnelRes.body);
                     }
                 }
-                res.setHeader('x-gateway-peer', peerId);
-                res.setHeader('x-gateway-transport', 'websocket-tunnel');
-
-                if (tunnelRes.isBase64) {
-                    return res.send(Buffer.from(tunnelRes.body, 'base64'));
-                } else {
-                    return res.send(tunnelRes.body);
-                }
+            } catch (tunnelErr: any) {
+                log('GATEWAY', `⚡ Reverse WebSocket tunnel to "${peerId}" failed (${tunnelErr.message}) — falling back to direct HTTP proxy`, 'warn');
             }
-        } catch (tunnelErr: any) {
-            log('GATEWAY', `⚡ Reverse WebSocket tunnel to "${peerId}" failed (${tunnelErr.message}) — falling back to direct HTTP proxy`, 'warn');
         }
     }
 

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.112] - 2026-09-30
+
+### Added / Improved
+- **Real-Time SSE & Chunked Stream Forwarding over WebSocket Reverse Tunnels (`fleet-tunnel.ts`, `server.ts`)**:
+  - Implemented bidirectional chunked stream pump (`gateway:stream:start`, `gateway:stream:headers`, `gateway:stream:chunk`, `gateway:stream:end`, `gateway:stream:abort`) over persistent WebSocket reverse tunnels (M5 & M6).
+  - Enables real-time Server-Sent Events (SSE) streaming for Bandwidth Tests (`/api/tests/xfr/:id/stream`) and Live Logs over WebSocket reverse tunnels & Leader outbound dialed connections (e.g. Hetzner, AWS, Home LAN, NAT branch spokes).
+  - Graph updates animate continuously second-by-second during active tests in Remote View instead of buffering until test completion.
+  - Added clean client-disconnect abort propagation terminating background processes on remote peers when users cancel or navigate away. 🚀
+- **Public Documentation & Stigix FAQ**:
+  - Added dedicated **Deployment Topologies & Private Architectures** section in `site/faq.html` covering LAN/MPLS, NAT Spokes, Zero-Inbound Private Leader + Multi-Cloud, port direction matrices, and tunnel self-healing.
+
 ## [2.0.111] - 2026-09-30
 
 ### Added / Improved

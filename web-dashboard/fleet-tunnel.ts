@@ -252,6 +252,17 @@ export class FleetTunnelManager {
                         }
                     });
             });
+
+            // Handle forwarded streaming HTTP requests (SSE / chunked streams)
+            socket.on('gateway:stream:start', (payload: ForwardRequestPayload, ack: (res: any) => void) => {
+                this.handleLocalStreamRequest(socket, payload, ack);
+            });
+
+            socket.on('gateway:stream:abort', (data: { streamId: string }) => {
+                if (data && data.streamId) {
+                    this.abortLocalStream(data.streamId);
+                }
+            });
         });
 
         log('TUNNEL', `🚀 Fleet Reverse Tunnel Hub mounted at /fleet-tunnel namespace`);
@@ -427,6 +438,17 @@ export class FleetTunnelManager {
                         });
                     }
                 });
+        });
+
+        // Handle forwarded streaming HTTP requests on Spoke (SSE / chunked streams)
+        socket.on('gateway:stream:start', (payload: ForwardRequestPayload, ack: (res: any) => void) => {
+            this.handleLocalStreamRequest(socket, payload, ack);
+        });
+
+        socket.on('gateway:stream:abort', (data: { streamId: string }) => {
+            if (data && data.streamId) {
+                this.abortLocalStream(data.streamId);
+            }
         });
 
         this.spokeClientSocket = socket;
@@ -915,6 +937,114 @@ export class FleetTunnelManager {
         });
     }
 
+    private activeLocalStreams = new Map<string, http.ClientRequest>();
+
+    /**
+     * Execute incoming streaming request locally (SSE / chunked) and stream chunks back over WebSocket
+     */
+    private handleLocalStreamRequest(
+        socket: Socket | ClientSocket,
+        payload: ForwardRequestPayload,
+        ack?: (res: any) => void
+    ): void {
+        const streamId = payload.reqId || randomUUID();
+        const hopByHop = new Set([
+            'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+            'te', 'trailers', 'transfer-encoding', 'upgrade', 'host'
+        ]);
+
+        const cleanHeaders: Record<string, string | string[]> = {};
+        if (payload.headers) {
+            for (const [k, v] of Object.entries(payload.headers)) {
+                if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
+                    cleanHeaders[k] = v;
+                }
+            }
+        }
+        cleanHeaders['host'] = `127.0.0.1:${this.localPort}`;
+        cleanHeaders['x-gateway-source'] = 'reverse-tunnel-stream';
+
+        let bodyBuf: Buffer | null = null;
+        if (payload.body != null && !['GET', 'HEAD'].includes(payload.method.toUpperCase())) {
+            if (typeof payload.body === 'object') {
+                bodyBuf = Buffer.from(JSON.stringify(payload.body), 'utf8');
+                cleanHeaders['content-type'] = cleanHeaders['content-type'] || 'application/json';
+            } else if (typeof payload.body === 'string') {
+                bodyBuf = Buffer.from(payload.body, 'utf8');
+            }
+            if (bodyBuf) {
+                cleanHeaders['content-length'] = bodyBuf.length.toString();
+            }
+        }
+
+        const reqOptions: http.RequestOptions = {
+            hostname: '127.0.0.1',
+            port: this.localPort,
+            path: payload.path,
+            method: payload.method,
+            headers: cleanHeaders,
+            timeout: 0 // No client timeout on streams
+        };
+
+        const localReq = http.request(reqOptions, (localRes) => {
+            const responseHeaders: Record<string, string | string[]> = {};
+            for (const [k, v] of Object.entries(localRes.headers)) {
+                if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
+                    responseHeaders[k] = v;
+                }
+            }
+
+            socket.emit('gateway:stream:headers', {
+                streamId,
+                status: localRes.statusCode || 200,
+                headers: responseHeaders
+            });
+
+            if (typeof ack === 'function') ack({ success: true, streamId });
+
+            localRes.on('data', (chunk) => {
+                const text = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
+                socket.emit('gateway:stream:chunk', { streamId, chunk: text });
+            });
+
+            localRes.on('end', () => {
+                this.activeLocalStreams.delete(streamId);
+                socket.emit('gateway:stream:end', { streamId });
+            });
+
+            localRes.on('error', (err) => {
+                this.activeLocalStreams.delete(streamId);
+                socket.emit('gateway:stream:error', { streamId, error: err.message });
+            });
+        });
+
+        localReq.on('error', (err) => {
+            this.activeLocalStreams.delete(streamId);
+            socket.emit('gateway:stream:error', { streamId, error: err.message });
+            if (typeof ack === 'function') ack({ success: false, error: err.message });
+        });
+
+        this.activeLocalStreams.set(streamId, localReq);
+
+        if (bodyBuf && bodyBuf.length > 0) {
+            localReq.write(bodyBuf);
+        }
+        localReq.end();
+    }
+
+    /**
+     * Abort an active local stream if client disconnected
+     */
+    private abortLocalStream(streamId: string): void {
+        const localReq = this.activeLocalStreams.get(streamId);
+        if (localReq) {
+            try {
+                localReq.destroy();
+            } catch {}
+            this.activeLocalStreams.delete(streamId);
+        }
+    }
+
     /**
      * Checks if a peer has an active reverse WebSocket tunnel (inbound or dialed)
      */
@@ -930,6 +1060,136 @@ export class FleetTunnelManager {
             return !!(entry && entry.socket.connected);
         }
         return false;
+    }
+
+    /**
+     * Forward a streaming HTTP request (SSE / chunked) over the reverse tunnel
+     */
+    public forwardStream(
+        peerIdentifier: string,
+        reqPayload: ForwardRequestPayload,
+        clientReq: any,
+        clientRes: any,
+        timeoutMs: number = 10000
+    ): Promise<boolean> {
+        let entry = this.activeTunnels.get(peerIdentifier);
+        if (!entry) {
+            const mappedId = this.siteToInstanceMap.get(peerIdentifier.toLowerCase());
+            if (mappedId) entry = this.activeTunnels.get(mappedId);
+        }
+
+        if (!entry || !entry.socket || !entry.socket.connected) {
+            return Promise.resolve(false);
+        }
+
+        const socket = entry.socket;
+        const streamId = reqPayload.reqId || randomUUID();
+        const payload: ForwardRequestPayload = {
+            reqId: streamId,
+            method: reqPayload.method,
+            path: reqPayload.path,
+            headers: reqPayload.headers,
+            body: reqPayload.body
+        };
+
+        return new Promise<boolean>((resolve) => {
+            let headersSent = false;
+            let streamEnded = false;
+
+            const cleanup = () => {
+                socket.off('gateway:stream:headers', onHeaders);
+                socket.off('gateway:stream:chunk', onChunk);
+                socket.off('gateway:stream:end', onEnd);
+                socket.off('gateway:stream:error', onError);
+            };
+
+            const onHeaders = (data: { streamId: string; status: number; headers: Record<string, any> }) => {
+                if (data.streamId !== streamId) return;
+                if (!headersSent && !clientRes.headersSent) {
+                    headersSent = true;
+                    clientRes.status(data.status);
+                    for (const [k, v] of Object.entries(data.headers)) {
+                        clientRes.setHeader(k, v);
+                    }
+                    clientRes.setHeader('x-gateway-peer', peerIdentifier);
+                    clientRes.setHeader('x-gateway-transport', 'websocket-tunnel-stream');
+                    if (typeof clientRes.flushHeaders === 'function') {
+                        clientRes.flushHeaders();
+                    }
+                    resolve(true);
+                }
+            };
+
+            const onChunk = (data: { streamId: string; chunk: string }) => {
+                if (data.streamId !== streamId) return;
+                if (!headersSent && !clientRes.headersSent) {
+                    headersSent = true;
+                    clientRes.writeHead(200, {
+                        'Content-Type': 'text/event-stream',
+                        'Cache-Control': 'no-cache',
+                        'Connection': 'keep-alive',
+                        'x-gateway-peer': peerIdentifier,
+                        'x-gateway-transport': 'websocket-tunnel-stream'
+                    });
+                    resolve(true);
+                }
+                clientRes.write(data.chunk);
+            };
+
+            const onEnd = (data: { streamId: string }) => {
+                if (data.streamId !== streamId) return;
+                if (streamEnded) return;
+                streamEnded = true;
+                cleanup();
+                if (!clientRes.writableEnded) {
+                    clientRes.end();
+                }
+            };
+
+            const onError = (data: { streamId: string; error: string }) => {
+                if (data.streamId !== streamId) return;
+                if (streamEnded) return;
+                streamEnded = true;
+                cleanup();
+                if (!headersSent && !clientRes.headersSent) {
+                    resolve(false);
+                } else if (!clientRes.writableEnded) {
+                    clientRes.end();
+                }
+            };
+
+            socket.on('gateway:stream:headers', onHeaders);
+            socket.on('gateway:stream:chunk', onChunk);
+            socket.on('gateway:stream:end', onEnd);
+            socket.on('gateway:stream:error', onError);
+
+            // Handle client abort / disconnect
+            clientReq.on('close', () => {
+                if (!streamEnded) {
+                    streamEnded = true;
+                    cleanup();
+                    try {
+                        socket.emit('gateway:stream:abort', { streamId });
+                    } catch {}
+                }
+            });
+
+            // Start stream on remote peer with timeout
+            const startTimer = setTimeout(() => {
+                if (!headersSent) {
+                    cleanup();
+                    resolve(false);
+                }
+            }, timeoutMs);
+
+            socket.emit('gateway:stream:start', payload, (ack: any) => {
+                clearTimeout(startTimer);
+                if (ack && ack.success === false) {
+                    cleanup();
+                    resolve(false);
+                }
+            });
+        });
     }
 
     /**
