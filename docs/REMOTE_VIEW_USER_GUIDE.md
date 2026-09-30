@@ -1,20 +1,23 @@
-> **Last Updated:** 2026-09-28 | **Created:** 2026-09-28 (v2.0.73)
+> **Last Updated:** 2026-09-30 | **Created:** 2026-09-28 (v2.0.73)
 
 # Remote View — Operator Guide
 
 ## What Is Remote View?
 
-Remote View allows an operator connected to a **Leader node** (e.g. DC1) to observe and control a remote **peer node** (e.g. BR5, BR8) directly from the Leader's dashboard — without opening a second browser tab or logging into remote instances separately.
+Remote View allows an operator connected to a **Leader node** (e.g. DC1) to observe, monitor, and control any remote **peer node** (e.g. BR1, BR2, BR5, BR8, Hetzner Cloud, Home LAN) directly from the Leader's dashboard — without opening separate browser tabs or logging into remote instances individually.
 
-All dashboard actions (reads and writes) are transparently routed through the Leader's gateway to the selected peer. The experience is equivalent to being directly connected to that peer.
+All dashboard actions (reads and writes) are transparently routed through the Leader's gateway to the selected peer. The experience is identical to being directly connected to that peer.
 
 ---
 
-## Prerequisites
+## Prerequisites & Connectivity
 
 - Your Stigix node must be in **Leader mode** (`LEADER` badge visible in the header).
-- The target peer must be **registered** in the Leader's registry (auto-discovery or manual).
-- The target peer must be **network-reachable** from the Leader (direct HTTP on the configured port).
+- The target peer must be **registered** in the Leader's registry (auto-discovery or manual targets).
+- **Transport & Firewall Traversal (M5 & M6)**:
+  - **Inbound WebSocket Reverse Tunnels (M5)**: Spokes behind NAT/CGNAT or strict branch firewalls connect outbound to the Leader over a persistent WebSocket session (`/fleet-tunnel`). No open inbound ports or public IPs are required on the spoke.
+  - **Leader Outbound Reverse Dialing (M6)**: For external Cloud Peers (e.g., Hetzner, AWS) or Home LAN nodes where the Leader is inside a private lab/LAN, the Leader dials outbound to the Cloud Peer's `/fleet-tunnel` endpoint. The Leader remains 100% private with zero inbound ports exposed.
+  - **Direct HTTP Fallback**: Standard peer-to-peer HTTP is used if WebSocket tunnels are not active.
 
 ---
 
@@ -104,5 +107,6 @@ Click the **✕** button on the amber chip in the navbar. The dashboard instantl
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-09-30 | `v2.0.109` | Stigix Core Team / Antigravity | Added M5/M6 WebSocket Reverse Tunneling and Leader Reverse Dialing documentation for NAT/CGNAT/Firewall traversal |
 | 2026-09-28 | `v2.0.80` | Stigix Core Team / Antigravity | Added UI screenshots for Peer Context Switcher dropdown and Remote View active state (amber frame & site subtitle) |
 | 2026-09-28 | `v2.0.73` | Stigix Core Team / Antigravity | Initial document creation — Remote View operator guide |

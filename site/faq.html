@@ -2037,17 +2037,30 @@ docker compose restart</pre>
         </div>
 
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What operations are supported in Remote View (Read vs Write)?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Remote View work across firewalls and NAT/CGNAT? (WebSocket Reverse Tunneling)</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>All standard Stigix dashboard capabilities support full read and write actions in Remote View mode:</p>
+            <p>In real-world enterprise deployments, branch sites and edge nodes are often positioned behind strict egress-only firewalls, NAT, or Carrier-Grade NAT (CGNAT) without public IP addresses or inbound port forwarding.</p>
+            <p>Stigix solves this via <strong>persistent WebSocket Reverse Tunnels (Milestone 5)</strong>:</p>
             <ul>
-              <li><strong>Digital Experience (DEM):</strong> Observe real-time scores + Add, edit, or delete synthetic probes on the remote peer.</li>
-              <li><strong>Failover Monitoring:</strong> Start/Stop convergence tests and manage endpoint definitions on the remote peer.</li>
-              <li><strong>Bandwidth Testing (Speedtest / XFR):</strong> Launch throughput tests, view real-time SSE progress, purge history on the remote peer.</li>
-              <li><strong>Traffic Generator &amp; Voice:</strong> Start/Stop synthetic traffic and VoIP call simulations.</li>
-              <li><strong>Custom TCP Apps:</strong> Start/Stop listeners and client session generators, edit custom protocol parameters hot-applied instantly.</li>
-              <li><strong>VyOS Control:</strong> Trigger live impairment sequences and chaos scenarios.</li>
-              <li><strong>Settings:</strong> Modify thresholds, interfaces, and configurations hot-applied directly to the remote peer.</li>
+              <li><strong>Outbound-Only Initiation:</strong> Spoke nodes automatically discover the Leader and establish an outbound WebSocket connection to the Leader's <code>/fleet-tunnel</code> namespace.</li>
+              <li><strong>Zero Inbound Ports on Spokes:</strong> No ports need to be opened on branch routers or perimeter firewalls.</li>
+              <li><strong>Full-Duplex Multiplexing:</strong> When the operator interacts with the remote peer in the dashboard, API requests and responses are seamlessly multiplexed through the existing persistent WebSocket tunnel.</li>
+              <li><strong>Ultra-Low Bandwidth Overhead:</strong> When idle, the tunnel generates less than <strong>0.5 kbps</strong> per node (~50 bytes/s) for keepalive and telemetry heartbeats.</li>
+              <li><strong>Seamless Fallback:</strong> Direct peer-to-peer HTTP is automatically used if a direct LAN path is available.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Leader Outbound Reverse Dialing work for Cloud &amp; External Peers (Hetzner, AWS, Home LAN)?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>In hybrid architectures, the <strong>Leader node often resides in a protected private LAN/Datacenter</strong> that cannot be exposed directly to the public Internet, while some Stigix peers run on <strong>public Cloud VMs (e.g. Hetzner, AWS, Azure)</strong> or remote Home LANs.</p>
+            <p>With <strong>Leader Outbound Reverse Dialing (Milestone 6)</strong>:</p>
+            <ul>
+              <li><strong>Inverted Dialing:</strong> The private Leader dials outbound to the configured Cloud Peer's <code>/fleet-tunnel</code> endpoint (e.g. <code>http://&lt;CLOUD_IP&gt;:8080/fleet-tunnel</code>).</li>
+              <li><strong>Zero Public Inbound on Leader:</strong> The Leader remains completely private with zero inbound ports open to the Internet.</li>
+              <li><strong>Automatic Bi-directional Telemetry:</strong> Once the connection is established, the Cloud Peer automatically pushes its live telemetry (DEM scores, probes, traffic metrics) into the Leader's local registry.</li>
+              <li><strong>Complete Remote Control:</strong> Operators on the private Leader can switch context to any external Cloud Peer with full read/write management through the dialed reverse tunnel.</li>
             </ul>
           </div></div></div>
         </div>
