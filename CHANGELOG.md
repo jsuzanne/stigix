@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.109] - 2026-09-30
+
+### Fixed / Improved
+- **Fleet Gateway & Local Registry Peer Deduplication & Telemetry Keepalive (`fleet-tunnel.ts`, `local-registry-server.ts`, `server.ts`)**:
+  - Fixed duplicate peer entries in Fleet Overview and target switcher by indexing `LocalRegistryServer` uniquely by `instance_id` and safely merging partial telemetry payloads.
+  - Excluded known active spoke peers (already registered or connected inbound via M5) from Leader outbound reverse dialing candidates (M6) to prevent dual-tunnel redundant connections.
+  - Implemented periodic 15s telemetry polling on Leader dialed outbound connections and continuous streaming on inbound leader dials to prevent remote Cloud Peers (e.g. Hetzner) from going stale/offline.
+  - Wired full rich telemetry provider (`summary` with health scores, probes, rates, version) into WebSocket tunnel payloads for consistent remote view rendering. 🚀
+
 ## [2.0.108] - 2026-09-30
 
 ### Added

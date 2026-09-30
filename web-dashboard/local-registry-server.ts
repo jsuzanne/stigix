@@ -33,11 +33,38 @@ export class LocalRegistryServer {
     }
 
     upsertInstance(instance: RegistryInstance, pocId: string = 'local-leader'): void {
-        const key = `poc:${pocId}:inst:${instance.instance_id}`;
-        this.instances.set(key, {
+        if (!instance || !instance.instance_id) return;
+        const targetPocId = instance.poc_id || pocId || 'local-leader';
+        const key = instance.instance_id;
+
+        // Check if an existing entry matches by ID or IP
+        let matchedKey = key;
+        if (!this.instances.has(key) && instance.ip_private) {
+            for (const [k, v] of this.instances.entries()) {
+                if (v.ip_private === instance.ip_private) {
+                    matchedKey = k;
+                    break;
+                }
+            }
+        }
+
+        const prev = this.instances.get(matchedKey);
+        const mergedInstance: RegistryInstance = {
+            ...prev,
             ...instance,
+            poc_id: targetPocId,
+            summary: instance.summary || prev?.summary,
+            meta: {
+                ...prev?.meta,
+                ...instance.meta
+            },
             last_seen: new Date().toISOString()
-        });
+        };
+
+        if (matchedKey !== key) {
+            this.instances.delete(matchedKey);
+        }
+        this.instances.set(key, mergedInstance);
     }
 
     getRouter(targetsManager?: any, provisioningManager?: any): Router {
@@ -51,21 +78,21 @@ export class LocalRegistryServer {
                 return res.status(400).json({ status: 'error', error: 'invalid_payload' });
             }
 
+            const key = payload.instance_id;
+
             // Automatically purge old instance entry for the same IP if instance_id changed (e.g. after a site rename)
             if (payload.ip_private) {
-                const prefix = `poc:${payload.poc_id}:inst:`;
                 for (const [existingKey, existingInst] of this.instances.entries()) {
-                    if (existingKey.startsWith(prefix) &&
-                        existingInst.ip_private === payload.ip_private &&
-                        existingInst.instance_id !== payload.instance_id) {
+                    if (existingInst.ip_private === payload.ip_private && existingKey !== key) {
                         this.instances.delete(existingKey);
-                        log('LOCAL-REGISTRY', `Replaced old instance "${existingInst.instance_id}" with renamed "${payload.instance_id}" for IP ${payload.ip_private}`);
+                        log('LOCAL-REGISTRY', `Replaced old instance "${existingKey}" with renamed "${key}" for IP ${payload.ip_private}`);
                     }
                 }
             }
 
-            const key = `poc:${payload.poc_id}:inst:${payload.instance_id}`;
+            const prev = this.instances.get(key);
             const instance: RegistryInstance = {
+                ...prev,
                 ...payload,
                 last_seen: new Date().toISOString()
             };
@@ -74,7 +101,6 @@ export class LocalRegistryServer {
             }
 
             this.instances.set(key, instance);
-            // log('LOCAL-REGISTRY', `Heartbeat from ${payload.instance_id} (${payload.ip_private})`);
 
             return res.json({
                 status: 'ok',
@@ -90,17 +116,6 @@ export class LocalRegistryServer {
             const self_id = req.query.self_instance_id as string;
 
             let results = Array.from(this.instances.values());
-
-            // Filter by specific poc_id if provided and not a direct/local wildcard
-            if (poc_id && !poc_id.startsWith('direct:') && poc_id !== 'local-leader') {
-                const prefix = `poc:${poc_id}:inst:`;
-                const filtered = Array.from(this.instances.entries())
-                    .filter(([key]) => key.startsWith(prefix))
-                    .map(([_, inst]) => inst);
-                if (filtered.length > 0) {
-                    results = filtered;
-                }
-            }
 
             if (scope === 'others' && self_id) {
                 results = results.filter(inst => inst.instance_id !== self_id);

@@ -1,4 +1,5 @@
 import http from 'http';
+import fs from 'fs';
 import { randomUUID } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Server as SocketIOServer, Socket } from 'socket.io';
@@ -52,6 +53,7 @@ export class FleetTunnelManager {
     private registryManager: RegistryManager;
     private targetsManager?: TargetsManager;
     private localRegistryServer?: LocalRegistryServer;
+    private telemetryProvider?: () => Promise<any> | any;
     private secretKey: string;
     private localPort: number;
 
@@ -93,6 +95,10 @@ export class FleetTunnelManager {
 
     public setLocalRegistryServer(localRegistryServer: LocalRegistryServer): void {
         this.localRegistryServer = localRegistryServer;
+    }
+
+    public setTelemetryProvider(provider: () => Promise<any> | any): void {
+        this.telemetryProvider = provider;
     }
 
     /**
@@ -145,12 +151,22 @@ export class FleetTunnelManager {
 
             log('TUNNEL', `⚡ Reverse tunnel connected: ${siteName} (${instanceId}) [${clientIp}] via WebSocket (${info.direction})`);
 
-            // If a Leader dials into this Spoke (M6), automatically push our telemetry to the Leader
+            // If a Leader dials into this Spoke (M6), automatically push our telemetry to the Leader periodically
+            let dialHeartbeatInterval: NodeJS.Timeout | null = null;
             if (isLeaderDial) {
                 this.pushLocalTelemetryToSocket(socket);
+                dialHeartbeatInterval = setInterval(() => {
+                    if (socket.connected) {
+                        this.pushLocalTelemetryToSocket(socket);
+                    }
+                }, 15000);
             }
 
             socket.on('disconnect', (reason: string) => {
+                if (dialHeartbeatInterval) {
+                    clearInterval(dialHeartbeatInterval);
+                    dialHeartbeatInterval = null;
+                }
                 log('TUNNEL', `Reverse tunnel disconnected: ${siteName} (${instanceId}) — reason: ${reason}`, 'warn');
                 this.activeTunnels.delete(instanceId);
                 if (siteName && this.siteToInstanceMap.get(siteName.toLowerCase()) === instanceId) {
@@ -171,10 +187,10 @@ export class FleetTunnelManager {
                 }
             });
 
-            // Handle query status request
-            socket.on('peer:query_status', (ack: (status: any) => void) => {
+            // Handle query status request (async)
+            socket.on('peer:query_status', async (ack: (status: any) => void) => {
                 if (typeof ack === 'function') {
-                    const status = this.buildLocalTelemetryPayload();
+                    const status = await this.buildLocalTelemetryPayload();
                     ack(status);
                 }
             });
@@ -373,27 +389,67 @@ export class FleetTunnelManager {
 
         const targets = this.targetsManager.getMergedTargets();
         const localStatus = this.registryManager.getStatus();
-        const localIp = localStatus.detected_ip || '127.0.0.1';
+        const localIp = (localStatus.detected_ip || '127.0.0.1').toLowerCase();
+        const ownInstanceId = (localStatus.instance_id || '').toLowerCase();
 
-        // Find candidate targets: enabled, valid host, not self
+        // Collect all known peer keys (inbound tunnels, local registry instances, or self)
+        const knownPeerKeys = new Set<string>();
+        if (ownInstanceId) knownPeerKeys.add(ownInstanceId);
+        if (localIp) knownPeerKeys.add(localIp);
+
+        // Inbound active tunnels (Spokes connected to Leader via M5)
+        for (const [id, entry] of this.activeTunnels) {
+            if (entry.socket.connected && entry.info.direction === 'inbound') {
+                knownPeerKeys.add(id.toLowerCase());
+                if (entry.info.siteName) knownPeerKeys.add(entry.info.siteName.toLowerCase());
+                if (entry.info.ip) knownPeerKeys.add(entry.info.ip.toLowerCase());
+            }
+        }
+
+        // Instances already registered in localRegistryServer via HTTP heartbeats
+        if (this.localRegistryServer) {
+            for (const inst of this.localRegistryServer.getInstances()) {
+                if (inst.instance_id) knownPeerKeys.add(inst.instance_id.toLowerCase());
+                if (inst.meta?.site) knownPeerKeys.add(inst.meta.site.toLowerCase());
+                if (inst.ip_private) knownPeerKeys.add(inst.ip_private.toLowerCase());
+            }
+        }
+
+        // Candidate targets: enabled, valid host, and NOT in knownPeerKeys
         const externalTargets = targets.filter(t => {
             if (t.enabled === false) return false;
             if (!t.host) return false;
             const h = t.host.trim().toLowerCase();
-            if (h === '127.0.0.1' || h === 'localhost' || h === localIp.toLowerCase()) return false;
+            const tid = (t.id || '').toLowerCase();
+            const tname = (t.name || '').toLowerCase();
+
+            if (h === '127.0.0.1' || h === 'localhost' || h === localIp) return false;
+
+            // If already known as an active local spoke or self, do not dial
+            if (knownPeerKeys.has(h) || (tid && knownPeerKeys.has(tid)) || (tname && knownPeerKeys.has(tname))) {
+                return false;
+            }
             return true;
         });
 
+        // 1. Clean up dialed sockets for targets that are no longer candidates (e.g. removed or now connected inbound)
+        for (const [targetKey, socket] of this.outboundDialedSockets) {
+            const stillTarget = externalTargets.some(t => {
+                const port = t.ports?.http || 8080;
+                return `${t.host.trim()}:${port}` === targetKey;
+            });
+            if (!stillTarget) {
+                log('TUNNEL', `[M6 DIAL] Closing dialed connection for target no longer needing dial: ${targetKey}`);
+                socket.disconnect();
+                this.outboundDialedSockets.delete(targetKey);
+            }
+        }
+
+        // 2. Dial candidate external cloud/manual targets
         for (const target of externalTargets) {
             const host = target.host.trim();
             const port = target.ports?.http || 8080;
             const targetKey = `${host}:${port}`;
-
-            // If already connected inbound from this peer, no need to dial outbound
-            const targetId = target.id || target.name;
-            if (this.hasTunnel(targetId) && !this.outboundDialedSockets.has(targetKey)) {
-                continue;
-            }
 
             if (!this.outboundDialedSockets.has(targetKey)) {
                 this.dialOutboundPeer(target, host, port, targetKey);
@@ -435,6 +491,8 @@ export class FleetTunnelManager {
             timeout: 10000
         });
 
+        let queryInterval: NodeJS.Timeout | null = null;
+
         socket.on('connect', () => {
             log('TUNNEL', `⚡ [M6 DIAL] Leader reverse dial CONNECTED to Cloud Peer: ${targetSiteName} (${host}:${port})`);
 
@@ -452,13 +510,25 @@ export class FleetTunnelManager {
             this.siteToInstanceMap.set(targetSiteName.toLowerCase(), targetId);
             this.siteToInstanceMap.set(host.toLowerCase(), targetId);
 
-            // Query remote peer's telemetry
+            // Initial query for remote peer's telemetry
             socket.emit('peer:query_status', (remoteStatus: any) => {
                 if (this.localRegistryServer && remoteStatus && remoteStatus.instance_id) {
                     this.localRegistryServer.upsertInstance(remoteStatus);
                     log('LOCAL-REGISTRY', `🏠 Ingested Cloud Peer status from ${targetSiteName} (${remoteStatus.instance_id})`);
                 }
             });
+
+            // Recurring query to keep dialed peer's telemetry fresh on Leader
+            if (queryInterval) clearInterval(queryInterval);
+            queryInterval = setInterval(() => {
+                if (socket.connected) {
+                    socket.timeout(5000).emit('peer:query_status', (err: any, remoteStatus: any) => {
+                        if (!err && this.localRegistryServer && remoteStatus && remoteStatus.instance_id) {
+                            this.localRegistryServer.upsertInstance(remoteStatus);
+                        }
+                    });
+                }
+            }, 15000);
         });
 
         socket.on('peer:telemetry', (remoteStatus: any) => {
@@ -468,6 +538,10 @@ export class FleetTunnelManager {
         });
 
         socket.on('disconnect', (reason: string) => {
+            if (queryInterval) {
+                clearInterval(queryInterval);
+                queryInterval = null;
+            }
             log('TUNNEL', `[M6 DIAL] Leader reverse dial disconnected from ${targetSiteName} (${reason})`, 'warn');
             this.activeTunnels.delete(targetId);
         });
@@ -482,8 +556,24 @@ export class FleetTunnelManager {
     /**
      * Helper: Build local node telemetry payload for pushing across tunnel
      */
-    private buildLocalTelemetryPayload(): any {
+    private async buildLocalTelemetryPayload(): Promise<any> {
         const regStatus = this.registryManager.getStatus();
+        let summary: any = undefined;
+        if (this.telemetryProvider) {
+            try {
+                summary = await this.telemetryProvider();
+            } catch (err) {
+                log('TUNNEL', `Error collecting telemetry for tunnel: ${err}`, 'warn');
+            }
+        }
+
+        let version = 'v2';
+        try {
+            if (fs.existsSync('/app/VERSION')) {
+                version = fs.readFileSync('/app/VERSION', 'utf8').trim();
+            }
+        } catch {}
+
         return {
             instance_id: regStatus.instance_id,
             poc_id: regStatus.poc_id || 'local-leader',
@@ -493,8 +583,10 @@ export class FleetTunnelManager {
             is_leader: regStatus.mode === 'leader',
             meta: {
                 site: regStatus.site_name || regStatus.instance_id,
-                version: regStatus.stats?.since ? 'v2' : 'v2'
+                version
             },
+            summary,
+            provisioning_status: summary?.provisioning_status,
             last_seen: new Date().toISOString()
         };
     }
@@ -502,9 +594,9 @@ export class FleetTunnelManager {
     /**
      * Helper: Push local telemetry to a specific socket
      */
-    private pushLocalTelemetryToSocket(socket: Socket | ClientSocket): void {
+    private async pushLocalTelemetryToSocket(socket: Socket | ClientSocket): Promise<void> {
         try {
-            const payload = this.buildLocalTelemetryPayload();
+            const payload = await this.buildLocalTelemetryPayload();
             socket.emit('peer:telemetry', payload);
         } catch {}
     }

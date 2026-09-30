@@ -12380,7 +12380,7 @@ app.use('/api/registry', (req, res, next) => {
 log('REGISTRY', `🏠 Local Registry Server mounted at /api/registry (Dynamic Mode)`);
 
 // --- Stigix Fleet Telemetry Provider (Phase 3A) ---
-registryManager.setTelemetryProvider(async () => {
+const collectFleetTelemetrySummary = async () => {
     let probesGlobalHealth = 0;
     let probesTotal = 0;
     let probesPassing = 0;
@@ -12577,8 +12577,10 @@ registryManager.setTelemetryProvider(async () => {
         provisioning_status: provisioningManager?.getState(),
         uptime_seconds: Math.floor(process.uptime())
     };
+};
 
-});
+registryManager.setTelemetryProvider(collectFleetTelemetrySummary);
+fleetTunnelManager.setTelemetryProvider(collectFleetTelemetrySummary);
 
 // --- Stigix Fleet Control Plane API (Phase 3A - Leader Only) ---
 app.get('/api/fleet/overview', authenticateToken, (req, res) => {
