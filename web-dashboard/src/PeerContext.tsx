@@ -18,6 +18,7 @@ export interface PeerEntry {
     ip_private?: string;
     status: 'online' | 'offline';
     is_leader: boolean;
+    has_tunnel?: boolean;
     meta?: { site?: string; region?: string };
     summary?: { probes_global_health?: number; traffic_state?: string };
 }
@@ -69,20 +70,45 @@ export function PeerContextProvider({ token, isLeader, children, onActivePeerCha
     const refreshPeers = useCallback(async () => {
         if (!token || !isLeader) return;
         try {
-            const res = await fetch('/api/fleet/overview', {
-                headers: { Authorization: `Bearer ${token}` }
+            const [overviewRes, tunnelsRes] = await Promise.all([
+                fetch('/api/fleet/overview', {
+                    headers: { Authorization: `Bearer ${token}` }
+                }),
+                fetch('/api/fleet/tunnels', {
+                    headers: { Authorization: `Bearer ${token}` }
+                }).catch(() => null)
+            ]);
+
+            if (!overviewRes.ok) return;
+            const data = await overviewRes.json();
+
+            const tunnelKeys = new Set<string>();
+            if (tunnelsRes && tunnelsRes.ok) {
+                try {
+                    const tunnelData = await tunnelsRes.json();
+                    (tunnelData.tunnels || []).forEach((t: any) => {
+                        if (t.instanceId) tunnelKeys.add(t.instanceId.toLowerCase());
+                        if (t.siteName) tunnelKeys.add(t.siteName.toLowerCase());
+                    });
+                } catch {}
+            }
+
+            const mapped: PeerEntry[] = (data.instances || []).map((inst: any) => {
+                const id = (inst.instance_id || '').toLowerCase();
+                const site = (inst.meta?.site || inst.instance_id || '').toLowerCase();
+                const hasTunnel = tunnelKeys.has(id) || tunnelKeys.has(site);
+
+                return {
+                    instance_id: inst.instance_id,
+                    site: inst.meta?.site || inst.instance_id,
+                    ip_private: inst.ip_private,
+                    status: inst.status,
+                    is_leader: inst.is_leader,
+                    has_tunnel: hasTunnel,
+                    meta: inst.meta,
+                    summary: inst.summary
+                };
             });
-            if (!res.ok) return;
-            const data = await res.json();
-            const mapped: PeerEntry[] = (data.instances || []).map((inst: any) => ({
-                instance_id: inst.instance_id,
-                site: inst.meta?.site || inst.instance_id,
-                ip_private: inst.ip_private,
-                status: inst.status,
-                is_leader: inst.is_leader,
-                meta: inst.meta,
-                summary: inst.summary
-            }));
             setPeers(mapped);
         } catch {}
     }, [token, isLeader]);
@@ -297,9 +323,16 @@ export function GatewayDropdown({ isLeader }: GatewayDropdownProps) {
                                             UNREACHABLE
                                         </span>
                                     ) : (
-                                        <span className="text-[9px] text-text-muted font-mono ml-auto">
-                                            {peer.ip_private || ''}
-                                        </span>
+                                        <div className="ml-auto flex items-center gap-1.5">
+                                            {peer.has_tunnel && (
+                                                <span className="text-[8px] font-black tracking-wider uppercase text-amber-300 bg-amber-500/20 border border-amber-500/40 rounded px-1 py-0.5" title="Reverse WebSocket Tunnel Connected (Firewall/NAT Traversal)">
+                                                    ⚡ WS TUNNEL
+                                                </span>
+                                            )}
+                                            <span className="text-[9px] text-text-muted font-mono">
+                                                {peer.ip_private || ''}
+                                            </span>
+                                        </div>
                                     )}
                                 </button>
                                 );
@@ -339,6 +372,15 @@ export function RemoteViewChip() {
         >
             <Globe size={12} className="flex-shrink-0 animate-pulse" />
             <span className="text-[11px] font-mono font-bold tracking-tight">{ip}</span>
+            {activePeer?.has_tunnel ? (
+                <span className="text-[8px] font-black uppercase text-amber-300 bg-amber-500/30 border border-amber-500/50 rounded px-1 py-0.5 flex items-center gap-0.5" title="Connected via WebSocket Reverse Tunnel">
+                    ⚡ WS
+                </span>
+            ) : (
+                <span className="text-[8px] font-semibold text-text-muted bg-white/5 rounded px-1 py-0.5" title="Connected via Direct HTTP">
+                    🌐 HTTP
+                </span>
+            )}
             <button
                 onClick={() => setActivePeerId(null)}
                 title="Exit remote view — return to local Leader"

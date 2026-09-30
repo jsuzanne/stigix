@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.107] - 2026-09-30
+
+### Added
+- **Fleet Gateway WebSocket Reverse Tunnel for NAT/CGNAT Traversal (Milestone 5) (`fleet-tunnel.ts`, `server.ts`, `PeerContext.tsx`)**:
+  - Implemented bidirectional Socket.IO reverse tunnel namespace (`/fleet-tunnel`) allowing Spoke nodes behind NAT/CGNAT/firewalls to connect outbound to the Leader node.
+  - Zero `.env` configuration required on Spokes: nodes automatically discover the Leader URL from the local Stigix Registry (`leader_info?.ip` / `static_leader_url`) and establish persistent reverse WebSocket connections.
+  - Gateway reverse proxy (`/api/gateway/:peerId/*`) transparently routes API calls over active WebSocket tunnels with graceful fallback to direct HTTP on LAN.
+  - Added `/api/fleet/tunnels` endpoint exposing connected reverse tunnel sessions in real time.
+  - Added `⚡ WS TUNNEL` and `🌐 DIRECT HTTP` transport badges in the Gateway context switcher dropdown and navbar remote view chip. 🚀
+
 ## [2.0.106] - 2026-09-30
 
 ### Performance / Changed

@@ -38,6 +38,7 @@ import { createAiCopilotRouter } from './ai-copilot/api-routes.js';
 
 import { Server } from 'socket.io';
 import multer from 'multer';
+import { FleetTunnelManager } from './fleet-tunnel.js';
 
 // Multer setup for EDL file uploads (memory storage)
 const upload = multer({
@@ -2096,6 +2097,10 @@ const PORT = parseInt(process.env.PORT || '8080'); // Unified to 8080
 const SECRET_KEY = process.env.JWT_SECRET || 'super-secret-key-change-this';
 const USERS_FILE = path.join(APP_CONFIG.configDir, 'users.json');
 const DEBUG_API = process.env.DEBUG_API === 'true';
+
+// Fleet WebSocket Reverse Tunnel Manager (M5 — NAT/CGNAT Traversal)
+const fleetTunnelManager = new FleetTunnelManager(io, registryManager, SECRET_KEY, PORT);
+fleetTunnelManager.start();
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -13323,7 +13328,22 @@ log('FLEET', `🔍 On-Demand SD-WAN Flow Path Trace mounted at POST /api/fleet/m
 // Safe-Mode and HMAC inter-node signing are planned for M4.
 //
 
-app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) => {
+app.get('/api/fleet/tunnels', authenticateToken, (req: any, res: any) => {
+    if (!registryManager.isLeader()) {
+        return res.status(403).json({
+            error: 'not_leader',
+            message: 'Tunnels overview is only accessible on the Leader instance.'
+        });
+    }
+    const tunnels = fleetTunnelManager.getConnectedTunnels();
+    res.json({
+        count: tunnels.length,
+        tunnels
+    });
+});
+log('FLEET', `⚡ Fleet WebSocket Reverse Tunnels API mounted at GET /api/fleet/tunnels`);
+
+app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: any) => {
     if (!registryManager.isLeader()) {
         return res.status(403).json({
             error: 'not_leader',
@@ -13366,8 +13386,6 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
         }
     }
     // Inject a short-lived internal gateway token so the peer can authenticate the request.
-    // All nodes in the mesh share the same JWT_SECRET — valid for the lab setup.
-    // M4 will replace this with HMAC inter-node signing (no shared secret needed).
     const gatewayToken = jwt.sign(
         { username: 'stigix-gateway', role: 'admin', peer: peerId },
         SECRET_KEY,
@@ -13378,6 +13396,50 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
     forwardHeaders['x-forwarded-for'] = req.ip || '';
     forwardHeaders['host'] = `${peerIp}:${peerPort}`;
 
+    // --- M5: Check if Peer has an active WebSocket Reverse Tunnel ---
+    const peerInstanceId = peer.instance_id || peerId;
+    const peerSiteName = peer.meta?.site || '';
+    const hasWsTunnel = fleetTunnelManager.hasTunnel(peerId) ||
+        fleetTunnelManager.hasTunnel(peerInstanceId) ||
+        (peerSiteName ? fleetTunnelManager.hasTunnel(peerSiteName) : false);
+
+    if (hasWsTunnel) {
+        const tunnelTargetId = fleetTunnelManager.hasTunnel(peerId)
+            ? peerId
+            : fleetTunnelManager.hasTunnel(peerInstanceId)
+                ? peerInstanceId
+                : peerSiteName;
+
+        try {
+            const tunnelRes = await fleetTunnelManager.forwardRequest(tunnelTargetId, {
+                method: req.method,
+                path: proxyUrl,
+                headers: forwardHeaders,
+                body: req.body
+            }, 15000);
+
+            if (tunnelRes) {
+                res.status(tunnelRes.status);
+                for (const [k, v] of Object.entries(tunnelRes.headers)) {
+                    if (!hopByHop.has(k.toLowerCase()) && v !== undefined) {
+                        res.setHeader(k, v as string | string[]);
+                    }
+                }
+                res.setHeader('x-gateway-peer', peerId);
+                res.setHeader('x-gateway-transport', 'websocket-tunnel');
+
+                if (tunnelRes.isBase64) {
+                    return res.send(Buffer.from(tunnelRes.body, 'base64'));
+                } else {
+                    return res.send(tunnelRes.body);
+                }
+            }
+        } catch (tunnelErr: any) {
+            log('GATEWAY', `⚡ Reverse WebSocket tunnel to "${peerId}" failed (${tunnelErr.message}) — falling back to direct HTTP proxy`, 'warn');
+        }
+    }
+
+    // --- Direct HTTP Fallback ---
     const options: http.RequestOptions = {
         hostname: peerIp,
         port: peerPort,
@@ -13387,10 +13449,6 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
         timeout: 15000  // 15 s — allows for slow BR8 ops (batch tests, voice start, etc.)
     };
 
-    // proxyResReceived is set to true the moment BR5 starts responding.
-    // This is the only reliable guard for "is this a real mid-flight abort?"
-    // — req.on('close') fires on ALL GET requests as soon as the request
-    // headers are sent (before BR5 responds), making res.writableEnded useless.
     let proxyResReceived = false;
 
     const proxyReq = http.request(options, (proxyRes) => {
@@ -13402,6 +13460,7 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
             }
         }
         res.setHeader('x-gateway-peer', peerId);
+        res.setHeader('x-gateway-transport', 'direct-http');
 
         // SSE streams (text/event-stream) must not be buffered — flush headers
         // immediately so the browser's EventSource receives events in real-time.
@@ -13440,17 +13499,11 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
     });
 
     // Forward the request body to the peer.
-    // IMPORTANT: express.json() middleware (app-level, line ~2056) has already consumed
-    // the raw IncomingMessage stream before this gateway handler runs. Calling req.pipe()
-    // would therefore forward an EMPTY body — BR8's body-parser would hang waiting for the
-    // bytes declared in Content-Length and never receive them, causing a guaranteed 504.
-    // Fix: re-serialize req.body (already parsed) so BR8 receives the correct payload.
     if (!['GET', 'HEAD'].includes(req.method)) {
         const bodyStr = (req.body != null && typeof req.body === 'object')
             ? JSON.stringify(req.body)
             : typeof req.body === 'string' ? req.body : '';
         const bodyBuf = Buffer.from(bodyStr, 'utf8');
-        // Override Content-Length so it matches the re-serialized bytes exactly
         proxyReq.setHeader('content-length', bodyBuf.length);
         if (bodyBuf.length > 0) proxyReq.write(bodyBuf);
         proxyReq.end();
@@ -13458,11 +13511,6 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, (req: any, res: any) =>
         proxyReq.end();
     }
 
-    // Node < 18: 'aborted' fires only on genuine client cancellation.
-    // Node ≥ 18: 'close' fires on every GET request (body drains immediately),
-    // making it impossible to distinguish abort from normal completion before the
-    // peer responds. We intentionally do NOT listen to 'close' here.
-    // Orphaned upstream connections are cleaned up by the 5 s timeout above.
     req.on('aborted', () => {
         if (!proxyResReceived && !proxyReq.destroyed) proxyReq.destroy();
     });

@@ -57,6 +57,7 @@ RUN npm install tsx --no-save
 
 COPY --from=builder /app/dist ./dist
 COPY web-dashboard/server.ts ./
+COPY web-dashboard/fleet-tunnel.ts ./
 COPY web-dashboard/api-logger.ts ./
 COPY web-dashboard/api-studio-routes.ts ./
 COPY web-dashboard/targets-manager.ts ./
