@@ -89,6 +89,7 @@ export function PeerContextProvider({ token, isLeader, children, onActivePeerCha
                     (tunnelData.tunnels || []).forEach((t: any) => {
                         if (t.instanceId) tunnelKeys.add(t.instanceId.toLowerCase());
                         if (t.siteName) tunnelKeys.add(t.siteName.toLowerCase());
+                        if (t.ip) tunnelKeys.add(t.ip.toLowerCase());
                     });
                 } catch {}
             }
@@ -96,7 +97,8 @@ export function PeerContextProvider({ token, isLeader, children, onActivePeerCha
             const mapped: PeerEntry[] = (data.instances || []).map((inst: any) => {
                 const id = (inst.instance_id || '').toLowerCase();
                 const site = (inst.meta?.site || inst.instance_id || '').toLowerCase();
-                const hasTunnel = tunnelKeys.has(id) || tunnelKeys.has(site);
+                const ip = (inst.ip_private || '').toLowerCase();
+                const hasTunnel = tunnelKeys.has(id) || tunnelKeys.has(site) || (ip ? tunnelKeys.has(ip) : false);
 
                 return {
                     instance_id: inst.instance_id,

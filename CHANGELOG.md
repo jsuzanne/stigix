@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.111] - 2026-09-30
+
+### Added / Improved
+- **Bidirectional Global Provisioning & Target Sync over Fleet WebSocket Tunnels (`fleet-tunnel.ts`, `server.ts`, `Settings.tsx`)**:
+  - Implemented automated bidirectional configuration syncing over persistent WebSocket tunnels (M5 & M6): remote Cloud and NAT peers automatically pull published configuration bundles (`custom-tcp-apps`, `applications`, `connectivity-probes`, `convergence-sla`, `security-config`, `voice-config`, `iot-config`, `cloud-config`) directly through the existing tunnel without requiring inbound IP routing to the private Leader.
+  - Added real-time bundle update broadcast (`peer:bundle_updated` push) triggering instant hot-reloading on connected peers when bundles are published or saved on the Leader.
+  - Enhanced **Target Controller** UI in Settings:
+    - Dedicated **`⚡ WS Tunnel Synced`** status badge with live link details and auto-managed indicator.
+    - Added tunnel-aware connectivity test (`/api/registry/test-connectivity`) measuring round-trip WebSocket ping/pong latency (RTT in ms).
+    - Enabled seamless manual pull sync via `SYNC NOW` over active WebSocket tunnels.
+  - Fixed remote Cloud Peer capabilities indicator dots and `⚡ WS Tunnel` badge matching by resolving peer IP and remote instance IDs across tunnel session maps. 🚀
+- **Documentation**:
+  - Added [`docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md`](file:///Users/jsuzanne/Github/stigix/docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md) detailing all 4 deployment topologies (LAN/MPLS, NAT Spokes, Zero-Inbound Private Leader + Multi-Cloud Peers, and Public SaaS Leader).
+
 ## [2.0.110] - 2026-09-30
 
 ### Fixed

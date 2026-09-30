@@ -210,6 +210,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                     (tData.tunnels || []).forEach((t: any) => {
                         if (t.instanceId) tunnelKeys.add(t.instanceId.toLowerCase());
                         if (t.siteName) tunnelKeys.add(t.siteName.toLowerCase());
+                        if (t.ip) tunnelKeys.add(t.ip.toLowerCase());
                     });
                 } catch {}
             }
@@ -218,9 +219,10 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                 json.instances = json.instances.map(inst => {
                     const id = (inst.instance_id || '').toLowerCase();
                     const site = (inst.meta?.site || inst.instance_id || '').toLowerCase();
+                    const ip = (inst.ip_private || '').toLowerCase();
                     return {
                         ...inst,
-                        has_tunnel: tunnelKeys.has(id) || tunnelKeys.has(site)
+                        has_tunnel: tunnelKeys.has(id) || tunnelKeys.has(site) || (ip ? tunnelKeys.has(ip) : false)
                     };
                 });
             }

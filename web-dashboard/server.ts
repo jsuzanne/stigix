@@ -12370,6 +12370,7 @@ registryManager.setLocalRegistryServer(localRegistryServer);
 registryManager.setProvisioningManager(provisioningManager);
 fleetTunnelManager.setTargetsManager(targetsManager);
 fleetTunnelManager.setLocalRegistryServer(localRegistryServer);
+fleetTunnelManager.setProvisioningManager(provisioningManager);
 app.use('/api/registry', (req, res, next) => {
     const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE;
     if (mode === 'leader') {
@@ -13794,7 +13795,9 @@ app.post('/api/provisioning/config', authenticateToken, (req, res) => {
 
 app.post('/api/provisioning/sync', authenticateToken, async (req, res) => {
     try {
-        if (registryManager) {
+        if (fleetTunnelManager.hasActiveLeaderTunnel()) {
+            await fleetTunnelManager.triggerManualSync();
+        } else if (registryManager) {
             await registryManager.syncProvisioning();
         }
         res.json({ success: true, state: provisioningManager.getState() });
@@ -13844,6 +13847,7 @@ app.post('/api/provisioning/publish/:type', authenticateToken, (req, res) => {
     }
 
     const pub = provisioningManager.publishBundle(type, payload);
+    fleetTunnelManager.broadcastProvisioningUpdate(type);
     res.json({ success: true, published: pub, manifest: provisioningManager.getManifest() });
 });
 
@@ -13884,6 +13888,7 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
             if (!payload) payload = (t === 'applications' || t === 'connectivity-probes') ? [] : {};
             publishedList.push(provisioningManager.publishBundle(t, payload));
         }
+        fleetTunnelManager.broadcastProvisioningUpdate();
         return res.json({ success: true, published_bundles: publishedList, manifest: provisioningManager.getManifest() });
     }
 
@@ -13908,6 +13913,7 @@ app.post('/api/provisioning/publish', authenticateToken, (req, res) => {
     }
 
     const pub = provisioningManager.publishBundle(type as GlobalBundleType, payload);
+    fleetTunnelManager.broadcastProvisioningUpdate(type as GlobalBundleType);
     res.json({ success: true, published: pub, manifest: provisioningManager.getManifest() });
 });
 
@@ -13920,6 +13926,7 @@ app.post('/api/provisioning/rollback/:type/:revision', authenticateToken, (req, 
     if (!bundle) return res.status(404).json({ error: 'revision_not_found' });
 
     const pub = provisioningManager.publishBundle(type, bundle);
+    fleetTunnelManager.broadcastProvisioningUpdate(type);
     res.json({ success: true, rolledBackTo: revision, newPublished: pub, manifest: provisioningManager.getManifest() });
 });
 
@@ -13932,6 +13939,7 @@ app.post('/api/provisioning/rollback', authenticateToken, (req, res) => {
     if (!bundle) return res.status(404).json({ error: 'revision_not_found' });
 
     const pub = provisioningManager.publishBundle(type, bundle);
+    fleetTunnelManager.broadcastProvisioningUpdate(type);
     res.json({ success: true, rolledBackTo: revision, newPublished: pub, manifest: provisioningManager.getManifest() });
 });
 
@@ -13958,7 +13966,9 @@ app.get('/api/registry/status', authenticateToken, (req, res) => {
         ...mgrStatus,
         mode: mode,
         local_registry_active: mode === 'leader',
-        local_instances: mode === 'leader' ? localRegistryServer.getInstances() : []
+        local_instances: mode === 'leader' ? localRegistryServer.getInstances() : [],
+        tunnel_active: fleetTunnelManager.hasActiveLeaderTunnel(),
+        leader_tunnel_info: fleetTunnelManager.getActiveLeaderInfo()
     };
 
     res.json(status);
@@ -14055,6 +14065,21 @@ app.post('/api/registry/static-leader', authenticateToken, async (req, res) => {
 
 app.post('/api/registry/test-connectivity', authenticateToken, async (req, res) => {
     let { url } = req.body;
+
+    // If testing active Fleet Tunnel or no url specified when tunnel is active
+    if ((!url || url === 'fleet-tunnel' || url === 'tunnel') && fleetTunnelManager.hasActiveLeaderTunnel()) {
+        try {
+            const testRes = await fleetTunnelManager.testLeaderConnectivity();
+            if (testRes.success) {
+                return res.json({ status: 'ok', data: testRes });
+            } else {
+                return res.status(500).json({ status: 'error', error: testRes.error || 'Tunnel ping failed' });
+            }
+        } catch (err: any) {
+            return res.status(500).json({ status: 'error', error: err.message });
+        }
+    }
+
     if (!url) return res.status(400).json({ error: 'Missing url or IP' });
 
     url = normalizeControllerUrl(url);

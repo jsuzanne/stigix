@@ -8,6 +8,7 @@ import { log } from './utils/logger.js';
 import type { RegistryManager } from './registry-manager.js';
 import type { LocalRegistryServer } from './local-registry-server.js';
 import type { TargetsManager } from './targets-manager.js';
+import type { ProvisioningManager, GlobalBundleType } from './provisioning-manager.js';
 
 export interface TunnelPeerInfo {
     instanceId: string;
@@ -53,6 +54,7 @@ export class FleetTunnelManager {
     private registryManager: RegistryManager;
     private targetsManager?: TargetsManager;
     private localRegistryServer?: LocalRegistryServer;
+    private provisioningManager?: ProvisioningManager;
     private telemetryProvider?: () => Promise<any> | any;
     private secretKey: string;
     private localPort: number;
@@ -66,6 +68,10 @@ export class FleetTunnelManager {
     private spokeCurrentLeaderUrl: string | null = null;
     private spokeTelemetryInterval: NodeJS.Timeout | null = null;
 
+    // Spoke state when dialed by a Leader (M6) or connected via M5
+    private activeLeaderTunnelSocket: Socket | ClientSocket | null = null;
+    private activeLeaderInfo: { instanceId?: string; siteName?: string; ip?: string; direction?: string } | null = null;
+
     // Leader state: outbound dialed client sockets to Cloud/Manual peers (M6)
     private outboundDialedSockets: Map<string, ClientSocket> = new Map();
 
@@ -77,12 +83,14 @@ export class FleetTunnelManager {
         secretKey: string,
         localPort: number = 8080,
         targetsManager?: TargetsManager,
-        localRegistryServer?: LocalRegistryServer
+        localRegistryServer?: LocalRegistryServer,
+        provisioningManager?: ProvisioningManager
     ) {
         this.ioServer = ioServer;
         this.registryManager = registryManager;
         this.targetsManager = targetsManager;
         this.localRegistryServer = localRegistryServer;
+        this.provisioningManager = provisioningManager;
         this.secretKey = secretKey;
         this.localPort = localPort;
 
@@ -97,8 +105,23 @@ export class FleetTunnelManager {
         this.localRegistryServer = localRegistryServer;
     }
 
+    public setProvisioningManager(provisioningManager: ProvisioningManager): void {
+        this.provisioningManager = provisioningManager;
+    }
+
     public setTelemetryProvider(provider: () => Promise<any> | any): void {
         this.telemetryProvider = provider;
+    }
+
+    public hasActiveLeaderTunnel(): boolean {
+        if (this.spokeClientSocket && this.spokeClientSocket.connected) return true;
+        if (this.activeLeaderTunnelSocket && (this.activeLeaderTunnelSocket as any).connected !== false) return true;
+        return false;
+    }
+
+    public getActiveLeaderInfo(): { instanceId?: string; siteName?: string; ip?: string; direction?: string } | null {
+        if (!this.hasActiveLeaderTunnel()) return null;
+        return this.activeLeaderInfo || { instanceId: 'Leader', siteName: 'Leader', direction: 'fleet_tunnel' };
     }
 
     /**
@@ -151,21 +174,36 @@ export class FleetTunnelManager {
 
             log('TUNNEL', `⚡ Reverse tunnel connected: ${siteName} (${instanceId}) [${clientIp}] via WebSocket (${info.direction})`);
 
-            // If a Leader dials into this Spoke (M6), automatically push our telemetry to the Leader periodically
+            // If this node is acting as Spoke dialed by Leader (M6)
             let dialHeartbeatInterval: NodeJS.Timeout | null = null;
             if (isLeaderDial) {
+                this.activeLeaderTunnelSocket = socket;
+                this.activeLeaderInfo = { instanceId, siteName, ip: clientIp, direction: 'inbound_leader_dial' };
                 this.pushLocalTelemetryToSocket(socket);
                 dialHeartbeatInterval = setInterval(() => {
                     if (socket.connected) {
                         this.pushLocalTelemetryToSocket(socket);
                     }
                 }, 15000);
+
+                // Spoke listens for config updates and triggers initial sync
+                socket.on('peer:bundle_updated', (type?: string) => {
+                    this.syncProvisioningOverTunnel(socket, type);
+                });
+                this.syncProvisioningOverTunnel(socket);
+            } else {
+                // If this node is Leader receiving Spoke connection (M5), serve Leader provisioning/targets
+                this.registerLeaderHandlers(socket);
             }
 
             socket.on('disconnect', (reason: string) => {
                 if (dialHeartbeatInterval) {
                     clearInterval(dialHeartbeatInterval);
                     dialHeartbeatInterval = null;
+                }
+                if (this.activeLeaderTunnelSocket === socket) {
+                    this.activeLeaderTunnelSocket = null;
+                    this.activeLeaderInfo = null;
                 }
                 log('TUNNEL', `Reverse tunnel disconnected: ${siteName} (${instanceId}) — reason: ${reason}`, 'warn');
                 this.activeTunnels.delete(instanceId);
@@ -343,11 +381,20 @@ export class FleetTunnelManager {
 
         socket.on('connect', () => {
             log('TUNNEL', `⚡ Outbound reverse tunnel ESTABLISHED to Leader (${host}:${port})`);
+            this.activeLeaderTunnelSocket = socket;
+            this.activeLeaderInfo = { instanceId: 'Leader', siteName: host, ip: host, direction: 'outbound_spoke' };
+
             this.pushLocalTelemetryToSocket(socket);
             if (this.spokeTelemetryInterval) clearInterval(this.spokeTelemetryInterval);
             this.spokeTelemetryInterval = setInterval(() => {
                 if (socket.connected) this.pushLocalTelemetryToSocket(socket);
             }, 15000);
+
+            // Spoke listens for config updates and triggers initial sync
+            socket.on('peer:bundle_updated', (type?: string) => {
+                this.syncProvisioningOverTunnel(socket, type);
+            });
+            this.syncProvisioningOverTunnel(socket);
         });
 
         socket.on('connect_error', (err: any) => {
@@ -356,6 +403,10 @@ export class FleetTunnelManager {
 
         socket.on('disconnect', (reason: string) => {
             log('TUNNEL', `Outbound reverse tunnel disconnected (${reason})`, 'warn');
+            if (this.activeLeaderTunnelSocket === socket) {
+                this.activeLeaderTunnelSocket = null;
+                this.activeLeaderInfo = null;
+            }
             if (this.spokeTelemetryInterval) {
                 clearInterval(this.spokeTelemetryInterval);
                 this.spokeTelemetryInterval = null;
@@ -486,6 +537,9 @@ export class FleetTunnelManager {
         socket.on('connect', () => {
             log('TUNNEL', `⚡ [M6 DIAL] Leader reverse dial CONNECTED to Cloud Peer: ${targetSiteName} (${host}:${port})`);
 
+            // Register Leader services (Provisioning, Manifest, Targets, Ping) on this outbound socket
+            this.registerLeaderHandlers(socket);
+
             const info: TunnelPeerInfo = {
                 instanceId: targetId,
                 siteName: targetSiteName,
@@ -504,6 +558,13 @@ export class FleetTunnelManager {
             socket.emit('peer:query_status', (remoteStatus: any) => {
                 if (this.localRegistryServer && remoteStatus && remoteStatus.instance_id) {
                     this.localRegistryServer.upsertInstance(remoteStatus);
+                    info.instanceId = remoteStatus.instance_id;
+                    info.siteName = remoteStatus.meta?.site || remoteStatus.instance_id;
+                    this.activeTunnels.set(remoteStatus.instance_id, { socket, info });
+                    this.siteToInstanceMap.set(remoteStatus.instance_id.toLowerCase(), remoteStatus.instance_id);
+                    if (remoteStatus.meta?.site) {
+                        this.siteToInstanceMap.set(remoteStatus.meta.site.toLowerCase(), remoteStatus.instance_id);
+                    }
                     log('LOCAL-REGISTRY', `🏠 Ingested Cloud Peer status from ${targetSiteName} (${remoteStatus.instance_id})`);
                 }
             });
@@ -515,6 +576,10 @@ export class FleetTunnelManager {
                     socket.timeout(5000).emit('peer:query_status', (err: any, remoteStatus: any) => {
                         if (!err && this.localRegistryServer && remoteStatus && remoteStatus.instance_id) {
                             this.localRegistryServer.upsertInstance(remoteStatus);
+                            info.instanceId = remoteStatus.instance_id;
+                            info.siteName = remoteStatus.meta?.site || remoteStatus.instance_id;
+                            this.activeTunnels.set(remoteStatus.instance_id, { socket, info });
+                            this.siteToInstanceMap.set(remoteStatus.instance_id.toLowerCase(), remoteStatus.instance_id);
                         }
                     });
                 }
@@ -524,6 +589,13 @@ export class FleetTunnelManager {
         socket.on('peer:telemetry', (remoteStatus: any) => {
             if (this.localRegistryServer && remoteStatus && remoteStatus.instance_id) {
                 this.localRegistryServer.upsertInstance(remoteStatus);
+                const entry = this.activeTunnels.get(targetId);
+                if (entry) {
+                    entry.info.instanceId = remoteStatus.instance_id;
+                    entry.info.siteName = remoteStatus.meta?.site || remoteStatus.instance_id;
+                    this.activeTunnels.set(remoteStatus.instance_id, entry);
+                    this.siteToInstanceMap.set(remoteStatus.instance_id.toLowerCase(), remoteStatus.instance_id);
+                }
             }
         });
 
@@ -541,6 +613,161 @@ export class FleetTunnelManager {
         });
 
         this.outboundDialedSockets.set(targetKey, socket);
+    }
+
+    /**
+     * Leader services: Serve provisioning manifest, bundle downloads, and targets across WebSocket
+     */
+    private registerLeaderHandlers(socket: Socket | ClientSocket): void {
+        socket.on('provisioning:get_manifest', (ack?: (m: any) => void) => {
+            if (typeof ack === 'function') {
+                ack(this.provisioningManager?.getManifest() || null);
+            }
+        });
+
+        socket.on('provisioning:pull_bundle', (type: string, ack?: (payload: any) => void) => {
+            if (typeof ack === 'function') {
+                if (this.provisioningManager) {
+                    const bundle = this.provisioningManager.getPublishedBundle(type as GlobalBundleType);
+                    ack(bundle);
+                } else {
+                    ack(null);
+                }
+            }
+        });
+
+        socket.on('targets:get_all', (ack?: (targets: any[]) => void) => {
+            if (typeof ack === 'function') {
+                ack(this.targetsManager?.getMergedTargets() || []);
+            }
+        });
+
+        socket.on('tunnel:ping_leader', (ack?: (res: any) => void) => {
+            if (typeof ack === 'function') {
+                const regStatus = this.registryManager.getStatus();
+                ack({
+                    pong: true,
+                    leader_id: regStatus.instance_id || 'leader',
+                    site_name: regStatus.site_name || regStatus.instance_id || 'Leader',
+                    timestamp: Date.now()
+                });
+            }
+        });
+    }
+
+    /**
+     * Spoke services: Sync provisioning bundles from Leader across WebSocket tunnel
+     */
+    public async syncProvisioningOverTunnel(socket: Socket | ClientSocket, specificType?: string): Promise<{ success: boolean; count: number; error?: string }> {
+        if (!this.provisioningManager) return { success: false, count: 0, error: 'no_provisioning_manager' };
+        try {
+            log('PROVISIONING', `⚡ [TUNNEL SYNC] Pulling provisioning manifest from Leader over Fleet Tunnel...`);
+            const manifest = await new Promise<any>((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error('Manifest request timeout (5s)')), 5000);
+                socket.emit('provisioning:get_manifest', (res: any) => {
+                    clearTimeout(timer);
+                    resolve(res);
+                });
+            });
+
+            if (!manifest || !Array.isArray(manifest.bundles)) {
+                return { success: false, count: 0, error: 'empty_manifest' };
+            }
+
+            const localState = this.provisioningManager.getState();
+            let appliedCount = 0;
+
+            for (const bundle of manifest.bundles) {
+                if (specificType && bundle.type !== specificType) continue;
+                const currentApplied = localState.appliedRevisions?.[bundle.type];
+                const needsSync = !currentApplied || currentApplied.revision < bundle.revision || currentApplied.checksum !== bundle.checksum || currentApplied.status !== 'applied';
+
+                if (needsSync) {
+                    log('PROVISIONING', `⚡ [TUNNEL SYNC] Pulling bundle '${bundle.type}' (rev ${bundle.revision}) from Leader...`);
+                    const bundlePayload = await new Promise<any>((resolve) => {
+                        const timer = setTimeout(() => resolve(null), 5000);
+                        socket.emit('provisioning:pull_bundle', bundle.type, (data: any) => {
+                            clearTimeout(timer);
+                            resolve(data);
+                        });
+                    });
+
+                    if (bundlePayload !== undefined && bundlePayload !== null) {
+                        this.provisioningManager.applyGlobalBundle(bundle.type, bundle.revision, bundle.checksum, bundlePayload);
+                        appliedCount++;
+                        log('PROVISIONING', `✅ [TUNNEL SYNC] Successfully applied bundle '${bundle.type}' (rev ${bundle.revision}) over Fleet Tunnel`);
+                    }
+                }
+            }
+
+            return { success: true, count: appliedCount };
+        } catch (err: any) {
+            log('PROVISIONING', `Failed to sync provisioning over tunnel: ${err.message}`, 'warn');
+            return { success: false, count: 0, error: err.message };
+        }
+    }
+
+    /**
+     * Trigger manual pull sync over active Leader tunnel
+     */
+    public async triggerManualSync(): Promise<{ success: boolean; count: number; error?: string }> {
+        const socket = this.activeLeaderTunnelSocket || this.spokeClientSocket;
+        if (!socket || !this.hasActiveLeaderTunnel()) {
+            return { success: false, count: 0, error: 'No active Fleet WebSocket Tunnel connected to Leader' };
+        }
+        return this.syncProvisioningOverTunnel(socket);
+    }
+
+    /**
+     * Test round-trip latency and reachability to Leader over WebSocket tunnel
+     */
+    public async testLeaderConnectivity(): Promise<{ success: boolean; rtt?: number; leaderId?: string; site_name?: string; error?: string }> {
+        const socket = this.activeLeaderTunnelSocket || this.spokeClientSocket;
+        if (!socket || !this.hasActiveLeaderTunnel()) {
+            return { success: false, error: 'No active Fleet WebSocket Tunnel connected to Leader' };
+        }
+        const start = Date.now();
+        return new Promise((resolve) => {
+            const timer = setTimeout(() => {
+                resolve({ success: false, error: 'Timeout waiting for Leader ping response over tunnel (5s)' });
+            }, 5000);
+
+            socket.emit('tunnel:ping_leader', (res: any) => {
+                clearTimeout(timer);
+                const rtt = Date.now() - start;
+                if (res && res.pong) {
+                    resolve({
+                        success: true,
+                        rtt,
+                        leaderId: res.leader_id || res.instance_id,
+                        site_name: res.site_name || res.site
+                    });
+                } else {
+                    resolve({ success: false, error: 'Invalid response from Leader over tunnel' });
+                }
+            });
+        });
+    }
+
+    /**
+     * Leader broadcasts bundle update notification to all connected spoke tunnels
+     */
+    public broadcastProvisioningUpdate(type?: GlobalBundleType): void {
+        log('PROVISIONING', `📢 [TUNNEL PUSH] Broadcasting bundle update notification (${type || 'all'}) to all connected tunnel peers...`);
+        for (const [id, entry] of this.activeTunnels) {
+            try {
+                entry.socket.emit('peer:bundle_updated', type);
+            } catch (err: any) {
+                log('TUNNEL', `Failed to push bundle update to ${id}: ${err.message}`, 'warn');
+            }
+        }
+        for (const [targetId, socket] of this.outboundDialedSockets) {
+            try {
+                socket.emit('peer:bundle_updated', type);
+            } catch (err: any) {
+                log('TUNNEL', `Failed to push bundle update to dialed target ${targetId}: ${err.message}`, 'warn');
+            }
+        }
     }
 
     /**
@@ -571,6 +798,7 @@ export class FleetTunnelManager {
             ip_private: regStatus.detected_ip,
             status: 'online',
             is_leader: regStatus.mode === 'leader',
+            capabilities: this.registryManager.getNodeCapabilities(),
             meta: {
                 site: regStatus.site_name || regStatus.instance_id,
                 version

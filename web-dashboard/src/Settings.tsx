@@ -527,7 +527,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const [registryStatus, setRegistryStatus] = useState<any>(null);
     const [staticLeaderUrl, setStaticLeaderUrl] = useState<string>('');
     const [isTestingConnectivity, setIsTestingConnectivity] = useState(false);
-    const [connectivityResult, setConnectivityResult] = useState<{ success?: boolean; error?: string } | null>(null);
+    const [connectivityResult, setConnectivityResult] = useState<{ success?: boolean; error?: string; leaderInfo?: string } | null>(null);
     // Peer installation card state
     // Starts empty — populated by useEffect once registryStatus.detected_ip is available
     const [peerInstallLeaderUrl, setPeerInstallLeaderUrl] = useState('');
@@ -1018,18 +1018,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     };
 
     const handleTestConnectivity = async () => {
-        if (!staticLeaderUrl) return;
+        const isTunnelConnected = registryStatus?.mode !== 'leader' && !!registryStatus?.tunnel_active;
+        const urlToTest = staticLeaderUrl || (isTunnelConnected ? 'fleet-tunnel' : '');
+        if (!urlToTest) return;
         setIsTestingConnectivity(true);
         setConnectivityResult(null);
         try {
             const res = await apiFetch('/api/registry/test-connectivity', {
                 method: 'POST',
                 headers: authHeaders,
-                body: JSON.stringify({ url: staticLeaderUrl })
+                body: JSON.stringify({ url: urlToTest })
             });
             const data = await res.json();
             if (res.ok && data.status === 'ok') {
-                setConnectivityResult({ success: true });
+                const rttStr = data.data?.rtt !== undefined ? ` (${data.data.rtt}ms)` : '';
+                const leaderName = data.data?.site_name || data.data?.leaderId;
+                setConnectivityResult({ success: true, leaderInfo: leaderName ? `${leaderName}${rttStr}` : undefined });
             } else {
                 setConnectivityResult({ success: false, error: data.error || 'Connection failed' });
             }
@@ -4067,7 +4071,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             {/* ─── Registry Tab ────────────────────────────────────────────── */}
             {activeTab === 'registry' && (() => {
                 const isLeader = registryStatus?.mode === 'leader';
-                const isPeerConnected = !isLeader && registryStatus?.registry_url && registryStatus?.registry_url !== registryStatus?.remote_url;
+                const isTunnelConnected = !isLeader && !!registryStatus?.tunnel_active;
+                const isPeerConnected = (!isLeader && registryStatus?.registry_url && registryStatus?.registry_url !== registryStatus?.remote_url) || isTunnelConnected;
                 const siteName = registryStatus?.site_name || 'This Instance';
                 const detectedIp = registryStatus?.detected_ip || '—';
 
@@ -4104,14 +4109,22 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                 <p className="text-[10px] text-text-muted mt-1 opacity-70">
                                     {isLeader
                                         ? `Handling registration for ${registryStatus?.peer_count ?? 0} peer${(registryStatus?.peer_count ?? 0) !== 1 ? 's' : ''}. Peers connect directly to this node.`
-                                        : isPeerConnected
-                                            ? `Connected to leader ${registryStatus?.leader_info?.id || registryStatus?.leader_info?.ip || '—'}. Targets are synced automatically.`
-                                            : 'Not connected to a leader. Enter the leader URL below to join the mesh.'}
+                                        : isTunnelConnected
+                                            ? `Connected to Leader (${registryStatus?.leader_tunnel_info?.siteName || registryStatus?.leader_tunnel_info?.instanceId || 'Leader'}) via secure Fleet WebSocket Tunnel. Real-time telemetry and configuration syncing are active.`
+                                            : isPeerConnected
+                                                ? `Connected to leader ${registryStatus?.leader_info?.id || registryStatus?.leader_info?.ip || '—'}. Targets are synced automatically.`
+                                                : 'Not connected to a leader. Enter the leader URL below to join the mesh.'}
                                 </p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                            {isPeerConnected && (
+                            {isTunnelConnected && (
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm flex items-center gap-1.5">
+                                    <Zap size={11} className="animate-pulse" />
+                                    WS Tunnel Synced
+                                </span>
+                            )}
+                            {!isTunnelConnected && isPeerConnected && (
                                 <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-green-500/10 text-green-500 border border-green-500/30 shadow-sm flex items-center gap-1.5">
                                     <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                                     Synced
@@ -4521,7 +4534,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     <div className="relative group">
                                         <input
                                             type="text"
-                                            placeholder="e.g. 192.168.1.50 or stigix-leader.local"
+                                            placeholder={isTunnelConnected ? `⚡ Managed via Fleet Gateway Tunnel (Leader: ${registryStatus?.leader_tunnel_info?.siteName || 'Connected'})` : "e.g. 192.168.1.50 or stigix-leader.local"}
                                             value={staticLeaderUrl}
                                             onChange={(e) => setStaticLeaderUrl(e.target.value)}
                                             onKeyDown={(e) => e.key === 'Enter' && handleTestConnectivity()}
@@ -4533,7 +4546,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                     ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                                                     : "bg-red-500/10 text-red-500 border-red-500/20"
                                             }`}>
-                                                {connectivityResult.success ? <><CheckCircle size={10} /> Reachable</> : <><XCircle size={10} /> {connectivityResult.error || 'Failed'}</>}
+                                                {connectivityResult.success ? <><CheckCircle size={10} /> {connectivityResult.leaderInfo ? `Reachable: ${connectivityResult.leaderInfo}` : 'Reachable'}</> : <><XCircle size={10} /> {connectivityResult.error || 'Failed'}</>}
                                             </div>
                                         )}
                                     </div>
@@ -4555,7 +4568,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                     )}
                                     <button
                                         onClick={handleTestConnectivity}
-                                        disabled={isTestingConnectivity || !staticLeaderUrl}
+                                        disabled={isTestingConnectivity || (!staticLeaderUrl && !isTunnelConnected)}
                                         className="bg-card hover:bg-card-hover border border-border rounded-xl px-5 py-2 text-[10px] font-black uppercase tracking-widest transition-all hover:border-blue-500/30 disabled:opacity-50 flex items-center justify-center gap-2"
                                     >
                                         {isTestingConnectivity ? <RefreshCw className="animate-spin" size={12} /> : <Zap size={12} className="text-blue-500" />}
