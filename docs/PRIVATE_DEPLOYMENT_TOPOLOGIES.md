@@ -42,7 +42,7 @@ flowchart TB
     end
 
     subgraph S2["Scenario 2: Remote Branch behind NAT/CGNAT"]
-        L2["Leader (DC1: Port 8080 Open)"] <--|"M5: Spoke dials Leader WS"| P2["Spoke behind NAT (Home / 4G)"]
+        P2["Spoke behind NAT (Home / 4G)"] -->|"M5: Spoke dials Leader WS"| L2["Leader (DC1: Port 8080 Open)"]
     end
 
     subgraph S3["Scenario 3: Private Leader + Cloud Peers (Zero Inbound)"]
