@@ -12368,6 +12368,8 @@ const tcpAppManager = new TcpAppManager(APP_CONFIG.configDir);
 const localRegistryServer = new LocalRegistryServer();
 registryManager.setLocalRegistryServer(localRegistryServer);
 registryManager.setProvisioningManager(provisioningManager);
+fleetTunnelManager.setTargetsManager(targetsManager);
+fleetTunnelManager.setLocalRegistryServer(localRegistryServer);
 app.use('/api/registry', (req, res, next) => {
     const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE;
     if (mode === 'leader') {

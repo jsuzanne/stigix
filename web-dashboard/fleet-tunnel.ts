@@ -5,6 +5,8 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import { log } from './utils/logger.js';
 import type { RegistryManager } from './registry-manager.js';
+import type { LocalRegistryServer } from './local-registry-server.js';
+import type { TargetsManager } from './targets-manager.js';
 
 export interface TunnelPeerInfo {
     instanceId: string;
@@ -13,6 +15,7 @@ export interface TunnelPeerInfo {
     connectedAt: number;
     lastPing: number;
     transport: string;
+    direction: 'inbound' | 'outbound_dial';
 }
 
 export interface ForwardRequestPayload {
@@ -31,47 +34,69 @@ export interface ForwardResponsePayload {
 }
 
 /**
- * FleetTunnelManager — Manages WebSocket Reverse Tunnels (M5)
+ * FleetTunnelManager — WebSocket Reverse Tunnels & Outbound Reverse Dialing (M5 & M6)
  *
  * Provides:
- * 1. FleetTunnelServer (Leader Hub): Socket.IO namespace `/fleet-tunnel` allowing remote spoke nodes
- *    behind NAT/CGNAT/firewalls to connect inbound. Requests to /api/gateway/:peerId are proxied
- *    over the persistent WebSocket connection without needing inbound port forwarding on Spokes.
+ * 1. FleetTunnelServer (Leader Hub & Spoke Namespace): Socket.IO namespace `/fleet-tunnel` allowing
+ *    peers behind NAT/CGNAT/firewalls to connect. Requests to /api/gateway/:peerId are proxied
+ *    over the persistent WebSocket connection without requiring inbound port opening.
  *
- * 2. FleetTunnelClient (Spoke Client): Autonomously discovers the Leader via RegistryManager
- *    (zero .env configuration) and opens an outbound WebSocket tunnel to the Leader.
+ * 2. Spoke Inbound-to-Leader Client (M5): Autonomously discovers Leader via RegistryManager
+ *    and opens an outbound WebSocket tunnel to Leader.
+ *
+ * 3. Leader Outbound Reverse Dialing (M6): Leader dials outward to configured manual/cloud peers
+ *    (e.g. Hetzner, AWS, Home LAN) without requiring the Leader to be exposed on the public Internet.
  */
 export class FleetTunnelManager {
     private ioServer: SocketIOServer;
     private registryManager: RegistryManager;
+    private targetsManager?: TargetsManager;
+    private localRegistryServer?: LocalRegistryServer;
     private secretKey: string;
     private localPort: number;
 
-    // Leader state: active tunnels indexed by instanceId and alias siteName
-    private activeTunnels: Map<string, { socket: Socket; info: TunnelPeerInfo }> = new Map();
+    // Active tunnels indexed by instanceId and alias siteName
+    private activeTunnels: Map<string, { socket: Socket | ClientSocket; info: TunnelPeerInfo }> = new Map();
     private siteToInstanceMap: Map<string, string> = new Map();
 
-    // Spoke state: client socket connected to Leader
-    private clientSocket: ClientSocket | null = null;
-    private clientCurrentLeaderUrl: string | null = null;
-    private checkLeaderInterval: NodeJS.Timeout | null = null;
+    // Spoke state: client socket connected to Leader (M5)
+    private spokeClientSocket: ClientSocket | null = null;
+    private spokeCurrentLeaderUrl: string | null = null;
+    private spokeTelemetryInterval: NodeJS.Timeout | null = null;
+
+    // Leader state: outbound dialed client sockets to Cloud/Manual peers (M6)
+    private outboundDialedSockets: Map<string, ClientSocket> = new Map();
+
+    private backgroundLoopInterval: NodeJS.Timeout | null = null;
 
     constructor(
         ioServer: SocketIOServer,
         registryManager: RegistryManager,
         secretKey: string,
-        localPort: number = 8080
+        localPort: number = 8080,
+        targetsManager?: TargetsManager,
+        localRegistryServer?: LocalRegistryServer
     ) {
         this.ioServer = ioServer;
         this.registryManager = registryManager;
+        this.targetsManager = targetsManager;
+        this.localRegistryServer = localRegistryServer;
         this.secretKey = secretKey;
         this.localPort = localPort;
 
         this.initServerNamespace();
     }
 
+    public setTargetsManager(targetsManager: TargetsManager): void {
+        this.targetsManager = targetsManager;
+    }
+
+    public setLocalRegistryServer(localRegistryServer: LocalRegistryServer): void {
+        this.localRegistryServer = localRegistryServer;
+    }
+
     /**
-     * Leader Hub: Setup Socket.IO namespace `/fleet-tunnel`
+     * Setup Socket.IO namespace `/fleet-tunnel` on this node
      */
     private initServerNamespace(): void {
         const tunnelNamespace = this.ioServer.of('/fleet-tunnel');
@@ -100,6 +125,7 @@ export class FleetTunnelManager {
             const instanceId: string = auth.instanceId || socket.id;
             const siteName: string = auth.siteName || instanceId;
             const clientIp: string = auth.ip || socket.handshake.address.replace(/^.*:/, '') || '127.0.0.1';
+            const isLeaderDial: boolean = !!auth.isLeaderDial;
 
             const info: TunnelPeerInfo = {
                 instanceId,
@@ -107,15 +133,22 @@ export class FleetTunnelManager {
                 ip: clientIp,
                 connectedAt: Date.now(),
                 lastPing: Date.now(),
-                transport: 'websocket'
+                transport: 'websocket',
+                direction: isLeaderDial ? 'outbound_dial' : 'inbound'
             };
 
             this.activeTunnels.set(instanceId, { socket, info });
             if (siteName) {
                 this.siteToInstanceMap.set(siteName.toLowerCase(), instanceId);
             }
+            this.siteToInstanceMap.set(clientIp.toLowerCase(), instanceId);
 
-            log('TUNNEL', `⚡ Reverse tunnel connected: ${siteName} (${instanceId}) [${clientIp}] via WebSocket`);
+            log('TUNNEL', `⚡ Reverse tunnel connected: ${siteName} (${instanceId}) [${clientIp}] via WebSocket (${info.direction})`);
+
+            // If a Leader dials into this Spoke (M6), automatically push our telemetry to the Leader
+            if (isLeaderDial) {
+                this.pushLocalTelemetryToSocket(socket);
+            }
 
             socket.on('disconnect', (reason: string) => {
                 log('TUNNEL', `Reverse tunnel disconnected: ${siteName} (${instanceId}) — reason: ${reason}`, 'warn');
@@ -130,48 +163,103 @@ export class FleetTunnelManager {
                 if (entry) entry.info.lastPing = Date.now();
                 if (typeof ack === 'function') ack();
             });
+
+            // Handle telemetry push from remote peer (M6)
+            socket.on('peer:telemetry', (peerTelemetry: any) => {
+                if (this.localRegistryServer && peerTelemetry && peerTelemetry.instance_id) {
+                    this.localRegistryServer.upsertInstance(peerTelemetry);
+                }
+            });
+
+            // Handle query status request
+            socket.on('peer:query_status', (ack: (status: any) => void) => {
+                if (typeof ack === 'function') {
+                    const status = this.buildLocalTelemetryPayload();
+                    ack(status);
+                }
+            });
+
+            // Handle forwarded HTTP requests
+            socket.on('gateway:forward', (payload: ForwardRequestPayload, ack: (res: ForwardResponsePayload) => void) => {
+                this.handleLocalHttpRequest(payload)
+                    .then((res) => {
+                        if (typeof ack === 'function') ack(res);
+                    })
+                    .catch((err) => {
+                        if (typeof ack === 'function') {
+                            ack({
+                                status: 502,
+                                headers: { 'content-type': 'application/json' },
+                                body: JSON.stringify({
+                                    error: 'local_proxy_error',
+                                    message: err.message
+                                })
+                            });
+                        }
+                    });
+            });
         });
 
         log('TUNNEL', `🚀 Fleet Reverse Tunnel Hub mounted at /fleet-tunnel namespace`);
     }
 
     /**
-     * Start background loop for Spoke auto-discovery of Leader
+     * Start background loop for:
+     * - Spoke auto-discovery of Leader (M5)
+     * - Leader outbound reverse dialing to Cloud/Manual Peers (M6)
      */
     public start(): void {
-        this.checkLeaderAndTunnel();
-        this.checkLeaderInterval = setInterval(() => this.checkLeaderAndTunnel(), 5000);
+        this.runBackgroundLoop();
+        this.backgroundLoopInterval = setInterval(() => this.runBackgroundLoop(), 5000);
     }
 
     public stop(): void {
-        if (this.checkLeaderInterval) {
-            clearInterval(this.checkLeaderInterval);
-            this.checkLeaderInterval = null;
+        if (this.backgroundLoopInterval) {
+            clearInterval(this.backgroundLoopInterval);
+            this.backgroundLoopInterval = null;
         }
-        if (this.clientSocket) {
-            this.clientSocket.disconnect();
-            this.clientSocket = null;
+        if (this.spokeClientSocket) {
+            this.spokeClientSocket.disconnect();
+            this.spokeClientSocket = null;
+        }
+        if (this.spokeTelemetryInterval) {
+            clearInterval(this.spokeTelemetryInterval);
+            this.spokeTelemetryInterval = null;
+        }
+        for (const [, socket] of this.outboundDialedSockets) {
+            socket.disconnect();
+        }
+        this.outboundDialedSockets.clear();
+    }
+
+    private runBackgroundLoop(): void {
+        const isLeader = this.registryManager.isLeader();
+
+        if (isLeader) {
+            // 1. Leader mode: Clean up spoke socket if previously active
+            if (this.spokeClientSocket) {
+                log('TUNNEL', `Node is Leader — disconnecting spoke outbound client`);
+                this.spokeClientSocket.disconnect();
+                this.spokeClientSocket = null;
+                this.spokeCurrentLeaderUrl = null;
+                if (this.spokeTelemetryInterval) {
+                    clearInterval(this.spokeTelemetryInterval);
+                    this.spokeTelemetryInterval = null;
+                }
+            }
+
+            // 2. Leader mode (M6): Check manual & cloud targets for outbound reverse dialing
+            this.syncLeaderOutboundDials();
+        } else {
+            // Spoke mode (M5): Connect outbound to discovered Leader
+            this.syncSpokeOutboundTunnel();
         }
     }
 
     /**
-     * Spoke Node: Checks if we are a spoke and connects outbound tunnel to discovered Leader
+     * M5: Spoke Node connects outbound tunnel to Leader
      */
-    private checkLeaderAndTunnel(): void {
-        const isLeader = this.registryManager.isLeader();
-
-        if (isLeader) {
-            // Leader node does not need an outbound tunnel client to itself
-            if (this.clientSocket) {
-                log('TUNNEL', `Node is Leader — disconnecting outbound tunnel client`);
-                this.clientSocket.disconnect();
-                this.clientSocket = null;
-                this.clientCurrentLeaderUrl = null;
-            }
-            return;
-        }
-
-        // We are a Spoke node — discover Leader URL / IP from RegistryManager
+    private syncSpokeOutboundTunnel(): void {
         const status = this.registryManager.getStatus();
         let targetHost: string | null = null;
         let targetPort: number = 8080;
@@ -198,52 +286,38 @@ export class FleetTunnelManager {
             } catch {}
         }
 
-        if (!targetHost) {
-            return; // No leader discovered yet
-        }
+        if (!targetHost) return;
 
         const targetUrl = `http://${targetHost}:${targetPort}`;
 
-        // If target leader changed, disconnect old client
-        if (this.clientSocket && this.clientCurrentLeaderUrl !== targetUrl) {
-            log('TUNNEL', `Leader changed from ${this.clientCurrentLeaderUrl} to ${targetUrl} — reconnecting tunnel`);
-            this.clientSocket.disconnect();
-            this.clientSocket = null;
+        if (this.spokeClientSocket && this.spokeCurrentLeaderUrl !== targetUrl) {
+            log('TUNNEL', `Leader endpoint changed to ${targetUrl} — reconnecting tunnel`);
+            this.spokeClientSocket.disconnect();
+            this.spokeClientSocket = null;
         }
 
-        if (!this.clientSocket) {
-            this.connectOutboundTunnel(targetUrl, targetHost, targetPort);
+        if (!this.spokeClientSocket) {
+            this.connectSpokeOutbound(targetUrl, targetHost, targetPort);
         }
     }
 
-    /**
-     * Spoke Node: Connect outbound WebSocket to Leader Hub
-     */
-    private connectOutboundTunnel(targetUrl: string, host: string, port: number): void {
+    private connectSpokeOutbound(targetUrl: string, host: string, port: number): void {
         const regStatus = this.registryManager.getStatus();
         const instanceId = regStatus.instance_id || 'spoke-node';
         const siteName = regStatus.site_name || instanceId;
         const localIp = regStatus.detected_ip || '127.0.0.1';
 
-        // Generate token for handshake
         const token = jwt.sign(
             { username: 'stigix-tunnel-spoke', role: 'admin', peer: instanceId, site: siteName },
             this.secretKey,
             { expiresIn: '24h' }
         );
 
-        this.clientCurrentLeaderUrl = targetUrl;
+        this.spokeCurrentLeaderUrl = targetUrl;
         const wsUrl = `${targetUrl}/fleet-tunnel`;
 
-        log('TUNNEL', `Connecting outbound WebSocket reverse tunnel to Leader at ${wsUrl}...`);
-
         const socket = ioClient(wsUrl, {
-            auth: {
-                token,
-                instanceId,
-                siteName,
-                ip: localIp
-            },
+            auth: { token, instanceId, siteName, ip: localIp },
             transports: ['websocket', 'polling'],
             reconnection: true,
             reconnectionDelay: 3000,
@@ -253,6 +327,11 @@ export class FleetTunnelManager {
 
         socket.on('connect', () => {
             log('TUNNEL', `⚡ Outbound reverse tunnel ESTABLISHED to Leader (${host}:${port})`);
+            this.pushLocalTelemetryToSocket(socket);
+            if (this.spokeTelemetryInterval) clearInterval(this.spokeTelemetryInterval);
+            this.spokeTelemetryInterval = setInterval(() => {
+                if (socket.connected) this.pushLocalTelemetryToSocket(socket);
+            }, 15000);
         });
 
         socket.on('connect_error', (err: any) => {
@@ -261,9 +340,12 @@ export class FleetTunnelManager {
 
         socket.on('disconnect', (reason: string) => {
             log('TUNNEL', `Outbound reverse tunnel disconnected (${reason})`, 'warn');
+            if (this.spokeTelemetryInterval) {
+                clearInterval(this.spokeTelemetryInterval);
+                this.spokeTelemetryInterval = null;
+            }
         });
 
-        // Handle forwarded HTTP requests from Leader
         socket.on('gateway:forward', (payload: ForwardRequestPayload, ack: (res: ForwardResponsePayload) => void) => {
             this.handleLocalHttpRequest(payload)
                 .then((res) => {
@@ -274,20 +356,161 @@ export class FleetTunnelManager {
                         ack({
                             status: 502,
                             headers: { 'content-type': 'application/json' },
-                            body: JSON.stringify({
-                                error: 'local_proxy_error',
-                                message: err.message
-                            })
+                            body: JSON.stringify({ error: 'local_proxy_error', message: err.message })
                         });
                     }
                 });
         });
 
-        this.clientSocket = socket;
+        this.spokeClientSocket = socket;
     }
 
     /**
-     * Spoke Node: Execute incoming request locally against 127.0.0.1:8080
+     * M6: Leader initiates outbound reverse dial to Cloud / Manual Peers (e.g. Hetzner, AWS, Home LAN)
+     */
+    private syncLeaderOutboundDials(): void {
+        if (!this.targetsManager) return;
+
+        const targets = this.targetsManager.getMergedTargets();
+        const localStatus = this.registryManager.getStatus();
+        const localIp = localStatus.detected_ip || '127.0.0.1';
+
+        // Find candidate targets: enabled, valid host, not self
+        const externalTargets = targets.filter(t => {
+            if (t.enabled === false) return false;
+            if (!t.host) return false;
+            const h = t.host.trim().toLowerCase();
+            if (h === '127.0.0.1' || h === 'localhost' || h === localIp.toLowerCase()) return false;
+            return true;
+        });
+
+        for (const target of externalTargets) {
+            const host = target.host.trim();
+            const port = target.ports?.http || 8080;
+            const targetKey = `${host}:${port}`;
+
+            // If already connected inbound from this peer, no need to dial outbound
+            const targetId = target.id || target.name;
+            if (this.hasTunnel(targetId) && !this.outboundDialedSockets.has(targetKey)) {
+                continue;
+            }
+
+            if (!this.outboundDialedSockets.has(targetKey)) {
+                this.dialOutboundPeer(target, host, port, targetKey);
+            }
+        }
+    }
+
+    /**
+     * M6: Leader opens client WebSocket connection to a specific remote peer
+     */
+    private dialOutboundPeer(target: any, host: string, port: number, targetKey: string): void {
+        const localStatus = this.registryManager.getStatus();
+        const localId = localStatus.instance_id || 'leader-dc1';
+        const localSite = localStatus.site_name || 'DC1-Leader';
+        const targetId = target.id || target.name || host;
+        const targetSiteName = target.name || host;
+
+        const token = jwt.sign(
+            { username: 'stigix-leader-dial', role: 'admin', peer: targetId, site: localSite },
+            this.secretKey,
+            { expiresIn: '24h' }
+        );
+
+        const wsUrl = `http://${host}:${port}/fleet-tunnel`;
+        log('TUNNEL', `🌐 [M6 DIAL] Leader dialing outbound reverse tunnel to Cloud Peer: ${targetSiteName} (${wsUrl})...`);
+
+        const socket = ioClient(wsUrl, {
+            auth: {
+                token,
+                instanceId: localId,
+                siteName: localSite,
+                ip: localStatus.detected_ip || '127.0.0.1',
+                isLeaderDial: true
+            },
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionDelay: 5000,
+            reconnectionDelayMax: 20000,
+            timeout: 10000
+        });
+
+        socket.on('connect', () => {
+            log('TUNNEL', `⚡ [M6 DIAL] Leader reverse dial CONNECTED to Cloud Peer: ${targetSiteName} (${host}:${port})`);
+
+            const info: TunnelPeerInfo = {
+                instanceId: targetId,
+                siteName: targetSiteName,
+                ip: host,
+                connectedAt: Date.now(),
+                lastPing: Date.now(),
+                transport: 'websocket',
+                direction: 'outbound_dial'
+            };
+
+            this.activeTunnels.set(targetId, { socket, info });
+            this.siteToInstanceMap.set(targetSiteName.toLowerCase(), targetId);
+            this.siteToInstanceMap.set(host.toLowerCase(), targetId);
+
+            // Query remote peer's telemetry
+            socket.emit('peer:query_status', (remoteStatus: any) => {
+                if (this.localRegistryServer && remoteStatus && remoteStatus.instance_id) {
+                    this.localRegistryServer.upsertInstance(remoteStatus);
+                    log('LOCAL-REGISTRY', `🏠 Ingested Cloud Peer status from ${targetSiteName} (${remoteStatus.instance_id})`);
+                }
+            });
+        });
+
+        socket.on('peer:telemetry', (remoteStatus: any) => {
+            if (this.localRegistryServer && remoteStatus && remoteStatus.instance_id) {
+                this.localRegistryServer.upsertInstance(remoteStatus);
+            }
+        });
+
+        socket.on('disconnect', (reason: string) => {
+            log('TUNNEL', `[M6 DIAL] Leader reverse dial disconnected from ${targetSiteName} (${reason})`, 'warn');
+            this.activeTunnels.delete(targetId);
+        });
+
+        socket.on('connect_error', () => {
+            // Silently keep retrying in background
+        });
+
+        this.outboundDialedSockets.set(targetKey, socket);
+    }
+
+    /**
+     * Helper: Build local node telemetry payload for pushing across tunnel
+     */
+    private buildLocalTelemetryPayload(): any {
+        const regStatus = this.registryManager.getStatus();
+        return {
+            instance_id: regStatus.instance_id,
+            poc_id: regStatus.poc_id || 'local-leader',
+            type: regStatus.mode === 'leader' ? 'leader' : 'spoke',
+            ip_private: regStatus.detected_ip,
+            status: 'online',
+            is_leader: regStatus.mode === 'leader',
+            meta: {
+                site: regStatus.site_name || regStatus.instance_id,
+                version: regStatus.stats?.since ? 'v2' : 'v2'
+            },
+            last_seen: new Date().toISOString()
+        };
+    }
+
+    /**
+     * Helper: Push local telemetry to a specific socket
+     */
+    private pushLocalTelemetryToSocket(socket: Socket | ClientSocket): void {
+        try {
+            const payload = this.buildLocalTelemetryPayload();
+            socket.emit('peer:telemetry', payload);
+        } catch {}
+    }
+
+    /**
+     * Execute incoming request locally against 127.0.0.1:8080
      */
     private handleLocalHttpRequest(payload: ForwardRequestPayload): Promise<ForwardResponsePayload> {
         return new Promise((resolve) => {
@@ -383,7 +606,7 @@ export class FleetTunnelManager {
     }
 
     /**
-     * Leader Hub: Checks if a peer has an active reverse WebSocket tunnel
+     * Checks if a peer has an active reverse WebSocket tunnel (inbound or dialed)
      */
     public hasTunnel(peerIdentifier: string): boolean {
         if (!peerIdentifier) return false;
@@ -400,7 +623,7 @@ export class FleetTunnelManager {
     }
 
     /**
-     * Leader Hub: Forward an HTTP request over the reverse tunnel to a spoke node
+     * Forward an HTTP request over the reverse tunnel to a peer
      */
     public forwardRequest(
         peerIdentifier: string,
@@ -440,7 +663,7 @@ export class FleetTunnelManager {
     }
 
     /**
-     * Leader Hub: Get list of active connected tunnels
+     * Get list of active connected tunnels
      */
     public getConnectedTunnels(): TunnelPeerInfo[] {
         const result: TunnelPeerInfo[] = [];

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.108] - 2026-09-30
+
+### Added
+- **Fleet Gateway Leader Outbound Reverse Dialing for Manual/Cloud Peers (Milestone 6) (`fleet-tunnel.ts`, `server.ts`, `local-registry-server.ts`)**:
+  - Implemented Leader-initiated outbound WebSocket reverse dialing to manual/cloud targets (e.g. Hetzner, AWS, Home LAN).
+  - Eliminates the need to publish or expose the Leader on the public Internet: the private Leader initiates the outbound session to the Cloud Peer's `/fleet-tunnel` endpoint.
+  - Automatic bidirectional synchronization: remote Cloud Peers push their live telemetry & heartbeats over the dialed tunnel, seamlessly registering into the Leader's in-memory local registry.
+  - Operators on the Leader can switch context to any external Cloud Peer via the Fleet Gateway (`/api/gateway/:peerId/*`) through the persistent dialed tunnel. 🚀
+
 ## [2.0.107] - 2026-09-30
 
 ### Added

@@ -32,6 +32,14 @@ export class LocalRegistryServer {
         return Array.from(this.instances.values());
     }
 
+    upsertInstance(instance: RegistryInstance, pocId: string = 'local-leader'): void {
+        const key = `poc:${pocId}:inst:${instance.instance_id}`;
+        this.instances.set(key, {
+            ...instance,
+            last_seen: new Date().toISOString()
+        });
+    }
+
     getRouter(targetsManager?: any, provisioningManager?: any): Router {
         this.provisioningManager = provisioningManager;
         const router = Router();
