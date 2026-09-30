@@ -2041,7 +2041,7 @@ docker compose restart</pre>
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Remote View work across firewalls and NAT/CGNAT? (WebSocket Reverse Tunneling)</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p>In real-world enterprise deployments, branch sites and edge nodes are often positioned behind strict egress-only firewalls, NAT, or Carrier-Grade NAT (CGNAT) without public IP addresses or inbound port forwarding.</p>
-            <p>Stigix solves this via <strong>persistent WebSocket Reverse Tunnels (Milestone 5)</strong>:</p>
+            <p>Stigix solves this via <strong>persistent WebSocket Reverse Tunnels</strong>:</p>
             <ul>
               <li><strong>Outbound-Only Initiation:</strong> Spoke nodes automatically discover the Leader and establish an outbound WebSocket connection to the Leader's <code>/fleet-tunnel</code> namespace.</li>
               <li><strong>Zero Inbound Ports on Spokes:</strong> No ports need to be opened on branch routers or perimeter firewalls.</li>
@@ -2056,7 +2056,7 @@ docker compose restart</pre>
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Leader Outbound Reverse Dialing work for Cloud &amp; External Peers (Hetzner, AWS, Home LAN)?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p>In hybrid architectures, the <strong>Leader node often resides in a protected private LAN/Datacenter</strong> that cannot be exposed directly to the public Internet, while some Stigix peers run on <strong>public Cloud VMs (e.g. Hetzner, AWS, Azure)</strong> or remote Home LANs.</p>
-            <p>With <strong>Leader Outbound Reverse Dialing (Milestone 6)</strong>:</p>
+            <p>With <strong>Leader Outbound Reverse Dialing</strong>:</p>
             <ul>
               <li><strong>Inverted Dialing:</strong> The private Leader dials outbound to the configured Cloud Peer's <code>/fleet-tunnel</code> endpoint (e.g. <code>http://&lt;CLOUD_IP&gt;:8080/fleet-tunnel</code>).</li>
               <li><strong>Zero Public Inbound on Leader:</strong> The Leader remains completely private with zero inbound ports open to the Internet.</li>
@@ -2420,13 +2420,29 @@ stigix-cli provision peers</pre>
       <div class="faq-panel" id="panel-topologies" role="tabpanel">
 
         <div class="faq-item is-open">
-          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">What are the 4 standard deployment topologies supported in Stigix?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <button class="faq-item__btn" aria-expanded="true"><span class="faq-item__question">Stigix Terminology: What do Leader, Peer, Spoke, Fleet Gateway, and Target mean?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>To easily navigate multi-site deployments, Stigix defines a clear set of architectural concepts:</p>
+            <ul>
+              <li><strong>Leader (Controller Node):</strong> In Stigix terminology, the <em>Leader</em> is the central controller instance that hosts the local registry server, coordinates global configuration publishing, and serves the single-pane-of-glass Fleet Gateway. <em>"Leader" is an application role</em> &mdash; not a hardware or physical datacenter requirement. Any Stigix instance (on-premise server, cloud VM, or lab workstation) can be designated as the Leader with one click.</li>
+              <li><strong>Peer / Instance:</strong> Any individual running Stigix node (e.g. running on branch servers, cloud VMs like Hetzner/AWS, or physical lab hosts).</li>
+              <li><strong>Spoke (Branch Node):</strong> A remote Stigix peer that connects back to the Leader to pull configuration bundles, stream telemetry, and participate in mesh performance tests.</li>
+              <li><strong>Fleet Gateway &amp; Remote View:</strong> The built-in reverse proxy (<code>/api/gateway/:peerId/*</code>) on the Leader allowing operators to observe and manage any remote peer directly in the Leader dashboard without opening separate browser tabs.</li>
+              <li><strong>WebSocket Reverse Tunnel:</strong> The persistent, multiplexed full-duplex session established between a Spoke (or Cloud VM) and the Leader, allowing API calls and telemetry to traverse firewalls, NAT, and CGNAT with zero inbound ports required on the branch.</li>
+              <li><strong>Target Site / Synthetic Target:</strong> Any endpoint (another Stigix node or third-party host) that receives synthetic probes, Voice Echo streams, or XFR bandwidth tests.</li>
+              <li><strong>Global Provisioning Bundles:</strong> Centralized configuration packages (Custom TCP apps, synthetic probes, VoIP settings, IoT profiles, security policies) maintained on the Leader and hot-reloaded fleet-wide.</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">What are the 4 standard deployment topologies supported in Stigix?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p>Stigix is built for real-world enterprise architectures, where network security rules and NAT boundaries dictate connectivity. Stigix supports 4 primary deployment topologies:</p>
             <ul>
               <li><strong>Topology 1 &mdash; Pure Corporate WAN / SD-WAN / MPLS (Direct Mesh):</strong> Full bidirectional IP reachability between all sites. Direct HTTP REST API calls and peer-to-peer data traffic with sub-second synchronization.</li>
-              <li><strong>Topology 2 &mdash; NAT / CGNAT Branch Spokes to Private Leader:</strong> Branch sites located behind egress-only NAT, 4G/5G routers, or corporate firewalls initiate persistent outbound WebSocket reverse tunnels (<strong>Milestone 5</strong>) to the private Leader. Zero ports open on the branch.</li>
-              <li><strong>Topology 3 &mdash; Zero-Inbound Private Leader + External Cloud Peers:</strong> Private DC Leader resides entirely inside a protected LAN without public IP or port forwarding. The Leader dials outbound (<strong>Milestone 6</strong>) to public cloud VMs (Hetzner, AWS, Azure) or home labs, establishing a persistent bidirectional control plane without exposing the private DC.</li>
+              <li><strong>Topology 2 &mdash; NAT / CGNAT Branch Spokes to Private Leader:</strong> Branch sites located behind egress-only NAT, 4G/5G routers, or corporate firewalls initiate persistent outbound WebSocket reverse tunnels to the private Leader. Zero ports open on the branch.</li>
+              <li><strong>Topology 3 &mdash; Zero-Inbound Private Leader + External Cloud Peers:</strong> Private Leader resides entirely inside a protected corporate LAN without public IP or port forwarding. The Leader dials outbound reverse connections to public cloud VMs (Hetzner, AWS, Azure) or home labs, establishing a persistent bidirectional control plane without exposing the private Leader to the Internet.</li>
               <li><strong>Topology 4 &mdash; Public Cloud SaaS Leader + Distributed Private Spokes:</strong> Central cloud-hosted Stigix controller with private enterprise branches connecting in over reverse tunnels.</li>
             </ul>
             <p>For architectural diagrams, step-by-step setup, and downloadable PDF guide, see <a href="https://github.com/jsuzanne/stigix/blob/main/docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md" target="_blank" rel="noopener noreferrer">docs/PRIVATE_DEPLOYMENT_TOPOLOGIES.md</a>.</p>
@@ -2434,10 +2450,10 @@ stigix-cli provision peers</pre>
         </div>
 
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Leader Outbound Reverse Dialing (M6) connect Cloud VMs without opening ports on the Leader?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Leader Outbound Reverse Dialing connect Cloud VMs without opening ports on the Leader?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
-            <p>In many enterprise labs, the DC Leader cannot be assigned a public IP or exposed to the Internet. Yet operators need to benchmark traffic against public cloud providers (such as Hetzner or AWS) to test SASE egress.</p>
-            <p><strong>With Leader Outbound Reverse Dialing (M6):</strong></p>
+            <p>In many enterprise labs, the private Leader cannot be assigned a public IP or exposed to the Internet. Yet operators need to benchmark traffic against public cloud providers (such as Hetzner or AWS) to test SASE egress.</p>
+            <p><strong>With Leader Outbound Reverse Dialing:</strong></p>
             <ol>
               <li>The operator adds the Cloud VM target in <strong>Settings &rarr; Targets</strong> on the Leader.</li>
               <li>The private Leader initiates an <strong>outbound HTTP/WebSocket session</strong> to the Cloud VM's <code>/fleet-tunnel</code> endpoint.</li>
@@ -2448,7 +2464,7 @@ stigix-cli provision peers</pre>
         </div>
 
         <div class="faq-item">
-          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do Spokes behind NAT/CGNAT/Firewalls connect without port forwarding (M5)?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How do Spokes behind NAT/CGNAT/Firewalls connect without port forwarding?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p>Branch nodes (e.g. BR1, BR2, BR5, BR8) behind egress-only firewalls or cellular 4G/5G CGNAT establish outbound WebSocket sessions to the Leader's <code>/fleet-tunnel</code> namespace:</p>
             <ul>
