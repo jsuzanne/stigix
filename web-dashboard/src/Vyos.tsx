@@ -4,6 +4,7 @@ import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { isValidIpOrFqdn } from './utils/validation';
 import { usePeerContext } from './PeerContext';
+import { PageLoader } from './components/PageLoader';
 import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
 
@@ -272,6 +273,7 @@ export default function Vyos(props: VyosProps) {
     const [routerStates, setRouterStates] = useState<Record<string, any>>({});
     const [loadingStateId, setLoadingStateId] = useState<string | null>(null);
     const [expandedStateId, setExpandedStateId] = useState<string | null>(null);
+    const [initialLoading, setInitialLoading] = useState(true);
     // RAZ Modal
     const [razModal, setRazModal] = useState<{ id: string; name: string; state: any } | null>(null);
     const [razLoading, setRazLoading] = useState(false);
@@ -343,11 +345,14 @@ export default function Vyos(props: VyosProps) {
             setHistory(Array.isArray(hData) ? hData : []);
         } catch (e) {
             console.error('Failed to fetch VyOS data');
+        } finally {
+            setInitialLoading(false);
         }
     };
 
     useEffect(() => {
         // Reset stale data immediately so the UI doesn't show the previous peer's info
+        setInitialLoading(true);
         setRouters([]);
         setSequences([]);
         setHistory([]);
@@ -1024,6 +1029,19 @@ export default function Vyos(props: VyosProps) {
             }
             return sequenceSortDir === 'asc' ? res : -res;
         });
+
+    if (initialLoading && routers.length === 0 && sequences.length === 0) {
+        return (
+            <div className="space-y-6 pb-20">
+                <PageLoader
+                    title="Loading VyOS Edge Control"
+                    subtitle="Connecting to edge routers, querying live interface states, and loading chaos sequences..."
+                    icon={Shield}
+                    accentColor="purple"
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500 pb-20">

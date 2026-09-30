@@ -4,6 +4,7 @@ import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'rec
 import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera, Eye, EyeOff } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { isValidIpOrFqdn } from './utils/validation';
+import { PageLoader } from './components/PageLoader';
 
 interface FailoverProps {
     token: string;
@@ -1508,7 +1509,19 @@ export default function Failover(props: FailoverProps) {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                                {sortedHistory.length === 0 ? (
+                                {loadingHistory && sortedHistory.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="py-12">
+                                            <PageLoader
+                                                size="sm"
+                                                title="Loading Failover Records"
+                                                subtitle="Fetching sub-second convergence tests and blackout telemetry..."
+                                                icon={Activity}
+                                                accentColor="blue"
+                                            />
+                                        </td>
+                                    </tr>
+                                ) : sortedHistory.length === 0 ? (
                                     <tr>
                                         <td colSpan={5} className="px-6 py-8 text-center text-text-muted">
                                             {historySearch ? (

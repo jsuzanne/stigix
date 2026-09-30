@@ -6,6 +6,7 @@ import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import toast from 'react-hot-toast';
 import { isValidIpOrFqdn } from './utils/validation';
+import { PageLoader } from './components/PageLoader';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -571,6 +572,19 @@ export default function Voice(props: VoiceProps) {
     // ════════════════════════════════════════════════
     // Render
     // ════════════════════════════════════════════════
+    if (loading && !config && targetRows.length === 0) {
+        return (
+            <div className="space-y-6">
+                <PageLoader
+                    title="Loading VoIP Simulation Engine"
+                    subtitle="Calculating real-time MOS scores, jitter curves, packet loss, and active RTP streams..."
+                    icon={Phone}
+                    accentColor="emerald"
+                />
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6">
 

@@ -6,6 +6,7 @@ import {
     Layers, Zap, Globe, Sparkles, Sliders, Settings as SettingsIcon, Save, Check, Search
 } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
+import { PageLoader } from './PageLoader';
 
 interface MatrixNode {
     id: string;
@@ -611,6 +612,13 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                         <AlertTriangle size={24} className="mx-auto mb-2" />
                         {error}
                     </div>
+                ) : loading && nodes.length === 0 ? (
+                    <PageLoader
+                        title="Computing Bidirectional SLA Matrix"
+                        subtitle="Correlating forward and reverse path telemetry across all SD-WAN nodes..."
+                        icon={Grid}
+                        accentColor="cyan"
+                    />
                 ) : nodes.length === 0 ? (
                     <div className="p-12 text-center text-text-muted text-xs">
                         No active Stigix nodes or probes discovered yet.

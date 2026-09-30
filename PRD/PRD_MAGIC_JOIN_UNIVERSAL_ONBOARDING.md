@@ -68,11 +68,25 @@ The Magic Join architecture unifies all deployment modes under a single universa
 
 ## 4. 🧠 Under the Hood: Transparent Discovery & Push Architecture
 
-### 4.1 What is Inside the Token?
-The generated token (`STX-7842-K9X`) is a self-contained, signed cryptographic payload holding:
-1. **Known Leader IP Addresses & FQDNs:** (`192.168.1.120`, `192.168.203.100`, `sdwandc1.carenaje.fr`).
-2. **Lab Realm Identifier:** Cryptographic hash of the cluster secret (`SHA-256(Cluster Secret)`).
-3. **Session Authentication Key & Expiration:** Anti-tamper token valid for 24 hours.
+### 4.1 What is Inside the Token & How is it Decoded?
+
+The generated token (`STX-7842-K9X` or JWT format) is a self-contained, signed cryptographic payload formatted as:
+
+$$\text{Token} = \underbrace{\text{Header}}_{\text{Base64}} \;.\; \underbrace{\text{Payload}}_{\text{Base64 (Endpoints + Realm Hash + Auth Key)}} \;.\; \underbrace{\text{Signature}}_{\text{HMAC-SHA256 (Signed by Leader)}}$$
+
+#### 1. Payload Content:
+```json
+{
+  "endpoints": ["192.168.1.120:8080", "192.168.203.100:8080", "sdwandc1.carenaje.fr:8080"],
+  "realm": "a89f41d2e8b03...",
+  "exp": 1759363800,
+  "join_key": "stx_jk_9b027e..."
+}
+```
+
+#### 2. Peer Zero-Touch Decoding:
+* **No Pre-Shared Private Key Required on Peer:** The new node runs `join.sh`, which performs a standard Base64 decode (`base64 -d`) on the payload in memory to immediately extract bootstrap endpoints and the rendezvous realm.
+* **Cryptographic Verification on Leader:** When the peer connects back to the Leader (via LAN direct or WebSocket tunnel), the **Leader** validates the `HMAC-SHA256` signature using its private cluster master key and verifies expiration before provisioning session keys.
 
 ---
 
@@ -109,7 +123,7 @@ sequenceDiagram
 
 ## 5. 🏢 Concrete Workflows Across All Deployment Models
 
-Because the token encapsulates both local addresses and realm metadata, the client runtime negotiates the optimal transport automatically across all 4 environments:
+Because the token encapsulates both local addresses and realm metadata, the client runtime negotiates the optimal transport automatically across all deployment environments:
 
 ### Scenario 1 — On-Premise Local Lab Peer (e.g. BR1 on same LAN `192.168.122.57`)
 1. BR1 decodes the token and reads `192.168.1.120`.
@@ -134,6 +148,10 @@ Because the token encapsulates both local addresses and realm metadata, the clie
 2. Stigix auto-detects network interfaces, generates 67 application profiles, and starts local DEM synthetic monitoring, SaaS traffic generation, and security test engines.
 3. Accessible immediately at `http://localhost:8080` in **100% autonomous standalone mode**.
 4. **Hot-Attach Option:** Operator can later navigate to *Settings ➔ Target Controller*, paste a Join Token from a colleague's Leader, and attach the node to a fleet with zero downtime and no container restart.
+
+### Scenario 5 — 100% Air-Gapped & Legacy Static Configuration (Full Backward Compatibility)
+1. Existing labs with hardcoded `CONTROLLER_URL=http://...` in `.env` or `docker-compose.yml` remain **100% operational with zero modifications**.
+2. **Air-Gapped Environments:** Fully isolated banking or defense networks with no outbound internet access can continue configuring static controller IP mappings directly. Magic Join complements static configuration without breaking legacy workflows.
 
 ---
 

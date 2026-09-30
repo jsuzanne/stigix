@@ -6,6 +6,7 @@ import {
     Zap
 } from 'lucide-react';
 import { usePeerContext } from './PeerContext';
+import { PageLoader } from './components/PageLoader';
 
 interface FleetProps {
     token: string;
@@ -428,14 +429,17 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         <tbody className="divide-y divide-border">
                             {filteredInstances.length === 0 ? (
                                 <tr>
-                                    <td colSpan={9} className="px-6 py-12 text-center text-text-muted">
+                                    <td colSpan={9} className="py-12">
                                         {loading ? (
-                                            <div className="flex items-center justify-center gap-2">
-                                                <RefreshCw size={16} className="animate-spin text-blue-400" />
-                                                <span>Loading mesh nodes...</span>
-                                            </div>
+                                            <PageLoader
+                                                size="sm"
+                                                title="Discovering Fleet Mesh Nodes"
+                                                subtitle="Querying mesh registry and active WebSocket tunnels across nodes..."
+                                                icon={Globe}
+                                                accentColor="purple"
+                                            />
                                         ) : (
-                                            <span>No peer instances matching filter</span>
+                                            <div className="text-center text-text-muted py-8 text-xs">No peer instances matching filter</div>
                                         )}
                                     </td>
                                 </tr>

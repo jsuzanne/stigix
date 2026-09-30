@@ -5,6 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, Res
 import { twMerge } from 'tailwind-merge';
 import { TracerouteModal } from './components/TracerouteModal';
 import { ReachabilityMatrix } from './components/ReachabilityMatrix';
+import { PageLoader } from './components/PageLoader';
 
 // ── Inline SVG sparkline (no recharts dependency) ───────────────────────────
 const Sparkline = ({ data, color, width = 80, height = 20 }: { data: number[]; color: string; width?: number; height?: number }) => {
@@ -808,6 +809,19 @@ export default function ConnectivityPerformance({ token, uiConfig, onManage }: C
                 TTFB: Math.round(r.metrics?.ttfb_ms || 0),
             }));
     }, [selectedEndpointResults, probeChartRange]);
+
+    if ((loading || loadingStats) && !stats && endpoints.length === 0) {
+        return (
+            <div className="space-y-6">
+                <PageLoader
+                    title="Analyzing Digital Experience Telemetry"
+                    subtitle="Querying synthetic probes, path SLAs, latency curves and DEM scoring..."
+                    icon={Gauge}
+                    accentColor="indigo"
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
