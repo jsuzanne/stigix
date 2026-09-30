@@ -4,7 +4,7 @@ import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { isValidIpOrFqdn } from './utils/validation';
 import { usePeerContext } from './PeerContext';
-import { PageLoader } from './components/PageLoader';
+import { VyosSkeleton } from './components/skeletons/VyosSkeleton';
 import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
 
@@ -1031,16 +1031,7 @@ export default function Vyos(props: VyosProps) {
         });
 
     if (initialLoading && routers.length === 0 && sequences.length === 0) {
-        return (
-            <div className="space-y-6 pb-20">
-                <PageLoader
-                    title="Loading VyOS Edge Control"
-                    subtitle="Connecting to edge routers, querying live interface states, and loading chaos sequences..."
-                    icon={Shield}
-                    accentColor="purple"
-                />
-            </div>
-        );
+        return <VyosSkeleton />;
     }
 
     return (

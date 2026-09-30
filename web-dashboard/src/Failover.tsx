@@ -4,7 +4,7 @@ import { AreaChart, Area, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'rec
 import { Activity, Clock, Calendar, Shield, Search, ChevronRight, BarChart3, AlertCircle, Info, Play, Pause, Trash2, Zap, Server, Globe, Hash, Plus, Target, X, Square, ArrowRightLeft, RotateCw, ZoomIn, Rewind, Camera, Eye, EyeOff } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { isValidIpOrFqdn } from './utils/validation';
-import { PageLoader } from './components/PageLoader';
+import { FailoverSkeleton } from './components/skeletons/FailoverSkeleton';
 
 interface FailoverProps {
     token: string;
@@ -614,6 +614,10 @@ export default function Failover(props: FailoverProps) {
             setRefreshingPathId(null);
         }
     };
+
+    if (loadingHistory && endpoints.length === 0 && sortedHistory.length === 0) {
+        return <FailoverSkeleton />;
+    }
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500 pb-12">
@@ -1511,14 +1515,12 @@ export default function Failover(props: FailoverProps) {
                             <tbody className="divide-y divide-border">
                                 {loadingHistory && sortedHistory.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5} className="py-12">
-                                            <PageLoader
-                                                size="sm"
-                                                title="Loading Failover Records"
-                                                subtitle="Fetching sub-second convergence tests and blackout telemetry..."
-                                                icon={Activity}
-                                                accentColor="blue"
-                                            />
+                                        <td colSpan={5} className="p-6">
+                                            <div className="space-y-2.5 shimmer">
+                                                {[1, 2, 3].map(i => (
+                                                    <div key={i} className="h-11 bg-card-secondary/30 rounded-xl border border-border/40" />
+                                                ))}
+                                            </div>
                                         </td>
                                     </tr>
                                 ) : sortedHistory.length === 0 ? (

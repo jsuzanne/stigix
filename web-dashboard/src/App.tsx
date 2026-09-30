@@ -18,6 +18,7 @@ import Fleet from './Fleet';
 import { PeerContextProvider, GatewayDropdown, RemoteViewBanner, RemoteViewChip, usePeerContext } from './PeerContext';
 import { SystemHealthBadge } from './components/health/SystemHealthBadge';
 import { SystemHealthModal } from './components/health/SystemHealthModal';
+import { TopLoadingBar } from './components/common/TopLoadingBar';
 import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -191,6 +192,13 @@ export default function App() {
   const activePeerIdRef = React.useRef<string | null>(null);
   const [isRemoteView, setIsRemoteView] = React.useState<boolean>(false);
   const [activePeerLabel, setActivePeerLabel] = React.useState<string | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  useEffect(() => {
+    setIsNavigating(true);
+    const t = setTimeout(() => setIsNavigating(false), 600);
+    return () => clearTimeout(t);
+  }, [view, activePeerLabel]);
 
   // apiFetch — App-level gateway-aware fetch. Routes to /api/gateway/:peerId/* when
   // a remote peer is active, otherwise falls back to a direct local fetch.
@@ -922,6 +930,7 @@ export default function App() {
         onHistory={setHistory}
       />
     <div className="min-h-screen bg-background text-foreground pt-4 pb-8 px-8">
+      <TopLoadingBar isLoading={isNavigating} />
       <Toaster position="top-right" />
 
       {/* Remote-view inset frame — subtle amber border on all 4 edges.

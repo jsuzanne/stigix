@@ -13,7 +13,7 @@ import {
 import { io } from 'socket.io-client';
 import LogViewer from './components/LogViewer';
 import { isValidMacAddress } from './utils/validation';
-import { PageLoader } from './components/PageLoader';
+import { IotSkeleton } from './components/skeletons/IotSkeleton';
 
 interface IoTDevice {
     id: string;
@@ -812,12 +812,7 @@ export default function Iot({ token }: IotProps) {
 
             {/* Devices Grid */}
             {loading && devices.length === 0 ? (
-                <PageLoader
-                    title="Provisioning IoT Simulation Environment"
-                    subtitle="Initializing virtual sensors, PLC controllers, and SCADA endpoints..."
-                    icon={Cpu}
-                    accentColor="blue"
-                />
+                <IotSkeleton />
             ) : (
                 <div className={cn(
                     "grid gap-6",

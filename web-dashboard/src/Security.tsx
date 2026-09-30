@@ -9,7 +9,7 @@ import { URL_CATEGORIES, DNS_TEST_DOMAINS, C2_SCENARIOS, AI_SECURITY_SCENARIOS, 
 import { ScoreDashboard } from './components/ScoreDashboard';
 import { useSecurityScores } from './hooks/useSecurityScores';
 import { ScoreGapAnalysis, ScoreLatestChanges } from './components/ScoreDetails';
-import { PageLoader } from './components/PageLoader';
+import { SecuritySkeleton } from './components/skeletons/SecuritySkeleton';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -1374,14 +1374,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     };
 
     if (!config) {
-        return (
-            <PageLoader
-                title="Loading Security Test Suite"
-                subtitle="Querying URL filtering profiles, DNS security tests, and threat protection scenarios..."
-                icon={Shield}
-                accentColor="rose"
-            />
-        );
+        return <SecuritySkeleton />;
     }
 
     const basicDNSTests = securityProfile.dns_security.items.filter(t => t.category === 'basic');

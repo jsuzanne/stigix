@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { usePeerContext } from './PeerContext';
-import { PageLoader } from './components/PageLoader';
+import { CustomAppsSkeleton } from './components/skeletons/CustomAppsSkeleton';
 
 
 function cn(...inputs: (string | undefined | null | false)[]) {
@@ -539,16 +539,7 @@ const secs = seconds % 60;
     });
 
     if (isLoading && applications.length === 0) {
-        return (
-            <div className="p-6 max-w-[1700px] w-full mx-auto space-y-6">
-                <PageLoader
-                    title="Loading Custom Applications"
-                    subtitle="Synchronizing stateful TCP/HTTP listener metrics and multi-site workloads..."
-                    icon={Layers}
-                    accentColor="indigo"
-                />
-            </div>
-        );
+        return <CustomAppsSkeleton />;
     }
 
     return (

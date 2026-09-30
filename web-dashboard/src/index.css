@@ -92,6 +92,46 @@ body {
   animation: blink-slow 2s ease-in-out infinite;
 }
 
+/* ─── Shimmer & Laser Loading Effects ─────────────────────────────────────── */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0.03) 20%,
+    rgba(255, 255, 255, 0.09) 50%,
+    rgba(255, 255, 255, 0.03) 80%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: shimmer 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  content: '';
+}
+
+@keyframes laser-sweep {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
+  100% { transform: translateX(300%); }
+}
+
+.animate-laser {
+  animation: laser-sweep 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 /* ─── Proportional tiny-text floor ─────────────────────────────────────────
    Tailwind's arbitrary pixel sizes don't scale with the rem base.
    These overrides keep them proportional with the 16→17px base bump (~6%).

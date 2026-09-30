@@ -16,7 +16,7 @@ import { toast } from 'react-hot-toast';
 import { CustomTcpSettingsTab } from './components/custom-tcp/CustomTcpSettingsTab';
 import { ApiStudio } from './ApiStudio';
 import { usePeerContext } from './PeerContext';
-import { PageLoader } from './components/PageLoader';
+import { SettingsSkeleton } from './components/skeletons/SettingsSkeleton';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
     return twMerge(clsx(inputs));
@@ -1677,14 +1677,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     };
 
     if (loading) {
-        return (
-            <PageLoader
-                title="Loading Stigix Settings"
-                subtitle="Fetching traffic engine configuration, interfaces, Prisma SASE tokens and MCP settings..."
-                icon={SettingsIcon}
-                accentColor="blue"
-            />
-        );
+        return <SettingsSkeleton />;
     }
 
     const saveSystemSetting = async (key: 'auto_restart_iot' | 'auto_restart_voice' | 'auto_restart_traffic' | 'auto_restart_probes' | 'auto_restart_custom_tcp' | 'registry_mode', value: any) => {

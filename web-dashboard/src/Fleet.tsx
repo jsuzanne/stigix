@@ -6,7 +6,7 @@ import {
     Zap
 } from 'lucide-react';
 import { usePeerContext } from './PeerContext';
-import { PageLoader } from './components/PageLoader';
+import { FleetSkeleton } from './components/skeletons/FleetSkeleton';
 
 interface FleetProps {
     token: string;
@@ -270,6 +270,10 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
         });
     }, [data, statusFilter, searchQuery]);
 
+    if (loading && !data?.instances) {
+        return <FleetSkeleton />;
+    }
+
     return (
         <div className="space-y-6">
             {/* Top Header */}
@@ -429,15 +433,13 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         <tbody className="divide-y divide-border">
                             {filteredInstances.length === 0 ? (
                                 <tr>
-                                    <td colSpan={9} className="py-12">
+                                    <td colSpan={9} className="p-6">
                                         {loading ? (
-                                            <PageLoader
-                                                size="sm"
-                                                title="Discovering Fleet Mesh Nodes"
-                                                subtitle="Querying mesh registry and active WebSocket tunnels across nodes..."
-                                                icon={Globe}
-                                                accentColor="purple"
-                                            />
+                                            <div className="space-y-2.5 shimmer">
+                                                {[1, 2, 3, 4].map(i => (
+                                                    <div key={i} className="h-12 bg-card-secondary/20 rounded-xl border border-border/40" />
+                                                ))}
+                                            </div>
                                         ) : (
                                             <div className="text-center text-text-muted py-8 text-xs">No peer instances matching filter</div>
                                         )}
