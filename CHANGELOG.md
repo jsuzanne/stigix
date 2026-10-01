@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.135] - 2026-10-01
+
+### Fixed / Improved
+- **Multi-Port Support & Outbound Redial Fix for Custom Ports (`fleet-tunnel.ts`, `targets-manager.ts`, `server.ts`)**:
+  - Fixed an issue where nodes installed on alternative ports (e.g. `8081` due to host port `8080` collisions) were periodically redialed on `8080` by the Leader's periodic sync loop.
+  - Normalized and strictly preserved `ports.http` across `TargetsManager.loadTargets()`, `createTarget()`, `updateTarget()`, and `synthesizeFromRegistry()`.
+  - Updated `fleet-tunnel.ts` target auto-provisioning to persist custom ports directly and use them in outbound dial routines. ⚡
+- **Dynamic Target Upsert & Learned Badge (`fleet-tunnel.ts`, `server.ts`, `Settings.tsx`)**:
+  - Re-enrolled nodes automatically update existing targets in-place without producing duplicate stale entries.
+  - Set `meta: { registry: true, magic_join: true, last_seen: ... }` on auto-provisioned targets so they carry the dynamic `🔵 LEARNED` badge.
+- **Installer Clarifications (`install.sh`)**:
+  - Extended verification timeout to 50s and refined post-install status messages to reassure users during background reverse tunnel negotiation. 🚀
+
 ## [2.0.134] - 2026-10-01
 
 ### Added / Improved

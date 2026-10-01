@@ -13487,18 +13487,30 @@ app.post('/api/fleet/join-redeem', async (req: any, res: any) => {
         if (public_ip && typeof targetsManager?.createTarget === 'function') {
             try {
                 const existingTargets = targetsManager.loadTargets();
-                const alreadyExists = existingTargets.some((t: any) => t.host === public_ip || t.label === effectiveSite);
-                if (!alreadyExists) {
+                const existing = existingTargets.find((t: any) => t.host === public_ip || (t.name || t.label || '').toUpperCase() === effectiveSite);
+                if (!existing) {
                     targetsManager.createTarget({
-                        label: effectiveSite,
+                        name: effectiveSite,
                         host: public_ip,
                         port: 8080,
+                        enabled: true,
                         protocol: 'http',
                         capabilities: capabilities || { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true },
                         tags: ['magic-join', 'auto-onboarded'],
-                        comments: `Auto-enrolled via Magic Join on ${new Date().toISOString()}`
+                        comments: `Auto-enrolled via Magic Join on ${new Date().toISOString()}`,
+                        meta: { registry: true, magic_join: true, last_seen: new Date().toISOString() }
                     });
                     log('FLEET', `🎯 Target auto-provisioned for ${effectiveSite} (${public_ip}:8080)`);
+                } else {
+                    targetsManager.updateTarget(existing.id, {
+                        ...existing,
+                        name: effectiveSite,
+                        host: public_ip,
+                        port: 8080,
+                        enabled: true,
+                        meta: { ...(existing.meta || {}), registry: true, magic_join: true, last_seen: new Date().toISOString() }
+                    });
+                    log('FLEET', `🎯 Target updated for ${effectiveSite} (${public_ip}:8080)`);
                 }
             } catch (tErr: any) {
                 log('FLEET', `Warning auto-provisioning target for ${instance_id}: ${tErr.message}`, 'warn');

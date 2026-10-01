@@ -615,17 +615,25 @@ export class FleetTunnelManager {
                         this.targetsManager.createTarget({
                             name: targetSiteName,
                             host: host,
-                            port: port,
+                            ports: { http: port },
                             enabled: true,
                             protocol: 'http',
                             capabilities: { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true },
                             tags: ['magic-join', 'cloudflare-rendezvous'],
-                            comments: `Auto-enrolled via Cloudflare Rendezvous on ${new Date().toISOString()}`
+                            comments: `Auto-enrolled via Cloudflare Rendezvous on ${new Date().toISOString()}`,
+                            meta: { registry: true, magic_join: true, last_seen: new Date().toISOString() }
                         });
                         log('RENDEZVOUS', `🎯 Target auto-provisioned for ${targetSiteName} (${host}:${port})`);
-                    } else if (existing.host !== host || !existing.enabled) {
-                        this.targetsManager.updateTarget(existing.id, { ...existing, host: host, port: port, enabled: true });
-                        log('RENDEZVOUS', `🎯 Updated target ${targetSiteName} with winning host (${host}:${port}) and enabled state`);
+                    } else if (existing.host !== host || existing.ports?.http !== port || !existing.enabled || !existing.meta?.registry) {
+                        this.targetsManager.updateTarget(existing.id, { 
+                            ...existing, 
+                            name: targetSiteName, 
+                            host: host, 
+                            ports: { ...(existing.ports || {}), http: port },
+                            enabled: true,
+                            meta: { ...(existing.meta || {}), registry: true, magic_join: true, last_seen: new Date().toISOString() }
+                        });
+                        log('RENDEZVOUS', `🎯 Updated target ${targetSiteName} with winning host (${host}:${port}), enabled state and learned tag`);
                     }
                 } catch {}
             }

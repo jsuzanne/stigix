@@ -58,11 +58,18 @@ export class TargetsManager {
         try {
             if (!fs.existsSync(this.configFile)) return [];
             const list = JSON.parse(fs.readFileSync(this.configFile, 'utf-8')) as TargetDefinition[];
-            return list.map(t => ({
-                ...t,
-                name: t.name || (t as any).label || t.host,
-                enabled: t.enabled !== false
-            }));
+            return list.map(t => {
+                const httpPort = t.ports?.http || (t as any).port || 8080;
+                return {
+                    ...t,
+                    name: t.name || (t as any).label || t.host,
+                    enabled: t.enabled !== false,
+                    ports: {
+                        ...(t.ports || {}),
+                        http: httpPort
+                    }
+                };
+            });
         } catch (e: any) {
             log('TARGETS', `Failed to load targets.json: ${e.message}`, 'warn');
             return [];
@@ -85,10 +92,15 @@ export class TargetsManager {
         const targets = this.loadTargets();
         const now = new Date().toISOString();
         const rawName = (data as any).name || (data as any).label || (data as any).host || 'Target';
+        const httpPort = data.ports?.http || (data as any).port || 8080;
         const newTarget: TargetDefinition = {
             enabled: data.enabled !== undefined ? data.enabled : true,
             ...data,
             name: rawName,
+            ports: {
+                ...(data.ports || {}),
+                http: httpPort
+            },
             id: makeId(),
             source: 'managed',
             created_at: now,
@@ -107,15 +119,36 @@ export class TargetsManager {
         const idx = targets.findIndex(t => t.id === id);
         const now = new Date().toISOString();
         
-        const updatedTarget = idx !== -1 ? (targets[idx] = { ...targets[idx], ...data, id, source: 'managed', updated_at: now }) : null;
+        let portsUpdate = data.ports;
+        if ((data as any).port || data.ports?.http) {
+            portsUpdate = {
+                ...(data.ports || {}),
+                http: data.ports?.http || (data as any).port
+            };
+        }
+        
+        const updatedTarget = idx !== -1 ? (targets[idx] = { 
+            ...targets[idx], 
+            ...data, 
+            ...(portsUpdate ? { ports: { ...(targets[idx].ports || {}), ...portsUpdate } } : {}),
+            id, 
+            source: 'managed', 
+            updated_at: now 
+        }) : null;
         let result = updatedTarget;
 
         if (!result) {
             const synthTarget = this.getMergedTargets().find(t => t.id === id);
             if (synthTarget) {
+                const httpPort = data.ports?.http || (data as any).port || synthTarget.ports?.http || 8080;
                 const promoted: TargetDefinition = {
                     ...synthTarget,
                     ...data,
+                    ports: {
+                        ...(synthTarget.ports || {}),
+                        ...(portsUpdate || {}),
+                        http: httpPort
+                    },
                     id: makeId(), // Assign a new managed ID
                     source: 'managed',
                     created_at: synthTarget.created_at || now,
@@ -397,6 +430,9 @@ export class TargetsManager {
                 xfr: !!p.capabilities?.xfr,
                 security: !!p.capabilities?.security,
                 connectivity: !!p.capabilities?.connectivity,
+            },
+            ports: {
+                http: p.port || p.meta?.port || (p as any).ports?.http || 8080
             },
             source: 'synthesized' as const, // Use synthesized to make it read-only in UI
             meta: {

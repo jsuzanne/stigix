@@ -657,7 +657,7 @@ if [ "$INSTALL_MODE" != "target" ]; then
     if [ -n "$JOIN_TOKEN" ] || [ -n "$CONTROLLER_URL" ] || [ -n "$TOKEN_REALM" ]; then
         echo "🔍 Verifying Fleet Mesh WebSocket Tunnel with Leader..."
         TUNNEL_ESTABLISHED=false
-        MAX_TUNNEL_WAIT=20
+        MAX_TUNNEL_WAIT=25
         for ((t=1; t<=MAX_TUNNEL_WAIT; t++)); do
             STATUS_JSON=$(curl -sf "http://localhost:$PORT/api/system/tunnel-status" 2>/dev/null || echo "{}")
             if echo "$STATUS_JSON" | grep -q '"tunnel_active":true'; then
@@ -678,14 +678,15 @@ if [ "$INSTALL_MODE" != "target" ]; then
                 echo ""
                 break
             fi
-            print_progress_bar $t $MAX_TUNNEL_WAIT "Awaiting Leader reverse dial (~10s cycle, attempt $t/$MAX_TUNNEL_WAIT)..."
+            print_progress_bar $t $MAX_TUNNEL_WAIT "Awaiting Leader reverse dial (~10-15s cycle, attempt $t/$MAX_TUNNEL_WAIT)..."
             sleep 2
         done
         if [ "$TUNNEL_ESTABLISHED" = false ]; then
             echo ""
-            echo "   ℹ️  Node is online and waiting for Leader dial."
-            echo "   💡 Troubleshooting: If this node does not show '⚡ WS Tunnel' in your Leader dashboard within 1 min,"
-            echo "      verify that Inbound TCP port $PORT is allowed in your Cloud firewall (AWS Security Group / GCP VPC rules)."
+            echo "   🟢 Node initialized and registered to Cloudflare Rendezvous."
+            echo "   ⏳ Background reverse tunnel handshake in progress (typically completes within ~30-60s)."
+            echo "   ✨ The node will link automatically — check your Leader dashboard for '⚡ WS Tunnel'."
+            echo "   💡 Note: If it does not appear within 2 min, verify that Inbound TCP port $PORT is allowed in your Cloud firewall."
         fi
     fi
 fi
