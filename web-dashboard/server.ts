@@ -13442,13 +13442,15 @@ app.delete('/api/fleet/join-tokens/:jti', authenticateToken, (req: any, res: any
  */
 app.post('/api/fleet/join-redeem', async (req: any, res: any) => {
     try {
-        const { token, instance_id, public_ip, hostname, site_name, capabilities } = req.body;
+        const token = req.body.token;
+        const instance_id = req.body.instance_id || req.body.hostname || `node-${Math.random().toString(16).slice(2, 10)}`;
+        const public_ip = req.body.public_ip;
+        const hostname = req.body.hostname || instance_id;
+        const site_name = req.body.site_name;
+        const capabilities = req.body.capabilities;
 
         if (!token) {
             return res.status(400).json({ error: 'missing_token', message: 'Magic Join token is required.' });
-        }
-        if (!instance_id) {
-            return res.status(400).json({ error: 'missing_instance_id', message: 'Instance ID is required.' });
         }
 
         const redeemResult = magicJoinManager.redeemToken(token, {

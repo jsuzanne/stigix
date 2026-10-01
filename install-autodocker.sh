@@ -186,7 +186,7 @@ if [ -n "$JOIN_TOKEN" ]; then
         echo "🔑 Redeeming single-use Magic Join token with Leader..."
         NODE_HOSTNAME=$(hostname | cut -d'.' -f1)
         CHOSEN_SITE="${SITE_NAME_OVERRIDE:-$NODE_HOSTNAME}"
-        REDEEM_BODY="{\"token\":\"$JOIN_TOKEN\",\"hostname\":\"$NODE_HOSTNAME\",\"site_name\":\"$CHOSEN_SITE\"}"
+        REDEEM_BODY="{\"token\":\"$JOIN_TOKEN\",\"instance_id\":\"$NODE_HOSTNAME\",\"hostname\":\"$NODE_HOSTNAME\",\"site_name\":\"$CHOSEN_SITE\"}"
         REDEEM_RES=$(curl -s -k -X POST -H "Content-Type: application/json" -d "$REDEEM_BODY" --connect-timeout 4 -m 6 "$WINNING_LEADER/api/fleet/join-redeem" 2>/dev/null || echo "{}")
         if echo "$REDEEM_RES" | grep -q '"success":true'; then
             echo "   ✅ Token redeemed successfully!"
