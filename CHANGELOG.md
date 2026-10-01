@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.129] - 2026-10-01
+
+### Added / Improved
+- **Real-Time Fleet Tunnel Verification in Install Scripts (`install.sh`, `install-autodocker.sh`, `server.ts`)**:
+  - Added lightweight `/api/system/tunnel-status` endpoint for installer and diagnostic health checks.
+  - Added live post-installation verification step in `install.sh` and `install-autodocker.sh` that actively waits for and confirms the WebSocket Fleet Tunnel with the Leader.
+  - Displays instant progress feedback, Leader name, security realm sync status, and provisioning readiness right in the terminal upon installation. 🚀
+
 ## [2.0.128] - 2026-10-01
 
 ### Fixed

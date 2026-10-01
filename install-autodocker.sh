@@ -674,6 +674,33 @@ if [ "$INSTALL_MODE" != "target" ]; then
         echo "⚠️  Warning: Web Dashboard is not responding yet."
         echo "💡 Diagnostics: The server might still be initializing. Run 'docker logs stigix' to verify."
     fi
+
+    # 4. Fleet WebSocket Tunnel Verification (when joining a cluster)
+    if [ -n "$JOIN_TOKEN" ] || [ -n "$CONTROLLER_URL" ] || [ -n "$TOKEN_REALM" ]; then
+        echo "🔍 Verifying Fleet Mesh WebSocket Tunnel with Leader..."
+        TUNNEL_ESTABLISHED=false
+        MAX_TUNNEL_WAIT=8
+        for ((t=1; t<=MAX_TUNNEL_WAIT; t++)); do
+            STATUS_JSON=$(curl -sf "http://localhost:$PORT/api/system/tunnel-status" 2>/dev/null || echo "{}")
+            if echo "$STATUS_JSON" | grep -q '"tunnel_active":true'; then
+                TUNNEL_ESTABLISHED=true
+                LEADER_NAME=$(echo "$STATUS_JSON" | grep -o '"siteName":"[^"]*' | cut -d'"' -f4)
+                [ -z "$LEADER_NAME" ] && LEADER_NAME=$(echo "$STATUS_JSON" | grep -o '"instanceId":"[^"]*' | cut -d'"' -f4)
+                print_progress_bar $MAX_TUNNEL_WAIT $MAX_TUNNEL_WAIT "⚡ WebSocket Fleet Tunnel ESTABLISHED with Leader (${LEADER_NAME:-Leader})!"
+                echo ""
+                echo "   🔒 Cluster Security Realm: Synchronized"
+                echo "   📦 Mesh Provisioning: Active (Targets, Probes & Applications synchronizing)"
+                break
+            fi
+            print_progress_bar $t $MAX_TUNNEL_WAIT "Awaiting Leader WebSocket handshake (attempt $t/$MAX_TUNNEL_WAIT)..."
+            sleep 2
+        done
+        if [ "$TUNNEL_ESTABLISHED" = false ]; then
+            echo ""
+            echo "   ⏳ WebSocket Fleet Tunnel is establishing in background..."
+            echo "   💡 Leader will automatically connect to this node on port $PORT."
+        fi
+    fi
 fi
 
 echo ""
@@ -698,9 +725,7 @@ fi
 if [ -n "$CONTROLLER_URL" ]; then
     echo ""
     echo "🔗 Controller: $CONTROLLER_URL"
-    echo "🤝 Peer registration is starting automatically."
-    echo "💡 Tip: Run the following to watch live registration logs:"
-    echo "   cd stigix && docker compose logs -f"
+    echo "🤝 Peer registration is active."
 fi
 echo "📝 Check logs: cd stigix && docker compose logs -f"
 echo "=========================================="

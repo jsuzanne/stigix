@@ -6537,6 +6537,20 @@ app.get('/api/system/tech-support', authenticateToken, async (req: any, res: any
     }
 });
 
+// API: Unauthenticated Tunnel & Mesh Status for local diagnostics and installer verification
+app.get('/api/system/tunnel-status', (req, res) => {
+    const active = fleetTunnelManager.hasActiveLeaderTunnel();
+    const leaderInfo = fleetTunnelManager.getActiveLeaderInfo();
+    res.json({
+        status: 'ok',
+        tunnel_active: active,
+        leader: leaderInfo,
+        version: APP_VERSION,
+        role: process.env.STIGIX_ROLE || 'both',
+        realm: process.env.STIGIX_CLUSTER_REALM || null
+    });
+});
+
 // API: System Health Check
 app.get('/api/system/health', authenticateToken, async (req, res) => {
     const now = Date.now();
