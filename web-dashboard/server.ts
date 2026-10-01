@@ -13544,22 +13544,46 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
 
     const peerId = req.params.peerId;
 
-    // Resolve peer management IP from the in-memory local registry
+    // Check if Peer has an active WebSocket Reverse Tunnel
     const allInstances = localRegistryServer.getInstances();
     const peer = allInstances.find(
-        (inst) => inst.instance_id === peerId || (inst.meta?.site || '').toLowerCase() === peerId.toLowerCase()
+        (inst) => (inst.instance_id || '').toLowerCase() === peerId.toLowerCase() ||
+                  (inst.meta?.site || '').toLowerCase() === peerId.toLowerCase() ||
+                  (inst.ip_private || '').toLowerCase() === peerId.toLowerCase() ||
+                  (inst.ip_public || '').toLowerCase() === peerId.toLowerCase()
     );
 
-    if (!peer) {
+    const peerInstanceId = peer?.instance_id || peerId;
+    const peerSiteName = peer?.meta?.site || '';
+
+    const hasWsTunnel = fleetTunnelManager.hasTunnel(peerId) ||
+        fleetTunnelManager.hasTunnel(peerInstanceId) ||
+        (peerSiteName ? fleetTunnelManager.hasTunnel(peerSiteName) : false);
+
+    // Resolve IP & port (from registry or targets) for direct HTTP fallback
+    let peerIp = peer?.ip_private || peer?.ip_public;
+    let peerPort = peer?.port || (peer as any)?.meta?.port || 8080;
+
+    if (!peerIp) {
+        const allTargets = targetsManager.getMergedTargets();
+        const target = allTargets.find(
+            (t) => (t.id || '').toLowerCase() === peerId.toLowerCase() ||
+                   (t.name || '').toLowerCase() === peerId.toLowerCase() ||
+                   (t.host || '').toLowerCase() === peerId.toLowerCase()
+        );
+        if (target) {
+            peerIp = target.host;
+            peerPort = target.ports?.http || 8080;
+        }
+    }
+
+    if (!hasWsTunnel && !peerIp) {
         return res.status(404).json({
             error: 'peer_not_found',
-            message: `Peer "${peerId}" is not registered in the local registry.`,
+            message: `Peer "${peerId}" is not registered in the local registry or targets.`,
             registered_peers: allInstances.map((i) => i.instance_id)
         });
     }
-
-    const peerIp = peer.ip_private;
-    const peerPort = 8080;
 
     // Strip /api/gateway/:peerId prefix — forward the remainder to the peer
     const proxyPath = req.path.replace(`/api/gateway/${peerId}`, '') || '/';
@@ -13585,14 +13609,7 @@ app.all('/api/gateway/:peerId/*path', authenticateToken, async (req: any, res: a
     forwardHeaders['authorization'] = `Bearer ${gatewayToken}`;
     forwardHeaders['x-gateway-source'] = 'stigix-leader';
     forwardHeaders['x-forwarded-for'] = req.ip || '';
-    forwardHeaders['host'] = `${peerIp}:${peerPort}`;
-
-    // --- M5: Check if Peer has an active WebSocket Reverse Tunnel ---
-    const peerInstanceId = peer.instance_id || peerId;
-    const peerSiteName = peer.meta?.site || '';
-    const hasWsTunnel = fleetTunnelManager.hasTunnel(peerId) ||
-        fleetTunnelManager.hasTunnel(peerInstanceId) ||
-        (peerSiteName ? fleetTunnelManager.hasTunnel(peerSiteName) : false);
+    forwardHeaders['host'] = `${peerIp || peerId}:${peerPort}`;
 
     const isStream = ((req.headers.accept as string) || '').includes('text/event-stream') || proxyUrl.includes('/stream');
 

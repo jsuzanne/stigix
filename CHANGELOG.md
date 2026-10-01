@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.136] - 2026-10-01
+
+### Fixed / Improved
+- **Remote View Gateway Resolution & WebSocket Precedence (`server.ts`, `fleet-tunnel.ts`)**:
+  - Enhanced `/api/gateway/:peerId/*` proxy route on Leader with case-insensitive peer resolution across instance ID, site name, private IP, and public IP.
+  - Added robust target fallback so peers with active WebSocket reverse tunnels (like HetznerCloud) forward instantly without requiring an immediate local registry roundtrip. ⚡
+- **Remote View Network Status Synchronization (`App.tsx`)**:
+  - Extended `PeerStatusSync` to dynamically synchronize Gateway IP, Public IP, Country flag, Site Info, and Connectivity test results from the active remote peer.
+  - Automatically resets to local Leader network status upon exiting Remote View mode. 🚀
+
 ## [2.0.135] - 2026-10-01
 
 ### Fixed / Improved

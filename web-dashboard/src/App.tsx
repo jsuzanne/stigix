@@ -44,6 +44,11 @@ function PeerStatusSync({
   onStatus,
   onTrafficStatus,
   onHistory,
+  onGatewayIp,
+  onPublicIp,
+  onSiteInfo,
+  onConnectivity,
+  onIperfServer,
 }: {
   token: string | null;
   view: string;
@@ -53,8 +58,54 @@ function PeerStatusSync({
   onStatus?: (v: 'running' | 'stopped' | 'unknown') => void;
   onTrafficStatus?: (running: boolean, rate?: number, count?: number) => void;
   onHistory?: (history: any[]) => void;
+  onGatewayIp?: (gw: string | null) => void;
+  onPublicIp?: (ip: string | null, country?: string | null) => void;
+  onSiteInfo?: (info: any) => void;
+  onConnectivity?: (conn: any) => void;
+  onIperfServer?: (info: any) => void;
 }) {
   const { gFetch, activePeerId } = usePeerContext();
+
+  // ── Network loop: gateway, public ip, siteinfo, connectivity (30s & immediate on peer change) ──
+  useEffect(() => {
+    if (!token || !activePeerId) return;
+
+    const pollNetwork = async () => {
+      try {
+        const [gwRes, ipRes, siteRes, connRes, iperfRes] = await Promise.allSettled([
+          gFetch('/api/system/gateway-ip', { headers: { 'Authorization': `Bearer ${token}` } }),
+          gFetch('/api/connectivity/public-ip', { headers: { 'Authorization': `Bearer ${token}` } }),
+          gFetch('/api/siteinfo', { headers: { 'Authorization': `Bearer ${token}` } }),
+          gFetch('/api/connectivity/test', { headers: { 'Authorization': `Bearer ${token}` } }),
+          gFetch('/api/connectivity/iperf/server', { headers: { 'Authorization': `Bearer ${token}` } })
+        ]);
+        if (gwRes.status === 'fulfilled' && gwRes.value.ok) {
+          const data = await gwRes.value.json();
+          onGatewayIp?.(data.ip || null);
+        }
+        if (ipRes.status === 'fulfilled' && ipRes.value.ok) {
+          const data = await ipRes.value.json();
+          onPublicIp?.(data.ip || null, data.countryCode || null);
+        }
+        if (siteRes.status === 'fulfilled' && siteRes.value.ok) {
+          const data = await siteRes.value.json();
+          onSiteInfo?.(data);
+        }
+        if (connRes.status === 'fulfilled' && connRes.value.ok) {
+          const data = await connRes.value.json();
+          onConnectivity?.(data);
+        }
+        if (iperfRes.status === 'fulfilled' && iperfRes.value.ok) {
+          const data = await iperfRes.value.json();
+          onIperfServer?.(data);
+        }
+      } catch { }
+    };
+
+    pollNetwork();
+    const interval = setInterval(pollNetwork, 30_000);
+    return () => clearInterval(interval);
+  }, [token, activePeerId]);
 
   // ── Fast loop: live-status (voice/conv) + traffic/status ──────────────────
   useEffect(() => {
@@ -914,9 +965,18 @@ export default function App() {
         isRemoteViewRef.current = peerId !== null;
         setIsRemoteView(peerId !== null);
         setActivePeerLabel(peerLabel);
+        if (peerId === null) {
+          fetchPublicIp();
+          fetchGatewayIp();
+          fetchSiteInfo();
+          fetchConnectivity();
+          fetchIperfStatus();
+          fetchDashboardData();
+          fetchTrafficStatus();
+        }
       }}
     >
-      {/* Peer-aware live status sync — patches globalConvStatus/globalVoiceStatus from remote peer */}
+      {/* Peer-aware live status sync — patches globalConvStatus/globalVoiceStatus/Network Status from remote peer */}
       <PeerStatusSync
         token={token}
         view={view}
@@ -930,6 +990,14 @@ export default function App() {
           if (count !== undefined) setTrafficClientCount(count);
         }}
         onHistory={setHistory}
+        onGatewayIp={setGatewayIp}
+        onPublicIp={(ip, country) => {
+          setPublicIp(ip);
+          if (country !== undefined) setPublicIpCountry(country);
+        }}
+        onSiteInfo={setSiteInfo}
+        onConnectivity={setConnectivity}
+        onIperfServer={setIperfServerInfo}
       />
     <div className="min-h-screen bg-background text-foreground pt-4 pb-8 px-8">
       <TopLoadingBar isLoading={isNavigating} />
