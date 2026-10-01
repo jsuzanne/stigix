@@ -9,6 +9,7 @@ All notable changes made specifically on the `v2` branch are documented in this 
 - **fix(matrix)**: Decoupled `fetchMatrix` from direct `data` state dependency using `dataRef` in `ReachabilityMatrix.tsx` to ensure stable 10s intervals and prevent transient 1-node fallback responses from wiping active multi-node grid views.
 - **fix(matrix)**: `ReachabilityMatrix.tsx` now preserves and displays existing matrix data during temporary background fetch errors instead of replacing the entire UI with an intrusive error screen.
 - **fix(matrix)**: Extended Spoke-to-Leader matrix proxy cache TTL in `server.ts` to 10 minutes to eliminate transient `1x1` grid collapses during leader reconnection periods.
+- **fix(perf)**: Configured `NODE_OPTIONS="--max-old-space-size=384"` for `web-ui` in `supervisord.conf` to cap V8 heap growth and protect low-memory (1GB/2GB) VM instances from Linux OOM killer invocations.
 
 ## [v2.0.112] - 2026-09-30 — UX: Light Mode Full Pass, Skeleton Shimmer & SSE Tunnel Stream
 
