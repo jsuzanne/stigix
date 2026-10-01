@@ -57,7 +57,12 @@ export class TargetsManager {
     loadTargets(): TargetDefinition[] {
         try {
             if (!fs.existsSync(this.configFile)) return [];
-            return JSON.parse(fs.readFileSync(this.configFile, 'utf-8')) as TargetDefinition[];
+            const list = JSON.parse(fs.readFileSync(this.configFile, 'utf-8')) as TargetDefinition[];
+            return list.map(t => ({
+                ...t,
+                name: t.name || (t as any).label || t.host,
+                enabled: t.enabled !== false
+            }));
         } catch (e: any) {
             log('TARGETS', `Failed to load targets.json: ${e.message}`, 'warn');
             return [];
@@ -79,13 +84,19 @@ export class TargetsManager {
     createTarget(data: Omit<TargetDefinition, 'id' | 'source'>): TargetDefinition {
         const targets = this.loadTargets();
         const now = new Date().toISOString();
+        const rawName = (data as any).name || (data as any).label || (data as any).host || 'Target';
         const newTarget: TargetDefinition = {
+            enabled: data.enabled !== undefined ? data.enabled : true,
             ...data,
+            name: rawName,
             id: makeId(),
             source: 'managed',
             created_at: now,
             updated_at: now,
         };
+        if (newTarget.enabled === undefined || (newTarget as any).enabled === null) {
+            newTarget.enabled = true;
+        }
         targets.push(newTarget);
         this.saveTargets(targets);
         return newTarget;

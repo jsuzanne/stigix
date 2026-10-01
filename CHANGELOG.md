@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.134] - 2026-10-01
+
+### Added / Improved
+- **Active Targets by Default & Mesh Link Column in Fleet Overview (`Fleet.tsx`, `targets-manager.ts`, `fleet-tunnel.ts`)**:
+  - Split the `Status` column in Mesh Overview into two dedicated columns: `Status` (Online/Offline) and `Mesh Link` (WS Tunnel / Direct HTTP / Local Leader).
+  - Ensured auto-provisioned targets from Magic Join and reverse dial are enabled (`enabled: true`) by default so they are immediately available for test suites. 🚀
+
 ## [2.0.133] - 2026-10-01
 
 ### Improved

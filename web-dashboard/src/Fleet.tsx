@@ -420,7 +420,8 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         <thead className="bg-card-secondary border-b border-border text-xs uppercase font-mono tracking-wider text-text-muted">
                             <tr>
                                 <th className="px-6 py-3">Site / Node</th>
-                                <th className="px-6 py-3">Status</th>
+                                <th className="px-5 py-3">Status</th>
+                                <th className="px-5 py-3">Mesh Link</th>
                                 <th className="px-6 py-3">Global Exp. Score</th>
                                 <th className="px-6 py-3">Probes</th>
                                 <th className="px-6 py-3">Traffic</th>
@@ -433,7 +434,7 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                         <tbody className="divide-y divide-border">
                             {filteredInstances.length === 0 ? (
                                 <tr>
-                                    <td colSpan={9} className="p-6">
+                                    <td colSpan={10} className="p-6">
                                         {loading ? (
                                             <div className="space-y-2.5 shimmer">
                                                 {[1, 2, 3, 4].map(i => (
@@ -518,32 +519,40 @@ export default function Fleet({ token, onNavigate: _onNavigate }: FleetProps) {
                                                 </div>
                                             </td>
 
-                                            {/* Status Badge + Transport Mode */}
-                                            <td className="px-6 py-3">
-                                                <div className="flex flex-col items-start gap-1">
-                                                    {peer.status === 'online' ? (
-                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                                            Online
+                                            {/* Status Badge */}
+                                            <td className="px-5 py-3 whitespace-nowrap">
+                                                {peer.status === 'online' ? (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                                        Online
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-500/10 text-red-400 border border-red-500/20 shadow-sm">
+                                                        <XCircle size={12} />
+                                                        Offline
+                                                    </span>
+                                                )}
+                                            </td>
+
+                                            {/* Mesh Link / Transport Mode */}
+                                            <td className="px-5 py-3 whitespace-nowrap">
+                                                {isLeader ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                                        👑 Local Leader
+                                                    </span>
+                                                ) : peer.status === 'online' ? (
+                                                    peer.has_tunnel ? (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 shadow-sm" title="Connected via Outbound WebSocket Reverse Tunnel (NAT/Firewall Traversal)">
+                                                            ⚡ WS Tunnel
                                                         </span>
                                                     ) : (
-                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold bg-red-500/10 text-red-400 border border-red-500/20">
-                                                            <XCircle size={12} />
-                                                            Offline
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-text-muted bg-card-secondary/80 border border-border/60" title="Direct LAN HTTP Connection">
+                                                            🌐 Direct HTTP
                                                         </span>
-                                                    )}
-                                                    {!isLeader && peer.status === 'online' && (
-                                                        peer.has_tunnel ? (
-                                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30" title="Connected via Outbound WebSocket Reverse Tunnel (NAT/Firewall Traversal)">
-                                                                ⚡ WS Tunnel
-                                                            </span>
-                                                        ) : (
-                                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold text-text-muted bg-card-secondary/80 border border-border/60" title="Direct LAN HTTP Connection">
-                                                                🌐 Direct HTTP
-                                                            </span>
-                                                        )
-                                                    )}
-                                                </div>
+                                                    )
+                                                ) : (
+                                                    <span className="text-xs text-text-muted font-mono">—</span>
+                                                )}
                                             </td>
 
                                             {/* Global Experience Score (Single line, no wrap) */}

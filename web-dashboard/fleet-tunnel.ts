@@ -610,21 +610,22 @@ export class FleetTunnelManager {
             if (this.targetsManager && typeof this.targetsManager.createTarget === 'function') {
                 try {
                     const existingTargets = this.targetsManager.loadTargets();
-                    const existing = existingTargets.find((t: any) => t.label === targetSiteName || t.host === host);
+                    const existing = existingTargets.find((t: any) => t.label === targetSiteName || t.name === targetSiteName || t.host === host);
                     if (!existing) {
                         this.targetsManager.createTarget({
-                            label: targetSiteName,
+                            name: targetSiteName,
                             host: host,
                             port: port,
+                            enabled: true,
                             protocol: 'http',
                             capabilities: { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true },
                             tags: ['magic-join', 'cloudflare-rendezvous'],
                             comments: `Auto-enrolled via Cloudflare Rendezvous on ${new Date().toISOString()}`
                         });
                         log('RENDEZVOUS', `🎯 Target auto-provisioned for ${targetSiteName} (${host}:${port})`);
-                    } else if (existing.host !== host) {
-                        this.targetsManager.updateTarget(existing.id, { ...existing, host: host, port: port });
-                        log('RENDEZVOUS', `🎯 Updated target ${targetSiteName} with winning host (${host}:${port})`);
+                    } else if (existing.host !== host || !existing.enabled) {
+                        this.targetsManager.updateTarget(existing.id, { ...existing, host: host, port: port, enabled: true });
+                        log('RENDEZVOUS', `🎯 Updated target ${targetSiteName} with winning host (${host}:${port}) and enabled state`);
                     }
                 } catch {}
             }
