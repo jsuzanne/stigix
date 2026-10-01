@@ -232,9 +232,76 @@ For frictionless onboarding across any network environment (LAN, WAN, NAT, or Mu
 
 ---
 
+## 🛡️ Inbound / Outbound Firewall Matrix & Security Groups
+
+When deploying Stigix Spoke nodes on Cloud platforms (**AWS, GCP, Azure, Hetzner, Scaleway, Oracle Cloud**) or behind corporate perimeter firewalls, configure the following rules:
+
+| Port | Protocol | Direction | Service / Capability | Mandatory? | Notes |
+| :--- | :--- | :--- | :--- | :---: | :--- |
+| **`8080`** (or `$PORT`) | **TCP** | **Inbound (Ingress)** | **Web Dashboard & WebSocket Fleet Tunnel** | **Yes (Spoke)** | Required for Leader reverse dials (`M6`). |
+| **`9000`** | TCP / UDP | Inbound (Ingress) | **XFR Target Bandwidth Generator** | Recommended | Real-time throughput, packet loss, and jitter analysis. |
+| **`5201`** | TCP / UDP | Inbound (Ingress) | **iPerf3 Server** | Recommended | Multi-stream network performance benchmarking. |
+| **`6100`** | UDP | Inbound (Ingress) | **Voice / RTP Audio Engine** | Optional | VoIP SIP/RTP call simulation and MOS calculation. |
+| **`6200`** | TCP / UDP | Inbound (Ingress) | **Synthetic Probes Server** | Optional | Custom synthetic SaaS application tests. |
+| **`443`** | TCP | **Outbound (Egress)** | **Cloudflare Registry & Probes** | **Yes (All)** | Outbound to `registry.stigix.io` & `target.stigix.io`. |
+
+---
+
+## 🔄 Post-Install Firewall Recovery & Reconnection Procedures
+
+If a Spoke was installed before the cloud firewall rules (e.g. AWS Security Group, GCP Firewall) were opened:
+
+### 1. Automatic Zero-Touch Recovery (Leader Background Loop)
+The Stigix Leader uses an active WebSocket client with `reconnection: true` (exponential backoff between 5s and 20s).
+* **As soon as the ingress port 8080 is opened** in your cloud console, the Leader **automatically completes the reverse dial within seconds**.
+* No manual commands or container restarts are required.
+
+### 2. Immediate Force-Sync (Trigger from Spoke)
+To trigger an instantaneous re-dial without waiting for the background cycle:
+```bash
+# On the Spoke host (e.g. AWS / GCP / Hetzner):
+cd /storage/Docker/stigix && docker compose restart
+```
+* **Why it works instantly:** On startup, the Spoke re-announces to Cloudflare Rendezvous Relay. The Leader's persistent SSE listener receives the event in `<10ms` and initiates the reverse dial immediately.
+
+### 3. Verification Commands
+```bash
+# Check Fleet Tunnel status on the Spoke:
+curl -s http://localhost:8080/api/system/tunnel-status | jq .
+
+# CLI status check inside container:
+docker exec -it stigix stigix-cli fleet status
+```
+
+---
+
+## 📊 Cloudflare Worker Consumption & 0-Polling Free Tier Audit
+
+Stigix is engineered to run seamlessly on the **Cloudflare Workers Free Tier (0 € / 100% Free)** forever.
+
+### 🎯 Cloudflare Workers Free Tier Limits
+* **Daily HTTP Request Quota:** **100,000 requests / day** (3,000,000 requests / month).
+* **CPU Execution Limit:** 10ms per request (Stigix worker uses `<0.5ms` in-memory routing).
+* **KV Operations:** 100,000 reads / day, 1,000 writes / day (Stigix Rendezvous uses **0 KV writes**, purely in-memory).
+* **Cost:** **0 € (No credit card required)**.
+
+### 🔍 Real-World Request Consumption Breakdown
+
+| Operation Mode | Mechanism | Requests / Day / Node | Notes |
+| :--- | :--- | :---: | :--- |
+| **Leader Passive Listener** | HTTP GET `/stream` (SSE) | **1 request / session** | Connection remains open continuously as a Server-Sent Event stream. |
+| **Spoke Magic Join Onboarding** | HTTP POST `/register` | **1 request (at install)** | Ephemeral announcement with candidate IPs. |
+| **Active Mesh Telemetry** | WebSocket Fleet Tunnel | **0 requests to Cloudflare** | 100% of telemetry, DEM metrics, targets, and config sync flow through the direct P2P WebSocket mesh. |
+| **Local Registry Discovery** | Node-to-Leader HTTP | **0 requests to Cloudflare** | Once paired, Spokes poll the local Leader directly (`http://<leader>:8080/instances`), completely bypassing Cloudflare. |
+
+> **💡 Summary:** An active cluster with 20 nodes consumes **`<50 requests per day`** on Cloudflare, representing less than **0.05% of the free quota**.
+
+---
+
 ## 📜 Revision History
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-01 | `v2.0.132` | Stigix Core Team | Added Inbound/Outbound Firewall Matrix, Post-Install Reconnection Runbook, and Cloudflare Worker Free Tier Consumption Audit |
 | 2026-10-01 | `v2.0.120` | Stigix Core Team | Added Scenario 5: Magic Join Zero-Touch Onboarding and link to detailed Multi-Tenancy Architecture guide |
 | 2026-09-30 | `v2.0.111` | Stigix Core Team | Initial creation of Private & Hybrid Deployment Topologies Guide covering M5/M6 WebSocket Tunnels, Zero-Inbound Leader, and Multi-Cloud Provisioning Sync |
