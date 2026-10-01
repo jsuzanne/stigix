@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.124] - 2026-10-01
+
+### Fixed
+- **Multi-Candidate Dial Persistence & Socket Reconciliation (`fleet-tunnel.ts`)**:
+  - Prioritized private local candidate IPs before public IP during multi-IP reverse dialing.
+  - Automatically persisted the winning candidate host into `targetsManager` upon successful WebSocket handshake.
+  - Prevented background reconciliation loop (`syncLeaderOutboundDials`) from prematurely closing active or pending rendezvous reverse dials on multi-homed spoke hosts. 🚀
+
 ## [2.0.123] - 2026-10-01
 
 ### Added / Fixed

@@ -518,10 +518,16 @@ export class FleetTunnelManager {
                 const port = t.ports?.http || 8080;
                 return `${t.host.trim().toLowerCase()}:${port}` === targetKey.toLowerCase();
             });
-            if (!stillTarget) {
-                log('TUNNEL', `[M6 DIAL] Closing dialed connection for target no longer needing dial: ${targetKey}`);
-                socket.disconnect();
-                this.outboundDialedSockets.delete(targetKey);
+            // Keep if actively connected tunnel or created via rendezvous
+            const isActivelyConnected = Array.from(this.activeTunnels.values()).some(e => e.socket === socket && (e.socket as any).connected);
+            if (!stillTarget && !isActivelyConnected) {
+                // If it's a pending dial attempt from rendezvous, give it 30s before cleaning up
+                const isPendingRendezvous = socket.connected;
+                if (!isPendingRendezvous) {
+                    log('TUNNEL', `[M6 DIAL] Closing dialed connection for target no longer needing dial: ${targetKey}`);
+                    socket.disconnect();
+                    this.outboundDialedSockets.delete(targetKey);
+                }
             }
         }
 
@@ -575,6 +581,37 @@ export class FleetTunnelManager {
 
         socket.on('connect', () => {
             log('TUNNEL', `⚡ [M6 DIAL] Leader reverse dial CONNECTED to Cloud Peer: ${targetSiteName} (${host}:${port})`);
+
+            // Persist winning target host in TargetsManager
+            if (this.targetsManager && typeof this.targetsManager.createTarget === 'function') {
+                try {
+                    const existingTargets = this.targetsManager.loadTargets();
+                    const existing = existingTargets.find((t: any) => t.label === targetSiteName || t.host === host);
+                    if (!existing) {
+                        this.targetsManager.createTarget({
+                            label: targetSiteName,
+                            host: host,
+                            port: port,
+                            protocol: 'http',
+                            capabilities: { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true },
+                            tags: ['magic-join', 'cloudflare-rendezvous'],
+                            comments: `Auto-enrolled via Cloudflare Rendezvous on ${new Date().toISOString()}`
+                        });
+                        log('RENDEZVOUS', `🎯 Target auto-provisioned for ${targetSiteName} (${host}:${port})`);
+                    } else if (existing.host !== host) {
+                        this.targetsManager.updateTarget(existing.id, { ...existing, host: host, port: port });
+                        log('RENDEZVOUS', `🎯 Updated target ${targetSiteName} with winning host (${host}:${port})`);
+                    }
+                } catch {}
+            }
+
+            // Close other failing sibling candidate dials for this same peer
+            for (const [k, sock] of this.outboundDialedSockets) {
+                if (k !== targetKey && !sock.connected) {
+                    sock.disconnect();
+                    this.outboundDialedSockets.delete(k);
+                }
+            }
 
             // Register Leader services (Provisioning, Manifest, Targets, Ping) on this outbound socket
             this.registerLeaderHandlers(socket);
@@ -816,7 +853,7 @@ export class FleetTunnelManager {
         }
 
         const candidateIps: string[] = [];
-        if (event.ip && event.ip !== '127.0.0.1' && event.ip !== localIp) candidateIps.push(event.ip);
+        // Prioritize local interface IPs first
         if (Array.isArray(event.ips)) {
             for (const ip of event.ips) {
                 if (ip && ip !== '127.0.0.1' && ip !== localIp && !candidateIps.includes(ip)) {
@@ -824,35 +861,17 @@ export class FleetTunnelManager {
                 }
             }
         }
+        // Add public IP last
+        if (event.ip && event.ip !== '127.0.0.1' && event.ip !== localIp && !candidateIps.includes(event.ip)) {
+            candidateIps.push(event.ip);
+        }
 
         if (candidateIps.length === 0) return;
 
         log('RENDEZVOUS', `✨ Instant Cloudflare Push: new Peer announced: ${peerSiteName} (IPs: ${candidateIps.join(', ')} : ${peerPort})!`);
 
         for (const peerIp of candidateIps) {
-            // Auto-create target in targetsManager if not present
-            if (this.targetsManager && typeof this.targetsManager.createTarget === 'function') {
-                try {
-                    const existingTargets = this.targetsManager.loadTargets();
-                    const alreadyExists = existingTargets.some((t: any) => t.host === peerIp || t.label === peerSiteName);
-                    if (!alreadyExists) {
-                        this.targetsManager.createTarget({
-                            label: peerSiteName,
-                            host: peerIp,
-                            port: peerPort,
-                            protocol: 'http',
-                            capabilities: event.capabilities || { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true },
-                            tags: ['magic-join', 'cloudflare-rendezvous'],
-                            comments: `Auto-enrolled via Cloudflare Rendezvous on ${new Date().toISOString()}`
-                        });
-                        log('RENDEZVOUS', `🎯 Target auto-provisioned for ${peerSiteName} (${peerIp}:${peerPort})`);
-                    }
-                } catch (tErr: any) {
-                    log('RENDEZVOUS', `Warning auto-provisioning target: ${tErr.message}`, 'warn');
-                }
-            }
-
-            // Trigger immediate outbound reverse dial
+            // Trigger immediate outbound reverse dial for each candidate
             const targetKey = `${peerIp.toLowerCase()}:${peerPort}`;
             if (!this.outboundDialedSockets.has(targetKey) && !this.activeTunnels.has(peerInstanceId)) {
                 const targetObj = { id: peerInstanceId, name: peerSiteName, host: peerIp, ports: { http: peerPort } };
