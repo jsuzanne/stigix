@@ -1,4 +1,4 @@
-> **Last Updated:** 2026-09-30 | **Created:** 2026-09-30 (v2.0.111)
+> **Last Updated:** 2026-10-01 | **Created:** 2026-09-30 (v2.0.111)
 
 # Stigix Private & Hybrid Deployment Topologies Guide
 
@@ -223,10 +223,18 @@ docker run -d \
    * `Hetzner-Cloud` displays with the **`⚡ WS Tunnel`** badge.
 3. Use the **Instance Switcher** in the top navigation bar to select `⚡ Hetzner-Cloud` and control the remote node directly from your private lab.
 
+### Scenario 5: Universal Zero-Touch Onboarding (Magic Join)
+For frictionless onboarding across any network environment (LAN, WAN, NAT, or Multi-Cloud) without manual target configuration or `.env` editing:
+* Operator clicks **`[ 🔗 Add Node ]`** on the Leader.
+* Runs the single-line command on the target host: `curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- STX-...`
+* The node automatically discovers the Leader or announces to the Cloudflare Rendezvous Relay, establishes the **`⚡ WS TUNNEL`**, and synchronizes the cluster security realm.
+* For a detailed deep-dive on cryptographic realm isolation and multi-tenant security, see [MAGIC_JOIN_AND_MULTI_TENANCY.md](file:///Users/jsuzanne/Github/stigix/docs/MAGIC_JOIN_AND_MULTI_TENANCY.md).
+
 ---
 
 ## 📜 Revision History
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-01 | `v2.0.120` | Stigix Core Team | Added Scenario 5: Magic Join Zero-Touch Onboarding and link to detailed Multi-Tenancy Architecture guide |
 | 2026-09-30 | `v2.0.111` | Stigix Core Team | Initial creation of Private & Hybrid Deployment Topologies Guide covering M5/M6 WebSocket Tunnels, Zero-Inbound Leader, and Multi-Cloud Provisioning Sync |
