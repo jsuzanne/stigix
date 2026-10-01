@@ -2,6 +2,10 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.116] - 2026-10-01 — Refactor: Wildcard Dockerfile Source Sync (`COPY *.ts`)
+
+- **refactor(docker)**: Replaced static listing of 19 individual TypeScript service files with `COPY web-dashboard/*.ts ./` across both `stigix-all-in-one/Dockerfile` and `web-dashboard/Dockerfile`. Automatically includes all future root `.ts` modules without risk of manual omission.
+
 ## [v2.0.115] - 2026-10-01 — Fix: Dockerfile Source Sync for Magic Join Manager
 
 - **fix(docker)**: Added `COPY web-dashboard/magic-join-manager.ts ./` to both `stigix-all-in-one/Dockerfile` and `web-dashboard/Dockerfile` to fix runtime `ERR_MODULE_NOT_FOUND` during container startup.
