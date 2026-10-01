@@ -150,13 +150,28 @@ export class FleetTunnelManager {
                 return next(new Error('authentication_required'));
             }
 
+            // 1. Direct validation with local secretKey
             try {
                 jwt.verify(token, this.secretKey);
-                next();
-            } catch (err: any) {
-                log('TUNNEL', `Invalid reverse tunnel JWT token from ${socket.handshake.address}: ${err.message}`, 'warn');
-                return next(new Error('invalid_token'));
+                return next();
+            } catch {}
+
+            // 2. Rendezvous Cluster Adoption: If Leader is dialing in and provides matching cluster realm
+            const expectedRealm = process.env.STIGIX_CLUSTER_REALM || this.getRealmHash();
+            if (auth.isLeaderDial && auth.realm && auth.realm === expectedRealm && auth.clusterJwtSecret) {
+                try {
+                    jwt.verify(token, auth.clusterJwtSecret);
+                    this.secretKey = auth.clusterJwtSecret;
+                    process.env.JWT_SECRET = auth.clusterJwtSecret;
+                    log('TUNNEL', `🔒 Adopted cluster security realm from Leader (${auth.siteName || auth.instanceId})`);
+                    return next();
+                } catch (verifyErr: any) {
+                    log('TUNNEL', `Cluster realm match but token verification failed: ${verifyErr.message}`, 'warn');
+                }
             }
+
+            log('TUNNEL', `Invalid reverse tunnel JWT token from ${socket.handshake.address}`, 'warn');
+            return next(new Error('invalid_token'));
         });
 
         tunnelNamespace.on('connection', (socket: Socket) => {
@@ -568,7 +583,9 @@ export class FleetTunnelManager {
                 instanceId: localId,
                 siteName: localSite,
                 ip: localStatus.detected_ip || '127.0.0.1',
-                isLeaderDial: true
+                isLeaderDial: true,
+                realm: this.getRealmHash(),
+                clusterJwtSecret: this.secretKey
             },
             transports: ['websocket', 'polling'],
             reconnection: true,

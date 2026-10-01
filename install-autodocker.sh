@@ -472,6 +472,7 @@ fi
 
 echo "STIGIX_ROLE=$INSTALL_MODE" > .env
 echo "JWT_SECRET=$JWT_SECRET" >> .env
+[ -n "$TOKEN_REALM" ] && echo "STIGIX_CLUSTER_REALM=$TOKEN_REALM" >> .env
 echo "PORT=$PORT" >> .env
 echo "BETA=false" >> .env
 echo "" >> .env
@@ -541,6 +542,14 @@ fi
 if [ -n "$JOINED_JWT_SECRET" ]; then
     if grep -q "^JWT_SECRET=" .env 2>/dev/null; then
         sed -i.bak -E "s|^JWT_SECRET=.*|JWT_SECRET=$JOINED_JWT_SECRET|g" .env && rm -f .env.bak
+    fi
+fi
+
+if [ -n "$TOKEN_REALM" ]; then
+    if grep -q "^STIGIX_CLUSTER_REALM=" .env 2>/dev/null; then
+        sed -i.bak -E "s|^STIGIX_CLUSTER_REALM=.*|STIGIX_CLUSTER_REALM=$TOKEN_REALM|g" .env && rm -f .env.bak
+    else
+        echo "STIGIX_CLUSTER_REALM=$TOKEN_REALM" >> .env
     fi
 fi
 

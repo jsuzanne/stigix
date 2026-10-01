@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.125] - 2026-10-01
+
+### Added / Fixed
+- **Cryptographic Realm Handshake & Zero-Touch Cluster Secret Adoption (`fleet-tunnel.ts`, `install.sh`, `install-autodocker.sh`)**:
+  - Saved `STIGIX_CLUSTER_REALM` automatically to Spoke `.env` from the decoded Magic Join Token during rendezvous installation.
+  - Implemented automatic cryptographic cluster secret adoption during Leader reverse WebSocket dials: Spoke verifies Leader's realm against token realm and adopts cluster `JWT_SECRET` in memory.
+  - Eliminates authentication failures when Spokes are installed in NAT/Rendezvous mode without direct access to the Leader's redemption endpoint. 🚀
+
 ## [2.0.124] - 2026-10-01
 
 ### Fixed
