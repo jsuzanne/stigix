@@ -93,6 +93,7 @@ COPY web-dashboard/discovery-manager.ts ./
 COPY web-dashboard/registry-manager.ts ./
 COPY web-dashboard/stigix-registry-client.ts ./
 COPY web-dashboard/local-registry-server.ts ./
+COPY web-dashboard/magic-join-manager.ts ./
 COPY web-dashboard/provisioning-manager.ts ./
 COPY web-dashboard/underlay-topology-manager.ts ./
 COPY web-dashboard/custom-tcp-apps ./custom-tcp-apps

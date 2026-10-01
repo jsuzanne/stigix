@@ -2,6 +2,10 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.115] - 2026-10-01 — Fix: Dockerfile Source Sync for Magic Join Manager
+
+- **fix(docker)**: Added `COPY web-dashboard/magic-join-manager.ts ./` to both `stigix-all-in-one/Dockerfile` and `web-dashboard/Dockerfile` to fix runtime `ERR_MODULE_NOT_FOUND` during container startup.
+
 ## [v2.0.114] - 2026-10-01 — Feature: Stigix « Magic Join » Universal Zero-Touch Onboarding
 
 - **feat(magic-join)**: Implemented cryptographic single-use token architecture (`STX-...` HMAC-SHA256) with automatic endpoint detection, 1-hour TTL, and persistent token inventory in `magic-join-manager.ts`.
