@@ -87,7 +87,7 @@ This is the fastest, recommended way to onboard branch appliances, Intel NUCs, o
 > **📸 Figure 1 — Magic Join Token Dialog**
 > The Leader generates a **cryptographic single-use token** (burn-on-redeem, 1 use max, configurable TTL). The complete `curl` command is ready to copy. Discovered Leader endpoints (LAN + public relay) are listed automatically — no IP configuration needed on the spoke side.
 
-![Figure 1 – Magic Join: single-use token with auto-discovered Leader endpoints](/Users/jsuzanne/.gemini/antigravity-ide/brain/9f8cf605-177a-4b00-94d2-26d54984208b/magic_join.png)
+![Figure 1 – Magic Join: single-use token with auto-discovered Leader endpoints](assets/magic_join.png)
 
 #### Step 2: Paste the Command on the Target Host
 Run the copied command directly on the remote Linux / Docker host:
@@ -105,7 +105,7 @@ curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sud
 > **📸 Figure 2 — Stigix Fleet Mesh Overview (after onboarding)**
 > The Mesh dashboard shows all connected nodes in real time: DC1 (Leader), branch spokes (BR1, BR2, BR5, BR8), a second data center (DC2), and a cloud peer (Hetzner). Each node displays its IP, `⚡ WS TUNNEL` status badge, Global Experience Score, live traffic rate, config sync revision, and last heartbeat timestamp.
 
-![Figure 2 – Fleet Mesh Overview: all nodes online with WS Tunnel badges after Magic Join](/Users/jsuzanne/.gemini/antigravity-ide/brain/9f8cf605-177a-4b00-94d2-26d54984208b/mesh_overview.png)
+![Figure 2 – Fleet Mesh Overview: all nodes online with WS Tunnel badges after Magic Join](assets/mesh_overview.png)
 
 ---
 
@@ -140,7 +140,7 @@ From the Leader's **Fleet Overview**, click the **`⚡ Connect`** button next to
 > **📸 Figure 3 — Remote Node Card (Cloud Peer Detail)**
 > Clicking a node in the Fleet Overview expands its full detail card: Traffic IP, live throughput (↑18 / ↓13 Mbps), all enabled capabilities (Voice, Failover, Custom Apps, Speedtest, Security, Connectivity), connectivity probe results (56 total / 51 passing), and every config bundle revision synced (`All Synced – Matches Leader`). The **Connect via Remote View** button opens the full remote dashboard — no SSH, no VPN, no port forwarding.
 
-![Figure 3 – Cloud node detail card: capabilities, probes, config sync, and Remote View access](/Users/jsuzanne/.gemini/antigravity-ide/brain/9f8cf605-177a-4b00-94d2-26d54984208b/hetzner_target.png)
+![Figure 3 – Cloud node detail card: capabilities, probes, config sync, and Remote View access](assets/hetzner_target.png)
 
 ### 2. Upgrading Fleet Nodes
 To upgrade any Stigix node to the latest released image:

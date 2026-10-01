@@ -86,7 +86,7 @@ sequenceDiagram
 > **📸 Figure 1 — Stigix Mesh Overview (Leader perspective)**
 > The Mesh dashboard shows all fabric nodes in real time: their IP, status badge (`⚡ WS TUNNEL` or `Online`), Global Experience Score, traffic rate, Voice MOS, config sync revision, and last heartbeat. In a standard LAN deployment all nodes appear `Online` with direct HTTP reachability.
 
-![Figure 1 – Mesh Overview: all nodes online with WS Tunnel badges and telemetry](/Users/jsuzanne/.gemini/antigravity-ide/brain/9f8cf605-177a-4b00-94d2-26d54984208b/mesh_overview.png)
+![Figure 1 – Mesh Overview: all nodes online with WS Tunnel badges and telemetry](assets/mesh_overview.png)
 
 ---
 
@@ -122,7 +122,7 @@ sequenceDiagram
 > **📸 Figure 2 — Target Controller Settings (Spoke configuration)**
 > In `Settings → Target Controller`, the Spoke specifies the Leader URL. Once saved, it automatically initiates the M5 WebSocket tunnel — no port-forwarding needed on the branch side. Notice the `AUTO-DETECT` role switch that lets Stigix choose Leader vs. Peer dynamically.
 
-![Figure 2 – Target Controller: Spoke points to Leader URL for automatic WS tunnel establishment](/Users/jsuzanne/.gemini/antigravity-ide/brain/9f8cf605-177a-4b00-94d2-26d54984208b/target_controller.png)
+![Figure 2 – Target Controller: Spoke points to Leader URL for automatic WS tunnel establishment](assets/target_controller.png)
 
 ---
 
@@ -178,7 +178,7 @@ sequenceDiagram
 > **📸 Figure 3 — Cloud Peer Node Card (HetznerCloud target)**
 > After the Leader dials out (M6), the remote Hetzner node card shows: `Online` status, Traffic IP (`142.132.193.157`), active traffic rate (↑18 / ↓13 Mbps), all enabled capabilities (Voice, Failover, Custom Apps, Speedtest, Security, Connectivity), and every config bundle revision synced (`All Synced – Matches Leader`). The **Connect via Remote View** button proxies the full Hetzner UI through the Leader — with zero inbound ports opened.
 
-![Figure 3 – HetznerCloud node card: all capabilities active and config fully synced via WS Tunnel](/Users/jsuzanne/.gemini/antigravity-ide/brain/9f8cf605-177a-4b00-94d2-26d54984208b/hetzner_target.png)
+![Figure 3 – HetznerCloud node card: all capabilities active and config fully synced via WS Tunnel](assets/hetzner_target.png)
 
 ---
 
@@ -248,14 +248,14 @@ For frictionless onboarding across any network environment (LAN, WAN, NAT, or Mu
 > **📸 Figure 4 — Magic Join Dialog (Zero-Touch Onboarding)**
 > The leader generates a **cryptographic single-use token** (burn-on-redeem, 1 use max). The dialog displays the complete `curl` command to paste on any remote Linux/Docker host. Discovered Leader endpoints are listed automatically — both the private LAN address and the public relay. Token TTL is configurable (1 Hour default).
 
-![Figure 4 – Magic Join dialog: single-use token generation with auto-discovered Leader endpoints](/Users/jsuzanne/.gemini/antigravity-ide/brain/9f8cf605-177a-4b00-94d2-26d54984208b/magic_join.png)
+![Figure 4 – Magic Join dialog: single-use token generation with auto-discovered Leader endpoints](assets/magic_join.png)
 
 ---
 
 > **📸 Figure 5 — Traffic Generator (Data Plane in Action)**
 > Once the fabric is wired up, the Traffic Generator tab on any node shows the full data plane in action: live traffic rate (20 req/s), 94.4% success rate across 65 active custom TCP application endpoints, and a real-time SaaS WAN graph. This view is available from any node via the Single Pane of Glass remote proxy — no direct access to the branch required.
 
-![Figure 5 – Traffic Generator: live data plane metrics across all Custom App endpoints via remote proxy](/Users/jsuzanne/.gemini/antigravity-ide/brain/9f8cf605-177a-4b00-94d2-26d54984208b/traffic_gen.png)
+![Figure 5 – Traffic Generator: live data plane metrics across all Custom App endpoints via remote proxy](assets/traffic_gen.png)
 
 ---
 
