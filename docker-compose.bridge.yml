@@ -91,6 +91,7 @@ services:
       - STIGIX_REGISTRY_HEARTBEAT_SEC=${STIGIX_REGISTRY_HEARTBEAT_SEC:-300}
       - STIGIX_REGISTRY_DISCOVERY_SEC=${STIGIX_REGISTRY_DISCOVERY_SEC:-120}
       - STIGIX_REGISTRY_MODE=${STIGIX_REGISTRY_MODE:-peer}
+      - STIGIX_PUBLIC_URL=${STIGIX_PUBLIC_URL:-}
       # --- Direct Controller Mode (bypasses Cloudflare, set by --controller installer flag) ---
       - STIGIX_CONTROLLER_URL=${STIGIX_CONTROLLER_URL:-}
       # --- Stigix Cloud & Probes ---

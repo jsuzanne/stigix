@@ -232,6 +232,14 @@ if [ -n "$JOIN_TOKEN" ]; then
                 [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$ip" =~ ^127\. ]] && [[ ! "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$ip" =~ ^169\.254\. ]] && LOCAL_IPS+=("$ip")
             done
         fi
+
+        # Probe external Public IP (essential for Cloud VPS like Hetzner, AWS, GCP, Oracle, or behind 1:1 NAT)
+        EXT_PUB_IP=$(curl -4 -s --connect-timeout 2 -m 3 https://api.ipify.org 2>/dev/null || curl -4 -s --connect-timeout 2 -m 3 https://ifconfig.me 2>/dev/null || curl -4 -s --connect-timeout 2 -m 3 https://checkip.amazonaws.com 2>/dev/null || true)
+        EXT_PUB_IP=$(echo "$EXT_PUB_IP" | tr -d ' \n\r\t')
+        if [[ "$EXT_PUB_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$EXT_PUB_IP" =~ ^127\. ]] && [[ ! "$EXT_PUB_IP" =~ ^10\. ]] && [[ ! "$EXT_PUB_IP" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$EXT_PUB_IP" =~ ^192\.168\. ]] && [[ ! "$EXT_PUB_IP" =~ ^169\.254\. ]]; then
+            LOCAL_IPS+=("$EXT_PUB_IP")
+        fi
+
         UNIQUE_IPS=()
         for ip in "${LOCAL_IPS[@]}"; do
             skip=0
@@ -240,6 +248,9 @@ if [ -n "$JOIN_TOKEN" ]; then
             done
             [ $skip -eq 0 ] && UNIQUE_IPS+=("$ip")
         done
+
+        # Ensure CHOSEN_PRIMARY_IP is always initialized (e.g. single-IP Cloud hosts)
+        [ ${#UNIQUE_IPS[@]} -gt 0 ] && CHOSEN_PRIMARY_IP="${UNIQUE_IPS[0]}"
 
         if [ -n "$ADVERTISED_IP_OVERRIDE" ]; then
             UNIQUE_IPS=("$ADVERTISED_IP_OVERRIDE")
@@ -255,11 +266,15 @@ if [ -n "$JOIN_TOKEN" ]; then
 
             if [ $INTERACTIVE -gt 0 ]; then
                 echo ""
-                echo "   🌐 Multiple network interfaces detected on this host:"
+                echo "   🌐 Multiple network interfaces / IPs detected on this host:"
                 echo "      [1] All detected IPs (${UNIQUE_IPS[*]}) - Recommended"
                 idx=2
                 for ip in "${UNIQUE_IPS[@]}"; do
-                    echo "      [$idx] $ip"
+                    if [[ "$ip" =~ ^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.) ]]; then
+                        echo "      [$idx] $ip (Private LAN)"
+                    else
+                        echo "      [$idx] $ip (Public / Cloud IP)"
+                    fi
                     ((idx++))
                 done
                 echo "      [$idx] Custom IP..."
@@ -564,7 +579,12 @@ if [ -n "$CHOSEN_PRIMARY_IP" ]; then
     if [ -z "$IFACE_FOR_IP" ] && command -v ifconfig &>/dev/null; then
         IFACE_FOR_IP=$(ifconfig 2>/dev/null | grep -B 1 "$CHOSEN_PRIMARY_IP" | grep -E '^[a-zA-Z0-9]+' | awk '{print $1}' | tr -d ':' | head -n 1)
     fi
-    [ -n "$IFACE_FOR_IP" ] && echo "$IFACE_FOR_IP" > ./config/interfaces.txt
+    if [ -n "$IFACE_FOR_IP" ]; then
+        echo "$IFACE_FOR_IP" > ./config/interfaces.txt
+    else
+        DEFAULT_IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5}' | head -n 1)
+        [ -n "$DEFAULT_IFACE" ] && echo "$DEFAULT_IFACE" > ./config/interfaces.txt
+    fi
 fi
 
 # Pre-create CLI persistence files so Docker mounts them as files (not dirs)
