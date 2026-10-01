@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.123] - 2026-10-01
+
+### Added / Fixed
+- **Comprehensive Multi-Interface IP Discovery & Continuous Leader Rendezvous Polling (`install.sh`, `install-autodocker.sh`, `fleet-tunnel.ts`)**:
+  - Upgraded installer IP candidate discovery to inspect all network interfaces (`hostname -I`, `ip -4 addr`, `ifconfig`) instead of relying solely on default gateway route.
+  - Ensures multi-homed hosts (e.g. `nucvillers` with both `192.168.1.163` and `192.168.50.232`) announce all physical candidate subnets to Cloudflare Rendezvous.
+  - Added continuous 10s background KV polling loop in Leader `FleetTunnelManager` for instant reverse dials regardless of Anycast edge routing. 🚀
+
 ## [2.0.122] - 2026-10-01
 
 ### Added / Improved

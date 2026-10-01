@@ -82,6 +82,7 @@ export class FleetTunnelManager {
     // Leader state: Cloudflare SSE Rendezvous Listener
     private cloudflareReq: http.ClientRequest | null = null;
     private cloudflareRetryTimeout: NodeJS.Timeout | null = null;
+    private cloudflareKvPollInterval: NodeJS.Timeout | null = null;
     private isListeningCloudflare: boolean = false;
 
     private backgroundLoopInterval: NodeJS.Timeout | null = null;
@@ -744,6 +745,14 @@ export class FleetTunnelManager {
         };
 
         connect();
+
+        if (!this.cloudflareKvPollInterval) {
+            this.cloudflareKvPollInterval = setInterval(() => {
+                if (this.isListeningCloudflare && this.registryManager.isLeader()) {
+                    this.syncEphemeralPeersFromCloudflare();
+                }
+            }, 10000);
+        }
     }
 
     public syncEphemeralPeersFromCloudflare(): void {
@@ -780,6 +789,10 @@ export class FleetTunnelManager {
         if (this.cloudflareRetryTimeout) {
             clearTimeout(this.cloudflareRetryTimeout);
             this.cloudflareRetryTimeout = null;
+        }
+        if (this.cloudflareKvPollInterval) {
+            clearInterval(this.cloudflareKvPollInterval);
+            this.cloudflareKvPollInterval = null;
         }
         if (this.cloudflareReq) {
             try { this.cloudflareReq.destroy(); } catch {}

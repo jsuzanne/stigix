@@ -212,23 +212,37 @@ if [ -n "$JOIN_TOKEN" ]; then
             FP=$(find_free_port 8080 8090)
             [ -n "$FP" ] && ANNOUNCE_PORT="$FP"
         fi
-        LOCAL_IPS_JSON="[]"
-        if command -v python3 &>/dev/null; then
-            LOCAL_IPS_JSON=$(python3 -c "import socket, json
-ips = set()
-try:
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(('8.8.8.8', 80))
-    ips.add(s.getsockname()[0])
-    s.close()
-except: pass
-try:
-    for info in socket.getaddrinfo(socket.gethostname(), None):
-        ip = info[4][0]
-        if not ip.startswith('127.'): ips.add(ip)
-except: pass
-print(json.dumps(list(ips)))" 2>/dev/null || echo "[]")
+        LOCAL_IPS=()
+        if command -v hostname &>/dev/null; then
+            for ip in $(hostname -I 2>/dev/null); do
+                [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$ip" =~ ^127\. ]] && [[ ! "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$ip" =~ ^169\.254\. ]] && LOCAL_IPS+=("$ip")
+            done
         fi
+        if command -v ip &>/dev/null; then
+            for ip in $(ip -4 -o addr show 2>/dev/null | awk '{print $4}' | cut -d/ -f1); do
+                [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$ip" =~ ^127\. ]] && [[ ! "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$ip" =~ ^169\.254\. ]] && LOCAL_IPS+=("$ip")
+            done
+        fi
+        if command -v ifconfig &>/dev/null; then
+            for ip in $(ifconfig 2>/dev/null | grep -E 'inet [0-9]' | awk '{print $2}' | sed 's/addr://'); do
+                [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$ip" =~ ^127\. ]] && [[ ! "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$ip" =~ ^169\.254\. ]] && LOCAL_IPS+=("$ip")
+            done
+        fi
+        UNIQUE_IPS=()
+        for ip in "${LOCAL_IPS[@]}"; do
+            skip=0
+            for u in "${UNIQUE_IPS[@]}"; do
+                [ "$u" = "$ip" ] && { skip=1; break; }
+            done
+            [ $skip -eq 0 ] && UNIQUE_IPS+=("$ip")
+        done
+        LOCAL_IPS_JSON="["
+        first=1
+        for ip in "${UNIQUE_IPS[@]}"; do
+            [ $first -eq 1 ] && LOCAL_IPS_JSON+="\"$ip\"" || LOCAL_IPS_JSON+=",\"$ip\""
+            first=0
+        done
+        LOCAL_IPS_JSON+="]"
         ANNOUNCE_BODY="{\"instance_id\":\"$NODE_HOSTNAME\",\"site_name\":\"$CHOSEN_SITE\",\"port\":$ANNOUNCE_PORT,\"ips\":$LOCAL_IPS_JSON}"
         if [ -n "$TOKEN_REALM" ]; then
             ANNOUNCE_RES=$(curl -s -k -X POST -H "Content-Type: application/json" -d "$ANNOUNCE_BODY" --connect-timeout 4 -m 6 "$REGISTRY_URL/realms/$TOKEN_REALM/register" 2>/dev/null || echo "{}")
