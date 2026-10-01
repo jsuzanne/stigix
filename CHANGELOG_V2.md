@@ -2,6 +2,12 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.117] - 2026-10-01 — Feature: Interactive Leader Endpoint Selector & OOB Mgmt Isolation
+
+- **feat(magic-join)**: Added interactive toggle pills in `MagicJoinModal.tsx` allowing operators to selectively include/exclude candidate IPs (e.g. exclude `192.168.122.x` OOB management and retain only `192.168.203.x` SD-WAN data plane).
+- **feat(api)**: Updated `GET /api/fleet/join-token` in `server.ts` to accept selective `endpoints` parameter and return all `detected_endpoints`.
+- **fix(ui)**: Disabled browser password autofill overlays on modal inputs (`autoComplete="off"`).
+
 ## [v2.0.116] - 2026-10-01 — Refactor: Wildcard Dockerfile Source Sync (`COPY *.ts`)
 
 - **refactor(docker)**: Replaced static listing of 19 individual TypeScript service files with `COPY web-dashboard/*.ts ./` across both `stigix-all-in-one/Dockerfile` and `web-dashboard/Dockerfile`. Automatically includes all future root `.ts` modules without risk of manual omission.

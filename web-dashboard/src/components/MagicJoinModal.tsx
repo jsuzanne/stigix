@@ -59,18 +59,26 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
     const [loadingTokens, setLoadingTokens] = useState(false);
     const [revokingJti, setRevokingJti] = useState<string | null>(null);
 
+    const [selectedEndpoints, setSelectedEndpoints] = useState<string[]>([]);
+    const [allDetectedEndpoints, setAllDetectedEndpoints] = useState<string[]>([]);
+
     const authHeaders = useCallback((): Record<string, string> => {
         const t = token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
         return t ? { Authorization: `Bearer ${t}` } : {};
     }, [token]);
 
-    const generateToken = useCallback(async () => {
+    const generateToken = useCallback(async (customEndpoints?: string[]) => {
         try {
             setLoading(true);
             setError(null);
             const params = new URLSearchParams();
             params.set('ttl_seconds', ttlSeconds.toString());
             if (siteName.trim()) params.set('site_name', siteName.trim());
+
+            const epsToUse = customEndpoints || selectedEndpoints;
+            if (epsToUse && epsToUse.length > 0) {
+                params.set('endpoints', epsToUse.join(','));
+            }
 
             const res = await fetch(`/api/fleet/join-token?${params.toString()}`, {
                 headers: authHeaders()
@@ -81,14 +89,32 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                 throw new Error(errData.message || `Failed to generate token (HTTP ${res.status})`);
             }
 
-            const data: JoinTokenResponse = await res.json();
+            const data: any = await res.json();
             setJoinData(data);
+            if (data.detected_endpoints && Array.isArray(data.detected_endpoints)) {
+                setAllDetectedEndpoints(data.detected_endpoints);
+                if (selectedEndpoints.length === 0) {
+                    setSelectedEndpoints(data.endpoints || data.detected_endpoints);
+                }
+            }
         } catch (err: any) {
             setError(err.message || 'Error generating Magic Join token');
         } finally {
             setLoading(false);
         }
-    }, [authHeaders, ttlSeconds, siteName]);
+    }, [authHeaders, ttlSeconds, siteName, selectedEndpoints]);
+
+    const toggleEndpoint = (ep: string) => {
+        let updated: string[];
+        if (selectedEndpoints.includes(ep)) {
+            if (selectedEndpoints.length <= 1) return; // keep at least one
+            updated = selectedEndpoints.filter(e => e !== ep);
+        } else {
+            updated = [...selectedEndpoints, ep];
+        }
+        setSelectedEndpoints(updated);
+        generateToken(updated);
+    };
 
     const fetchTokensList = useCallback(async () => {
         try {
@@ -245,7 +271,7 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                             {/* Generate Trigger Button */}
                             <div className="flex justify-end">
                                 <button
-                                    onClick={generateToken}
+                                    onClick={() => generateToken()}
                                     disabled={loading}
                                     className="flex items-center gap-1.5 bg-card-secondary hover:bg-card-hover border border-border px-3 py-1.5 rounded-xl text-xs font-bold text-text-primary transition-all shadow-sm disabled:opacity-50"
                                 >
@@ -306,16 +332,52 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                                             </span>
                                         </div>
 
-                                        <div className="text-[11px] text-text-muted">
-                                            <span className="font-bold text-text-secondary block mb-1">
-                                                Discovered Leader Endpoints:
-                                            </span>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {joinData.endpoints.map((ep, idx) => (
-                                                    <span key={idx} className="font-mono text-[10.5px] bg-card border border-border px-2 py-0.5 rounded text-text-primary">
-                                                        {ep}
-                                                    </span>
-                                                ))}
+                                        <div className="text-[11px] text-text-muted space-y-1.5">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-text-secondary">
+                                                    Target Leader Endpoints (Click to toggle):
+                                                </span>
+                                                <span className="text-[10px] text-text-muted">
+                                                    {selectedEndpoints.length} of {(allDetectedEndpoints.length > 0 ? allDetectedEndpoints : joinData.endpoints).length} included
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2 pt-0.5">
+                                                {(allDetectedEndpoints.length > 0 ? allDetectedEndpoints : joinData.endpoints).map((ep, idx) => {
+                                                    const isSelected = selectedEndpoints.includes(ep);
+                                                    const isMgmt = ep.includes('.122.') || ep.includes(':122');
+                                                    const isSdwan = ep.includes('.203.') || ep.includes(':203');
+                                                    return (
+                                                        <button
+                                                            key={idx}
+                                                            type="button"
+                                                            onClick={() => toggleEndpoint(ep)}
+                                                            className={twMerge(
+                                                                "flex items-center gap-1.5 font-mono text-[11px] px-2.5 py-1 rounded-lg border transition-all cursor-pointer select-none",
+                                                                isSelected
+                                                                    ? "bg-blue-500/15 border-blue-500/50 text-blue-400 font-semibold shadow-xs"
+                                                                    : "bg-card-secondary/40 border-border/80 text-text-muted line-through opacity-50 hover:opacity-90 hover:line-through-none"
+                                                            )}
+                                                            title={isSelected ? "Click to exclude this IP" : "Click to include this IP"}
+                                                        >
+                                                            {isSelected ? (
+                                                                <CheckCircle2 size={12} className="text-blue-400 shrink-0" />
+                                                            ) : (
+                                                                <X size={12} className="text-text-muted shrink-0" />
+                                                            )}
+                                                            <span>{ep}</span>
+                                                            {isSdwan && (
+                                                                <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-sans not-italic">
+                                                                    SD-WAN
+                                                                </span>
+                                                            )}
+                                                            {isMgmt && (
+                                                                <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-sans not-italic">
+                                                                    MGMT
+                                                                </span>
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     </div>

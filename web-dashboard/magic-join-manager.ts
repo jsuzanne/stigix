@@ -128,16 +128,21 @@ export class MagicJoinManager {
         tags?: Record<string, string>;
         requestHost?: string;
         localIp?: string;
+        endpoints?: string[];
     }): { token: string; entry: JoinTokenEntry; curlCommand: string } {
         const ttl = options.ttlSeconds || 3600; // 1 hour default
         const now = Date.now();
         const exp = Math.floor((now + ttl * 1000) / 1000);
         const jti = `stx_tok_${crypto.randomBytes(6).toString('hex')}`;
 
+        const finalEndpoints = (options.endpoints && options.endpoints.length > 0)
+            ? options.endpoints
+            : this.detectLeaderEndpoints(options.requestHost, options.localIp);
+
         const payload: JoinTokenPayload = {
             v: 1,
             jti,
-            endpoints: this.detectLeaderEndpoints(options.requestHost, options.localIp),
+            endpoints: finalEndpoints,
             realm: this.getRealmHash(),
             exp,
             max_uses: options.maxUses ?? 1,

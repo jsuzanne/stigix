@@ -13373,13 +13373,18 @@ app.get('/api/fleet/join-token', authenticateToken, async (req: any, res: any) =
         const maxUses = parseInt(req.query.max_uses as string) || 1;
         const requestHost = req.headers['host'];
         const localIp = registryManager.getCurrentIp();
+        const rawEndpoints = req.query.endpoints as string || undefined;
+        const selectedEndpoints = rawEndpoints ? rawEndpoints.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined;
+
+        const allDetected = magicJoinManager.detectLeaderEndpoints(requestHost, localIp);
 
         const result = magicJoinManager.createToken({
             ttlSeconds,
             siteHint,
             maxUses,
             requestHost,
-            localIp
+            localIp,
+            endpoints: selectedEndpoints
         });
 
         res.json({
@@ -13390,6 +13395,7 @@ app.get('/api/fleet/join-token', authenticateToken, async (req: any, res: any) =
             ttl_seconds: ttlSeconds,
             max_uses: maxUses,
             endpoints: result.entry.payload.endpoints,
+            detected_endpoints: allDetected,
             realm: result.entry.payload.realm,
             curl_command: result.curlCommand
         });
