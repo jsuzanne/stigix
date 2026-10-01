@@ -124,15 +124,80 @@ dump_process_on_port() {
 }
 
 # Parse command line arguments
+JOIN_TOKEN=""
+SITE_NAME_OVERRIDE=""
+
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --mode|-m) INSTALL_MODE="$2"; shift 2 ;;
         --controller|-c) CONTROLLER_URL="$2"; shift 2 ;;
+        --token|-t) JOIN_TOKEN="$2"; shift 2 ;;
+        --site|-s) SITE_NAME_OVERRIDE="$2"; shift 2 ;;
         --dry-run|-d) DRY_RUN=true; shift ;;
         --help|-h) show_help ;;
+        STX-*) JOIN_TOKEN="$1"; shift ;;
         *) echo "Unknown parameter passed: $1"; show_help ;;
     esac
 done
+
+# Magic Join Token Resolution
+if [ -n "$JOIN_TOKEN" ]; then
+    echo "✨ Magic Join Token detected: ${JOIN_TOKEN:0:20}..."
+    RAW_TOKEN="${JOIN_TOKEN#STX-}"
+    IFS='.' read -r HDR_B64 PAYLOAD_B64 SIG_B64 <<< "$RAW_TOKEN"
+    
+    B64_CLEAN=$(echo "$PAYLOAD_B64" | tr '_-' '/+')
+    case $(( ${#B64_CLEAN} % 4 )) in
+        2) B64_CLEAN="${B64_CLEAN}==" ;;
+        3) B64_CLEAN="${B64_CLEAN}=" ;;
+    esac
+    
+    DECODED_JSON=$(echo "$B64_CLEAN" | base64 -d 2>/dev/null || echo "{}")
+    
+    CANDIDATES=()
+    TOKEN_SITE=""
+    if command -v python3 &>/dev/null; then
+        PY_EXTRACT=$(python3 -c "import sys, json; d=json.loads(sys.argv[1]); print('\n'.join(d.get('endpoints', []))); print('SITE_HINT=' + (d.get('site_hint') or ''))" "$DECODED_JSON" 2>/dev/null)
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^SITE_HINT=(.*) ]]; then
+                TOKEN_SITE="${BASH_REMATCH[1]}"
+            elif [ -n "$line" ]; then
+                CANDIDATES+=("$line")
+            fi
+        done <<< "$PY_EXTRACT"
+    fi
+    
+    [ -n "$TOKEN_SITE" ] && [ -z "$SITE_NAME_OVERRIDE" ] && SITE_NAME_OVERRIDE="$TOKEN_SITE"
+    
+    echo "🔍 Probing Leader connectivity across candidate endpoints..."
+    WINNING_LEADER=""
+    for ep in "${CANDIDATES[@]}"; do
+        ep="${ep%/}"
+        echo "   • Testing $ep..."
+        if curl -s -k -o /dev/null -w "%{http_code}" --connect-timeout 2 -m 3 "$ep/api/health" 2>/dev/null | grep -q "200"; then
+            echo "   ✅ Connected to Leader at $ep"
+            WINNING_LEADER="$ep"
+            break
+        fi
+    done
+    
+    if [ -n "$WINNING_LEADER" ]; then
+        CONTROLLER_URL="$WINNING_LEADER"
+        echo "🔑 Redeeming single-use Magic Join token with Leader..."
+        NODE_HOSTNAME=$(hostname | cut -d'.' -f1)
+        CHOSEN_SITE="${SITE_NAME_OVERRIDE:-$NODE_HOSTNAME}"
+        REDEEM_BODY="{\"token\":\"$JOIN_TOKEN\",\"hostname\":\"$NODE_HOSTNAME\",\"site_name\":\"$CHOSEN_SITE\"}"
+        REDEEM_RES=$(curl -s -k -X POST -H "Content-Type: application/json" -d "$REDEEM_BODY" --connect-timeout 4 -m 6 "$WINNING_LEADER/api/fleet/join-redeem" 2>/dev/null || echo "{}")
+        if echo "$REDEEM_RES" | grep -q '"success":true'; then
+            echo "   ✅ Token redeemed successfully!"
+        else
+            echo "   ⚠️  Redemption notice: $REDEEM_RES"
+        fi
+    elif [ ${#CANDIDATES[@]} -gt 0 ]; then
+        CONTROLLER_URL="${CANDIDATES[0]}"
+        echo "⚠️ Direct LAN probes timed out. Setting Leader URL to: $CONTROLLER_URL"
+    fi
+fi
 
 # Validate and test reachability of --controller URL
 if [ -n "$CONTROLLER_URL" ]; then

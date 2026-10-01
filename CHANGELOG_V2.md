@@ -2,6 +2,16 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.114] - 2026-10-01 — Feature: Stigix « Magic Join » Universal Zero-Touch Onboarding
+
+- **feat(magic-join)**: Implemented cryptographic single-use token architecture (`STX-...` HMAC-SHA256) with automatic endpoint detection, 1-hour TTL, and persistent token inventory in `magic-join-manager.ts`.
+- **feat(api)**: Mounted `/api/fleet/join-token`, `/api/fleet/join-tokens`, and `/api/fleet/join-redeem` endpoints on the Leader backend in `server.ts`.
+- **feat(ui)**: Added top-navbar `[ 🔗 Add Node ]` action button and `MagicJoinModal.tsx` on Leader nodes with 1-click copy onboarding command, TTL selector, token history table, and instant token revocation.
+- **feat(cli)**: Added `stigix-cli join` command suite in `Scripts/stigix-cli.py` (`join token generate`, `join token list`, `join token revoke`, and client-side `join --token <STX-...>` cluster attachment).
+- **feat(mcp)**: Added FastMCP AI Copilot tools `generate_magic_join_token`, `list_magic_join_tokens`, `revoke_magic_join_token`, and `join_cluster_via_token` in `mcp-server/src/server.py` and `orchestrator.py`.
+- **feat(installer)**: Updated `install.sh` and `install-autodocker.sh` with seamless Magic Join token decoding, parallel LAN/WAN endpoint probing, and automatic redemption.
+- **docs(prd)**: Updated PRD v2.4 in `PRD_MAGIC_JOIN_UNIVERSAL_ONBOARDING.md` covering single-use token lifecycle, inventory hygiene, actionable error taxonomy, CLI commands, and FastMCP integration.
+
 ## [v2.0.113] - 2026-10-01 — Fix: Peer Cache Grace Period & Reachability Matrix Stability
 
 - **fix(registry)**: `performDiscovery()` in `registry-manager.ts` now gracefully merges newly discovered peers into `peerCache` instead of destructively replacing the map on transient poll gaps. Expired instances are evicted only after a 15-minute grace period.

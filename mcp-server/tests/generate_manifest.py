@@ -33,6 +33,7 @@ WRITE_TOOLS = {
     "start_tcp_app_workload", "stop_tcp_app_workload",
     "test_tcp_app_handshake", "reset_tcp_app_metrics",
     "set_controller_leader", "set_provisioning_mode",
+    "generate_magic_join_token", "revoke_magic_join_token", "join_cluster_via_token",
 }
 
 DESTRUCTIVE_TOOLS = {

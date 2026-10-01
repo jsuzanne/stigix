@@ -19,7 +19,8 @@ import { PeerContextProvider, GatewayDropdown, RemoteViewBanner, RemoteViewChip,
 import { SystemHealthBadge } from './components/health/SystemHealthBadge';
 import { SystemHealthModal } from './components/health/SystemHealthModal';
 import { TopLoadingBar } from './components/common/TopLoadingBar';
-import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot } from 'lucide-react';
+import { MagicJoinModal } from './components/MagicJoinModal';
+import { Activity, Server, AlertCircle, LayoutDashboard, Settings, LogOut, Key, UserPlus, BarChart3, Wifi, Shield, ChevronDown, ChevronUp, Clock, CheckCircle, XCircle, Play, Pause, Phone, Gauge, Network, Plus, Zap, Monitor, Cpu, Sun, Moon, Globe, Terminal, Sliders, Layers, Code, Bot, Sparkles } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Toaster } from 'react-hot-toast';
@@ -326,6 +327,7 @@ export default function App() {
   const [healthData, setHealthData] = useState<any | null>(null);
   const [isHealthLoading, setIsHealthLoading] = useState(false);
   const [showHealthModal, setShowHealthModal] = useState(false);
+  const [showMagicJoinModal, setShowMagicJoinModal] = useState(false);
 
 
   // Rate Calculation State - Use Refs to avoid stale closures in setInterval
@@ -1004,6 +1006,19 @@ export default function App() {
           {isLeader && <RemoteViewChip />}
           {/* Gateway Context Switcher (Leader only) */}
           {isLeader && <GatewayDropdown isLeader={isLeader} />}
+
+          {/* Magic Join Quick Onboarding Button (Leader only) */}
+          {isLeader && (
+            <button
+              id="magic-join-btn"
+              onClick={() => setShowMagicJoinModal(true)}
+              title="Add Node via Magic Join (Zero-Touch Onboarding)"
+              className="px-3 py-1.5 rounded-xl border border-blue-500/40 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 flex items-center gap-1.5 text-xs font-bold transition-all shadow-sm select-none"
+            >
+              <Sparkles size={14} className="text-blue-400 animate-pulse" />
+              <span className="hidden sm:inline">Add Node</span>
+            </button>
+          )}
 
           {/* Quick Copilot Trigger Button (only visible if feature enabled and Anthropic API key is configured) */}
           {copilotConfig?.featureEnabled && copilotConfig?.hasKey && (
@@ -2018,6 +2033,12 @@ export default function App() {
           setView('settings');
           setInitialSettingsTab('system');
         }}
+      />
+
+      <MagicJoinModal
+        isOpen={showMagicJoinModal}
+        onClose={() => setShowMagicJoinModal(false)}
+        token={token}
       />
     </div>
     </PeerContextProvider>

@@ -4357,3 +4357,201 @@ class TestOrchestrator:
             except Exception as e:
                 return self._handle_exception(f"Provisioning history on {agent_id}", e)
 
+    async def generate_magic_join_token(
+        self,
+        agent_id: str,
+        site_name: Optional[str] = None,
+        ttl_seconds: int = 3600,
+        max_uses: int = 1
+    ) -> Dict[str, Any]:
+        """
+        Generate a single-use Magic Join cryptographic token on the Leader node
+        to onboard a new remote Stigix node in seconds without manual IP entry.
+        """
+        agent = registry.get_endpoint(agent_id)
+        if not agent:
+            return {"success": False, "error": f"Agent {agent_id} not found"}
+
+        try:
+            headers = {"Authorization": f"Bearer {self._generate_token()}"}
+            params = {
+                "ttl_seconds": str(ttl_seconds),
+                "max_uses": str(max_uses)
+            }
+            if site_name:
+                params["site_name"] = site_name
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(
+                    f"{agent.api_base_url}/api/fleet/join-token",
+                    headers=headers,
+                    params=params
+                )
+                if r.status_code == 200 and self._is_json_response(r):
+                    data = r.json()
+                    return {
+                        "success": True,
+                        "token": data.get("token"),
+                        "jti": data.get("jti"),
+                        "expires_at": data.get("expires_at"),
+                        "curl_command": data.get("curl_command"),
+                        "endpoints": data.get("endpoints", []),
+                        "max_uses": data.get("max_uses", 1),
+                        "instructions": "Copy and paste the curl_command into the remote terminal to onboard the node."
+                    }
+                return {
+                    "success": False,
+                    "error": f"HTTP {r.status_code}: {r.text}",
+                    "status_code": r.status_code
+                }
+        except Exception as e:
+            return self._handle_exception(f"Generate Magic Join token on {agent_id}", e)
+
+    async def list_magic_join_tokens(
+        self,
+        agent_id: str,
+        status_filter: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        List active, redeemed, expired, and revoked Magic Join tokens on the Leader node.
+        """
+        agent = registry.get_endpoint(agent_id)
+        if not agent:
+            return {"success": False, "error": f"Agent {agent_id} not found"}
+
+        try:
+            headers = {"Authorization": f"Bearer {self._generate_token()}"}
+            params = {}
+            if status_filter:
+                params["status"] = status_filter
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(
+                    f"{agent.api_base_url}/api/fleet/join-tokens",
+                    headers=headers,
+                    params=params
+                )
+                if r.status_code == 200 and self._is_json_response(r):
+                    return r.json()
+                return {
+                    "success": False,
+                    "error": f"HTTP {r.status_code}: {r.text}",
+                    "status_code": r.status_code
+                }
+        except Exception as e:
+            return self._handle_exception(f"List Magic Join tokens on {agent_id}", e)
+
+    async def revoke_magic_join_token(
+        self,
+        agent_id: str,
+        token_id: str
+    ) -> Dict[str, Any]:
+        """
+        Revoke an active Magic Join token on the Leader node to prevent further node onboarding.
+        """
+        agent = registry.get_endpoint(agent_id)
+        if not agent:
+            return {"success": False, "error": f"Agent {agent_id} not found"}
+
+        try:
+            headers = {"Authorization": f"Bearer {self._generate_token()}"}
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.delete(
+                    f"{agent.api_base_url}/api/fleet/join-tokens/{token_id}",
+                    headers=headers
+                )
+                if r.status_code == 200 and self._is_json_response(r):
+                    return r.json()
+                return {
+                    "success": False,
+                    "error": f"HTTP {r.status_code}: {r.text}",
+                    "status_code": r.status_code
+                }
+        except Exception as e:
+            return self._handle_exception(f"Revoke Magic Join token on {agent_id}", e)
+
+    async def join_cluster_via_token(
+        self,
+        agent_id: str,
+        token: str,
+        site_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Onboard a remote node (agent_id) into a Stigix cluster using a Magic Join token.
+        """
+        agent = registry.get_endpoint(agent_id)
+        if not agent:
+            return {"success": False, "error": f"Agent {agent_id} not found"}
+
+        try:
+            import base64
+            clean_token = token.strip()
+            if clean_token.startswith("STX-"):
+                clean_token = clean_token[4:]
+            parts = clean_token.split(".")
+            if len(parts) < 2:
+                return {"success": False, "error": "ERR_INVALID_TOKEN: Malformed token"}
+            payload_b64 = parts[1] if len(parts) == 3 else parts[0]
+            rem = len(payload_b64) % 4
+            if rem > 0:
+                payload_b64 += "=" * (4 - rem)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode("utf-8")).decode("utf-8"))
+
+            endpoints = payload.get("endpoints", [])
+            chosen_site = site_name or payload.get("site_hint") or agent_id
+
+            winning_ep = None
+            for ep in endpoints:
+                try:
+                    async with httpx.AsyncClient(timeout=2.0) as client:
+                        r = await client.get(f"{ep.rstrip('/')}/api/health")
+                        if r.status_code == 200:
+                            winning_ep = ep.rstrip("/")
+                            break
+                except Exception:
+                    continue
+
+            target_leader = winning_ep or (endpoints[0].rstrip("/") if endpoints else None)
+            if not target_leader:
+                return {"success": False, "error": "ERR_JOIN_UNREACHABLE: No reachable Leader endpoint found in token"}
+
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                redeem_res = await client.post(
+                    f"{target_leader}/api/fleet/join-redeem",
+                    json={
+                        "token": token,
+                        "hostname": agent_id,
+                        "site_name": chosen_site,
+                        "capabilities": {"voice": True, "convergence": True, "failover": True, "xfr": True, "security": True}
+                    }
+                )
+                redeem_data = redeem_res.json()
+                if redeem_res.status_code != 200 or not redeem_data.get("success"):
+                    return {"success": False, "error": redeem_data.get("error", f"HTTP {redeem_res.status_code}")}
+
+            headers = {"Authorization": f"Bearer {self._generate_token()}"}
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(
+                    f"{agent.api_base_url}/api/registry/static-leader",
+                    json={"url": f"{target_leader}/api/registry"},
+                    headers=headers
+                )
+                await client.post(
+                    f"{agent.api_base_url}/api/registry/site-name",
+                    json={"siteName": chosen_site},
+                    headers=headers
+                )
+
+            return {
+                "success": True,
+                "agent_id": agent_id,
+                "leader_url": target_leader,
+                "site_name": chosen_site,
+                "node_id": redeem_data.get("node_id"),
+                "tunnel_status": "Online [ ⚡ WS TUNNEL ]"
+            }
+        except Exception as e:
+            return self._handle_exception(f"Join cluster via token on {agent_id}", e)
+
+
+
