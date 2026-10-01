@@ -216,6 +216,12 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                                         placeholder="e.g. Paris-Branch, Hetzner-VM"
                                         value={siteName}
                                         onChange={(e) => setSiteName(e.target.value)}
+                                        autoComplete="off"
+                                        autoCapitalize="none"
+                                        autoCorrect="off"
+                                        spellCheck={false}
+                                        data-lpignore="true"
+                                        data-1p-ignore="true"
                                         className="w-full bg-card-secondary border border-border rounded-xl px-3 py-2 text-xs text-text-primary font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
                                     />
                                 </div>
