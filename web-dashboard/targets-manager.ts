@@ -516,10 +516,12 @@ export class TargetsManager {
                 }
                 
                 // Prefer authoritative registry names or friendly site names over raw IP address names
-                const isExistingIpName = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(existing.name.trim());
-                const isNewFriendlyName = t.name && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(t.name.trim());
+                const existingName = (existing.name || '').trim();
+                const newName = (t.name || '').trim();
+                const isExistingIpName = !existingName || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(existingName);
+                const isNewFriendlyName = newName && !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(newName);
                 if ((t.meta?.registry || isNewFriendlyName) && (existing.source === 'synthesized' || isExistingIpName)) {
-                    existing.name = t.name;
+                    if (t.name) existing.name = t.name;
                 }
             }
         }

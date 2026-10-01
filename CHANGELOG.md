@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Allows selecting a specific IP, all IPs (recommended multi-homed mesh), or entering a custom IP/FQDN.
   - Added `--ip` / `-i <IP>` CLI argument to explicitly specify the advertised IP during scripted or unattended deployments. 🚀
 
+### Fixed
+- **Null Safety in Targets Merging (`targets-manager.ts`)**:
+  - Fixed `TypeError: Cannot read properties of undefined (reading 'trim')` when reconciling targets with undefined/missing `name` properties.
+  - Prevents `web-ui` process crashes during background tunnel reconciliation and DEM reachability checks. 🚀
+
 ## [2.0.125] - 2026-10-01
 
 ### Added / Fixed
