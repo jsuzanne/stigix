@@ -149,9 +149,29 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
         }
     };
 
-    const handleCopyCommand = () => {
+    const handleCopyCommand = async (e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
         if (!joinData?.curl_command) return;
-        navigator.clipboard.writeText(joinData.curl_command);
+        const text = joinData.curl_command;
+        let success = false;
+        if (navigator.clipboard && window.isSecureContext) {
+            try {
+                await navigator.clipboard.writeText(text);
+                success = true;
+            } catch {}
+        }
+        if (!success) {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                success = document.execCommand('copy');
+                document.body.removeChild(ta);
+            } catch {}
+        }
         setCopied(true);
         setTimeout(() => setCopied(false), 2500);
     };
@@ -290,34 +310,42 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
 
                             {/* Command Box */}
                             {joinData && (
-                                <div className="space-y-3">
+                                <div className="space-y-2">
                                     <div className="flex items-center justify-between text-xs font-bold text-text-secondary">
                                         <span className="flex items-center gap-1.5">
                                             <Terminal size={14} className="text-blue-400" />
                                             Run this command on your remote Linux / Docker host:
                                         </span>
-                                        <span className="text-[11px] text-amber-400 font-mono flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
-                                            <Clock size={11} />
-                                            Expires {new Date(joinData.expires_at).toLocaleTimeString()}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleCopyCommand}
+                                                className={twMerge(
+                                                    "px-2 py-0.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 border shadow-sm cursor-pointer",
+                                                    copied
+                                                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-semibold"
+                                                        : "bg-card-secondary hover:bg-neutral-800 text-text-secondary hover:text-text-primary border-border/80 hover:border-border"
+                                                )}
+                                                title="Copy command to clipboard"
+                                            >
+                                                {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} className="text-text-muted" />}
+                                                <span>{copied ? 'Copied !' : 'Copy'}</span>
+                                            </button>
+                                            <span className="text-[11px] text-amber-400 font-mono flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                                                <Clock size={11} />
+                                                Expires {new Date(joinData.expires_at).toLocaleTimeString()}
+                                            </span>
+                                        </div>
                                     </div>
 
-                                    <div className="relative group bg-neutral-950 border border-border/80 rounded-xl p-3.5 shadow-inner">
+                                    <div
+                                        onClick={handleCopyCommand}
+                                        title="Click anywhere to copy"
+                                        className="group relative bg-neutral-950 border border-border/80 rounded-xl p-3.5 shadow-inner cursor-pointer hover:border-blue-500/40 transition-colors"
+                                    >
                                         <pre className="text-xs font-mono text-emerald-400 whitespace-pre-wrap break-all select-all">
                                             {joinData.curl_command}
                                         </pre>
-                                        <button
-                                            onClick={handleCopyCommand}
-                                            className={twMerge(
-                                                "absolute top-2.5 right-2.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-md",
-                                                copied
-                                                    ? "bg-emerald-600 text-white"
-                                                    : "bg-blue-600 hover:bg-blue-500 text-white"
-                                            )}
-                                        >
-                                            {copied ? <Check size={13} /> : <Copy size={13} />}
-                                            <span>{copied ? 'Copied!' : 'Copy Command'}</span>
-                                        </button>
                                     </div>
 
                                     {/* Security & Endpoints Metadata */}

@@ -695,6 +695,7 @@ export class FleetTunnelManager {
                     }
 
                     log('RENDEZVOUS', `⚡ Cloudflare SSE Push channel CONNECTED for realm ${realmHash.slice(0, 8)}... (0 CPU, 0 polling)`);
+                    this.syncEphemeralPeersFromCloudflare();
                     let buffer = '';
 
                     res.on('data', (chunk: Buffer) => {
@@ -743,6 +744,35 @@ export class FleetTunnelManager {
         };
 
         connect();
+    }
+
+    public syncEphemeralPeersFromCloudflare(): void {
+        if (!this.registryManager.isLeader()) return;
+        try {
+            const registryBaseUrl = (process.env.STIGIX_REGISTRY_URL || 'https://registry.stigix.io').replace(/\/$/, '');
+            const realmHash = this.getRealmHash();
+            const peersUrl = `${registryBaseUrl}/realms/${realmHash}/peers`;
+
+            const u = new URL(peersUrl);
+            const reqModule = u.protocol === 'https:' ? https : http;
+
+            const req = reqModule.get(peersUrl, { headers: { 'Accept': 'application/json' }, timeout: 5000 }, (res) => {
+                if (res.statusCode !== 200) return;
+                let data = '';
+                res.on('data', (chunk) => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (parsed && Array.isArray(parsed.peers)) {
+                            for (const peerEvent of parsed.peers) {
+                                this.handleRendezvousEvent(peerEvent);
+                            }
+                        }
+                    } catch {}
+                });
+            });
+            req.on('error', () => {});
+        } catch {}
     }
 
     private stopCloudflareRendezvousListener(): void {

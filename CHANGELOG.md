@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.122] - 2026-10-01
+
+### Added / Improved
+- **Automatic Ephemeral Peer KV Synchronization on Leader SSE Connect (`fleet-tunnel.ts`)**:
+  - Automatically queries `GET /realms/:realmHash/peers` upon SSE push channel connection and reconnection to ingest any ephemeral rendezvous announcements stored in Cloudflare KV (180s TTL).
+  - Eliminates potential anycast isolate routing race conditions when the joining node announces to an edge isolate distinct from the Leader's active SSE listener isolate. 🚀
+
 ## [2.0.121] - 2026-10-01
 
 ### Added / Improved
