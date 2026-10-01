@@ -736,7 +736,7 @@ if [ "$INSTALL_MODE" != "target" ]; then
     if [ -n "$JOIN_TOKEN" ] || [ -n "$CONTROLLER_URL" ] || [ -n "$TOKEN_REALM" ]; then
         echo "🔍 Verifying Fleet Mesh WebSocket Tunnel with Leader..."
         TUNNEL_ESTABLISHED=false
-        MAX_TUNNEL_WAIT=15
+        MAX_TUNNEL_WAIT=20
         for ((t=1; t<=MAX_TUNNEL_WAIT; t++)); do
             STATUS_JSON=$(curl -sf "http://localhost:$PORT/api/system/tunnel-status" 2>/dev/null || echo "{}")
             if echo "$STATUS_JSON" | grep -q '"tunnel_active":true'; then
@@ -745,17 +745,26 @@ if [ "$INSTALL_MODE" != "target" ]; then
                 [ -z "$LEADER_NAME" ] && LEADER_NAME=$(echo "$STATUS_JSON" | grep -o '"instanceId":"[^"]*' | cut -d'"' -f4)
                 print_progress_bar $MAX_TUNNEL_WAIT $MAX_TUNNEL_WAIT "⚡ WebSocket Fleet Tunnel ESTABLISHED with Leader (${LEADER_NAME:-Leader})!"
                 echo ""
-                echo "   🔒 Cluster Security Realm: Synchronized"
-                echo "   📦 Mesh Provisioning: Active (Targets, Probes & Applications synchronizing)"
+                echo ""
+                echo "   ╔═══════════════════════════════════════════════════════════════════════╗"
+                echo "   ║  🎉 FLEET MESH CONNECTED & SYNCHRONIZED !                             ║"
+                echo "   ╠═══════════════════════════════════════════════════════════════════════╣"
+                echo "   ║  🟢 Node Status:    Online [ ⚡ WS TUNNEL ]                            ║"
+                printf "   ║  👑 Leader Name:    %-49s ║\n" "${LEADER_NAME:-Leader}"
+                echo "   ║  🔒 Security Realm: Synchronized & Enrolled                           ║"
+                echo "   ║  📦 Provisioning:   Targets, Probes & Applications Active             ║"
+                echo "   ╚═══════════════════════════════════════════════════════════════════════╝"
+                echo ""
                 break
             fi
-            print_progress_bar $t $MAX_TUNNEL_WAIT "Awaiting Leader reverse dial via Cloudflare Rendezvous (~10s cycle, attempt $t/$MAX_TUNNEL_WAIT)..."
+            print_progress_bar $t $MAX_TUNNEL_WAIT "Awaiting Leader reverse dial (~10s cycle, attempt $t/$MAX_TUNNEL_WAIT)..."
             sleep 2
         done
         if [ "$TUNNEL_ESTABLISHED" = false ]; then
             echo ""
-            echo "   ⏳ WebSocket Fleet Tunnel is establishing in background..."
-            echo "   💡 Leader will automatically dial this node on port $PORT within its discovery loop."
+            echo "   ℹ️  Node is online and waiting for Leader dial."
+            echo "   💡 Troubleshooting: If this node does not show '⚡ WS Tunnel' in your Leader dashboard within 1 min,"
+            echo "      verify that Inbound TCP port $PORT is allowed in your Cloud firewall (AWS Security Group / GCP VPC rules)."
         fi
     fi
 fi

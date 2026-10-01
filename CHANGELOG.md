@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.133] - 2026-10-01
+
+### Improved
+- **Crystal-Clear Onboarding Success Box & Extended Verification Window (`install.sh`, `install-autodocker.sh`)**:
+  - Increased Leader reverse dial verification window to 20 attempts (40s) to reliably capture the Leader's 10-20s dial cycle before script termination.
+  - Added a prominent, formatted success banner upon connection displaying live node status, Leader name, security realm sync, and active catalogues.
+  - Formulated actionable troubleshooting instructions if the inbound firewall port is blocked. 🚀
+
 ## [2.0.132] - 2026-10-01
 
 ### Improved
