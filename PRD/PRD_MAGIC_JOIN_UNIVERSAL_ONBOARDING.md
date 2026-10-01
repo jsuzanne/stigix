@@ -139,9 +139,41 @@ Clients encounter clear, explanatory error messages rather than generic failure 
 
 ---
 
-### 4.4 Automation & IaC Integration (CLI Flags)
+### 4.4 Automation & CLI / MCP Integration
 
-The `install.sh` script and `stigix-agent` binary seamlessly accept standard IaC / Cloud-Init arguments:
+#### 1. CLI Commands (`stigix-cli`)
+Operators and CI/CD pipelines can generate and redeem Magic Join tokens directly from the command line:
+
+```bash
+# On Leader: Generate a new Magic Join Token
+stigix-cli join token generate --ttl 3600 --site "Branch-Paris" --role "branch"
+# Output:
+# 🔗 Magic Join Token Generated: STX-7842-K9X
+# 📋 Quick Onboard Command:
+#    curl -fsSL https://stigix.io/join | sudo bash -s -- STX-7842-K9X
+
+# On Leader: List active and redeemed tokens
+stigix-cli join token list
+
+# On Leader: Revoke a pending token immediately
+stigix-cli join token revoke <token_id_or_jti>
+
+# On Target Node: Join an existing cluster via token
+stigix-cli join --token STX-7842-K9X --name "Paris-Branch-01"
+```
+
+#### 2. FastMCP Server Tools (AI Copilot Integration)
+To allow AI assistants (Claude, Copilot, Antigravity) to manage and automate cluster fleet onboarding autonomously, the FastMCP server exposes dedicated tools:
+
+| MCP Tool Name | Parameters | Description |
+|---|---|---|
+| `generate_magic_join_token` | `site_name` (opt), `ttl_seconds` (def: 3600), `max_uses` (def: 1), `tags` (opt) | Generates a signed Magic Join token and formatted curl 1-liner onboarding command. |
+| `list_magic_join_tokens` | `status_filter` (opt: `ACTIVE`, `REDEEMED`, `REVOKED`) | Lists all join tokens with expiration and redemption timestamps. |
+| `revoke_magic_join_token` | `token_id` (str) | Instantly invalidates an active join token to prevent node onboarding. |
+| `join_cluster_via_token` | `token` (str), `site_name` (opt) | Executes node-side join protocol to attach current node to Leader. |
+
+#### 3. Enterprise IaC / Terraform / Ansible / Cloud-Init
+The `install.sh` script and `stigix-agent` binary accept standard IaC arguments:
 
 ```bash
 # Frictionless One-Liner (Standard User)
