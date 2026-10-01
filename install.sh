@@ -217,18 +217,23 @@ if [ -n "$JOIN_TOKEN" ]; then
             [ -n "$FP" ] && ANNOUNCE_PORT="$FP"
         fi
         LOCAL_IPS=()
-        if command -v hostname &>/dev/null; then
-            for ip in $(hostname -I 2>/dev/null); do
-                [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$ip" =~ ^127\. ]] && [[ ! "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$ip" =~ ^169\.254\. ]] && LOCAL_IPS+=("$ip")
-            done
-        fi
+        # 1. Inspect interfaces with 'ip' command, filtering out docker/libvirt/veth virtual bridges
         if command -v ip &>/dev/null; then
-            for ip in $(ip -4 -o addr show 2>/dev/null | awk '{print $4}' | cut -d/ -f1); do
+            while read -r iface ip; do
+                if [[ ! "$iface" =~ ^(lo|docker|virbr|veth|vnet|br-) ]]; then
+                    [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$ip" =~ ^127\. ]] && [[ ! "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$ip" =~ ^169\.254\. ]] && LOCAL_IPS+=("$ip")
+                fi
+            done < <(ip -4 -o addr show 2>/dev/null | awk '{print $2, $4}' | sed 's/\/.*//')
+        fi
+        # 2. Fallback to ifconfig if no interface IP found
+        if [ ${#LOCAL_IPS[@]} -eq 0 ] && command -v ifconfig &>/dev/null; then
+            for ip in $(ifconfig 2>/dev/null | grep -E 'inet [0-9]' | awk '{print $2}' | sed 's/addr://'); do
                 [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$ip" =~ ^127\. ]] && [[ ! "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$ip" =~ ^169\.254\. ]] && LOCAL_IPS+=("$ip")
             done
         fi
-        if command -v ifconfig &>/dev/null; then
-            for ip in $(ifconfig 2>/dev/null | grep -E 'inet [0-9]' | awk '{print $2}' | sed 's/addr://'); do
+        # 3. Fallback to hostname -I if still empty
+        if [ ${#LOCAL_IPS[@]} -eq 0 ] && command -v hostname &>/dev/null; then
+            for ip in $(hostname -I 2>/dev/null); do
                 [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ ! "$ip" =~ ^127\. ]] && [[ ! "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && [[ ! "$ip" =~ ^169\.254\. ]] && LOCAL_IPS+=("$ip")
             done
         fi
@@ -652,7 +657,7 @@ if [ "$INSTALL_MODE" != "target" ]; then
     if [ -n "$JOIN_TOKEN" ] || [ -n "$CONTROLLER_URL" ] || [ -n "$TOKEN_REALM" ]; then
         echo "🔍 Verifying Fleet Mesh WebSocket Tunnel with Leader..."
         TUNNEL_ESTABLISHED=false
-        MAX_TUNNEL_WAIT=8
+        MAX_TUNNEL_WAIT=15
         for ((t=1; t<=MAX_TUNNEL_WAIT; t++)); do
             STATUS_JSON=$(curl -sf "http://localhost:$PORT/api/system/tunnel-status" 2>/dev/null || echo "{}")
             if echo "$STATUS_JSON" | grep -q '"tunnel_active":true'; then
@@ -665,13 +670,13 @@ if [ "$INSTALL_MODE" != "target" ]; then
                 echo "   📦 Mesh Provisioning: Active (Targets, Probes & Applications synchronizing)"
                 break
             fi
-            print_progress_bar $t $MAX_TUNNEL_WAIT "Awaiting Leader WebSocket handshake (attempt $t/$MAX_TUNNEL_WAIT)..."
+            print_progress_bar $t $MAX_TUNNEL_WAIT "Awaiting Leader reverse dial via Cloudflare Rendezvous (~10s cycle, attempt $t/$MAX_TUNNEL_WAIT)..."
             sleep 2
         done
         if [ "$TUNNEL_ESTABLISHED" = false ]; then
             echo ""
             echo "   ⏳ WebSocket Fleet Tunnel is establishing in background..."
-            echo "   💡 Leader will automatically connect to this node on port $PORT."
+            echo "   💡 Leader will automatically dial this node on port $PORT within its discovery loop."
         fi
     fi
 fi

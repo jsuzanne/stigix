@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.132] - 2026-10-01
+
+### Improved
+- **Virtual Bridge Filtering & Smooth Rendezvous Progress UX (`install.sh`, `install-autodocker.sh`)**:
+  - Automatically filtered out Docker (`docker0`, `br-*`), KVM/libvirt (`virbr0-6`), and virtual tap interfaces (`veth*`, `vnet*`) from network interface detection so multi-bridge / virtualization hosts (like Hetzner) cleanly present only real physical and Cloud IPs (e.g. `142.132.193.157`).
+  - Increased tunnel verification timeout to 15 attempts (30s) and smoothed the progress bar messaging with explicit mention of the Leader's ~10s dial cycle, preventing premature panic during handshake. 🚀
+
 ## [2.0.131] - 2026-10-01
 
 ### Added / Improved
