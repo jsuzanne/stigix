@@ -2167,16 +2167,40 @@ app.use((req, res, next) => {
 
 // --- Authentication Middleware ---
 const authenticateToken = (req: any, res: any, next: any) => {
+    // 1. Loopback Reverse Tunnel Dispatch:
+    // Requests dispatched locally by fleet-tunnel over 127.0.0.1 with x-gateway-source
+    // are already authenticated at the secure WebSocket tunnel layer.
+    const isLoopback = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' || 
+                       req.socket?.remoteAddress === '127.0.0.1' || req.socket?.remoteAddress === '::1' || req.socket?.remoteAddress === '::ffff:127.0.0.1';
+    const gwSource = req.headers['x-gateway-source'];
+    if (isLoopback && (gwSource === 'reverse-tunnel' || gwSource === 'reverse-tunnel-stream' || gwSource === 'stigix-leader')) {
+        req.user = { username: 'stigix-gateway', role: 'admin' };
+        return next();
+    }
+
     const authHeader = req.headers['authorization'];
     // Allow token in query string for SSE (EventSource)
     const token = (authHeader && authHeader.split(' ')[1]) || req.query.token;
 
     if (!token) return res.sendStatus(401);
 
-    jwt.verify(token, SECRET_KEY, (err: any, user: any) => {
-        if (err) return res.sendStatus(403);
-        req.user = user;
-        next();
+    const activeSecret = process.env.JWT_SECRET || SECRET_KEY;
+    jwt.verify(token, activeSecret, (err: any, user: any) => {
+        if (!err) {
+            req.user = user;
+            return next();
+        }
+        if (activeSecret !== SECRET_KEY) {
+            jwt.verify(token, SECRET_KEY, (err2: any, user2: any) => {
+                if (!err2) {
+                    req.user = user2;
+                    return next();
+                }
+                return res.sendStatus(403);
+            });
+        } else {
+            return res.sendStatus(403);
+        }
     });
 };
 

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.137] - 2026-10-01
+
+### Fixed / Improved
+- **Reverse Tunnel Internal Authentication (`server.ts`)**:
+  - Added loopback authentication bypass for requests dispatched locally over `127.0.0.1` by `fleet-tunnel` (`x-gateway-source: reverse-tunnel`).
+  - Resolves `403 Forbidden` errors during Remote View on dynamically enrolled spoke nodes that possess distinct `JWT_SECRET` keys from the Leader. ⚡
+- **Remote View Network Status Synchronization (`App.tsx`)**:
+  - Enhanced `PeerStatusSync` to dynamically sync Gateway IP, Public IP, Country flag, and Probe counts from the remote peer. 🚀
+- **Quick Start Guide (`docs/QUICK_START.md`)**:
+  - Restructured into modern 1-line copy-paste join and classic manual Docker Compose methods. 📚
+
 ## [2.0.136] - 2026-10-01
 
 ### Fixed / Improved
