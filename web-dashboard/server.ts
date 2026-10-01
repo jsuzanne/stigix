@@ -8715,6 +8715,17 @@ app.get('/api/security/results/stats', authenticateToken, async (req, res) => {
     }
 });
 
+// API: Get Latest Verdict for each unique security test
+app.get('/api/security/results/latest-verdicts', authenticateToken, async (req, res) => {
+    try {
+        const verdicts = await testLogger.getLatestVerdicts();
+        res.json(verdicts);
+    } catch (error) {
+        console.error('[API] Failed to get latest verdicts:', error);
+        res.status(500).json({ error: 'Failed to retrieve latest verdicts' });
+    }
+});
+
 // API: Get Single Test Result by ID
 app.get('/api/security/results/:id', authenticateToken, async (req, res) => {
     try {

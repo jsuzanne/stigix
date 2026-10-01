@@ -140,6 +140,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const [config, setConfig] = useState<SecurityConfig | null>(null);
     const [testResults, setTestResults] = useState<TestResult[]>([]);
+    const [latestVerdicts, setLatestVerdicts] = useState<{ [key: string]: any }>({});
     const [loading, setLoading] = useState(false);
     const [batchProcessingUrl, setBatchProcessingUrl] = useState(false);
     const [batchProcessingDns, setBatchProcessingDns] = useState(false);
@@ -433,6 +434,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         // Reset stale state from previous peer so UI clears immediately on switch
         setConfig(null);
         setTestResults([]);
+        setLatestVerdicts({});
         setSecurityProfile({
             url_filtering: { items: URL_CATEGORIES },
             dns_security: { items: DNS_TEST_DOMAINS },
@@ -446,6 +448,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
         fetchConfig();
         fetchResults();
+        fetchLatestVerdicts();
         fetchHealth();
 
         // Load security profile (catalogue: URL/DNS/EICAR/C2/AI)
@@ -487,6 +490,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             fetchConfig();
             fetchHealth();
             fetchResults(); // Refresh results so MCP/scheduled tests appear automatically
+            fetchLatestVerdicts();
         }, 30000); // 30 seconds
 
         return () => clearInterval(pollInterval);
@@ -685,6 +689,48 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         } catch (e) {
             console.error('Failed to fetch test results:', e);
         }
+    };
+
+    const fetchLatestVerdicts = async () => {
+        try {
+            const res = await gFetch('/api/security/results/latest-verdicts', { headers: authHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                if (data && typeof data === 'object') {
+                    setLatestVerdicts(data);
+                }
+            }
+        } catch (e) {
+            // silently ignore
+        }
+    };
+
+    const getCardResult = (type: string, name: string, fallbackProperty?: string) => {
+        const normType = type === 'c2' ? 'c2_scenario' : type === 'ai' ? 'ai_security' : type;
+        const normName = (name || '').toLowerCase().trim();
+
+        // 1. Check latestVerdicts primary key: type::name
+        if (latestVerdicts[`${normType}::${normName}`]) {
+            return latestVerdicts[`${normType}::${normName}`];
+        }
+        // 2. Check latestVerdicts fallback aliases
+        if (type === 'url' && latestVerdicts[`url_filtering::${normName}`]) {
+            return latestVerdicts[`url_filtering::${normName}`];
+        }
+        if (type === 'dns' && latestVerdicts[`dns_security::${normName}`]) {
+            return latestVerdicts[`dns_security::${normName}`];
+        }
+        if (fallbackProperty) {
+            const propKey = fallbackProperty.toLowerCase().trim();
+            if (latestVerdicts[`${normType}::url::${propKey}`]) return latestVerdicts[`${normType}::url::${propKey}`];
+            if (latestVerdicts[`${normType}::domain::${propKey}`]) return latestVerdicts[`${normType}::domain::${propKey}`];
+            if (latestVerdicts[`${normType}::endpoint::${propKey}`]) return latestVerdicts[`${normType}::endpoint::${propKey}`];
+        }
+        // 3. Fallback to testResults in memory
+        return testResults.find((r: any) =>
+            (r.testType === type || r.testType === normType || (type === 'url' && r.testType === 'url_filtering') || (type === 'dns' && r.testType === 'dns_security')) &&
+            (r.testName === name || r.name === name || (fallbackProperty && (r.details?.url === fallbackProperty || r.details?.domain === fallbackProperty || r.details?.endpoint === fallbackProperty || r.result?.url === fallbackProperty || r.result?.domain === fallbackProperty || r.result?.endpoint === fallbackProperty)))
+        );
     };
 
     const loadMore = async () => {
@@ -1120,17 +1166,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
 
     const getEicarResult = (url: string) => {
         if (!url) return null;
-        return testResults.find((r: any) =>
-            (r.testType === 'threat_prevention' || r.testType === 'threat') &&
-            (
-                r.result?.endpoint === url ||
-                r.result?.url === url ||
-                r.details?.endpoint === url ||
-                r.details?.url === url ||
-                (r.testName && r.testName.includes(url)) ||
-                (r.name && r.name.includes(url))
-            )
-        );
+        return getCardResult('threat', url, url);
     };
 
     const runSingleEicarTest = async (endpoint: string, e: React.MouseEvent) => {
@@ -1788,9 +1824,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                     {visibleCats.map(category => {
                                         const isEnabled = config.url_filtering.enabled_categories.includes(category.id);
                                         const isTesting = testing[`url-${category.id}`];
-                                        const lastResult = testResults.find(r =>
-                                            (r.testType === 'url_filtering' || r.testType === 'url') && r.testName === category.name
-                                        );
+                                        const lastResult = getCardResult('url', category.name, category.url);
 
                                         return (
                                             <div
@@ -1972,9 +2006,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                 {visibleBasicDNS.map(test => {
                                                     const isEnabled = config.dns_security.enabled_tests.includes(test.id);
                                                     const isTesting = testing[`dns-${test.id}`];
-                                                    const lastResult = testResults.find(r =>
-                                                        (r.testType === 'dns_security' || r.testType === 'dns') && r.testName === test.name
-                                                    );
+                                                    const lastResult = getCardResult('dns', test.name, test.domain);
 
                                                     return (
                                                         <div
@@ -2036,9 +2068,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                 {visibleAdvancedDNS.map(test => {
                                                     const isEnabled = config.dns_security.enabled_tests.includes(test.id);
                                                     const isTesting = testing[`dns-${test.id}`];
-                                                    const lastResult = testResults.find(r =>
-                                                        (r.testType === 'dns_security' || r.testType === 'dns') && r.testName === test.name
-                                                    );
+                                                    const lastResult = getCardResult('dns', test.name, test.domain);
 
                                                     return (
                                                         <div
@@ -2463,9 +2493,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         {visibleScenarios.map(scenario => {
                                             const isEnabled = c2SelectedScenarios.includes(scenario.id);
                                             const isTesting = testing[`c2-${scenario.id}`];
-                                            const lastResult = testResults.find(r =>
-                                                r.testType === 'c2_scenario' && r.testName === scenario.name
-                                            );
+                                            const lastResult = getCardResult('c2_scenario', scenario.name, scenario.target);
 
                                             return (
                                                 <div
@@ -2633,9 +2661,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         {visibleScenarios.map(scenario => {
                                             const isEnabled = aiSelectedScenarios.includes(scenario.id);
                                             const isTesting = testing[`ai-${scenario.id}`];
-                                            const lastResult = testResults.find(r =>
-                                                r.testType === 'ai_security' && r.testName === scenario.name
-                                            );
+                                            const lastResult = getCardResult('ai_security', scenario.name);
                                             const isVolumeTest = scenario.attack_type === 'ai_volume_traffic';
 
                                             return (

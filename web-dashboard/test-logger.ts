@@ -238,6 +238,58 @@ export class TestLogger {
     }
 
     /**
+     * Get the latest verdict for each unique test (keyed by type::name)
+     */
+    async getLatestVerdicts(): Promise<Record<string, any>> {
+        try {
+            const allResults = await this.readAllResults();
+            // Since readAllResults returns newest first, the first occurrence we see is the latest!
+            const verdicts: Record<string, any> = {};
+            for (const r of allResults) {
+                if (!r || !r.name || !r.type) continue;
+                const normalizedType = r.type === 'c2' ? 'c2_scenario' : r.type === 'ai' ? 'ai_security' : r.type;
+                const nameKey = `${normalizedType}::${r.name.toLowerCase().trim()}`;
+                if (!verdicts[nameKey]) {
+                    verdicts[nameKey] = {
+                        testId: r.id,
+                        testType: normalizedType,
+                        testName: r.name,
+                        status: r.status,
+                        timestamp: r.timestamp,
+                        details: r.details,
+                        result: {
+                            status: r.status,
+                            endpoint: r.details?.endpoint,
+                            url: r.details?.url,
+                            domain: r.details?.domain,
+                            http_code: r.details?.http_code,
+                            dns_ip: r.details?.dns_ip,
+                            ...r.details
+                        }
+                    };
+                }
+                // Also index by url or endpoint or domain if present
+                if (r.details?.url) {
+                    const urlKey = `${normalizedType}::url::${r.details.url.toLowerCase().trim()}`;
+                    if (!verdicts[urlKey]) verdicts[urlKey] = verdicts[nameKey];
+                }
+                if (r.details?.endpoint) {
+                    const epKey = `${normalizedType}::endpoint::${r.details.endpoint.toLowerCase().trim()}`;
+                    if (!verdicts[epKey]) verdicts[epKey] = verdicts[nameKey];
+                }
+                if (r.details?.domain) {
+                    const domKey = `${normalizedType}::domain::${r.details.domain.toLowerCase().trim()}`;
+                    if (!verdicts[domKey]) verdicts[domKey] = verdicts[nameKey];
+                }
+            }
+            return verdicts;
+        } catch (error) {
+            log('TEST_LOGGER', `Failed to get latest verdicts: ${error}`, 'error');
+            return {};
+        }
+    }
+
+    /**
      * Get a single test result by ID
      */
     async getResultById(id: number): Promise<TestResult | null> {

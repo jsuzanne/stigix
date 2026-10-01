@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.138] - 2026-10-01
+
+### Fixed / Improved
+- **Security Dashboard Card Verdict Persistence (`Security.tsx`, `test-logger.ts`, `server.ts`)**:
+  - Decoupled security category cards (URL Filtering, DNS Security, Threat/EICAR, C2, AI Security) from the paginated test log table by introducing `latestVerdicts` state.
+  - Added `GET /api/security/results/latest-verdicts` and `TestLogger.getLatestVerdicts()` to retain the true latest verdict for each category.
+  - Category cards now consistently display their latest test result badge (Allowed, Blocked, Sinkholed) regardless of log table searches or batch test volume. 🛡️
+- **Deployment Guide (`docs/DEPLOYMENT_GUIDE.md`)**:
+  - Streamlined guide to focus 100% on zero-touch 1-line curl onboarding without exposing unnecessary raw `docker-compose.yml` boilerplate. 📚
+
 ## [2.0.137] - 2026-10-01
 
 ### Fixed / Improved
