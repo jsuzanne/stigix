@@ -12753,8 +12753,8 @@ app.get('/api/fleet/matrix', authenticateToken, async (req, res) => {
                 }
             }
 
-            // If proxy failed or timed out, serve from fresh spoke cache (up to 3 minutes)
-            if (cachedFleetMatrixSpoke && (Date.now() - cachedFleetMatrixSpoke.timestamp < 180000)) {
+            // If proxy failed or timed out, serve from fresh spoke cache (up to 10 minutes)
+            if (cachedFleetMatrixSpoke && (Date.now() - cachedFleetMatrixSpoke.timestamp < 600000)) {
                 const cached = JSON.parse(JSON.stringify(cachedFleetMatrixSpoke.data));
                 cached.local_node_id = localId;
                 if (Array.isArray(cached.nodes)) {

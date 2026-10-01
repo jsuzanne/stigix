@@ -624,14 +624,22 @@ export class RegistryManager {
         const instances = await this.client.fetchInstances();
         if (instances && Array.isArray(instances)) {
             const now = Date.now();
-            const freshCache = new Map<string, { instance: RegistryInstance, lastSeen: number }>();
+            // Merge newly discovered instances and update their lastSeen timestamp
             for (const inst of instances) {
-                freshCache.set(inst.instance_id, {
+                if (!inst || !inst.instance_id) continue;
+                this.peerCache.set(inst.instance_id, {
                     instance: inst,
                     lastSeen: now
                 });
             }
-            this.peerCache = freshCache;
+            // Evict instances that haven't responded within GRACE_PERIOD_MS (15 min)
+            const GRACE_PERIOD_MS = 15 * 60 * 1000;
+            for (const [id, entry] of this.peerCache.entries()) {
+                const entryLastSeen = entry.lastSeen || (entry.instance?.last_seen ? new Date(entry.instance.last_seen).getTime() : 0);
+                if (now - entryLastSeen > GRACE_PERIOD_MS) {
+                    this.peerCache.delete(id);
+                }
+            }
         }
 
         // Fetch shared targets from Leader if we are a Peer connected to Local Leader

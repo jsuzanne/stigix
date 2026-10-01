@@ -2,6 +2,13 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.113] - 2026-10-01 — Fix: Peer Cache Grace Period & Reachability Matrix Stability
+
+### Fixed
+- **fix(registry)**: `performDiscovery()` in `registry-manager.ts` now gracefully merges newly discovered peers into `peerCache` instead of destructively replacing the map on transient poll gaps. Expired instances are evicted only after a 15-minute grace period.
+- **fix(matrix)**: Decoupled `fetchMatrix` from direct `data` state dependency using `dataRef` in `ReachabilityMatrix.tsx` to ensure stable 10s intervals and prevent transient 1-node fallback responses from wiping active multi-node grid views.
+- **fix(matrix)**: Extended Spoke-to-Leader matrix proxy cache TTL in `server.ts` to 10 minutes to eliminate transient `1x1` grid collapses during leader reconnection periods.
+
 ## [v2.0.112] - 2026-09-30 — UX: Light Mode Full Pass, Skeleton Shimmer & SSE Tunnel Stream
 
 ### Fixed

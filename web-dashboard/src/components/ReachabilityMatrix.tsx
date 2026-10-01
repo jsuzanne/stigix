@@ -257,9 +257,14 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
         }
     };
 
+    const dataRef = React.useRef<MatrixData | null>(data);
+    useEffect(() => {
+        dataRef.current = data;
+    }, [data]);
+
     const fetchMatrix = useCallback(async (isManualRefresh = false) => {
         try {
-            if (isManualRefresh || !data) {
+            if (isManualRefresh || !dataRef.current) {
                 setLoading(true);
             }
             const params = new URLSearchParams();
@@ -274,7 +279,9 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
             const json: MatrixData = await res.json();
             if (json && Array.isArray(json.nodes)) {
                 // If response is a single-node fallback but we already have multi-node data, keep existing data
-                if (json.nodes.length > 1 || !data || (data.nodes && data.nodes.length <= 1)) {
+                const currentData = dataRef.current;
+                const hasExistingMultiNode = currentData && Array.isArray(currentData.nodes) && currentData.nodes.length > 1;
+                if (json.nodes.length > 1 || !hasExistingMultiNode) {
                     setData(json);
                     try {
                         sessionStorage.setItem('stigix_fleet_matrix_cache', JSON.stringify(json));
@@ -287,13 +294,13 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
         } finally {
             setLoading(false);
         }
-    }, [gFetch, asymmetryOnly, authHeaders, data]);
+    }, [gFetch, asymmetryOnly, authHeaders]);
 
     useEffect(() => {
         // Load fast session cache on initial mount for instant 0ms rendering
         try {
             const cached = sessionStorage.getItem('stigix_fleet_matrix_cache');
-            if (cached && !data) {
+            if (cached && !dataRef.current) {
                 const parsed = JSON.parse(cached);
                 if (parsed && Array.isArray(parsed.nodes) && parsed.nodes.length > 1) {
                     setData(parsed);
