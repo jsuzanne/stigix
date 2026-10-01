@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.127] - 2026-10-01
+
+### Fixed
+- **Leader Reverse Dial Premature Disconnect Bug (`fleet-tunnel.ts`)**:
+  - Fixed race condition where background target reconciliation loop closed active dial attempts to Rendezvous peers before the WebSocket handshake finished.
+  - Added a 60s dial grace period (`rendezvousDialTimestamps`) to allow Leader reverse dials to complete smoothly without interruption.
+  - Added descriptive `connect_error` logging for outbound dials to assist real-time debugging. 🚀
+
 ## [2.0.126] - 2026-10-01
 
 ### Added / Improved

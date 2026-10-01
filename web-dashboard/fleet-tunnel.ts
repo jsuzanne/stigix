@@ -78,6 +78,7 @@ export class FleetTunnelManager {
 
     // Leader state: outbound dialed client sockets to Cloud/Manual peers (M6)
     private outboundDialedSockets: Map<string, ClientSocket> = new Map();
+    private rendezvousDialTimestamps: Map<string, number> = new Map();
 
     // Leader state: Cloudflare SSE Rendezvous Listener
     private cloudflareReq: http.ClientRequest | null = null;
@@ -528,21 +529,22 @@ export class FleetTunnelManager {
         });
 
         // 1. Clean up dialed sockets for targets that are no longer candidates (e.g. removed or now connected inbound)
+        const now = Date.now();
         for (const [targetKey, socket] of this.outboundDialedSockets) {
             const stillTarget = externalTargets.some(t => {
                 const port = t.ports?.http || 8080;
                 return `${t.host.trim().toLowerCase()}:${port}` === targetKey.toLowerCase();
             });
-            // Keep if actively connected tunnel or created via rendezvous
+            // Keep if actively connected tunnel or dialed recently via rendezvous (protect for 60s)
             const isActivelyConnected = Array.from(this.activeTunnels.values()).some(e => e.socket === socket && (e.socket as any).connected);
-            if (!stillTarget && !isActivelyConnected) {
-                // If it's a pending dial attempt from rendezvous, give it 30s before cleaning up
-                const isPendingRendezvous = socket.connected;
-                if (!isPendingRendezvous) {
-                    log('TUNNEL', `[M6 DIAL] Closing dialed connection for target no longer needing dial: ${targetKey}`);
-                    socket.disconnect();
-                    this.outboundDialedSockets.delete(targetKey);
-                }
+            const dialedAt = this.rendezvousDialTimestamps.get(targetKey) || 0;
+            const isRecentDial = (now - dialedAt) < 60000;
+
+            if (!stillTarget && !isActivelyConnected && !isRecentDial) {
+                log('TUNNEL', `[M6 DIAL] Closing dialed connection for target no longer needing dial: ${targetKey}`);
+                socket.disconnect();
+                this.outboundDialedSockets.delete(targetKey);
+                this.rendezvousDialTimestamps.delete(targetKey);
             }
         }
 
@@ -701,10 +703,11 @@ export class FleetTunnelManager {
             this.activeTunnels.delete(targetId);
         });
 
-        socket.on('connect_error', () => {
-            // Silently keep retrying in background
+        socket.on('connect_error', (err: any) => {
+            log('TUNNEL', `[M6 DIAL] Connection attempt to ${targetSiteName} (${host}:${port}) notice: ${err?.message || 'waiting for connection'}`, 'warn');
         });
 
+        this.rendezvousDialTimestamps.set(targetKey, Date.now());
         this.outboundDialedSockets.set(targetKey, socket);
     }
 
