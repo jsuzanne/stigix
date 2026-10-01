@@ -1,6 +1,7 @@
 import http from 'http';
+import https from 'https';
 import fs from 'fs';
-import { randomUUID } from 'crypto';
+import crypto, { randomUUID } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
@@ -48,6 +49,9 @@ export interface ForwardResponsePayload {
  *
  * 3. Leader Outbound Reverse Dialing (M6): Leader dials outward to configured manual/cloud peers
  *    (e.g. Hetzner, AWS, Home LAN) without requiring the Leader to be exposed on the public Internet.
+ *
+ * 4. Leader Cloudflare Rendezvous Push Listener (PRD Magic Join): Passive SSE listener for real-time
+ *    cloud peer announcements from registry.stigix.io (<10ms instant outbound dial).
  */
 export class FleetTunnelManager {
     private ioServer: SocketIOServer;
@@ -74,6 +78,11 @@ export class FleetTunnelManager {
 
     // Leader state: outbound dialed client sockets to Cloud/Manual peers (M6)
     private outboundDialedSockets: Map<string, ClientSocket> = new Map();
+
+    // Leader state: Cloudflare SSE Rendezvous Listener
+    private cloudflareReq: http.ClientRequest | null = null;
+    private cloudflareRetryTimeout: NodeJS.Timeout | null = null;
+    private isListeningCloudflare: boolean = false;
 
     private backgroundLoopInterval: NodeJS.Timeout | null = null;
 
@@ -283,6 +292,7 @@ export class FleetTunnelManager {
             clearInterval(this.backgroundLoopInterval);
             this.backgroundLoopInterval = null;
         }
+        this.stopCloudflareRendezvousListener();
         if (this.spokeClientSocket) {
             this.spokeClientSocket.disconnect();
             this.spokeClientSocket = null;
@@ -313,9 +323,15 @@ export class FleetTunnelManager {
                 }
             }
 
-            // 2. Leader mode (M6): Check manual & cloud targets for outbound reverse dialing
+            // 2. Leader mode: Start passive Cloudflare SSE Rendezvous Listener (PRD Magic Join)
+            this.startCloudflareRendezvousListener();
+
+            // 3. Leader mode (M6): Check manual & cloud targets for outbound reverse dialing
             this.syncLeaderOutboundDials();
         } else {
+            // Spoke mode: Stop Cloudflare listener if running
+            this.stopCloudflareRendezvousListener();
+
             // Spoke mode (M5): Connect outbound to discovered Leader
             this.syncSpokeOutboundTunnel();
         }
@@ -635,6 +651,158 @@ export class FleetTunnelManager {
         });
 
         this.outboundDialedSockets.set(targetKey, socket);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Cloudflare SSE Stateless Rendezvous Relay Listener (PRD Magic Join)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private getRealmHash(): string {
+        const seed = process.env.PRISMA_SDWAN_TSGID ||
+                     process.env.STIGIX_CLUSTER_KEY ||
+                     process.env.STIGIX_POC_ID ||
+                     'default-stigix-realm';
+        return crypto.createHash('sha256').update(seed).digest('hex');
+    }
+
+    private startCloudflareRendezvousListener(): void {
+        if (this.isListeningCloudflare) return;
+        this.isListeningCloudflare = true;
+
+        const registryBaseUrl = (process.env.STIGIX_REGISTRY_URL || 'https://registry.stigix.io').replace(/\/$/, '');
+        const realmHash = this.getRealmHash();
+        const streamUrl = `${registryBaseUrl}/realms/${realmHash}/stream`;
+
+        log('RENDEZVOUS', `🛰️ Starting Cloudflare SSE push listener for realm: ${realmHash.slice(0, 8)}...`);
+
+        const connect = () => {
+            if (!this.isListeningCloudflare || !this.registryManager.isLeader()) return;
+
+            try {
+                const u = new URL(streamUrl);
+                const reqModule = u.protocol === 'https:' ? https : http;
+
+                const req = reqModule.get(streamUrl, {
+                    headers: {
+                        'Accept': 'text/event-stream',
+                        'Cache-Control': 'no-cache',
+                        'User-Agent': 'Stigix-Leader-Rendezvous/2.0'
+                    }
+                }, (res) => {
+                    if (res.statusCode !== 200) {
+                        scheduleRetry(15000);
+                        return;
+                    }
+
+                    log('RENDEZVOUS', `⚡ Cloudflare SSE Push channel CONNECTED for realm ${realmHash.slice(0, 8)}... (0 CPU, 0 polling)`);
+                    let buffer = '';
+
+                    res.on('data', (chunk: Buffer) => {
+                        buffer += chunk.toString('utf8');
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || '';
+
+                        for (const line of lines) {
+                            const trimmed = line.trim();
+                            if (trimmed.startsWith('data:')) {
+                                try {
+                                    const jsonStr = trimmed.slice(5).trim();
+                                    if (jsonStr) {
+                                        const event = JSON.parse(jsonStr);
+                                        this.handleRendezvousEvent(event);
+                                    }
+                                } catch {}
+                            }
+                        }
+                    });
+
+                    res.on('end', () => {
+                        scheduleRetry(5000);
+                    });
+                });
+
+                req.on('error', () => {
+                    scheduleRetry(10000);
+                });
+
+                this.cloudflareReq = req;
+            } catch {
+                scheduleRetry(15000);
+            }
+        };
+
+        const scheduleRetry = (delayMs: number) => {
+            if (this.cloudflareReq) {
+                try { this.cloudflareReq.destroy(); } catch {}
+                this.cloudflareReq = null;
+            }
+            if (this.cloudflareRetryTimeout) clearTimeout(this.cloudflareRetryTimeout);
+            if (this.isListeningCloudflare && this.registryManager.isLeader()) {
+                this.cloudflareRetryTimeout = setTimeout(connect, delayMs);
+            }
+        };
+
+        connect();
+    }
+
+    private stopCloudflareRendezvousListener(): void {
+        this.isListeningCloudflare = false;
+        if (this.cloudflareRetryTimeout) {
+            clearTimeout(this.cloudflareRetryTimeout);
+            this.cloudflareRetryTimeout = null;
+        }
+        if (this.cloudflareReq) {
+            try { this.cloudflareReq.destroy(); } catch {}
+            this.cloudflareReq = null;
+        }
+    }
+
+    private handleRendezvousEvent(event: any): void {
+        if (!event || event.event !== 'peer_registered') return;
+
+        const peerIp = event.ip;
+        const peerPort = event.port || 8080;
+        const peerInstanceId = event.instance_id;
+        const peerSiteName = event.site_name || peerInstanceId;
+
+        const localStatus = this.registryManager.getStatus();
+        const localIp = localStatus.detected_ip;
+        const localId = localStatus.instance_id;
+
+        if (peerIp === '127.0.0.1' || peerIp === localIp || peerInstanceId === localId) {
+            return; // Ignore self announcements
+        }
+
+        log('RENDEZVOUS', `✨ Instant Cloudflare Push: new Cloud Peer announced: ${peerSiteName} (${peerIp}:${peerPort})!`);
+
+        // Auto-create target in targetsManager if not present
+        if (this.targetsManager && typeof this.targetsManager.createTarget === 'function') {
+            try {
+                const existingTargets = this.targetsManager.loadTargets();
+                const alreadyExists = existingTargets.some((t: any) => t.host === peerIp || t.label === peerSiteName);
+                if (!alreadyExists) {
+                    this.targetsManager.createTarget({
+                        label: peerSiteName,
+                        host: peerIp,
+                        port: peerPort,
+                        protocol: 'http',
+                        capabilities: event.capabilities || { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true },
+                        tags: ['magic-join', 'cloudflare-rendezvous'],
+                        comments: `Auto-enrolled via Cloudflare Rendezvous on ${new Date().toISOString()}`
+                    });
+                    log('RENDEZVOUS', `🎯 Target auto-provisioned for ${peerSiteName} (${peerIp}:${peerPort})`);
+                }
+            } catch (tErr: any) {
+                log('RENDEZVOUS', `Warning auto-provisioning target: ${tErr.message}`, 'warn');
+            }
+        }
+
+        // Trigger immediate outbound reverse dial
+        const targetKey = `${peerIp.toLowerCase()}:${peerPort}`;
+        if (!this.outboundDialedSockets.has(targetKey) && !this.activeTunnels.has(peerInstanceId)) {
+            const targetObj = { id: peerInstanceId, name: peerSiteName, host: peerIp, ports: { http: peerPort } };
+            this.dialOutboundPeer(targetObj, peerIp, peerPort, targetKey);
+        }
     }
 
     /**

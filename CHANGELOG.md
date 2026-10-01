@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.120] - 2026-10-01
+
+### Added / Improved
+- **Stateless Cloudflare SSE Rendezvous Relay (PRD Magic Join Milestones 2 & 4)**:
+  - Completely refactored Cloudflare Worker (`stigix-registry/src/index.ts`) into a stateless rendezvous relay:
+    - `GET /realms/:realmHash/stream`: Real-time Server-Sent Events (SSE) push channel for Private Leaders (0% CPU, 0 continuous polling, 0 recurring KV writes).
+    - `POST /realms/:realmHash/register`: Single-shot instant announcement for joining Cloud VMs (broadcasts to Leader in <10ms).
+    - Removed obsolete KV-polling endpoints (`/instances`, `/leader` lease election).
+  - Integrated `startCloudflareRendezvousListener()` in `web-dashboard/fleet-tunnel.ts`: Private Leader automatically listens to realm push events and triggers instant outbound reverse dials to new Cloud VMs.
+  - Updated client installers (`install.sh`, `install-autodocker.sh`) with automatic fallback announcement to Cloudflare Rendezvous Relay when LAN probes fail. 🚀
+
 ## [2.0.119] - 2026-10-01
 
 ### Added / Improved

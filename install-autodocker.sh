@@ -156,11 +156,14 @@ if [ -n "$JOIN_TOKEN" ]; then
     
     CANDIDATES=()
     TOKEN_SITE=""
+    TOKEN_REALM=""
     if command -v python3 &>/dev/null; then
-        PY_EXTRACT=$(python3 -c "import sys, json; d=json.loads(sys.argv[1]); print('\n'.join(d.get('endpoints', []))); print('SITE_HINT=' + (d.get('site_hint') or ''))" "$DECODED_JSON" 2>/dev/null)
+        PY_EXTRACT=$(python3 -c "import sys, json; d=json.loads(sys.argv[1]); print('\n'.join(d.get('endpoints', []))); print('SITE_HINT=' + (d.get('site_hint') or '')); print('REALM=' + (d.get('realm') or ''))" "$DECODED_JSON" 2>/dev/null)
         while IFS= read -r line; do
             if [[ "$line" =~ ^SITE_HINT=(.*) ]]; then
                 TOKEN_SITE="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^REALM=(.*) ]]; then
+                TOKEN_REALM="${BASH_REMATCH[1]}"
             elif [ -n "$line" ]; then
                 CANDIDATES+=("$line")
             fi
@@ -200,7 +203,17 @@ if [ -n "$JOIN_TOKEN" ]; then
         fi
     elif [ ${#CANDIDATES[@]} -gt 0 ]; then
         CONTROLLER_URL="${CANDIDATES[0]}"
-        echo "⚠️ Direct LAN probes timed out. Setting Leader URL to: $CONTROLLER_URL"
+        echo "⚠️ Direct LAN probes timed out. Announcing to Cloudflare Rendezvous Relay..."
+        REGISTRY_URL="https://registry.stigix.io"
+        NODE_HOSTNAME=$(hostname | cut -d'.' -f1)
+        CHOSEN_SITE="${SITE_NAME_OVERRIDE:-$NODE_HOSTNAME}"
+        ANNOUNCE_BODY="{\"instance_id\":\"$NODE_HOSTNAME\",\"site_name\":\"$CHOSEN_SITE\",\"port\":8080}"
+        if [ -n "$TOKEN_REALM" ]; then
+            ANNOUNCE_RES=$(curl -s -k -X POST -H "Content-Type: application/json" -d "$ANNOUNCE_BODY" --connect-timeout 4 -m 6 "$REGISTRY_URL/realms/$TOKEN_REALM/register" 2>/dev/null || echo "{}")
+            if echo "$ANNOUNCE_RES" | grep -q '"status":"ok"'; then
+                echo "   ✅ Cloudflare Rendezvous announced! Private Leader will establish reverse tunnel automatically."
+            fi
+        fi
     fi
 fi
 
