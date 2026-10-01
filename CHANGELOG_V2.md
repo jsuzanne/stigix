@@ -2,6 +2,10 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.118] - 2026-10-01 — Refactor: Neutral Dynamic Endpoint Selector in Magic Join
+
+- **refactor(magic-join)**: Removed any hardcoded subnet assumptions from `MagicJoinModal.tsx`. The operator has full control to select or deselect any detected IP address with 1 click before generating the token.
+
 ## [v2.0.117] - 2026-10-01 — Feature: Interactive Leader Endpoint Selector & OOB Mgmt Isolation
 
 - **feat(magic-join)**: Added interactive toggle pills in `MagicJoinModal.tsx` allowing operators to selectively include/exclude candidate IPs (e.g. exclude `192.168.122.x` OOB management and retain only `192.168.203.x` SD-WAN data plane).

@@ -344,8 +344,7 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                                             <div className="flex flex-wrap gap-2 pt-0.5">
                                                 {(allDetectedEndpoints.length > 0 ? allDetectedEndpoints : joinData.endpoints).map((ep, idx) => {
                                                     const isSelected = selectedEndpoints.includes(ep);
-                                                    const isMgmt = ep.includes('.122.') || ep.includes(':122');
-                                                    const isSdwan = ep.includes('.203.') || ep.includes(':203');
+                                                    const isFirst = idx === 0;
                                                     return (
                                                         <button
                                                             key={idx}
@@ -357,7 +356,7 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                                                                     ? "bg-blue-500/15 border-blue-500/50 text-blue-400 font-semibold shadow-xs"
                                                                     : "bg-card-secondary/40 border-border/80 text-text-muted line-through opacity-50 hover:opacity-90 hover:line-through-none"
                                                             )}
-                                                            title={isSelected ? "Click to exclude this IP" : "Click to include this IP"}
+                                                            title={isSelected ? "Click to exclude this IP from the token" : "Click to include this IP in the token"}
                                                         >
                                                             {isSelected ? (
                                                                 <CheckCircle2 size={12} className="text-blue-400 shrink-0" />
@@ -365,14 +364,9 @@ export function MagicJoinModal({ isOpen, onClose, token }: MagicJoinModalProps) 
                                                                 <X size={12} className="text-text-muted shrink-0" />
                                                             )}
                                                             <span>{ep}</span>
-                                                            {isSdwan && (
+                                                            {isFirst && isSelected && (
                                                                 <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-sans not-italic">
-                                                                    SD-WAN
-                                                                </span>
-                                                            )}
-                                                            {isMgmt && (
-                                                                <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-sans not-italic">
-                                                                    MGMT
+                                                                    Primary
                                                                 </span>
                                                             )}
                                                         </button>
