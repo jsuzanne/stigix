@@ -574,11 +574,10 @@ export class RegistryManager {
         const result = await this.client.register(this.currentIp, capabilities, summary);
         if (result && result.status === 'ok') {
             // Heartbeat successful
-        } else if (mode === 'peer' && config.registryUrl !== config.remoteUrl && !this.directMode) {
-            // FAILURE RECOVERY (Hybrid/Cloudflare mode only):
-            // If local registration fails, it means the Leader is likely dead.
-            // We MUST reset our registry URL to the Remote (Cloudflare) so that 
-            // the next heartbeat will trigger a new findLeader() lookup.
+        } else if (mode === 'peer' && config.registryUrl !== config.remoteUrl && !this.directMode && !this.staticLeaderUrl) {
+            // FAILURE RECOVERY (Auto-Discovery / Dynamic Leader mode only):
+            // If local registration fails and no static leader is configured,
+            // reset our registry URL to Remote (Cloudflare) to find a new leader.
             log('REGISTRY', `Local Leader heartbeat failed. Reverting to remote discovery via ${config.remoteUrl}`);
             this.client.resetToRemote();
             this.leaderInfo = null;

@@ -606,15 +606,20 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             Cross-correlating forward egress SLA (A → B) with return ingress telemetry (B → A) across Stigix nodes and SD-WAN gateway paths.
                         </p>
                     </div>
-                    {data?.timestamp && (
+                    {error && nodes.length > 0 ? (
+                        <span className="text-[10px] font-mono text-amber-400 flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded" title={error}>
+                            <AlertTriangle size={11} />
+                            Reconnecting...
+                        </span>
+                    ) : data?.timestamp ? (
                         <span className="text-[10px] font-mono text-text-muted flex items-center gap-1">
                             <Clock size={11} />
                             Updated {new Date(data.timestamp).toLocaleTimeString()}
                         </span>
-                    )}
+                    ) : null}
                 </div>
 
-                {error ? (
+                {error && nodes.length === 0 ? (
                     <div className="p-8 text-center text-red-400 text-sm">
                         <AlertTriangle size={24} className="mx-auto mb-2" />
                         {error}

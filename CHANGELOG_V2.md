@@ -4,9 +4,10 @@ All notable changes made specifically on the `v2` branch are documented in this 
 
 ## [v2.0.113] - 2026-10-01 — Fix: Peer Cache Grace Period & Reachability Matrix Stability
 
-### Fixed
 - **fix(registry)**: `performDiscovery()` in `registry-manager.ts` now gracefully merges newly discovered peers into `peerCache` instead of destructively replacing the map on transient poll gaps. Expired instances are evicted only after a 15-minute grace period.
+- **fix(registry)**: Prevented peer instances with `staticLeaderUrl` from resetting to remote Cloudflare bootstrap (`resetToRemote()`) on transient heartbeat hiccups, eliminating the rapid connection flapping loop (`fetch failed`).
 - **fix(matrix)**: Decoupled `fetchMatrix` from direct `data` state dependency using `dataRef` in `ReachabilityMatrix.tsx` to ensure stable 10s intervals and prevent transient 1-node fallback responses from wiping active multi-node grid views.
+- **fix(matrix)**: `ReachabilityMatrix.tsx` now preserves and displays existing matrix data during temporary background fetch errors instead of replacing the entire UI with an intrusive error screen.
 - **fix(matrix)**: Extended Spoke-to-Leader matrix proxy cache TTL in `server.ts` to 10 minutes to eliminate transient `1x1` grid collapses during leader reconnection periods.
 
 ## [v2.0.112] - 2026-09-30 — UX: Light Mode Full Pass, Skeleton Shimmer & SSE Tunnel Stream
