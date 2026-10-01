@@ -2,7 +2,7 @@
 
 > **Document:** Product Requirements Document (PRD)  
 > **Author:** Antigravity & Stigix Product Team  
-> **Version:** 2.3 (English Edition — Merged)  
+> **Version:** 2.4 (Enterprise Production & Security Hardened)  
 > **Last Updated:** 2026-10-01  
 > **Status:** Approved for Implementation — Ready for Development  
 > **Target Audience:** Engineering, Product Managers, Enterprise Network Architects  
@@ -14,7 +14,7 @@
 Today, deploying a multi-site SD-WAN and SASE validation mesh with Stigix is already robust and capable. However, the initial onboarding step for adding new nodes (physical branch boxes, Cloud VMs on Hetzner or AWS, or remote home labs) still requires operators to manipulate IP addresses, pass manual CLI flags (`--controller http://...`), or manually add targets in the Leader dashboard.
 
 **The Vision of « Magic Join »:**
-Provide a **universal, instantaneous, zero-touch onboarding experience** — matching the consumer-grade simplicity of *Tailscale* or *Docker Swarm* — while guaranteeing **strict cryptographic multi-tenancy** across thousands of independent lab environments worldwide with **zero recurring cloud costs**.
+Provide a **universal, instantaneous, zero-touch onboarding experience** — matching the consumer-grade simplicity of *Tailscale* or *Docker Swarm* — while guaranteeing **strict cryptographic multi-tenancy, one-time token security, and automatic inventory hygiene** across thousands of independent lab environments worldwide with **zero recurring cloud costs**.
 
 ### The Product Promise:
 > **1 Single Button on Leader ➔ 1 Single Copy-Pasted Terminal Command ➔ Zero Technical Questions ➔ Automated Connection & Hot-Sync in under 15 seconds.**
@@ -28,6 +28,8 @@ Provide a **universal, instantaneous, zero-touch onboarding experience** — mat
 | **On-Premise LAN Node** | Operator must copy Leader IP and execute `install.sh` with `--controller http://192.168.1.120:8080`. | IP typos, manual parameter friction during customer demos. |
 | **Public Cloud VM (Hetzner, AWS)** | Operator spins up VM, fetches public IP, opens Leader UI (*Settings ➔ Targets*), and manually creates target so Leader initiates reverse dial. | Asymmetric, multi-step manual workflow. |
 | **Multi-Tenancy (Multiple Customer Labs)** | Multiple users sharing the public discovery service could experience namespace overlap if master keys are omitted. | Risk of node cross-discovery or lab configuration collision. |
+| **Token Exposure Risk** | Tokens copied into shell history, scripts, or tickets could be intercepted by third parties. | Risk of unauthorized rogue nodes joining the cluster. |
+| **Inventory Stale Pollution** | Ephemeral CI/CD runners or test VMs clutter the fleet inventory after teardown. | Degraded observability and inflated node counts. |
 | **Cloudflare Worker Quotas** | Continuous 30s heartbeats risk exceeding Cloudflare KV free-tier write quotas (1,000 writes/day). | Risk of unexpected infrastructure costs or service throttling. |
 
 ---
@@ -46,6 +48,7 @@ The Magic Join architecture unifies all deployment modes under a single universa
 │    ┌───────────────────────────────────────────────────────────────────┐    │
 │    │ curl -fsSL https://stigix.io/join | sudo bash -s -- STX-7842-K9X  │ 📋 │
 │    └───────────────────────────────────────────────────────────────────┘    │
+│    [ ⏱️ Valid for 1h ]  [ 🔒 Single-Use ]  [ 🗑️ Revoke Token ]             │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼ (Paste into ANY remote terminal)
@@ -53,6 +56,8 @@ The Magic Join architecture unifies all deployment modes under a single universa
 │ 2. TARGET NODE (Local Lab, Branch Office, Hetzner VM, AWS, or Home Lab)    │
 │                                                                             │
 │    Container starts instantly. No questions asked. No IP address requested. │
+│    • Resolves Leader endpoints / Cloudflare relay in < 2 seconds.           │
+│    • Redeems token for permanent node credentials and burns join token.     │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼ (Under 5 seconds)
@@ -68,36 +73,88 @@ The Magic Join architecture unifies all deployment modes under a single universa
 
 ---
 
-## 4. 🧠 Under the Hood: Transparent Discovery & Push Architecture
+## 4. 🧠 Under the Hood: Transparent Discovery & Token Lifecycle
 
-### 4.1 What is Inside the Token & How is it Decoded?
+### 4.1 Token Format & Redemption Protocol
 
 The generated token (`STX-7842-K9X`) is a self-contained, signed cryptographic payload formatted as:
 
-$$\text{Token} = \underbrace{\text{Header}}_{\text{Base64}} \;.\; \underbrace{\text{Payload}}_{\text{Base64 (Endpoints + Realm Hash + Auth Key)}} \;.\; \underbrace{\text{Signature}}_{\text{HMAC-SHA256 (Signed by Leader)}}$$
+$$\text{Token} = \underbrace{\text{Header}}_{\text{Base64}} \;.\; \underbrace{\text{Payload}}_{\text{Base64 (Endpoints + Realm Hash + Nonce + TTL)}} \;.\; \underbrace{\text{Signature}}_{\text{HMAC-SHA256 (Signed by Leader)}}$$
 
-The compact **Base64URL encoding** ensures the token always fits on a single terminal line with no shell escaping issues.
-
-#### 1. Payload Content:
+#### 1. Payload Structure:
 ```json
 {
   "v": 1,
+  "jti": "stx_tok_9b027e44a1",
   "endpoints": [
     "http://192.168.122.51:8080",
     "http://192.168.203.100:8080",
     "https://sdwandc1.carenaje.fr"
   ],
   "realm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "exp": 1790880000,
-  "join_key": "stx_jk_9b027e..."
+  "exp": 1790883600,
+  "max_uses": 1,
+  "site_hint": "Branch-Remote",
+  "tags": { "env": "lab", "role": "spoke" }
 }
 ```
 
-Token fields:
-1. **`endpoints`:** All known Leader IP addresses and FQDNs. The client probes them in order with a fast timeout (< 2s) and uses the first that responds.
-2. **`realm`:** Cryptographic hash of the cluster secret (`SHA-256(Cluster Secret)`), used for isolated discovery on Cloudflare.
-3. **`exp`:** Expiration timestamp — tokens are valid for 24 hours.
-4. **`join_key`:** HMAC-SHA256 signature — prevents token tampering.
+#### 2. The Single-Use Token Lifecycle:
+1. **Creation:** Leader creates a token record with status `ACTIVE`, `uses_count: 0`, and `max_uses: 1`.
+2. **Redemption (`POST /api/fleet/join-redeem`):**
+   - Node transmits token along with its newly generated local machine identity (`instance_id`, `public_ip`, `hardware_fingerprint`).
+   - Leader validates cryptographic signature, expiration timestamp (`exp`), and status (`ACTIVE`).
+   - Leader marks `jti` as **`REDEEMED`** (preventing any replay attacks or token re-use).
+   - Leader provisions a dedicated, persistent node auth secret (`node_id`, `node_token`).
+   - Client discards the join token and persists only its dedicated `node_token`.
+3. **Revocation (`DELETE /api/fleet/join-tokens/:jti`):**
+   - Operator can invalidate any unredeemed token instantly from the Leader UI with a single click.
+
+---
+
+### 4.2 Fleet Governance & Inventory Hygiene
+
+To prevent ephemeral nodes (e.g. CI/CD test runners, short-lived VMs) from polluting the active inventory:
+
+| Feature | Specification |
+|---|---|
+| **Node States** | `ACTIVE` (normal), `PENDING_APPROVAL` (zero-trust gate), `OFFLINE` (missed heartbeats), `EVICTED` (purged). |
+| **Auto-Eviction Policy** | Unreachable / unverified nodes with no heartbeat for $> 24\text{ hours}$ are automatically pruned from the active catalog. |
+| **Approval Gate (Optional)** | Leader can toggle between **Frictionless Mode** (auto-approve on join) and **Zero-Trust Mode** (nodes register in `PENDING` state until operator clicks `[ Approve ]`). |
+| **One-Click Node Eviction** | Any rogue or decommissioned node can be evicted in 1-click from the Leader UI, revoking its persistent WebSocket tunnel credentials immediately. |
+
+---
+
+### 4.3 Actionable Error Taxonomy
+
+Clients encounter clear, explanatory error messages rather than generic failure codes:
+
+| Error Code | Human-Readable Error Description | Actionable Guidance |
+|---|---|---|
+| `ERR_JOIN_EXPIRED` | Token expired at `14:32 CEST` (TTL exceeded). | Please generate a new join token from the Leader dashboard. |
+| `ERR_JOIN_REDEEMED` | Token has already been redeemed by another node. | Each join token is single-use. Generate a fresh token to onboard this node. |
+| `ERR_JOIN_REVOKED` | Token was manually revoked by the cluster administrator. | Contact the administrator or generate a new token. |
+| `ERR_JOIN_UNREACHABLE` | Unable to connect to any Leader endpoint or Cloudflare relay. | Verify outbound internet/LAN connectivity on port 8080 / 443. |
+| `ERR_JOIN_DENIED` | Node registration was rejected by the cluster approval gate. | Node must be approved by the administrator in the Fleet tab. |
+
+---
+
+### 4.4 Automation & IaC Integration (CLI Flags)
+
+The `install.sh` script and `stigix-agent` binary seamlessly accept standard IaC / Cloud-Init arguments:
+
+```bash
+# Frictionless One-Liner (Standard User)
+curl -fsSL https://stigix.io/join | sudo bash -s -- STX-7842-K9X
+
+# Advanced Enterprise IaC / Terraform / Ansible / Cloud-Init
+curl -fsSL https://stigix.io/join | sudo bash -s -- \
+  --token "$STIGIX_JOIN_TOKEN" \
+  --site "Paris-Branch-01" \
+  --role "branch" \
+  --tag "env=production" \
+  --tag "provider=aws"
+```
 
 > **Leader IP Discovery:** To generate correct `endpoints`, the Leader backend combines: the `Host` header from the browser making the request, all local network interface IPs detected at startup, and the optional `STIGIX_PUBLIC_URL` environment variable if set.
 
