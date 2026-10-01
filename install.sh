@@ -18,6 +18,8 @@ show_help() {
     echo "Options:"
     echo "  --mode <target|source|both>  Set the deployment mode (Default: both)"
     echo "  --controller <URL>           Join a remote Stigix leader as a peer (direct mode)"
+    echo "  --ip, -i <IP>                Explicitly select IP to advertise to Leader (bypasses prompt)"
+    echo "  --site, -s <Name>            Override site name for this node"
     echo "  --dry-run, -d                Download files and show what would happen without starting Docker"
     echo "  --help, -h                   Show this help message"
     echo ""
@@ -126,6 +128,7 @@ dump_process_on_port() {
 # Parse command line arguments
 JOIN_TOKEN=""
 SITE_NAME_OVERRIDE=""
+ADVERTISED_IP_OVERRIDE=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -133,6 +136,7 @@ while [[ "$#" -gt 0 ]]; do
         --controller|-c) CONTROLLER_URL="$2"; shift 2 ;;
         --token|-t) JOIN_TOKEN="$2"; shift 2 ;;
         --site|-s) SITE_NAME_OVERRIDE="$2"; shift 2 ;;
+        --ip|-i) ADVERTISED_IP_OVERRIDE="$2"; shift 2 ;;
         --dry-run|-d) DRY_RUN=true; shift ;;
         --help|-h) show_help ;;
         STX-*) JOIN_TOKEN="$1"; shift ;;
@@ -236,6 +240,62 @@ if [ -n "$JOIN_TOKEN" ]; then
             done
             [ $skip -eq 0 ] && UNIQUE_IPS+=("$ip")
         done
+
+        if [ -n "$ADVERTISED_IP_OVERRIDE" ]; then
+            UNIQUE_IPS=("$ADVERTISED_IP_OVERRIDE")
+            echo "   🎯 Using specified advertised IP: $ADVERTISED_IP_OVERRIDE"
+        elif [ ${#UNIQUE_IPS[@]} -gt 1 ]; then
+            INTERACTIVE=0
+            if [ -t 0 ]; then
+                INTERACTIVE=1
+            elif [ -r /dev/tty ] && [ -w /dev/tty ]; then
+                INTERACTIVE=2
+            fi
+
+            if [ $INTERACTIVE -gt 0 ]; then
+                echo ""
+                echo "   🌐 Multiple network interfaces detected on this host:"
+                echo "      [1] All detected IPs (${UNIQUE_IPS[*]}) - Recommended"
+                idx=2
+                for ip in "${UNIQUE_IPS[@]}"; do
+                    echo "      [$idx] $ip"
+                    ((idx++))
+                done
+                echo "      [$idx] Custom IP..."
+
+                IP_CHOICE=""
+                if [ $INTERACTIVE -eq 1 ]; then
+                    read -t 15 -p "   👉 Select IP to advertise to Leader [Default: 1, auto-select in 15s]: " IP_CHOICE || true
+                else
+                    read -t 15 -p "   👉 Select IP to advertise to Leader [Default: 1, auto-select in 15s]: " IP_CHOICE < /dev/tty || true
+                fi
+                echo ""
+                IP_CHOICE=${IP_CHOICE:-1}
+
+                if [ "$IP_CHOICE" = "1" ]; then
+                    echo "   ✅ Advertising all detected IPs."
+                elif [ "$IP_CHOICE" -ge 2 ] && [ "$IP_CHOICE" -lt "$idx" ] 2>/dev/null; then
+                    selected_idx=$((IP_CHOICE - 2))
+                    SELECTED_IP="${UNIQUE_IPS[$selected_idx]}"
+                    UNIQUE_IPS=("$SELECTED_IP")
+                    echo "   ✅ Advertising selected IP: $SELECTED_IP"
+                elif [ "$IP_CHOICE" = "$idx" ]; then
+                    CUSTOM_IP=""
+                    if [ $INTERACTIVE -eq 1 ]; then
+                        read -p "   Enter custom IP: " CUSTOM_IP
+                    else
+                        read -p "   Enter custom IP: " CUSTOM_IP < /dev/tty
+                    fi
+                    if [ -n "$CUSTOM_IP" ]; then
+                        UNIQUE_IPS=("$CUSTOM_IP")
+                        echo "   ✅ Advertising custom IP: $CUSTOM_IP"
+                    fi
+                else
+                    echo "   ⚠️  Invalid choice ($IP_CHOICE), proceeding with all detected IPs."
+                fi
+            fi
+        fi
+
         LOCAL_IPS_JSON="["
         first=1
         for ip in "${UNIQUE_IPS[@]}"; do

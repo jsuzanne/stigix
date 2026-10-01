@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.126] - 2026-10-01
+
+### Added / Improved
+- **Interactive Multi-Interface IP Selection & CLI Flag (`install.sh`, `install-autodocker.sh`)**:
+  - Added interactive prompt with 15s countdown for hosts with multiple network interfaces (physical LANs, Tailscale, Docker bridges).
+  - Allows selecting a specific IP, all IPs (recommended multi-homed mesh), or entering a custom IP/FQDN.
+  - Added `--ip` / `-i <IP>` CLI argument to explicitly specify the advertised IP during scripted or unattended deployments. 🚀
+
 ## [2.0.125] - 2026-10-01
 
 ### Added / Fixed
