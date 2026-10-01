@@ -243,6 +243,7 @@ if [ -n "$JOIN_TOKEN" ]; then
 
         if [ -n "$ADVERTISED_IP_OVERRIDE" ]; then
             UNIQUE_IPS=("$ADVERTISED_IP_OVERRIDE")
+            CHOSEN_PRIMARY_IP="$ADVERTISED_IP_OVERRIDE"
             echo "   🎯 Using specified advertised IP: $ADVERTISED_IP_OVERRIDE"
         elif [ ${#UNIQUE_IPS[@]} -gt 1 ]; then
             INTERACTIVE=0
@@ -278,6 +279,7 @@ if [ -n "$JOIN_TOKEN" ]; then
                     selected_idx=$((IP_CHOICE - 2))
                     SELECTED_IP="${UNIQUE_IPS[$selected_idx]}"
                     UNIQUE_IPS=("$SELECTED_IP")
+                    CHOSEN_PRIMARY_IP="$SELECTED_IP"
                     echo "   ✅ Advertising selected IP: $SELECTED_IP"
                 elif [ "$IP_CHOICE" = "$idx" ]; then
                     CUSTOM_IP=""
@@ -288,6 +290,7 @@ if [ -n "$JOIN_TOKEN" ]; then
                     fi
                     if [ -n "$CUSTOM_IP" ]; then
                         UNIQUE_IPS=("$CUSTOM_IP")
+                        CHOSEN_PRIMARY_IP="$CUSTOM_IP"
                         echo "   ✅ Advertising custom IP: $CUSTOM_IP"
                     fi
                 else
@@ -490,8 +493,24 @@ STIGIX_TARGET_BASE_URL=https://target.stigix.io
 # STIGIX_TARGET_MASTER_KEY=
 
 # Site name for dashboard display
-STIGIX_SITE_NAME=$(hostname | cut -d'.' -f1)
+STIGIX_SITE_NAME="${SITE_NAME_OVERRIDE:-$(hostname | cut -d'.' -f1)}"
 EOF
+
+if [ -n "$SITE_NAME_OVERRIDE" ]; then
+    if grep -q "^STIGIX_SITE_NAME=" .env 2>/dev/null; then
+        sed -i.bak -E "s|^STIGIX_SITE_NAME=.*|STIGIX_SITE_NAME=$SITE_NAME_OVERRIDE|g" .env && rm -f .env.bak
+    else
+        echo "STIGIX_SITE_NAME=$SITE_NAME_OVERRIDE" >> .env
+    fi
+fi
+
+if [ -n "$CHOSEN_PRIMARY_IP" ]; then
+    if grep -q "^STIGIX_PRIVATE_IP=" .env 2>/dev/null; then
+        sed -i.bak -E "s|^STIGIX_PRIVATE_IP=.*|STIGIX_PRIVATE_IP=$CHOSEN_PRIMARY_IP|g" .env && rm -f .env.bak
+    else
+        echo "STIGIX_PRIVATE_IP=$CHOSEN_PRIMARY_IP" >> .env
+    fi
+fi
 
 # Adjust the docker-compose.yml based on mode if needed
 if [ "$INSTALL_MODE" == "target" ]; then
@@ -515,7 +534,7 @@ if [ -n "$CONTROLLER_URL" ]; then
     echo "TAG=v2" >> .env
     # Set site name from hostname only if not already present
     if ! grep -q "^STIGIX_SITE_NAME=." .env 2>/dev/null; then
-        echo "STIGIX_SITE_NAME=$(hostname | cut -d'.' -f1)" >> .env
+        echo "STIGIX_SITE_NAME=${SITE_NAME_OVERRIDE:-$(hostname | cut -d'.' -f1)}" >> .env
     fi
     echo "✅ Controller URL written to .env (image: v2)"
 fi
@@ -535,6 +554,19 @@ if [ -n "$TOKEN_REALM" ]; then
 fi
 
 mkdir -p ./config ./logs ./mcp-data
+
+if [ -n "$SITE_NAME_OVERRIDE" ]; then
+    echo "{\"siteName\":\"$SITE_NAME_OVERRIDE\"}" > ./config/site-name.json
+fi
+
+if [ -n "$CHOSEN_PRIMARY_IP" ]; then
+    IFACE_FOR_IP=$(ip -4 -o addr show 2>/dev/null | grep "$CHOSEN_PRIMARY_IP" | awk '{print $2}' | head -n 1)
+    if [ -z "$IFACE_FOR_IP" ] && command -v ifconfig &>/dev/null; then
+        IFACE_FOR_IP=$(ifconfig 2>/dev/null | grep -B 1 "$CHOSEN_PRIMARY_IP" | grep -E '^[a-zA-Z0-9]+' | awk '{print $1}' | tr -d ':' | head -n 1)
+    fi
+    [ -n "$IFACE_FOR_IP" ] && echo "$IFACE_FOR_IP" > ./config/interfaces.txt
+fi
+
 # Pre-create CLI persistence files so Docker mounts them as files (not dirs)
 touch ./.stigix-cli.history ./.stigix-cli.json
 

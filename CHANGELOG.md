@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.130] - 2026-10-01
+
+### Fixed
+- **Persistent Network Interface & Site Name Override in Magic Join (`install.sh`, `install-autodocker.sh`, `docker-compose.yml`, `docker-compose.bridge.yml`)**:
+  - Saved chosen advertised IP (`CHOSEN_PRIMARY_IP`) directly to `.env` as `STIGIX_PRIVATE_IP` and mapped the corresponding physical interface into `config/interfaces.txt`.
+  - Added `- STIGIX_PRIVATE_IP=${STIGIX_PRIVATE_IP:-}` to `docker-compose.yml` and `docker-compose.bridge.yml` so containers bind to the user's selected IP rather than arbitrary local bridge IPs (e.g. `br50`).
+  - Saved custom Site Name (`SITE_NAME_OVERRIDE` from magic token `site_hint`) to both `config/site-name.json` and `.env` (`STIGIX_SITE_NAME`), preventing fallback to local hostnames. 🚀
+
 ## [2.0.129] - 2026-10-01
 
 ### Added / Improved
