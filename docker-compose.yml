@@ -38,6 +38,7 @@ services:
       # --- General & Web UI ---
       - PORT=${PORT:-8080}
       - JWT_SECRET=${JWT_SECRET:-your-secure-secret-here}
+      - STIGIX_CLUSTER_REALM=${STIGIX_CLUSTER_REALM:-}
       - DEBUG=${DEBUG:-false}
       - BETA=${BETA:-false}
       

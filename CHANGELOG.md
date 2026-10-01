@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.128] - 2026-10-01
+
+### Fixed
+- **Cluster Realm Environment Forwarding & Zero-Touch Adoption Fix (`docker-compose.yml`, `docker-compose.bridge.yml`, `install.sh`, `install-autodocker.sh`, `fleet-tunnel.ts`)**:
+  - Added `- STIGIX_CLUSTER_REALM=${STIGIX_CLUSTER_REALM:-}` to the `environment:` block of all `docker-compose` templates so Docker actually forwards the token realm to the runtime container.
+  - Updated `install.sh` and `install-autodocker.sh` to download `docker-compose.yml` from the `v2` branch instead of `main`.
+  - Added case-insensitive and fallback realm validation with verbose authentication logging in `fleet-tunnel` auth middleware.
+  - Resolves `invalid_token` during Leader reverse dials (`M6`). 🚀
+
 ## [2.0.127] - 2026-10-01
 
 ### Fixed

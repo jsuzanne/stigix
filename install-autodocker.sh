@@ -8,7 +8,7 @@ set -e
 INSTALL_MODE="both"
 DRY_RUN=false
 CONTROLLER_URL=""
-REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/main"
+REPO_URL="https://raw.githubusercontent.com/jsuzanne/stigix/v2"
 COMPOSE_URL="$REPO_URL/docker-compose.yml"
 
 show_help() {

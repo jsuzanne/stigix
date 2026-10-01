@@ -158,8 +158,11 @@ export class FleetTunnelManager {
             } catch {}
 
             // 2. Rendezvous Cluster Adoption: If Leader is dialing in and provides matching cluster realm
-            const expectedRealm = process.env.STIGIX_CLUSTER_REALM || this.getRealmHash();
-            if (auth.isLeaderDial && auth.realm && auth.realm === expectedRealm && auth.clusterJwtSecret) {
+            const expectedRealm = (process.env.STIGIX_CLUSTER_REALM || this.getRealmHash() || '').trim().toLowerCase();
+            const receivedRealm = (auth.realm || '').trim().toLowerCase();
+            const fallbackRealm = this.getRealmHash().trim().toLowerCase();
+
+            if (auth.isLeaderDial && (receivedRealm === expectedRealm || receivedRealm === fallbackRealm) && auth.clusterJwtSecret) {
                 try {
                     jwt.verify(token, auth.clusterJwtSecret);
                     this.secretKey = auth.clusterJwtSecret;
@@ -169,6 +172,8 @@ export class FleetTunnelManager {
                 } catch (verifyErr: any) {
                     log('TUNNEL', `Cluster realm match but token verification failed: ${verifyErr.message}`, 'warn');
                 }
+            } else if (auth.isLeaderDial) {
+                log('TUNNEL', `Leader dial auth rejected — realm mismatch (expected: ${expectedRealm.slice(0, 12)}..., received: ${receivedRealm.slice(0, 12)}...)`, 'warn');
             }
 
             log('TUNNEL', `Invalid reverse tunnel JWT token from ${socket.handshake.address}`, 'warn');
