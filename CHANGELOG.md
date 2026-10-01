@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.121] - 2026-10-01
+
+### Added / Improved
+- **Multi-IP Candidate Probing & Free Port Detection in Cloudflare Rendezvous (`fleet-tunnel.ts`, `install.sh`, `install-autodocker.sh`, `stigix-registry/src/index.ts`)**:
+  - `install.sh` and `install-autodocker.sh` automatically detect all local IPv4 interface candidates and dynamic free port allocation (`8080..8090`) before announcing to Cloudflare Rendezvous.
+  - Cloudflare Worker and Leader `FleetTunnelManager` handle multi-IP candidate arrays, dialing across all candidate interfaces to establish reverse WebSocket tunnels (`⚡ WS TUNNEL`). 🚀
+
 ## [2.0.120] - 2026-10-01
 
 ### Added / Improved

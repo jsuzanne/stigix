@@ -207,13 +207,37 @@ if [ -n "$JOIN_TOKEN" ]; then
         REGISTRY_URL="https://registry.stigix.io"
         NODE_HOSTNAME=$(hostname | cut -d'.' -f1)
         CHOSEN_SITE="${SITE_NAME_OVERRIDE:-$NODE_HOSTNAME}"
-        ANNOUNCE_BODY="{\"instance_id\":\"$NODE_HOSTNAME\",\"site_name\":\"$CHOSEN_SITE\",\"port\":8080}"
+        ANNOUNCE_PORT=8080
+        if command -v find_free_port &>/dev/null; then
+            FP=$(find_free_port 8080 8090)
+            [ -n "$FP" ] && ANNOUNCE_PORT="$FP"
+        fi
+        LOCAL_IPS_JSON="[]"
+        if command -v python3 &>/dev/null; then
+            LOCAL_IPS_JSON=$(python3 -c "import socket, json
+ips = set()
+try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(('8.8.8.8', 80))
+    ips.add(s.getsockname()[0])
+    s.close()
+except: pass
+try:
+    for info in socket.getaddrinfo(socket.gethostname(), None):
+        ip = info[4][0]
+        if not ip.startswith('127.'): ips.add(ip)
+except: pass
+print(json.dumps(list(ips)))" 2>/dev/null || echo "[]")
+        fi
+        ANNOUNCE_BODY="{\"instance_id\":\"$NODE_HOSTNAME\",\"site_name\":\"$CHOSEN_SITE\",\"port\":$ANNOUNCE_PORT,\"ips\":$LOCAL_IPS_JSON}"
         if [ -n "$TOKEN_REALM" ]; then
             ANNOUNCE_RES=$(curl -s -k -X POST -H "Content-Type: application/json" -d "$ANNOUNCE_BODY" --connect-timeout 4 -m 6 "$REGISTRY_URL/realms/$TOKEN_REALM/register" 2>/dev/null || echo "{}")
             if echo "$ANNOUNCE_RES" | grep -q '"status":"ok"'; then
-                echo "   ✅ Cloudflare Rendezvous announced! Private Leader will establish reverse tunnel automatically."
+                echo "   ✅ Cloudflare Rendezvous announced (port $ANNOUNCE_PORT)! Private Leader will establish reverse tunnel automatically."
             fi
         fi
+        # In Rendezvous mode, Leader dials peer; clear CONTROLLER_URL to avoid blocking reachability check
+        CONTROLLER_URL=""
     fi
 fi
 

@@ -178,6 +178,7 @@ async function handleRealmRegister(realmHash: string, request: Request, env: Env
         instance_id: instanceId,
         site_name: siteName,
         ip: effectiveIp,
+        ips: Array.isArray(payload.ips) ? payload.ips : [effectiveIp],
         port,
         capabilities: payload.capabilities || {},
         tags: payload.tags || {},

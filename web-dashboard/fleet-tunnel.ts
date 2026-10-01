@@ -760,7 +760,6 @@ export class FleetTunnelManager {
     private handleRendezvousEvent(event: any): void {
         if (!event || event.event !== 'peer_registered') return;
 
-        const peerIp = event.ip;
         const peerPort = event.port || 8080;
         const peerInstanceId = event.instance_id;
         const peerSiteName = event.site_name || peerInstanceId;
@@ -769,39 +768,53 @@ export class FleetTunnelManager {
         const localIp = localStatus.detected_ip;
         const localId = localStatus.instance_id;
 
-        if (peerIp === '127.0.0.1' || peerIp === localIp || peerInstanceId === localId) {
+        if (peerInstanceId === localId) {
             return; // Ignore self announcements
         }
 
-        log('RENDEZVOUS', `✨ Instant Cloudflare Push: new Cloud Peer announced: ${peerSiteName} (${peerIp}:${peerPort})!`);
-
-        // Auto-create target in targetsManager if not present
-        if (this.targetsManager && typeof this.targetsManager.createTarget === 'function') {
-            try {
-                const existingTargets = this.targetsManager.loadTargets();
-                const alreadyExists = existingTargets.some((t: any) => t.host === peerIp || t.label === peerSiteName);
-                if (!alreadyExists) {
-                    this.targetsManager.createTarget({
-                        label: peerSiteName,
-                        host: peerIp,
-                        port: peerPort,
-                        protocol: 'http',
-                        capabilities: event.capabilities || { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true },
-                        tags: ['magic-join', 'cloudflare-rendezvous'],
-                        comments: `Auto-enrolled via Cloudflare Rendezvous on ${new Date().toISOString()}`
-                    });
-                    log('RENDEZVOUS', `🎯 Target auto-provisioned for ${peerSiteName} (${peerIp}:${peerPort})`);
+        const candidateIps: string[] = [];
+        if (event.ip && event.ip !== '127.0.0.1' && event.ip !== localIp) candidateIps.push(event.ip);
+        if (Array.isArray(event.ips)) {
+            for (const ip of event.ips) {
+                if (ip && ip !== '127.0.0.1' && ip !== localIp && !candidateIps.includes(ip)) {
+                    candidateIps.push(ip);
                 }
-            } catch (tErr: any) {
-                log('RENDEZVOUS', `Warning auto-provisioning target: ${tErr.message}`, 'warn');
             }
         }
 
-        // Trigger immediate outbound reverse dial
-        const targetKey = `${peerIp.toLowerCase()}:${peerPort}`;
-        if (!this.outboundDialedSockets.has(targetKey) && !this.activeTunnels.has(peerInstanceId)) {
-            const targetObj = { id: peerInstanceId, name: peerSiteName, host: peerIp, ports: { http: peerPort } };
-            this.dialOutboundPeer(targetObj, peerIp, peerPort, targetKey);
+        if (candidateIps.length === 0) return;
+
+        log('RENDEZVOUS', `✨ Instant Cloudflare Push: new Peer announced: ${peerSiteName} (IPs: ${candidateIps.join(', ')} : ${peerPort})!`);
+
+        for (const peerIp of candidateIps) {
+            // Auto-create target in targetsManager if not present
+            if (this.targetsManager && typeof this.targetsManager.createTarget === 'function') {
+                try {
+                    const existingTargets = this.targetsManager.loadTargets();
+                    const alreadyExists = existingTargets.some((t: any) => t.host === peerIp || t.label === peerSiteName);
+                    if (!alreadyExists) {
+                        this.targetsManager.createTarget({
+                            label: peerSiteName,
+                            host: peerIp,
+                            port: peerPort,
+                            protocol: 'http',
+                            capabilities: event.capabilities || { voice: true, convergence: true, custom_app: true, xfr: true, security: true, connectivity: true },
+                            tags: ['magic-join', 'cloudflare-rendezvous'],
+                            comments: `Auto-enrolled via Cloudflare Rendezvous on ${new Date().toISOString()}`
+                        });
+                        log('RENDEZVOUS', `🎯 Target auto-provisioned for ${peerSiteName} (${peerIp}:${peerPort})`);
+                    }
+                } catch (tErr: any) {
+                    log('RENDEZVOUS', `Warning auto-provisioning target: ${tErr.message}`, 'warn');
+                }
+            }
+
+            // Trigger immediate outbound reverse dial
+            const targetKey = `${peerIp.toLowerCase()}:${peerPort}`;
+            if (!this.outboundDialedSockets.has(targetKey) && !this.activeTunnels.has(peerInstanceId)) {
+                const targetObj = { id: peerInstanceId, name: peerSiteName, host: peerIp, ports: { http: peerPort } };
+                this.dialOutboundPeer(targetObj, peerIp, peerPort, targetKey);
+            }
         }
     }
 
