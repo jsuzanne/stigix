@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.119] - 2026-10-01
+
+### Added / Improved
+- **Zero-Touch Cluster Security Realm Synchronization in Magic Join (`server.ts`, `install.sh`, `install-autodocker.sh`, `stigix-cli.py`, `orchestrator.py`)**:
+  - Automatically securely returns and synchronizes cluster `JWT_SECRET` during Magic Join token redemption (`/api/fleet/join-redeem`).
+  - Eliminates any manual `.env` editing: new nodes joining the fleet immediately share the cluster security realm.
+  - Ensures persistent `⚡ WS TUNNEL` WebSocket reverse tunnels and remote gateway proxy queries (`/api/gateway/:peerId/*`) connect and authenticate seamlessly out-of-the-box. 🚀
+
 ## [2.0.112] - 2026-09-30
 
 ### Added / Improved

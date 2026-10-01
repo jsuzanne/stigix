@@ -2841,14 +2841,14 @@ def cmd_join(args):
         try:
             r = requests.post(redeem_url, json=redeem_payload, timeout=5.0)
             res_data = r.json()
-            if r.status_code != 200 or not res_data.get("success"):
+            if r.status_code != 200 or (not res_data.get("success") and res_data.get("status") != "ok"):
                 err_code = res_data.get("error", f"HTTP {r.status_code}")
                 err(f"Join redemption rejected: {err_code}")
-                if "EXPIRED" in err_code:
+                if "EXPIRED" in str(err_code):
                     info("→ Action: Token TTL exceeded. Request a new token from the Leader.")
-                elif "REDEEMED" in err_code:
+                elif "REDEEMED" in str(err_code):
                     info("→ Action: Single-use token was already consumed. Tokens cannot be reused.")
-                elif "REVOKED" in err_code:
+                elif "REVOKED" in str(err_code):
                     info("→ Action: Token was revoked by cluster administrator.")
                 return
 
@@ -2856,6 +2856,31 @@ def cmd_join(args):
             node_id = res_data.get("node_id")
             if node_id:
                 info(f"Assigned Persistent Node ID: {c('1;32', node_id)}")
+
+            # Synchronize cluster JWT_SECRET into local .env if available
+            cluster_jwt = res_data.get("jwt_secret")
+            if cluster_jwt:
+                for env_path in ["/app/config/.env", ".env", "config/.env"]:
+                    if os.path.exists(env_path):
+                        try:
+                            with open(env_path, "r") as ef:
+                                env_lines = ef.readlines()
+                            new_lines = []
+                            found = False
+                            for line in env_lines:
+                                if line.startswith("JWT_SECRET="):
+                                    new_lines.append(f"JWT_SECRET={cluster_jwt}\n")
+                                    found = True
+                                else:
+                                    new_lines.append(line)
+                            if not found:
+                                new_lines.append(f"JWT_SECRET={cluster_jwt}\n")
+                            with open(env_path, "w") as ef:
+                                ef.writelines(new_lines)
+                            info(f"Cluster security realm synchronized ({env_path})")
+                            break
+                        except Exception:
+                            pass
 
             # Step 3: Configure local Stigix node if running locally
             leader_reg_url = f"{target_leader_url}/api/registry"
@@ -2904,7 +2929,7 @@ def cmd_join(args):
             return
 
         tok = res.get("token")
-        curl_cmd = res.get("curlCommand") or f"curl -fsSL https://stigix.io/join | sudo bash -s -- {tok}"
+        curl_cmd = res.get("curlCommand") or f"curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- {tok}"
         entry = res.get("entry", {})
         exp_at = entry.get("expires_at", "in 1 hour")
         endpoints = res.get("endpoints", [])

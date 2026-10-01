@@ -13493,10 +13493,12 @@ app.post('/api/fleet/join-redeem', async (req: any, res: any) => {
 
         res.json({
             status: 'ok',
+            success: true,
             node_id: redeemResult.node_id,
             node_token: redeemResult.node_token,
             realm: magicJoinManager.getRealmHash(),
             leader_ip: registryManager.getCurrentIp(),
+            jwt_secret: SECRET_KEY,
             message: 'Node successfully enrolled into Stigix cluster.'
         });
     } catch (err: any) {

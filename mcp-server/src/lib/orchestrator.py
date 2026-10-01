@@ -4526,7 +4526,7 @@ class TestOrchestrator:
                     }
                 )
                 redeem_data = redeem_res.json()
-                if redeem_res.status_code != 200 or not redeem_data.get("success"):
+                if redeem_res.status_code != 200 or (not redeem_data.get("success") and redeem_data.get("status") != "ok"):
                     return {"success": False, "error": redeem_data.get("error", f"HTTP {redeem_res.status_code}")}
 
             headers = {"Authorization": f"Bearer {self._generate_token()}"}

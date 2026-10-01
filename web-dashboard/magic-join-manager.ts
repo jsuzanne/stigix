@@ -175,7 +175,7 @@ export class MagicJoinManager {
         this.tokens.set(jti, entry);
         this.saveTokens();
 
-        const curlCommand = `curl -fsSL https://stigix.io/join | sudo bash -s -- ${token}`;
+        const curlCommand = `curl -fsSL https://raw.githubusercontent.com/jsuzanne/stigix/v2/install.sh | sudo bash -s -- ${token}`;
 
         return { token, entry, curlCommand };
     }

@@ -188,8 +188,13 @@ if [ -n "$JOIN_TOKEN" ]; then
         CHOSEN_SITE="${SITE_NAME_OVERRIDE:-$NODE_HOSTNAME}"
         REDEEM_BODY="{\"token\":\"$JOIN_TOKEN\",\"instance_id\":\"$NODE_HOSTNAME\",\"hostname\":\"$NODE_HOSTNAME\",\"site_name\":\"$CHOSEN_SITE\"}"
         REDEEM_RES=$(curl -s -k -X POST -H "Content-Type: application/json" -d "$REDEEM_BODY" --connect-timeout 4 -m 6 "$WINNING_LEADER/api/fleet/join-redeem" 2>/dev/null || echo "{}")
-        if echo "$REDEEM_RES" | grep -q '"success":true'; then
+        if echo "$REDEEM_RES" | grep -q -E '"success":true|"status":"ok"'; then
             echo "   ✅ Token redeemed successfully!"
+            CLUSTER_JWT=$(echo "$REDEEM_RES" | grep -o '"jwt_secret":"[^"]*' | cut -d'"' -f4)
+            if [ -n "$CLUSTER_JWT" ]; then
+                JOINED_JWT_SECRET="$CLUSTER_JWT"
+                echo "   🔒 Cluster security realm synchronized."
+            fi
         else
             echo "   ⚠️  Redemption notice: $REDEEM_RES"
         fi
@@ -299,8 +304,12 @@ if [ -f docker-compose.yml ]; then
 fi
 
 # 4. Mode-specific adjustments (Creating the right docker-compose/env)
-# Generate a unique JWT secret for this installation
-JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' || date +%s%N | sha256sum | head -c 64)
+# Generate a unique JWT secret for standalone installation or inherit cluster secret if joined
+if [ -n "$JOINED_JWT_SECRET" ]; then
+    JWT_SECRET="$JOINED_JWT_SECRET"
+else
+    JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' || date +%s%N | sha256sum | head -c 64)
+fi
 
 PORT=8080
 if [ "$INSTALL_MODE" != "target" ]; then
@@ -397,6 +406,12 @@ if [ -n "$CONTROLLER_URL" ]; then
         echo "STIGIX_SITE_NAME=$(hostname | cut -d'.' -f1)" >> .env
     fi
     echo "✅ Controller URL written to .env (image: v2)"
+fi
+
+if [ -n "$JOINED_JWT_SECRET" ]; then
+    if grep -q "^JWT_SECRET=" .env 2>/dev/null; then
+        sed -i.bak -E "s|^JWT_SECRET=.*|JWT_SECRET=$JOINED_JWT_SECRET|g" .env && rm -f .env.bak
+    fi
 fi
 
 mkdir -p ./config ./logs ./mcp-data
