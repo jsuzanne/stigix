@@ -58,7 +58,8 @@ import {
     RotateCcw,
     Sliders,
     Gauge,
-    Route
+    Route,
+    Loader2
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { clsx } from 'clsx';
@@ -959,6 +960,7 @@ function TopologyContent({ token }: TopologyProps) {
 
     // VyOS Direct Action State (Interactive Topology Controls)
     const [isVyosExecuting, setIsVyosExecuting] = useState(false);
+    const [vyosExecutingAction, setVyosExecutingAction] = useState<string | null>(null);
     const [vyosActionResult, setVyosActionResult] = useState<{ success: boolean; message: string; durationMs?: number } | null>(null);
     const [showNetemModal, setShowNetemModal] = useState(false);
     const [netemLatency, setNetemLatency] = useState(100);
@@ -1049,6 +1051,7 @@ function TopologyContent({ token }: TopologyProps) {
         siteName?: string
     ) => {
         setIsVyosExecuting(true);
+        setVyosExecutingAction(command);
         setVyosActionResult(null);
         try {
             const res = await gFetch('/api/vyos/direct-action', {
@@ -1118,6 +1121,7 @@ function TopologyContent({ token }: TopologyProps) {
             });
         } finally {
             setIsVyosExecuting(false);
+            setVyosExecutingAction(null);
         }
     };
 
@@ -1128,6 +1132,10 @@ function TopologyContent({ token }: TopologyProps) {
         const isShut = getVyosInterfaceStatus(routerName, iface) === 'down';
         const activeQos = getVyosInterfaceQos(routerName, iface);
         const hasActiveQos = !!activeQos;
+
+        const isShutting = isVyosExecuting && (vyosExecutingAction === 'shut' || vyosExecutingAction === 'no-shut');
+        const isInjecting = isVyosExecuting && vyosExecutingAction === 'set-qos';
+        const isClearing = isVyosExecuting && vyosExecutingAction === 'clear-qos';
 
         return (
             <div className="bg-card-secondary/80 border border-amber-500/30 rounded-2xl p-3.5 space-y-3 shadow-inner">
@@ -1153,6 +1161,28 @@ function TopologyContent({ token }: TopologyProps) {
                     </div>
                 </div>
 
+                {/* Real-time Progress Bar while VyOS SSH script executes */}
+                {isVyosExecuting && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 space-y-1.5 animate-fadeIn">
+                        <div className="flex items-center justify-between text-[11px] font-mono">
+                            <span className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-300">
+                                <Loader2 size={13} className="animate-spin text-amber-500" />
+                                {vyosExecutingAction === 'shut'
+                                    ? `Disabling ${iface} via VyOS SSH...`
+                                    : vyosExecutingAction === 'no-shut'
+                                    ? `Re-enabling ${iface} via VyOS SSH...`
+                                    : vyosExecutingAction === 'clear-qos'
+                                    ? `Clearing QoS on ${iface} via VyOS SSH...`
+                                    : `Applying Netem QoS to ${iface} via VyOS SSH...`}
+                            </span>
+                            <span className="text-[9.5px] text-amber-600 dark:text-amber-400 font-mono font-bold">~3-4s</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-amber-500/20 rounded-full overflow-hidden relative">
+                            <div className="h-full bg-amber-500 rounded-full animate-laser w-2/3" />
+                        </div>
+                    </div>
+                )}
+
                 {/* 3 Action Buttons */}
                 <div className="grid grid-cols-3 gap-2">
                     {/* 1. Shut / No-Shut Toggle */}
@@ -1167,15 +1197,27 @@ function TopologyContent({ token }: TopologyProps) {
                         )}
                         disabled={isVyosExecuting}
                         className={cn(
-                            "h-[54px] rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all border shadow-sm cursor-pointer",
+                            "h-[54px] rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all border shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-wait relative overflow-hidden",
                             isShut
                                 ? "bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 ring-1 ring-emerald-500/40"
-                                : "bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border-rose-500/30"
+                                : "bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border-rose-500/30",
+                            isShutting && "ring-2 ring-amber-500/60 bg-amber-500/15"
                         )}
                         title={isShut ? "Restore link (no-shut)" : "Simulate link cut (shut interface)"}
                     >
-                        <Power size={14} className={isVyosExecuting ? 'animate-pulse' : ''} />
-                        <span className="text-[10px] tracking-wide">{isShut ? 'NO SHUT' : 'SHUT PORT'}</span>
+                        {isShutting ? (
+                            <Loader2 size={15} className="animate-spin text-amber-500" />
+                        ) : (
+                            <Power size={14} />
+                        )}
+                        <span className="text-[10px] tracking-wide font-black">
+                            {isShutting ? (isShut ? 'RESTORING...' : 'SHUTTING...') : (isShut ? 'NO SHUT' : 'SHUT PORT')}
+                        </span>
+                        {isShutting && (
+                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500/20 overflow-hidden">
+                                <div className="h-full bg-amber-500 animate-laser w-full" />
+                            </div>
+                        )}
                     </button>
 
                     {/* 2. Inject Netem */}
@@ -1193,15 +1235,27 @@ function TopologyContent({ token }: TopologyProps) {
                         }}
                         disabled={isVyosExecuting}
                         className={cn(
-                            "h-[54px] rounded-xl font-bold border flex flex-col items-center justify-center gap-1 transition-all shadow-sm cursor-pointer",
+                            "h-[54px] rounded-xl font-bold border flex flex-col items-center justify-center gap-1 transition-all shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-wait relative overflow-hidden",
                             hasActiveQos
                                 ? "bg-amber-500/25 text-amber-300 border-amber-500/60 ring-1 ring-amber-500/40"
-                                : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                                : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border-amber-500/30",
+                            isInjecting && "ring-2 ring-amber-500/60 bg-amber-500/15"
                         )}
                         title="Inject latency, jitter, or packet loss via netem"
                     >
-                        <Sliders size={14} />
-                        <span className="text-[10px] tracking-wide">INJECT QOS</span>
+                        {isInjecting ? (
+                            <Loader2 size={15} className="animate-spin text-amber-500" />
+                        ) : (
+                            <Sliders size={14} />
+                        )}
+                        <span className="text-[10px] tracking-wide font-black">
+                            {isInjecting ? 'INJECTING...' : 'INJECT QOS'}
+                        </span>
+                        {isInjecting && (
+                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500/20 overflow-hidden">
+                                <div className="h-full bg-amber-500 animate-laser w-full" />
+                            </div>
+                        )}
                     </button>
 
                     {/* 3. Clear QoS */}
@@ -1216,15 +1270,27 @@ function TopologyContent({ token }: TopologyProps) {
                         )}
                         disabled={isVyosExecuting || !hasActiveQos}
                         className={cn(
-                            "h-[54px] rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all shadow-sm border",
+                            "h-[54px] rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all shadow-sm border relative overflow-hidden",
                             hasActiveQos
-                                ? "bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border-rose-500/40 cursor-pointer"
-                                : "bg-card/40 border-border/40 text-text-muted/40 cursor-not-allowed"
+                                ? "bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border-rose-500/40 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                                : "bg-card/40 border-border/40 text-text-muted/40 cursor-not-allowed",
+                            isClearing && "ring-2 ring-amber-500/60 bg-amber-500/15"
                         )}
                         title="Remove netem latency/loss rules"
                     >
-                        <RotateCcw size={14} />
-                        <span className="text-[10px] tracking-wide">CLEAR QOS</span>
+                        {isClearing ? (
+                            <Loader2 size={15} className="animate-spin text-amber-500" />
+                        ) : (
+                            <RotateCcw size={14} />
+                        )}
+                        <span className="text-[10px] tracking-wide font-black">
+                            {isClearing ? 'CLEARING...' : 'CLEAR QOS'}
+                        </span>
+                        {isClearing && (
+                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-amber-500/20 overflow-hidden">
+                                <div className="h-full bg-amber-500 animate-laser w-full" />
+                            </div>
+                        )}
                     </button>
                 </div>
 
@@ -3334,12 +3400,29 @@ function TopologyContent({ token }: TopologyProps) {
                             </div>
                         </div>
 
+                        {/* Interactive Progress Indicator while applying */}
+                        {isVyosExecuting && (
+                            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-1.5 animate-fadeIn">
+                                <div className="flex items-center justify-between text-xs font-mono">
+                                    <span className="flex items-center gap-2 font-bold text-amber-700 dark:text-amber-300">
+                                        <Loader2 size={14} className="animate-spin text-amber-500" />
+                                        Running VyOS tc/netem SSH script...
+                                    </span>
+                                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">~3-4s</span>
+                                </div>
+                                <div className="h-1.5 w-full bg-amber-500/20 rounded-full overflow-hidden relative">
+                                    <div className="h-full bg-amber-500 rounded-full animate-laser w-2/3" />
+                                </div>
+                            </div>
+                        )}
+
                         {/* Modal Action Buttons */}
                         <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
                             <button
                                 type="button"
+                                disabled={isVyosExecuting}
                                 onClick={() => setShowNetemModal(false)}
-                                className="px-4 py-2 bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                                className="px-4 py-2 bg-card-secondary hover:bg-card-hover text-text-muted hover:text-text-primary rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
                             >
                                 Cancel
                             </button>
@@ -3353,10 +3436,19 @@ function TopologyContent({ token }: TopologyProps) {
                                     netemTarget.siteName
                                 )}
                                 disabled={isVyosExecuting}
-                                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-900/20 cursor-pointer"
+                                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 transition-all shadow-md shadow-amber-900/20 cursor-pointer disabled:cursor-wait"
                             >
-                                <Zap size={14} className={isVyosExecuting ? 'animate-spin' : 'fill-slate-950'} />
-                                <span>{isVyosExecuting ? 'Applying...' : `Apply to ${netemTarget.interfaceName}`}</span>
+                                {isVyosExecuting ? (
+                                    <>
+                                        <Loader2 size={14} className="animate-spin text-slate-950" />
+                                        <span>Applying Impairment (~3s)...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Zap size={14} className="fill-slate-950" />
+                                        <span>Apply to {netemTarget.interfaceName}</span>
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>

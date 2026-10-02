@@ -2,7 +2,11 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2.0.141] - 2026-10-02 — Fix: Tailwind v4 Theme Variant Isolation (`@custom-variant dark`)
+## [v2.0.142] - 2026-10-02 — Feature: Real-Time Progress Bar & Spinners for VyOS Topology Actions
+
+- **feat(topology)**: Added animated spinners (`Loader2`), laser sweep progress bars, and execution state labels across all 3 VyOS underlay buttons (`SHUT PORT` / `NO SHUT`, `INJECT QOS`, `CLEAR QOS`).
+- **feat(topology)**: Added live execution progress indicator with estimated duration (~3-4s) in both the underlay link details drawer and the Netem Impairment modal while VyOS SSH scripts run.
+- **feat(topology)**: Prevented redundant clicks and provided immediate visual feedback with loading states during interface shut, no-shut, latency/loss injection, and QoS clearing.
 
 - **fix(theme)**: Added `@custom-variant dark (&:where(.dark, [data-theme="dark"], .dark *, [data-theme="dark"] *));` to `index.css`. Resolves a critical bug where Tailwind v4 defaulted to `@media (prefers-color-scheme: dark)`, causing `dark:*` styles to always override light-mode styles on macOS/browsers configured with system dark mode.
 
