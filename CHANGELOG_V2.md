@@ -2,6 +2,12 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.139] - 2026-10-02 — Fix: Reachability Matrix Light Mode Contrast & Theme Refinement
+
+- **fix(ui)**: Refined SD-WAN Reachability Matrix cell backgrounds in light mode (`bg-emerald-500/10`, `bg-amber-500/10`, `bg-red-500/10`, `bg-sky-500/10`, `bg-slate-100/70`) replacing dark `*-950` overlays that appeared muddy and washed out.
+- **fix(ui)**: Enforced strong light-mode text and badge contrast across all matrix cells, status chips (`Optimal`, `Degraded`, `Critical`, `One-Way`, `H&S Policy`), site badges (`HUB`, `BRANCH`), and metrics (`Fwd:` / `Rev:` latency values).
+- **fix(ui)**: Enhanced visual clarity for diagonal identity cells (`—`), inspection modals, RCA flow-trace diagnosis, and SLA Thresholds modal.
+
 ## [v2.0.118] - 2026-10-01 — Refactor: Neutral Dynamic Endpoint Selector in Magic Join
 
 - **refactor(magic-join)**: Removed any hardcoded subnet assumptions from `MagicJoinModal.tsx`. The operator has full control to select or deselect any detected IP address with 1 click before generating the token.

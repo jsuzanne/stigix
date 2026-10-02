@@ -400,11 +400,11 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                 </div>
 
                 <div className="bg-card-secondary/60 border border-border p-3.5 rounded-xl backdrop-blur-sm shadow-sm flex items-center gap-3">
-                    <div className="p-2.5 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                    <div className="p-2.5 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
                         <Activity size={18} />
                     </div>
                     <div>
-                        <div className="text-sm font-black font-mono text-purple-300 uppercase truncate">
+                        <div className="text-sm font-black font-mono text-purple-700 dark:text-purple-300 uppercase truncate">
                             {thresholds.mesh_topology === 'full_mesh' ? 'Full Mesh' : thresholds.mesh_topology === 'disabled' ? 'Manual' : 'Hub & Spoke'}
                         </div>
                         <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
@@ -448,7 +448,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             title="Every node probes every other node (Full-Mesh VPN architecture - Beta)"
                         >
                             <span>🌐 Full-Mesh</span>
-                            <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30">
                                 BETA
                             </span>
                         </button>
@@ -488,11 +488,11 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             className={twMerge(
                                 "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5",
                                 statusFilter === 'OPTIMAL'
-                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm"
-                                    : "bg-card-secondary text-emerald-400/70 border-border hover:bg-emerald-500/10 hover:text-emerald-300"
+                                    ? "bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-500/50 shadow-sm font-black"
+                                    : "bg-card-secondary text-emerald-700/80 dark:text-emerald-400/70 border-border hover:bg-emerald-500/10 hover:text-emerald-800 dark:hover:text-emerald-300"
                             )}
                         >
-                            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                             Optimal ({summary.healthy_bidirectional})
                         </button>
                         <button
@@ -500,11 +500,11 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             className={twMerge(
                                 "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5",
                                 statusFilter === 'DEGRADED'
-                                    ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm"
-                                    : "bg-card-secondary text-amber-400/70 border-border hover:bg-amber-500/10 hover:text-amber-300"
+                                    ? "bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/50 shadow-sm font-black"
+                                    : "bg-card-secondary text-amber-700/80 dark:text-amber-400/70 border-border hover:bg-amber-500/10 hover:text-amber-800 dark:hover:text-amber-300"
                             )}
                         >
-                            <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                             Degraded ({summary.asymmetric_degraded})
                         </button>
                         <button
@@ -512,11 +512,11 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             className={twMerge(
                                 "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5",
                                 statusFilter === 'CRITICAL'
-                                    ? "bg-red-500/20 text-red-300 border-red-500/50 shadow-sm"
-                                    : "bg-card-secondary text-red-400/70 border-border hover:bg-red-500/10 hover:text-red-300"
+                                    ? "bg-red-500/20 text-red-800 dark:text-red-300 border-red-500/50 shadow-sm font-black"
+                                    : "bg-card-secondary text-red-700/80 dark:text-red-400/70 border-border hover:bg-red-500/10 hover:text-red-800 dark:hover:text-red-300"
                             )}
                         >
-                            <span className="w-2 h-2 rounded-full bg-red-400"></span>
+                            <span className="w-2 h-2 rounded-full bg-red-500"></span>
                             Critical ({summary.unidirectional_down + summary.full_outage})
                         </button>
                         {(summary.partial_telemetry || 0) > 0 && (
@@ -525,11 +525,11 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                 className={twMerge(
                                     "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5",
                                     statusFilter === 'PARTIAL'
-                                        ? "bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-sm"
-                                        : "bg-card-secondary text-sky-400/70 border-border hover:bg-sky-500/10 hover:text-sky-300"
+                                        ? "bg-sky-500/20 text-sky-800 dark:text-sky-300 border-sky-500/50 shadow-sm font-black"
+                                        : "bg-card-secondary text-sky-700/80 dark:text-sky-400/70 border-border hover:bg-sky-500/10 hover:text-sky-800 dark:hover:text-sky-300"
                                 )}
                             >
-                                <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+                                <span className="w-2 h-2 rounded-full bg-sky-500"></span>
                                 One-Way ({summary.partial_telemetry})
                             </button>
                         )}
@@ -539,11 +539,11 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                 className={twMerge(
                                     "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5",
                                     statusFilter === 'POLICY_EXCLUDED'
-                                        ? "bg-purple-500/20 text-purple-300 border-purple-500/50 shadow-sm"
-                                        : "bg-card-secondary text-purple-400/70 border-border hover:bg-purple-500/10 hover:text-purple-300"
+                                        ? "bg-purple-500/20 text-purple-800 dark:text-purple-300 border-purple-500/50 shadow-sm font-black"
+                                        : "bg-card-secondary text-purple-700/80 dark:text-purple-400/70 border-border hover:bg-purple-500/10 hover:text-purple-800 dark:hover:text-purple-300"
                                 )}
                             >
-                                <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                                <span className="w-2 h-2 rounded-full bg-purple-500"></span>
                                 H&S Policy ({summary.policy_excluded})
                             </button>
                         )}
@@ -579,7 +579,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                         className="flex items-center gap-1.5 bg-card-secondary hover:bg-card-secondary/80 text-text-primary border border-border px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm"
                         title="Configure SLA Health Thresholds (Optimal / Degraded / Critical)"
                     >
-                        <Sliders size={13} className="text-amber-400" />
+                        <Sliders size={13} className="text-amber-500 dark:text-amber-400" />
                         <span>SLA Thresholds</span>
                     </button>
 
@@ -607,7 +607,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                         </p>
                     </div>
                     {error && nodes.length > 0 ? (
-                        <span className="text-[10px] font-mono text-amber-400 flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded" title={error}>
+                        <span className="text-[10px] font-mono text-amber-500 dark:text-amber-400 flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded" title={error}>
                             <AlertTriangle size={11} />
                             Reconnecting...
                         </span>
@@ -635,7 +635,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                         <table className="w-full text-left border-collapse min-w-[640px]">
                             <thead>
                                 <tr className="border-b border-border bg-card-secondary/40 text-[11px] font-bold text-text-muted uppercase tracking-wider">
-                                    <th className="p-3 w-44 border-r border-border bg-card-secondary/90 sticky left-0 z-10">
+                                    <th className="p-3 w-44 border-r border-border bg-card-secondary/95 sticky left-0 z-10">
                                         Source (From) \ Target (To)
                                     </th>
                                     {nodes.map(node => (
@@ -645,7 +645,9 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                     <span className="text-text-primary font-mono font-bold">{node.name}</span>
                                                     <span className={twMerge(
                                                         "text-[9px] px-1 py-0.2 rounded font-bold uppercase",
-                                                        node.site_type === 'HUB' ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                                                        node.site_type === 'HUB'
+                                                            ? "bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30"
+                                                            : "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30"
                                                     )}>
                                                         {node.site_type}
                                                     </span>
@@ -658,15 +660,17 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             </thead>
                             <tbody>
                                 {nodes.map(sourceNode => (
-                                    <tr key={sourceNode.id} className="border-b border-border/50 hover:bg-white/[0.02] transition-colors">
-                                        <td className="p-3 font-bold text-xs text-text-primary border-r border-border bg-card-secondary/90 sticky left-0 z-10">
+                                    <tr key={sourceNode.id} className="border-b border-border/50 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+                                        <td className="p-3 font-bold text-xs text-text-primary border-r border-border bg-card-secondary/95 sticky left-0 z-10">
                                             <div className="flex items-center justify-between">
                                                 <div>
                                                     <div className="flex items-center gap-1.5 font-mono">
                                                         <span>{sourceNode.name}</span>
                                                         <span className={twMerge(
                                                             "text-[9px] px-1 py-0.2 rounded font-bold uppercase",
-                                                            sourceNode.site_type === 'HUB' ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                                                            sourceNode.site_type === 'HUB'
+                                                                ? "bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30"
+                                                                : "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30"
                                                         )}>
                                                             {sourceNode.site_type}
                                                         </span>
@@ -674,7 +678,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                     <div className="text-[9.5px] text-text-muted font-normal font-mono">Host: {sourceNode.ip}</div>
                                                 </div>
                                                 {sourceNode.is_local && (
-                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 ml-2">
+                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 ml-2">
                                                         YOU
                                                     </span>
                                                 )}
@@ -683,7 +687,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                         {nodes.map(targetNode => {
                                             if (sourceNode.id === targetNode.id) {
                                                 return (
-                                                    <td key={targetNode.id} className="p-3 text-center border-r border-border/50 bg-black/20 text-text-muted/40 font-mono text-xs select-none">
+                                                    <td key={targetNode.id} className="p-3 text-center border-r border-border/50 bg-slate-200/50 dark:bg-black/20 text-text-muted/50 font-mono text-xs select-none">
                                                         —
                                                     </td>
                                                 );
@@ -692,7 +696,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                             const pair = getPair(sourceNode.id, targetNode.id);
                                             if (!pair) {
                                                 return (
-                                                    <td key={targetNode.id} className="p-3 text-center border-r border-border/50 text-text-muted/40 font-mono text-[11px]">
+                                                    <td key={targetNode.id} className="p-3 text-center border-r border-border/50 text-text-muted/50 font-mono text-[11px]">
                                                         No Probe
                                                     </td>
                                                 );
@@ -717,16 +721,16 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                             const isFaded = !matchesStatus || !matchesLatency;
 
                                             const cellBg = isPolicyExcluded
-                                                ? "bg-slate-900/30 hover:bg-slate-800/40 border-slate-700/30 text-slate-400"
+                                                ? "bg-slate-100/70 dark:bg-slate-900/30 hover:bg-slate-200/60 dark:hover:bg-slate-800/40 border-slate-200 dark:border-slate-700/30 text-slate-600 dark:text-slate-400"
                                                 : isOpt 
-                                                ? "bg-emerald-950/20 hover:bg-emerald-900/35 border-emerald-500/30 text-emerald-300"
+                                                ? "bg-emerald-500/10 dark:bg-emerald-950/20 hover:bg-emerald-500/15 dark:hover:bg-emerald-900/35 border-emerald-400/40 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
                                                 : isDeg 
-                                                ? "bg-amber-950/25 hover:bg-amber-900/40 border-amber-500/35 text-amber-300"
+                                                ? "bg-amber-500/10 dark:bg-amber-950/25 hover:bg-amber-500/15 dark:hover:bg-amber-900/40 border-amber-400/40 dark:border-amber-500/35 text-amber-800 dark:text-amber-300"
                                                 : isCrit
-                                                ? "bg-red-950/30 hover:bg-red-900/45 border-red-500/40 text-red-300"
+                                                ? "bg-red-500/10 dark:bg-red-950/30 hover:bg-red-500/15 dark:hover:bg-red-900/45 border-red-400/40 dark:border-red-500/40 text-red-800 dark:text-red-300"
                                                 : isPartial
-                                                ? "bg-sky-950/20 hover:bg-sky-900/35 border-sky-500/30 text-sky-200"
-                                                : "bg-card-secondary/20 hover:bg-card-secondary/40 border-border/40 text-text-muted";
+                                                ? "bg-sky-500/10 dark:bg-sky-950/20 hover:bg-sky-500/15 dark:hover:bg-sky-900/35 border-sky-400/40 dark:border-sky-500/30 text-sky-800 dark:text-sky-200"
+                                                : "bg-card-secondary/30 dark:bg-card-secondary/20 hover:bg-card-secondary/50 dark:hover:bg-card-secondary/40 border-border/40 text-text-muted";
 
                                             return (
                                                 <td
@@ -741,10 +745,10 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                     <div className="flex flex-col gap-1">
                                                         {isPolicyExcluded ? (
                                                             <div className="py-1">
-                                                                <div className="text-[10.5px] font-mono text-slate-400 flex items-center justify-center gap-1 font-semibold">
+                                                                <div className="text-[10.5px] font-mono text-slate-600 dark:text-slate-400 flex items-center justify-center gap-1 font-semibold">
                                                                     <span>🏛️ Hub & Spoke</span>
                                                                 </div>
-                                                                <div className="mt-0.5 px-1.5 py-0.5 rounded text-[8.5px] font-bold bg-purple-500/10 text-purple-300 border border-purple-500/20 truncate">
+                                                                <div className="mt-0.5 px-1.5 py-0.5 rounded text-[8.5px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/20 truncate">
                                                                     Bypassed
                                                                 </div>
                                                             </div>
@@ -752,47 +756,47 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                             <>
                                                                 {/* Forward */}
                                                                 <div className="flex items-center justify-between text-[11px] font-mono px-1">
-                                                                    <span className="flex items-center gap-0.5 text-text-muted text-[10px]">
-                                                                        <ArrowUpRight size={11} className="text-blue-400" /> Fwd:
+                                                                    <span className="flex items-center gap-0.5 text-text-secondary dark:text-text-muted text-[10px] font-medium">
+                                                                        <ArrowUpRight size={11} className="text-blue-600 dark:text-blue-400" /> Fwd:
                                                                     </span>
-                                                                    <span className={forward.has_data ? (forward.reachable ? (isOpt ? "font-bold text-emerald-300" : isDeg ? "font-bold text-amber-300" : isPartial ? "font-bold text-sky-300" : "font-black text-red-400") : "font-black text-red-400") : "text-text-muted text-[10px]"}>
+                                                                    <span className={forward.has_data ? (forward.reachable ? (isOpt ? "font-bold text-emerald-700 dark:text-emerald-300" : isDeg ? "font-bold text-amber-700 dark:text-amber-300" : isPartial ? "font-bold text-sky-700 dark:text-sky-300" : "font-black text-red-600 dark:text-red-400") : "font-black text-red-600 dark:text-red-400") : "text-text-muted text-[10px]"}>
                                                                         {forward.has_data ? (forward.reachable ? `${formatNum(forward.latency_ms)}ms` : 'DOWN') : 'Pending'}
                                                                     </span>
                                                                 </div>
 
                                                                 {/* Reverse */}
                                                                 <div className="flex items-center justify-between text-[11px] font-mono px-1">
-                                                                    <span className="flex items-center gap-0.5 text-text-muted text-[10px]">
-                                                                        <ArrowDownLeft size={11} className="text-purple-400" /> Rev:
+                                                                    <span className="flex items-center gap-0.5 text-text-secondary dark:text-text-muted text-[10px] font-medium">
+                                                                        <ArrowDownLeft size={11} className="text-purple-600 dark:text-purple-400" /> Rev:
                                                                     </span>
-                                                                    <span className={reverse.has_data ? (reverse.reachable ? (isOpt ? "font-bold text-emerald-300" : isDeg ? "font-bold text-amber-300" : isPartial ? "font-bold text-sky-300" : "font-black text-red-400") : "font-black text-red-400") : "text-text-muted text-[10px]"}>
+                                                                    <span className={reverse.has_data ? (reverse.reachable ? (isOpt ? "font-bold text-emerald-700 dark:text-emerald-300" : isDeg ? "font-bold text-amber-700 dark:text-amber-300" : isPartial ? "font-bold text-sky-700 dark:text-sky-300" : "font-black text-red-600 dark:text-red-400") : "font-black text-red-600 dark:text-red-400") : "text-text-muted text-[10px]"}>
                                                                         {reverse.has_data ? (reverse.reachable ? `${formatNum(reverse.latency_ms)}ms` : 'DOWN') : 'Pending'}
                                                                     </span>
                                                                 </div>
 
                                                                 {/* Status / Delta Badge */}
                                                                 {isOpt && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 truncate">
+                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 truncate">
                                                                         Optimal
                                                                     </div>
                                                                 )}
                                                                 {isDeg && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 truncate">
+                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 truncate">
                                                                         {asymmetry.latency_delta_ms > 0 ? `Δ ${formatNum(asymmetry.latency_delta_ms)}ms` : 'Degraded'}
                                                                     </div>
                                                                 )}
                                                                 {isCrit && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-300 border border-red-500/30 truncate">
+                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 truncate">
                                                                         {asymmetry.reason?.includes('DOWN') ? 'Path Down' : 'Critical'}
                                                                     </div>
                                                                 )}
                                                                 {isPartial && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-500/15 text-sky-300 border border-sky-500/25 truncate">
+                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/25 truncate">
                                                                         {forward.has_data ? 'One-Way (Fwd)' : 'One-Way (Rev)'}
                                                                     </div>
                                                                 )}
                                                                 {isUnknown && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-card-secondary text-text-muted border border-border/40 truncate">
+                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-card-secondary text-text-secondary dark:text-text-muted border border-border/40 truncate">
                                                                         Pending
                                                                     </div>
                                                                 )}
@@ -833,14 +837,14 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                         <div className={twMerge(
                             "p-4 rounded-xl border flex items-start gap-3",
                             selectedPair.asymmetry.status === 'POLICY_EXCLUDED'
-                                ? "bg-purple-500/10 border-purple-500/20 text-purple-300"
+                                ? "bg-purple-500/10 border-purple-500/20 text-purple-700 dark:text-purple-300"
                                 : selectedPair.asymmetry.status === 'OPTIMAL' 
-                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-400"
                                 : selectedPair.asymmetry.status === 'DEGRADED'
-                                ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                                ? "bg-amber-500/10 border-amber-500/20 text-amber-800 dark:text-amber-400"
                                 : selectedPair.asymmetry.status === 'PARTIAL'
-                                ? "bg-sky-500/10 border-sky-500/20 text-sky-400"
-                                : "bg-red-500/10 border-red-500/20 text-red-400"
+                                ? "bg-sky-500/10 border-sky-500/20 text-sky-700 dark:text-sky-400"
+                                : "bg-red-500/10 border-red-500/20 text-red-700 dark:text-red-400"
                         )}>
                             <Info size={20} className="flex-shrink-0 mt-0.5" />
                             <div>
@@ -857,12 +861,12 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                         <div className="grid grid-cols-2 gap-4">
                             {/* Forward */}
                             <div className="bg-card-secondary/60 border border-border p-4 rounded-xl space-y-3">
-                                <div className="text-xs font-bold text-blue-400 flex items-center justify-between uppercase tracking-wider">
+                                <div className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center justify-between uppercase tracking-wider">
                                     <div className="flex items-center gap-1.5">
                                         <ArrowUpRight size={14} /> Forward Path
                                     </div>
                                     {selectedPair.forward.type && (
-                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 font-mono font-bold">
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-700 dark:text-blue-400 font-mono font-bold">
                                             {selectedPair.forward.type}
                                         </span>
                                     )}
@@ -881,11 +885,11 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-text-muted whitespace-nowrap">SD-WAN Probed IP:</span>
-                                        <span className="font-bold font-mono text-blue-400 text-right">{selectedPair.forward.target_ip || selectedPair.target_ip || '—'}</span>
+                                        <span className="font-bold font-mono text-blue-600 dark:text-blue-400 text-right">{selectedPair.forward.target_ip || selectedPair.target_ip || '—'}</span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-text-muted whitespace-nowrap">Status:</span>
-                                        <span className={selectedPair.forward.reachable ? "text-emerald-400 font-bold" : "text-red-400 font-bold"}>
+                                        <span className={selectedPair.forward.reachable ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-red-600 dark:text-red-400 font-bold"}>
                                             {selectedPair.forward.reachable ? 'ONLINE' : 'DOWN'}
                                         </span>
                                     </div>
@@ -906,12 +910,12 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
 
                             {/* Return */}
                             <div className="bg-card-secondary/60 border border-border p-4 rounded-xl space-y-3">
-                                <div className="text-xs font-bold text-purple-400 flex items-center justify-between uppercase tracking-wider">
+                                <div className="text-xs font-bold text-purple-600 dark:text-purple-400 flex items-center justify-between uppercase tracking-wider">
                                     <div className="flex items-center gap-1.5">
                                         <ArrowDownLeft size={14} /> Return Path
                                     </div>
                                     {selectedPair.reverse.type && (
-                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 font-mono font-bold">
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-700 dark:text-purple-400 font-mono font-bold">
                                             {selectedPair.reverse.type}
                                         </span>
                                     )}
@@ -930,18 +934,18 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-text-muted whitespace-nowrap">SD-WAN Probed IP:</span>
-                                        <span className="font-bold font-mono text-purple-400 text-right">{selectedPair.reverse.has_data ? (selectedPair.reverse.target_ip || selectedPair.source_ip || '—') : '— (No probe)'}</span>
+                                        <span className="font-bold font-mono text-purple-600 dark:text-purple-400 text-right">{selectedPair.reverse.has_data ? (selectedPair.reverse.target_ip || selectedPair.source_ip || '—') : '— (No probe)'}</span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-text-muted whitespace-nowrap">Status:</span>
-                                        <span className={selectedPair.reverse.has_data ? (selectedPair.reverse.reachable ? "text-emerald-400 font-bold" : "text-red-400 font-bold") : "text-text-muted"}>
+                                        <span className={selectedPair.reverse.has_data ? (selectedPair.reverse.reachable ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-red-600 dark:text-red-400 font-bold") : "text-text-muted"}>
                                             {selectedPair.reverse.has_data ? (selectedPair.reverse.reachable ? 'ONLINE' : 'DOWN') : 'Pending Telemetry'}
                                         </span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-text-muted whitespace-nowrap">Latency:</span>
                                         <span className="font-bold text-text-primary">
-                                            {selectedPair.reverse.has_data ? `${formatNum(selectedPair.reverse.latency_ms)} ms` : '—'}
+                                             {selectedPair.reverse.has_data ? `${formatNum(selectedPair.reverse.latency_ms)} ms` : '—'}
                                         </span>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
@@ -964,7 +968,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                         <div className="bg-card-secondary/50 border border-border rounded-xl p-4 space-y-3">
                             <div className="flex items-center justify-between gap-3 flex-wrap">
                                 <div className="flex items-center gap-2">
-                                    <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                    <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
                                         <Zap size={14} />
                                     </div>
                                     <div>
@@ -997,7 +1001,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                             </div>
 
                             {flowTraceError && (
-                                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 text-xs font-mono">
+                                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-700 dark:text-red-300 text-xs font-mono">
                                     ⚠️ {flowTraceError}
                                 </div>
                             )}
@@ -1009,13 +1013,13 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                         <div className="p-3 rounded-xl bg-card-secondary border border-border space-y-1.5 shadow-sm">
                                             <div className="text-text-muted text-[10px] uppercase font-bold flex items-center justify-between">
                                                 <span className="flex items-center gap-1">
-                                                    <ArrowUpRight size={11} className="text-blue-400" /> Forward WAN Circuit:
+                                                    <ArrowUpRight size={11} className="text-blue-600 dark:text-blue-400" /> Forward WAN Circuit:
                                                 </span>
-                                                <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500/10 text-blue-400 font-bold">
+                                                <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500/10 text-blue-700 dark:text-blue-400 font-bold">
                                                     {flowTraceData.forward_flow?.path_type || 'VPN'}
                                                 </span>
                                             </div>
-                                            <div className="text-xs font-black text-blue-300">
+                                            <div className="text-xs font-black text-blue-700 dark:text-blue-300">
                                                 {flowTraceData.forward_flow?.egress_path || 'Direct Fabric'}
                                             </div>
                                             <div className="text-[10px] text-text-muted truncate">
@@ -1027,13 +1031,13 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                         <div className="p-3 rounded-xl bg-card-secondary border border-border space-y-1.5 shadow-sm">
                                             <div className="text-text-muted text-[10px] uppercase font-bold flex items-center justify-between">
                                                 <span className="flex items-center gap-1">
-                                                    <ArrowDownLeft size={11} className="text-purple-400" /> Return WAN Circuit:
+                                                    <ArrowDownLeft size={11} className="text-purple-600 dark:text-purple-400" /> Return WAN Circuit:
                                                 </span>
-                                                <span className="text-[9px] px-1 py-0.2 rounded bg-purple-500/10 text-purple-400 font-bold">
+                                                <span className="text-[9px] px-1 py-0.2 rounded bg-purple-500/10 text-purple-700 dark:text-purple-400 font-bold">
                                                     {flowTraceData.return_flow?.path_type || 'VPN'}
                                                 </span>
                                             </div>
-                                            <div className="text-xs font-black text-purple-300">
+                                            <div className="text-xs font-black text-purple-700 dark:text-purple-300">
                                                 {flowTraceData.return_flow?.egress_path || 'Direct Fabric'}
                                             </div>
                                             <div className="text-[10px] text-text-muted truncate">
@@ -1046,18 +1050,18 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                     <div className={twMerge(
                                         "p-3 rounded-xl border text-xs shadow-sm",
                                         flowTraceData.diagnosis?.is_asymmetric_circuit
-                                            ? "bg-amber-500/10 border-amber-500/30 text-amber-200"
-                                            : "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
+                                            ? "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-200"
+                                            : "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-200"
                                     )}>
                                         <div className="font-black flex items-center gap-1.5 mb-1">
                                             {flowTraceData.diagnosis?.is_asymmetric_circuit ? (
                                                 <>
-                                                    <AlertTriangle size={14} className="text-amber-400" />
+                                                    <AlertTriangle size={14} className="text-amber-500 dark:text-amber-400" />
                                                     <span>⚠️ Asymmetric Circuit Routing Detected</span>
                                                 </>
                                             ) : (
                                                 <>
-                                                    <CheckCircle2 size={14} className="text-emerald-400" />
+                                                    <CheckCircle2 size={14} className="text-emerald-500 dark:text-emerald-400" />
                                                     <span>✅ Symmetric Circuit Routing</span>
                                                 </>
                                             )}
@@ -1152,27 +1156,27 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
 
                         {/* Status Legend / Rules Summary */}
                         <div className="grid grid-cols-3 gap-3 text-xs">
-                            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 space-y-1">
+                            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 space-y-1">
                                 <div className="font-bold flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span> 🟢 Optimal
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span> 🟢 Optimal
                                 </div>
-                                <div className="text-[11px] text-emerald-300/80 leading-relaxed">
+                                <div className="text-[11px] text-emerald-700/90 dark:text-emerald-300/80 leading-relaxed">
                                     Bidirectional UP, symmetric latency (Δ &lt; {thresholds.asymmetry_warning_delta_ms}ms), loss &lt; {thresholds.loss_warning_pct}%.
                                 </div>
                             </div>
-                            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 space-y-1">
+                            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 space-y-1">
                                 <div className="font-bold flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-amber-400"></span> 🟡 Degraded
+                                    <span className="w-2 h-2 rounded-full bg-amber-500"></span> 🟡 Degraded
                                 </div>
-                                <div className="text-[11px] text-amber-300/80 leading-relaxed">
+                                <div className="text-[11px] text-amber-700/90 dark:text-amber-300/80 leading-relaxed">
                                     Latency &gt; {thresholds.latency_warning_ms}ms, Δ &gt; {thresholds.asymmetry_warning_delta_ms}ms, or loss &gt; {thresholds.loss_warning_pct}%.
                                 </div>
                             </div>
-                            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 space-y-1">
+                            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-800 dark:text-red-300 space-y-1">
                                 <div className="font-bold flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-red-400"></span> 🔴 Critical
+                                    <span className="w-2 h-2 rounded-full bg-red-500"></span> 🔴 Critical
                                 </div>
-                                <div className="text-[11px] text-red-300/80 leading-relaxed">
+                                <div className="text-[11px] text-red-700/90 dark:text-red-300/80 leading-relaxed">
                                     Unidirectional outage, latency &gt; {thresholds.latency_critical_ms}ms, loss &gt; {thresholds.loss_critical_pct}%, or severe Δ &gt; {thresholds.asymmetry_critical_delta_ms}ms.
                                 </div>
                             </div>
