@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, [data-theme="dark"], .dark *, [data-theme="dark"] *));
+
 :root {
   /* Default Dark Mode (Legacy Aesthetics) */
   --background: #020617;

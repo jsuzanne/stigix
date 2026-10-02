@@ -2,7 +2,9 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2.0.140] - 2026-10-02 — Fix: Ultra High-Contrast Light Mode Grid & Soft Identity Cells
+## [v2.0.141] - 2026-10-02 — Fix: Tailwind v4 Theme Variant Isolation (`@custom-variant dark`)
+
+- **fix(theme)**: Added `@custom-variant dark (&:where(.dark, [data-theme="dark"], .dark *, [data-theme="dark"] *));` to `index.css`. Resolves a critical bug where Tailwind v4 defaulted to `@media (prefers-color-scheme: dark)`, causing `dark:*` styles to always override light-mode styles on macOS/browsers configured with system dark mode.
 
 - **fix(ui)**: Replaced harsh dark-grey diagonal cells (`—`) with soft neutral backgrounds (`bg-slate-50/70`) and subtle text (`text-slate-400`) in light mode.
 - **fix(ui)**: Enforced deep saturated foreground text across light-mode grid cells: `text-emerald-950` (Optimal), `text-amber-950` (Degraded), `text-sky-950` (One-Way), and `text-red-950` (Critical) with bold weight (`font-black`).
