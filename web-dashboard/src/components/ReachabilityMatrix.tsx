@@ -687,7 +687,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                         {nodes.map(targetNode => {
                                             if (sourceNode.id === targetNode.id) {
                                                 return (
-                                                    <td key={targetNode.id} className="p-3 text-center border-r border-border/50 bg-slate-200/50 dark:bg-black/20 text-text-muted/50 font-mono text-xs select-none">
+                                                    <td key={targetNode.id} className="p-3 text-center border-r border-border/40 bg-slate-50/70 dark:bg-slate-900/40 text-slate-400 dark:text-slate-600 font-mono text-xs select-none">
                                                         —
                                                     </td>
                                                 );
@@ -696,7 +696,7 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                             const pair = getPair(sourceNode.id, targetNode.id);
                                             if (!pair) {
                                                 return (
-                                                    <td key={targetNode.id} className="p-3 text-center border-r border-border/50 text-text-muted/50 font-mono text-[11px]">
+                                                    <td key={targetNode.id} className="p-3 text-center border-r border-border/40 bg-slate-50/40 dark:bg-black/10 text-slate-400 dark:text-text-muted/40 font-mono text-[11px]">
                                                         No Probe
                                                     </td>
                                                 );
@@ -721,16 +721,16 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                             const isFaded = !matchesStatus || !matchesLatency;
 
                                             const cellBg = isPolicyExcluded
-                                                ? "bg-slate-100/70 dark:bg-slate-900/30 hover:bg-slate-200/60 dark:hover:bg-slate-800/40 border-slate-200 dark:border-slate-700/30 text-slate-600 dark:text-slate-400"
+                                                ? "bg-slate-50 hover:bg-slate-100/90 border-slate-200 text-slate-700 dark:bg-slate-900/30 dark:hover:bg-slate-800/40 dark:border-slate-700/30 dark:text-slate-400"
                                                 : isOpt 
-                                                ? "bg-emerald-500/10 dark:bg-emerald-950/20 hover:bg-emerald-500/15 dark:hover:bg-emerald-900/35 border-emerald-400/40 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
+                                                ? "bg-emerald-50/90 hover:bg-emerald-100/80 border-emerald-300 text-emerald-950 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/35 dark:border-emerald-500/30 dark:text-emerald-300"
                                                 : isDeg 
-                                                ? "bg-amber-500/10 dark:bg-amber-950/25 hover:bg-amber-500/15 dark:hover:bg-amber-900/40 border-amber-400/40 dark:border-amber-500/35 text-amber-800 dark:text-amber-300"
+                                                ? "bg-amber-50/90 hover:bg-amber-100/80 border-amber-300 text-amber-950 dark:bg-amber-950/25 dark:hover:bg-amber-900/40 dark:border-amber-500/35 dark:text-amber-300"
                                                 : isCrit
-                                                ? "bg-red-500/10 dark:bg-red-950/30 hover:bg-red-500/15 dark:hover:bg-red-900/45 border-red-400/40 dark:border-red-500/40 text-red-800 dark:text-red-300"
+                                                ? "bg-red-50/90 hover:bg-red-100/80 border-red-300 text-red-950 dark:bg-red-950/30 dark:hover:bg-red-900/45 dark:border-red-500/40 dark:text-red-300"
                                                 : isPartial
-                                                ? "bg-sky-500/10 dark:bg-sky-950/20 hover:bg-sky-500/15 dark:hover:bg-sky-900/35 border-sky-400/40 dark:border-sky-500/30 text-sky-800 dark:text-sky-200"
-                                                : "bg-card-secondary/30 dark:bg-card-secondary/20 hover:bg-card-secondary/50 dark:hover:bg-card-secondary/40 border-border/40 text-text-muted";
+                                                ? "bg-sky-50/90 hover:bg-sky-100/80 border-sky-300 text-sky-950 dark:bg-sky-950/20 dark:hover:bg-sky-900/35 dark:border-sky-500/30 dark:text-sky-200"
+                                                : "bg-white hover:bg-slate-50 border-border/60 text-slate-600 dark:bg-card-secondary/20 dark:hover:bg-card-secondary/40 dark:border-border/40 dark:text-text-muted";
 
                                             return (
                                                 <td
@@ -745,10 +745,10 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                     <div className="flex flex-col gap-1">
                                                         {isPolicyExcluded ? (
                                                             <div className="py-1">
-                                                                <div className="text-[10.5px] font-mono text-slate-600 dark:text-slate-400 flex items-center justify-center gap-1 font-semibold">
+                                                                <div className="text-[10.5px] font-mono text-slate-700 dark:text-slate-400 flex items-center justify-center gap-1 font-bold">
                                                                     <span>🏛️ Hub & Spoke</span>
                                                                 </div>
-                                                                <div className="mt-0.5 px-1.5 py-0.5 rounded text-[8.5px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/20 truncate">
+                                                                <div className="mt-0.5 px-1.5 py-0.5 rounded text-[8.5px] font-black bg-purple-100 text-purple-900 border border-purple-300 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/20 truncate">
                                                                     Bypassed
                                                                 </div>
                                                             </div>
@@ -756,47 +756,47 @@ export function ReachabilityMatrix({ token }: { token?: string }) {
                                                             <>
                                                                 {/* Forward */}
                                                                 <div className="flex items-center justify-between text-[11px] font-mono px-1">
-                                                                    <span className="flex items-center gap-0.5 text-text-secondary dark:text-text-muted text-[10px] font-medium">
-                                                                        <ArrowUpRight size={11} className="text-blue-600 dark:text-blue-400" /> Fwd:
+                                                                    <span className="flex items-center gap-0.5 text-slate-600 dark:text-text-muted text-[10px] font-semibold">
+                                                                        <ArrowUpRight size={11} className="text-blue-700 dark:text-blue-400" /> Fwd:
                                                                     </span>
-                                                                    <span className={forward.has_data ? (forward.reachable ? (isOpt ? "font-bold text-emerald-700 dark:text-emerald-300" : isDeg ? "font-bold text-amber-700 dark:text-amber-300" : isPartial ? "font-bold text-sky-700 dark:text-sky-300" : "font-black text-red-600 dark:text-red-400") : "font-black text-red-600 dark:text-red-400") : "text-text-muted text-[10px]"}>
+                                                                    <span className={forward.has_data ? (forward.reachable ? (isOpt ? "font-black text-emerald-900 dark:text-emerald-300" : isDeg ? "font-black text-amber-900 dark:text-amber-300" : isPartial ? "font-black text-sky-900 dark:text-sky-300" : "font-black text-red-600 dark:text-red-400") : "font-black text-red-600 dark:text-red-400") : "text-slate-400 dark:text-text-muted text-[10px] font-medium"}>
                                                                         {forward.has_data ? (forward.reachable ? `${formatNum(forward.latency_ms)}ms` : 'DOWN') : 'Pending'}
                                                                     </span>
                                                                 </div>
 
                                                                 {/* Reverse */}
                                                                 <div className="flex items-center justify-between text-[11px] font-mono px-1">
-                                                                    <span className="flex items-center gap-0.5 text-text-secondary dark:text-text-muted text-[10px] font-medium">
-                                                                        <ArrowDownLeft size={11} className="text-purple-600 dark:text-purple-400" /> Rev:
+                                                                    <span className="flex items-center gap-0.5 text-slate-600 dark:text-text-muted text-[10px] font-semibold">
+                                                                        <ArrowDownLeft size={11} className="text-purple-700 dark:text-purple-400" /> Rev:
                                                                     </span>
-                                                                    <span className={reverse.has_data ? (reverse.reachable ? (isOpt ? "font-bold text-emerald-700 dark:text-emerald-300" : isDeg ? "font-bold text-amber-700 dark:text-amber-300" : isPartial ? "font-bold text-sky-700 dark:text-sky-300" : "font-black text-red-600 dark:text-red-400") : "font-black text-red-600 dark:text-red-400") : "text-text-muted text-[10px]"}>
+                                                                    <span className={reverse.has_data ? (reverse.reachable ? (isOpt ? "font-black text-emerald-900 dark:text-emerald-300" : isDeg ? "font-black text-amber-900 dark:text-amber-300" : isPartial ? "font-black text-sky-900 dark:text-sky-300" : "font-black text-red-600 dark:text-red-400") : "font-black text-red-600 dark:text-red-400") : "text-slate-400 dark:text-text-muted text-[10px] font-medium"}>
                                                                         {reverse.has_data ? (reverse.reachable ? `${formatNum(reverse.latency_ms)}ms` : 'DOWN') : 'Pending'}
                                                                     </span>
                                                                 </div>
 
                                                                 {/* Status / Delta Badge */}
                                                                 {isOpt && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 truncate">
+                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25 truncate">
                                                                         Optimal
                                                                     </div>
                                                                 )}
                                                                 {isDeg && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 truncate">
+                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-amber-100 text-amber-950 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30 truncate">
                                                                         {asymmetry.latency_delta_ms > 0 ? `Δ ${formatNum(asymmetry.latency_delta_ms)}ms` : 'Degraded'}
                                                                     </div>
                                                                 )}
                                                                 {isCrit && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 truncate">
+                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-red-100 text-red-900 border border-red-300 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30 truncate">
                                                                         {asymmetry.reason?.includes('DOWN') ? 'Path Down' : 'Critical'}
                                                                     </div>
                                                                 )}
                                                                 {isPartial && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/25 truncate">
+                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-black bg-sky-100 text-sky-900 border border-sky-300 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/25 truncate">
                                                                         {forward.has_data ? 'One-Way (Fwd)' : 'One-Way (Rev)'}
                                                                     </div>
                                                                 )}
                                                                 {isUnknown && (
-                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-card-secondary text-text-secondary dark:text-text-muted border border-border/40 truncate">
+                                                                    <div className="mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 dark:bg-card-secondary dark:text-text-muted dark:border-border/40 truncate">
                                                                         Pending
                                                                     </div>
                                                                 )}

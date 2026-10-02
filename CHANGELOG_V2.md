@@ -2,11 +2,12 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
-## [v2.0.139] - 2026-10-02 — Fix: Reachability Matrix Light Mode Contrast & Theme Refinement
+## [v2.0.140] - 2026-10-02 — Fix: Ultra High-Contrast Light Mode Grid & Soft Identity Cells
 
-- **fix(ui)**: Refined SD-WAN Reachability Matrix cell backgrounds in light mode (`bg-emerald-500/10`, `bg-amber-500/10`, `bg-red-500/10`, `bg-sky-500/10`, `bg-slate-100/70`) replacing dark `*-950` overlays that appeared muddy and washed out.
-- **fix(ui)**: Enforced strong light-mode text and badge contrast across all matrix cells, status chips (`Optimal`, `Degraded`, `Critical`, `One-Way`, `H&S Policy`), site badges (`HUB`, `BRANCH`), and metrics (`Fwd:` / `Rev:` latency values).
-- **fix(ui)**: Enhanced visual clarity for diagonal identity cells (`—`), inspection modals, RCA flow-trace diagnosis, and SLA Thresholds modal.
+- **fix(ui)**: Replaced harsh dark-grey diagonal cells (`—`) with soft neutral backgrounds (`bg-slate-50/70`) and subtle text (`text-slate-400`) in light mode.
+- **fix(ui)**: Enforced deep saturated foreground text across light-mode grid cells: `text-emerald-950` (Optimal), `text-amber-950` (Degraded), `text-sky-950` (One-Way), and `text-red-950` (Critical) with bold weight (`font-black`).
+- **fix(ui)**: Refined status badges inside cells with solid pastel containers (`bg-emerald-100`, `bg-amber-100`, `bg-red-100`, `bg-sky-100`) and crisp dark typography.
+- **fix(ui)**: Strengthened `Fwd:` and `Rev:` prefix labels to `text-slate-600` with high-contrast icons (`text-blue-700` and `text-purple-700`).
 
 ## [v2.0.118] - 2026-10-01 — Refactor: Neutral Dynamic Endpoint Selector in Magic Join
 
