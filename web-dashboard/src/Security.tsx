@@ -93,19 +93,19 @@ const SchedulerSettings = ({
     };
 
     return (
-        <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-4 bg-card-secondary p-2 rounded-lg border border-border">
-                <div className="flex items-center gap-2">
-                    <Clock size={14} className={schedule.enabled ? "text-blue-600 dark:text-blue-400" : "text-text-muted"} />
-                    <span className="text-xs font-bold text-text-muted tracking-tight">{title} Schedule:</span>
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 bg-card-secondary/80 px-2.5 py-1 rounded-lg border border-border shadow-xs">
+                <div className="flex items-center gap-1.5">
+                    <Clock size={12} className={schedule.enabled ? "text-blue-600 dark:text-blue-400" : "text-text-muted"} />
+                    <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{title} Schedule:</span>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                     <select
                         value={schedule.interval_minutes}
                         onChange={(e) => onUpdate(type, schedule.enabled, parseInt(e.target.value))}
                         disabled={!schedule.enabled}
-                        className="bg-card border-border text-text-primary text-[10px] rounded p-0.5 focus:ring-1 focus:ring-blue-500 outline-none disabled:opacity-50 font-bold"
+                        className="bg-card border border-border text-text-primary text-[10px] rounded px-1.5 py-0.5 focus:ring-1 focus:ring-blue-500 outline-none disabled:opacity-50 font-bold cursor-pointer"
                     >
                         {[5, 10, 15, 30, 45, 60].map(m => (
                             <option key={m} value={m}>{m}m</option>
@@ -113,16 +113,18 @@ const SchedulerSettings = ({
                     </select>
 
                     <button
+                        type="button"
                         onClick={() => onUpdate(type, !schedule.enabled, schedule.interval_minutes)}
-                        className={`relative inline-flex h-4 w-7 items-center rounded-full transition-all focus:outline-none shadow-inner ${schedule.enabled ? 'bg-blue-600' : 'bg-card-hover'}`}
+                        className={`relative inline-flex h-4 w-7 items-center rounded-full transition-all focus:outline-none shadow-inner cursor-pointer ${schedule.enabled ? 'bg-blue-600' : 'bg-card-hover'}`}
+                        title={schedule.enabled ? `Disable ${title} schedule` : `Enable ${title} schedule`}
                     >
                         <span className={`inline-block h-2 w-2 transform rounded-full bg-white transition-transform shadow-sm ${schedule.enabled ? 'translate-x-4' : 'translate-x-1'}`} />
                     </button>
                 </div>
             </div>
             {schedule.enabled && schedule.next_run_time && (
-                <div className="flex items-center gap-1 text-[9px] text-blue-600 dark:text-blue-400 font-black tracking-widest px-2 opacity-80">
-                    <Clock size={10} />
+                <div className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 font-black tracking-tight px-1 whitespace-nowrap opacity-90">
+                    <Clock size={11} />
                     Next test at {formatTime(schedule.next_run_time)}
                 </div>
             )}
@@ -1748,12 +1750,64 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex flex-wrap items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                        {/* HTTP / HTTPS Protocol Toggle */}
+                        <div className="flex items-center bg-card-secondary/80 p-0.5 rounded-lg border border-border shadow-xs">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const nextProto = 'http';
+                                    saveConfig({
+                                        ...config,
+                                        url_filtering: {
+                                            ...config.url_filtering,
+                                            protocol: nextProto
+                                        }
+                                    });
+                                }}
+                                className={cn(
+                                    "px-2 py-0.5 rounded-md text-[10px] font-black tracking-wider uppercase transition-all flex items-center gap-1 cursor-pointer",
+                                    (config.url_filtering?.protocol || 'http') === 'http'
+                                        ? "bg-red-600 text-white shadow-xs"
+                                        : "text-text-muted hover:text-text-primary"
+                                )}
+                                title="Send URL Filtering tests over plain HTTP (port 80)"
+                            >
+                                <Globe size={11} /> HTTP
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const nextProto = 'https';
+                                    saveConfig({
+                                        ...config,
+                                        url_filtering: {
+                                            ...config.url_filtering,
+                                            protocol: nextProto
+                                        }
+                                    });
+                                }}
+                                className={cn(
+                                    "px-2 py-0.5 rounded-md text-[10px] font-black tracking-wider uppercase transition-all flex items-center gap-1 cursor-pointer",
+                                    config.url_filtering?.protocol === 'https'
+                                        ? "bg-emerald-600 text-white shadow-xs shadow-emerald-900/30"
+                                        : "text-text-muted hover:text-text-primary"
+                                )}
+                                title="Send URL Filtering tests over HTTPS (port 443) — dynamically replaces http:// with https:// to test SSL Decryption & Forward Trust CA"
+                            >
+                                <Lock size={11} /> HTTPS
+                            </button>
+                        </div>
+
+                        {/* URL Schedule */}
+                        <SchedulerSettings type="url" title="URL" config={config} onUpdate={updateSchedule} />
+
+                        {/* Search input */}
                         <div className="relative">
                             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" size={12} />
                             <input
                                 type="text"
-                                placeholder="Search URL cats..."
+                                placeholder="Search URL..."
                                 value={urlSearchQuery}
                                 onChange={(e) => {
                                     setUrlSearchQuery(e.target.value);
@@ -1773,6 +1827,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                 </button>
                             )}
                         </div>
+
+                        {/* Chevron toggle */}
                         <div className="cursor-pointer text-text-muted hover:text-text-primary transition-colors p-1" onClick={() => setUrlExpanded(!urlExpanded)}>
                             {urlExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                         </div>
@@ -1790,74 +1846,22 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                     return (
                         <div className="p-6 space-y-6">
                             <div className="flex flex-wrap items-center justify-between gap-4">
-                                <div className="flex flex-wrap items-center gap-6">
-                                    <label className="flex items-center gap-2 cursor-pointer group">
-                                        <div className="relative flex items-center">
-                                            <input
-                                                type="checkbox"
-                                                checked={allVisibleCatsEnabled}
-                                                onChange={toggleAllURLCategories}
-                                                className="w-4 h-4 rounded border-border bg-card-secondary text-red-600 focus:ring-1 focus:ring-red-500 outline-none transition-all"
-                                            />
-                                        </div>
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
-                                    </label>
-
-                                    {/* HTTP / HTTPS Protocol Toggle */}
-                                    <div className="flex items-center bg-card-secondary/80 p-0.5 rounded-lg border border-border">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const nextProto = 'http';
-                                                saveConfig({
-                                                    ...config,
-                                                    url_filtering: {
-                                                        ...config.url_filtering,
-                                                        protocol: nextProto
-                                                    }
-                                                });
-                                            }}
-                                            className={cn(
-                                                "px-2.5 py-1 rounded-md text-[10px] font-black tracking-wider uppercase transition-all flex items-center gap-1.5",
-                                                (config.url_filtering?.protocol || 'http') === 'http'
-                                                    ? "bg-red-600 text-white shadow-sm"
-                                                    : "text-text-muted hover:text-text-primary"
-                                            )}
-                                            title="Send URL Filtering tests over plain HTTP (port 80)"
-                                        >
-                                            <Globe size={11} /> HTTP
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const nextProto = 'https';
-                                                saveConfig({
-                                                    ...config,
-                                                    url_filtering: {
-                                                        ...config.url_filtering,
-                                                        protocol: nextProto
-                                                    }
-                                                });
-                                            }}
-                                            className={cn(
-                                                "px-2.5 py-1 rounded-md text-[10px] font-black tracking-wider uppercase transition-all flex items-center gap-1.5",
-                                                config.url_filtering?.protocol === 'https'
-                                                    ? "bg-emerald-600 text-white shadow-sm shadow-emerald-900/30"
-                                                    : "text-text-muted hover:text-text-primary"
-                                            )}
-                                            title="Send URL Filtering tests over HTTPS (port 443) — dynamically replaces http:// with https:// to test SSL Decryption & Forward Trust CA"
-                                        >
-                                            <Lock size={11} /> HTTPS
-                                        </button>
+                                <label className="flex items-center gap-2 cursor-pointer group">
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={allVisibleCatsEnabled}
+                                            onChange={toggleAllURLCategories}
+                                            className="w-4 h-4 rounded border-border bg-card-secondary text-red-600 focus:ring-1 focus:ring-red-500 outline-none transition-all"
+                                        />
                                     </div>
-
-                                    <SchedulerSettings type="url" title="URL" config={config} onUpdate={updateSchedule} />
-                                </div>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
+                                </label>
                                 <button
                                     onClick={runURLBatchTest}
                                     disabled={loading || batchProcessingUrl || config.url_filtering.enabled_categories.length === 0 || (systemHealth && !systemHealth.ready)}
                                     className={cn(
-                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2",
+                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2 cursor-pointer",
                                         batchProcessingUrl || loading
                                             ? "bg-card-secondary text-text-muted border border-border cursor-not-allowed"
                                             : "bg-red-600 hover:bg-red-500 text-white shadow-red-900/40"
@@ -1973,7 +1977,11 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex flex-wrap items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                        {/* DNS Schedule */}
+                        <SchedulerSettings type="dns" title="DNS" config={config} onUpdate={updateSchedule} />
+
+                        {/* Search input */}
                         <div className="relative">
                             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" size={12} />
                             <input
@@ -1998,6 +2006,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                 </button>
                             )}
                         </div>
+
+                        {/* Chevron toggle */}
                         <div className="cursor-pointer text-text-muted hover:text-text-primary transition-colors p-1" onClick={() => setDnsExpanded(!dnsExpanded)}>
                             {dnsExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                         </div>
@@ -2020,29 +2030,25 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                     return (
                         <div className="p-6 space-y-8">
                             <div className="flex flex-wrap items-center justify-between gap-4">
-                                <div className="flex flex-wrap items-center gap-6">
-                                    <label className="flex items-center gap-2 cursor-pointer group">
-                                        <div className="relative flex items-center">
-                                            <input
-                                                type="checkbox"
-                                                checked={allVisibleTestsEnabled}
-                                                onChange={toggleAllDNSTests}
-                                                className="w-4 h-4 rounded border-border bg-card-secondary text-blue-600 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
-                                            />
-                                        </div>
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
-                                    </label>
-
-                                    <SchedulerSettings type="dns" title="DNS" config={config} onUpdate={updateSchedule} />
-                                </div>
+                                <label className="flex items-center gap-2 cursor-pointer group">
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={allVisibleTestsEnabled}
+                                            onChange={toggleAllDNSTests}
+                                            className="w-4 h-4 rounded border-border bg-card-secondary text-blue-600 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                                        />
+                                    </div>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
+                                </label>
                                 <button
                                     onClick={runDNSBatchTest}
                                     disabled={loading || batchProcessingDns || config.dns_security.enabled_tests.length === 0 || (systemHealth && !systemHealth.ready)}
                                     className={cn(
-                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2",
+                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2 cursor-pointer",
                                         batchProcessingDns || loading
                                             ? "bg-card-secondary text-text-muted border border-border cursor-not-allowed"
-                                            : "bg-blue-600 hover:bg-blue-500 text-white shadow-red-900/40"
+                                            : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40"
                                     )}
                                     title={systemHealth && !systemHealth.ready ? 'System not ready - missing required commands' : ''}
                                 >
@@ -2207,24 +2213,32 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                 <button
                     onClick={() => setThreatExpanded(!threatExpanded)}
-                    className="w-full px-6 py-4 flex items-center justify-between bg-card-secondary hover:bg-card-hover transition-colors"
+                    className="w-full px-6 py-4 flex items-center justify-between bg-card-secondary/50 hover:bg-card-hover transition-all border-b border-border"
                 >
                     <div className="flex items-center gap-3">
-                        <Shield size={20} className="text-red-400" />
-                        <h3 className="text-lg font-semibold text-foreground">Threat Prevention (Eicar)</h3>
+                        <div className="p-2 bg-red-600/10 rounded-lg text-red-600 dark:text-red-400 border border-red-500/20">
+                            <Shield size={18} />
+                        </div>
+                        <div className="text-left">
+                            <h3 className="text-sm font-black text-text-primary tracking-tight">Threat Prevention (Eicar)</h3>
+                            <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest opacity-70">
+                                IPS / Antivirus Validation & Cloud Worker Tests
+                            </p>
+                        </div>
                     </div>
-                    {threatExpanded ? <ChevronUp size={20} className="text-text-secondary" /> : <ChevronDown size={20} className="text-text-secondary" />}
+                    <div className="flex flex-wrap items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                        {/* Threat Schedule */}
+                        <SchedulerSettings type="threat" title="Threat" config={config} onUpdate={updateSchedule} />
+
+                        {/* Chevron toggle */}
+                        <div className="cursor-pointer text-text-muted hover:text-text-primary transition-colors p-1" onClick={() => setThreatExpanded(!threatExpanded)}>
+                            {threatExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        </div>
+                    </div>
                 </button>
 
                 {threatExpanded && (
                     <div className="p-6 space-y-4">
-                        <div className="flex flex-wrap items-center justify-between gap-4">
-                            <p className="text-text-muted text-sm">
-                                Test IPS/Threat Prevention by downloading EICAR test file
-                            </p>
-                            <SchedulerSettings type="threat" title="Threat" config={config} onUpdate={updateSchedule} />
-                        </div>
-
                         <div className="bg-card-secondary border border-border rounded-lg p-4">
                             <div className="flex items-start gap-2 mb-3">
                                 <AlertTriangle size={18} className="text-amber-500 mt-0.5 flex-shrink-0" />
@@ -2471,7 +2485,11 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex flex-wrap items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                        {/* C2 Schedule */}
+                        <SchedulerSettings type="c2" title="C2" config={config} onUpdate={updateSchedule} />
+
+                        {/* Search input */}
                         <div className="relative">
                             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" size={12} />
                             <input
@@ -2496,6 +2514,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                 </button>
                             )}
                         </div>
+
+                        {/* Chevron toggle */}
                         <div className="cursor-pointer text-text-muted hover:text-text-primary transition-colors p-1" onClick={() => setC2Expanded(!c2Expanded)}>
                             {c2Expanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                         </div>
@@ -2514,27 +2534,22 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                         <div className="p-6 space-y-6">
                             {/* Controls row */}
                             <div className="flex flex-wrap items-center justify-between gap-4">
-                                <div className="flex flex-wrap items-center gap-6">
-                                    <label className="flex items-center gap-2 cursor-pointer group">
-                                        <div className="relative flex items-center">
-                                            <input
-                                                type="checkbox"
-                                                checked={allVisibleSelected}
-                                                onChange={toggleAllC2Scenarios}
-                                                className="w-4 h-4 rounded border-border bg-card-secondary text-purple-600 focus:ring-1 focus:ring-purple-500 outline-none transition-all"
-                                            />
-                                        </div>
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
-                                    </label>
-
-                                    {/* C2 Scheduler — same pattern as DNS/URL */}
-                                    <SchedulerSettings type="c2" title="C2" config={config} onUpdate={updateSchedule} />
-                                </div>
+                                <label className="flex items-center gap-2 cursor-pointer group">
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={allVisibleSelected}
+                                            onChange={toggleAllC2Scenarios}
+                                            className="w-4 h-4 rounded border-border bg-card-secondary text-purple-600 focus:ring-1 focus:ring-purple-500 outline-none transition-all"
+                                        />
+                                    </div>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
+                                </label>
                                 <button
                                     onClick={runC2BatchTest}
                                     disabled={batchProcessingC2 || c2SelectedScenarios.length === 0}
                                     className={cn(
-                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2",
+                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2 cursor-pointer",
                                         batchProcessingC2
                                             ? "bg-card-secondary text-text-muted border border-border cursor-not-allowed"
                                             : "bg-purple-600 hover:bg-purple-500 text-white shadow-purple-900/40"
@@ -2642,7 +2657,11 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex flex-wrap items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                        {/* AI Schedule */}
+                        <SchedulerSettings type="ai" title="AI" config={config} onUpdate={updateSchedule} />
+
+                        {/* Search input */}
                         <div className="relative">
                             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" size={12} />
                             <input
@@ -2667,6 +2686,8 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                 </button>
                             )}
                         </div>
+
+                        {/* Chevron toggle */}
                         <div className="cursor-pointer text-text-muted hover:text-text-primary transition-colors p-1" onClick={() => setAIExpanded(!aiExpanded)}>
                             {aiExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                         </div>
@@ -2685,25 +2706,22 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                         <div className="p-6 space-y-6">
                             {/* Controls row */}
                             <div className="flex flex-wrap items-center justify-between gap-4">
-                                <div className="flex flex-wrap items-center gap-6">
-                                    <label className="flex items-center gap-2 cursor-pointer group">
+                                <label className="flex items-center gap-2 cursor-pointer group">
+                                    <div className="relative flex items-center">
                                         <input
                                             type="checkbox"
                                             checked={allVisibleSelected}
                                             onChange={toggleAllAIScenarios}
                                             className="w-4 h-4 rounded border-border bg-card-secondary text-cyan-600 focus:ring-1 focus:ring-cyan-500 outline-none transition-all"
                                         />
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
-                                    </label>
-
-                                    {/* AI Scheduler */}
-                                    <SchedulerSettings type="ai" title="AI" config={config} onUpdate={updateSchedule} />
-                                </div>
+                                    </div>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
+                                </label>
                                 <button
                                     onClick={runAIBatchTest}
                                     disabled={batchProcessingAI || aiSelectedScenarios.length === 0}
                                     className={cn(
-                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2",
+                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2 cursor-pointer",
                                         batchProcessingAI
                                             ? "bg-card-secondary text-text-muted border border-border cursor-not-allowed"
                                             : "bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-900/40"
