@@ -4,6 +4,7 @@ All notable changes made specifically on the `v2` branch are documented in this 
 
 ## [v2.0.145] - 2026-10-03 — Fix: Multi-Platform Docker Builds for Release Tags (AMD64 + ARM64) & Security UI Refactor
 
+- **refactor(custom-tcp)**: Streamlined Custom Applications toolbar and metric cards in `web-dashboard/src/CustomApps.tsx`. Removed redundant port/peer/mode labels and duplicate bottom status row from the active application banner, integrating health score and ZTP badges into the title header.
 - **feat(ui)**: Refactored the header and action bars across all 5 Security test sections in [Security.tsx](file:///Users/jsuzanne/Github/stigix/web-dashboard/src/Security.tsx) (*URL Filtering*, *DNS Security*, *Threat Prevention / EICAR*, *C2 Scenarios*, *AI Security*). Moved Schedule controls, Next Run timestamps, and HTTP/HTTPS protocol toggles directly into the top collapsible headers inline, keeping inner section toolbars exclusively focused on `Select All` and `Run Selected Tests`.
 - **fix(ci/cd)**: Enabled multi-platform Docker builds (`linux/amd64,linux/arm64`) on all Git release tags (`refs/tags/*`) in `.github/workflows/build-stigix-allinone.yml`. Previously, only direct pushes to `main` triggered multi-arch builds, leaving tags on `linux/amd64` only. Now Apple Silicon (M1/M2/M3/M4) and ARM64 hosts pull native arm64 containers without emulation warnings.
 

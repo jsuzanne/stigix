@@ -865,8 +865,7 @@ const secs = seconds % 60;
             </div>
 
             {/* Application Toolbar & Primary Controls */}
-            <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm space-y-3.5">
-                {/* Row 1: Selected App Overview & Primary Actions */}
+            <div className="bg-card border border-border rounded-2xl p-4 lg:p-5 shadow-sm">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
                     {/* Left: Active App Identity */}
                     <div className="flex items-center gap-3">
@@ -874,7 +873,7 @@ const secs = seconds % 60;
                             <Server size={20} />
                         </div>
                         <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <h2 className="text-base font-bold text-text-primary">{currentApp?.name}</h2>
                                 <span className="font-mono text-xs text-indigo-500 font-bold bg-indigo-500/10 border border-indigo-500/30 px-2 py-0.5 rounded-lg">
                                     Port {currentApp?.listener?.port}
@@ -886,6 +885,30 @@ const secs = seconds % 60;
                                 }`}>
                                     {currentApp?.protocol === 'http_1_1' ? 'HTTP/1.1 REST' : 'TCP Native'}
                                 </span>
+                                {metrics && (() => {
+                                    const health = calculateHealthScore();
+                                    return (
+                                        <div
+                                            title={health.reason}
+                                            className={`h-6 px-2 rounded-md text-[10px] font-black border flex items-center gap-1 cursor-help transition-all ${
+                                                health.color === 'emerald'
+                                                    ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
+                                                    : health.color === 'amber'
+                                                    ? 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400'
+                                                    : 'bg-rose-500/15 border-rose-500/50 text-rose-600 dark:text-rose-400 animate-pulse'
+                                            }`}
+                                        >
+                                            <span className="font-mono">{health.score}/100</span>
+                                            <span className="uppercase tracking-wider font-extrabold">{health.label}</span>
+                                        </div>
+                                    );
+                                })()}
+                                {currentApp?.startup?.startClientWorkload && (
+                                    <span className="h-6 text-[10px] text-amber-500 bg-amber-500/10 border border-amber-500/30 px-2 rounded-md flex items-center gap-1 font-bold" title="Zero-Touch Auto-Start enabled: client workload starts automatically on sync and boot">
+                                        <Zap size={11} className="fill-amber-500" />
+                                        <span>ZTP Auto-Start</span>
+                                    </span>
+                                )}
                             </div>
                             <p className="text-[11px] text-text-muted mt-0.5">
                                 {currentApp?.peers?.length || 0} Target Peer(s) • Mode: <span className="capitalize">{currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}</span>
@@ -898,7 +921,7 @@ const secs = seconds % 60;
                         <button
                             onClick={handleToggleListener}
                             disabled={isActionLoading}
-                            className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
+                            className={`h-[36px] px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
                                 metrics?.listenerState === 'listening'
                                     ? 'bg-card-secondary hover:bg-card-hover text-amber-600 dark:text-amber-400 border border-amber-500/30'
                                     : 'bg-indigo-600 hover:bg-indigo-500 text-white'
@@ -912,7 +935,7 @@ const secs = seconds % 60;
                             onClick={handleToggleClient}
                             disabled={isActionLoading}
                             title={!currentApp?.peers?.length ? 'No target peers configured — click to configure peers' : metrics?.clientWorkloadRunning ? 'Stop outgoing traffic generation' : 'Start outgoing traffic generation to configured targets'}
-                            className={`h-[38px] px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
+                            className={`h-[36px] px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
                                 metrics?.clientWorkloadRunning
                                     ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40'
                                     : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
@@ -929,89 +952,19 @@ const secs = seconds % 60;
                                 setEditingApp(currentApp || null);
                                 setIsWizardOpen(true);
                             }}
-                            className="h-[38px] px-3 py-2 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            className="h-[36px] px-3 py-1.5 bg-card-secondary hover:bg-card-hover text-text-primary border border-border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                         >
                             <Edit3 size={14} /> Edit Profile
                         </button>
 
                         <button
                             onClick={() => setIsPrismaModalOpen(true)}
-                            className="h-[38px] px-3.5 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                            className="h-[36px] px-3.5 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                             title="Push and register this custom application definition to Prisma SD-WAN via Cloud Controller API"
                         >
                             <Cloud size={14} />
                             <span>Push to Prisma SD-WAN</span>
                         </button>
-                    </div>
-                </div>
-
-                {/* Row 2: Live Status Badges & Quick Context Details */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border/70 text-xs">
-                    {/* Live Status Badges */}
-                    <div className="flex flex-wrap items-center gap-2">
-                        {metrics && (() => {
-                            const health = calculateHealthScore();
-                            return (
-                                <>
-                                    <div
-                                        title={health.reason}
-                                        className={`h-8 px-3 rounded-lg text-xs font-black border flex items-center gap-1.5 cursor-help transition-all shadow-sm ${
-                                            health.color === 'emerald'
-                                                ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
-                                                : health.color === 'amber'
-                                                ? 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400'
-                                                : 'bg-rose-500/15 border-rose-500/50 text-rose-600 dark:text-rose-400 animate-pulse'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-1 font-mono">
-                                            <span className="text-[12px]">{health.score}</span>
-                                            <span className="text-[9px] opacity-70">/100</span>
-                                        </div>
-                                        <span className="text-[10px] uppercase tracking-wider font-extrabold">{health.label}</span>
-                                    </div>
-
-                                    <span className="h-8 text-xs text-text-muted bg-card-secondary border border-border px-3 rounded-lg flex items-center gap-1.5 shadow-sm">
-                                        <Server size={12} className={metrics.listenerState === 'listening' ? 'text-emerald-500' : 'text-text-muted'} />
-                                        <span>Listener:</span>
-                                        <strong className={`uppercase font-bold ${metrics.listenerState === 'listening' ? 'text-emerald-600 dark:text-emerald-400' : 'text-text-muted'}`}>
-                                            {metrics.listenerState}
-                                        </strong>
-                                    </span>
-
-                                    {incomingSessions.length > 0 && (
-                                        <span className="h-8 text-xs text-emerald-500 bg-emerald-500/10 border border-emerald-500/30 px-3 rounded-lg flex items-center gap-1.5 shadow-sm font-bold" title={`${incomingSessions.length} active incoming session(s) currently connected and receiving traffic`}>
-                                            <ArrowDownRight size={12} className="animate-pulse" />
-                                            <span>{incomingSessions.length} Incoming Connected</span>
-                                        </span>
-                                    )}
-
-                                    {metrics.clientWorkloadRunning && (
-                                        <span className="h-8 text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/30 px-3 rounded-lg flex items-center gap-1.5 shadow-sm font-bold" title={`${outgoingSessions.filter(s => s.state === 'connected').length} active outgoing session(s) transmitting traffic`}>
-                                            <ArrowUpRight size={12} className="animate-pulse" />
-                                            <span>{outgoingSessions.filter(s => s.state === 'connected').length} Outgoing Connected</span>
-                                        </span>
-                                    )}
-
-                                    {currentApp?.startup?.startClientWorkload && (
-                                        <span className="h-8 text-xs text-amber-500 bg-amber-500/10 border border-amber-500/30 px-3 rounded-lg flex items-center gap-1.5 shadow-sm font-bold" title="Zero-Touch Auto-Start enabled: client workload starts automatically on sync and boot">
-                                            <Zap size={12} className="fill-amber-500" />
-                                            <span>ZTP Auto-Start</span>
-                                        </span>
-                                    )}
-                                </>
-                            );
-                        })()}
-                    </div>
-
-                    {/* Quick Metadata Info */}
-                    <div className="flex items-center gap-3 text-text-muted text-[11px] font-mono">
-                        <span className="bg-card-secondary px-2 py-0.5 rounded border border-border font-semibold text-text-primary">
-                            TCP Port {currentApp?.listener?.port}
-                        </span>
-                        <span>•</span>
-                        <span>{currentApp?.peers?.length || 0} Target Peer(s)</span>
-                        <span>•</span>
-                        <span className="capitalize">{currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}</span>
                     </div>
                 </div>
             </div>
@@ -1043,7 +996,11 @@ const secs = seconds % 60;
                                 <span className="font-semibold flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
                                     <ArrowDownRight size={16} /> Incoming Sessions
                                 </span>
-                                <span className="font-mono text-[11px] text-text-muted">Port {currentApp?.listener?.port}</span>
+                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                                    metrics?.listenerState === 'listening' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-500/10 text-text-muted'
+                                }`}>
+                                    {metrics?.listenerState === 'listening' ? 'Listening' : 'Stopped'}
+                                </span>
                             </div>
                             <div className="mt-3 flex items-baseline justify-between">
                                 <div className="text-3xl font-black text-text-primary">{incomingSessions.length} <span className="text-xs font-normal text-text-muted">active</span></div>
@@ -1077,7 +1034,11 @@ const secs = seconds % 60;
                                 <span className="font-semibold flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
                                     <ArrowUpRight size={16} /> Outgoing Sessions
                                 </span>
-                                <span className="font-mono text-[11px] text-text-muted">{currentApp?.peers?.length || 0} peers</span>
+                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                                    metrics?.clientWorkloadRunning ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-500/10 text-text-muted'
+                                }`}>
+                                    {metrics?.clientWorkloadRunning ? 'Transmitting' : 'Idle'}
+                                </span>
                             </div>
                             <div className="mt-3 flex items-baseline justify-between">
                                 <div className="text-3xl font-black text-text-primary">{outgoingSessions.filter(s => s.state === 'connected').length} <span className="text-xs font-normal text-text-muted">active</span></div>
@@ -1092,11 +1053,7 @@ const secs = seconds % 60;
                                 </div>
                             </div>
                             <div className="mt-2 text-[11px] text-text-muted flex items-center justify-between pt-2.5 border-t border-border">
-                                <span className="truncate max-w-[55%]">
-                                    Mode: <strong className="text-text-secondary font-medium">
-                                        {currentApp?.clientDefaults?.mode?.replace(/_/g, ' ')}
-                                    </strong>
-                                </span>
+                                <span>Peers: <strong className="text-text-secondary font-medium">{currentApp?.peers?.length || 0} configured</strong></span>
                                 <span className="whitespace-nowrap">
                                     Replies: <strong className="text-text-secondary">{clientReplies}</strong>{' '}
                                     {liveClientTps > 0 && <span className="text-emerald-500 font-mono text-[10px] font-bold">({liveClientTps} tps)</span>}
@@ -1124,7 +1081,7 @@ const secs = seconds % 60;
                                 <span className="font-semibold flex items-center gap-1.5 text-amber-500">
                                     <Zap size={16} /> App Latency (RTT)
                                 </span>
-                                <span className="font-mono text-[11px] text-text-muted">Rolling Window</span>
+                                <span className="font-mono text-[10px] text-text-muted">Live RTT</span>
                             </div>
                             <div className="mt-3 flex items-baseline justify-between">
                                 <div className="text-3xl font-black text-amber-500 font-mono">
@@ -1149,9 +1106,9 @@ const secs = seconds % 60;
                         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
                             <div className="flex items-center justify-between text-xs">
                                 <span className="font-semibold flex items-center gap-1.5 text-cyan-500">
-                                    <Activity size={16} /> Stability & Chaos
+                                    <Activity size={16} /> Stability & Failover
                                 </span>
-                                <span className="font-mono text-[11px] text-text-muted">Failover</span>
+                                <span className="font-mono text-[10px] text-text-muted">Disruptions</span>
                             </div>
                             <div className="mt-3 flex items-baseline justify-between">
                                 <div className="text-3xl font-black text-text-primary font-mono">
@@ -1162,7 +1119,7 @@ const secs = seconds % 60;
                                 </div>
                             </div>
                             <div className="mt-2 text-[11px] text-text-muted flex justify-between pt-2.5 border-t border-border">
-                                <span>TCP Keepalive: <strong className="text-text-secondary">Enabled</strong></span>
+                                <span>Keepalive: <strong className="text-text-secondary">Enabled</strong></span>
                                 <span>Backoff: <strong className="text-text-secondary">Jittered</strong></span>
                             </div>
                         </div>
