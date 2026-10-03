@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { usePeerContext } from './PeerContext';
-import { Shield, Play, AlertTriangle, Check, CheckCircle, XCircle, Clock, Download, Trash2, ChevronDown, ChevronUp, Copy, Filter, Link, Upload, RefreshCcw, ShieldAlert, Globe, ListTree, RefreshCw, MoreVertical, Settings, Database, Server, Info, Search, History as HistoryIcon, Zap, ChevronRight, Activity, FileJson } from 'lucide-react';
+import { Shield, Play, AlertTriangle, Check, CheckCircle, XCircle, Clock, Download, Trash2, ChevronDown, ChevronUp, Copy, Filter, Link, Upload, RefreshCcw, ShieldAlert, Globe, Lock, ListTree, RefreshCw, MoreVertical, Settings, Database, Server, Info, Search, History as HistoryIcon, Zap, ChevronRight, Activity, FileJson } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { clsx, type ClassValue } from 'clsx';
 // Types only — runtime data is loaded from /api/security/profile (config/security-profile.json)
@@ -887,13 +887,22 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
         }
     };
 
+    const getTargetUrl = (rawUrl: string, protoOverride?: 'http' | 'https') => {
+        const proto = protoOverride || config?.url_filtering?.protocol || 'http';
+        if (proto === 'https') {
+            return rawUrl.replace(/^http:\/\//i, 'https://');
+        }
+        return rawUrl.replace(/^https:\/\//i, 'http://');
+    };
+
     const runURLTest = async (category: URLCategory) => {
         setTesting({ ...testing, [`url-${category.id}`]: true });
         try {
+            const targetUrl = getTargetUrl(category.url);
             const res = await gFetch('/api/security/url-test', {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: category.url, category: category.name })
+                body: JSON.stringify({ url: targetUrl, category: category.name })
             });
             const result = await res.json();
             if (result.status) {
@@ -911,13 +920,14 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
     const runURLBatchTest = async () => {
         if (!config || batchProcessingUrl) return;
         setBatchProcessingUrl(true);
-        showToast(`Running ${config.url_filtering.enabled_categories.length} URL filtering tests...`, 'info');
+        const activeProtocol = (config.url_filtering?.protocol || 'http').toUpperCase();
+        showToast(`Running ${config.url_filtering.enabled_categories.length} URL filtering tests (${activeProtocol})...`, 'info');
         try {
             const enabledCategories = securityProfile.url_filtering.items.filter(cat =>
                 config.url_filtering.enabled_categories.includes(cat.id)
             );
 
-            const tests = enabledCategories.map(cat => ({ url: cat.url, category: cat.name }));
+            const tests = enabledCategories.map(cat => ({ url: getTargetUrl(cat.url), category: cat.name }));
 
             await gFetch('/api/security/url-test-batch', {
                 method: 'POST',
@@ -926,7 +936,7 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
             });
             await fetchResults();
             await fetchConfig();
-            showToast('URL filtering tests completed!', 'success');
+            showToast(`URL filtering tests completed (${activeProtocol})!`, 'success');
         } catch (e) {
             console.error('Batch URL test failed:', e);
             showToast('URL filtering tests failed', 'error');
@@ -1793,6 +1803,54 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                         <span className="text-[10px] font-black uppercase tracking-widest text-text-muted group-hover:text-text-primary transition-colors">Select All</span>
                                     </label>
 
+                                    {/* HTTP / HTTPS Protocol Toggle */}
+                                    <div className="flex items-center bg-card-secondary/80 p-0.5 rounded-lg border border-border">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const nextProto = 'http';
+                                                saveConfig({
+                                                    ...config,
+                                                    url_filtering: {
+                                                        ...config.url_filtering,
+                                                        protocol: nextProto
+                                                    }
+                                                });
+                                            }}
+                                            className={cn(
+                                                "px-2.5 py-1 rounded-md text-[10px] font-black tracking-wider uppercase transition-all flex items-center gap-1.5",
+                                                (config.url_filtering?.protocol || 'http') === 'http'
+                                                    ? "bg-red-600 text-white shadow-sm"
+                                                    : "text-text-muted hover:text-text-primary"
+                                            )}
+                                            title="Send URL Filtering tests over plain HTTP (port 80)"
+                                        >
+                                            <Globe size={11} /> HTTP
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const nextProto = 'https';
+                                                saveConfig({
+                                                    ...config,
+                                                    url_filtering: {
+                                                        ...config.url_filtering,
+                                                        protocol: nextProto
+                                                    }
+                                                });
+                                            }}
+                                            className={cn(
+                                                "px-2.5 py-1 rounded-md text-[10px] font-black tracking-wider uppercase transition-all flex items-center gap-1.5",
+                                                config.url_filtering?.protocol === 'https'
+                                                    ? "bg-emerald-600 text-white shadow-sm shadow-emerald-900/30"
+                                                    : "text-text-muted hover:text-text-primary"
+                                            )}
+                                            title="Send URL Filtering tests over HTTPS (port 443) — dynamically replaces http:// with https:// to test SSL Decryption & Forward Trust CA"
+                                        >
+                                            <Lock size={11} /> HTTPS
+                                        </button>
+                                    </div>
+
                                     <SchedulerSettings type="url" title="URL" config={config} onUpdate={updateSchedule} />
                                 </div>
                                 <button
@@ -1824,7 +1882,9 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                     {visibleCats.map(category => {
                                         const isEnabled = config.url_filtering.enabled_categories.includes(category.id);
                                         const isTesting = testing[`url-${category.id}`];
-                                        const lastResult = getCardResult('url', category.name, category.url);
+                                        const targetUrl = getTargetUrl(category.url);
+                                        const lastResult = getCardResult('url', category.name, targetUrl) || getCardResult('url', category.name, category.url);
+                                        const isHttps = (config.url_filtering?.protocol === 'https');
 
                                         return (
                                             <div
@@ -1846,8 +1906,11 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                         <div className={cn("text-xs font-black tracking-tight truncate", isEnabled ? "text-text-primary" : "text-text-muted")}>
                                                             {category.name}
                                                         </div>
-                                                        <div className="text-[9px] text-text-muted font-mono truncate opacity-60 group-hover:opacity-100 transition-opacity">
-                                                            {category.url.replace('http://', '')}
+                                                        <div className="text-[9px] text-text-muted font-mono truncate opacity-60 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                                                            <span className={cn("text-[8px] font-bold uppercase px-1 py-0.2 rounded leading-tight", isHttps ? "bg-emerald-500/15 text-emerald-500 border border-emerald-500/20" : "bg-card-secondary text-text-muted border border-border/50")}>
+                                                                {isHttps ? 'https' : 'http'}
+                                                            </span>
+                                                            <span className="truncate">{targetUrl.replace(/^https?:\/\//i, '')}</span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1855,9 +1918,9 @@ export default function Security({ token, onGoToCloudSettings }: SecurityProps) 
                                                     {lastResult && getStatusBadge(lastResult.result)}
                                                     <div className="flex gap-1.5 ml-2 p-1 bg-card-secondary/50 rounded-lg border border-border/50">
                                                         <button
-                                                            onClick={() => copyToClipboard(`curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' '${category.url}'`)}
+                                                            onClick={() => copyToClipboard(`curl -fsS --max-time 10 -o /dev/null -w '%{http_code}' '${targetUrl}'`)}
                                                             className="p-1.5 hover:bg-card border border-transparent hover:border-border rounded-lg text-text-muted hover:text-blue-600 transition-all"
-                                                            title="Copy CLI command"
+                                                            title={`Copy CLI command (${isHttps ? 'HTTPS' : 'HTTP'})`}
                                                         >
                                                             <Copy size={13} />
                                                         </button>

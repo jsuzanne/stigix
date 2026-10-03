@@ -669,6 +669,7 @@ content_match_ok       true | false</pre>
               <li><strong>📁 Manual Upload</strong> — You can upload custom <code>.crt</code>/<code>.pem</code> files or paste PEM text for custom enterprise PKIs (e.g. Active Directory CS).</li>
               <li><strong>🌐 Zero-Touch Mesh Sync</strong> — Importing the CA on the Leader automatically distributes it across all remote mesh spoke nodes (DC1, BR1, BR2, BR5, BR8) via Mesh Provisioning.</li>
               <li><strong>Runtime Injection</strong> — The CA bundle is automatically injected into Node.js (<code>NODE_EXTRA_CA_CERTS</code>), Python (<code>REQUESTS_CA_BUNDLE</code>, <code>SSL_CERT_FILE</code>), and subprocesses (<code>CURL_CA_BUNDLE</code>).</li>
+              <li><strong>🔄 URL Filtering HTTP / HTTPS Toggle</strong> — In <em>Security Testing</em>, the URL Filtering toolbar features an instant <code>[ 🌐 HTTP | 🔒 HTTPS ]</code> switch. In HTTPS mode, Stigix automatically converts <code>http://</code> URLs to <code>https://</code>, demonstrating that the firewall decrypts TLS sessions and enforces category-based URL filtering on encrypted traffic.</li>
             </ul>
           </div></div></div>
         </div>

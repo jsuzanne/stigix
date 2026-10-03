@@ -600,11 +600,12 @@ Dedicated score visualization panel mounted inside `Security.tsx`. Fetches score
 
 ## Test Categories
 
-### URL Filtering Categories (67 total)
+### URL Filtering Categories (70 total) & Protocol Toggle (HTTP / HTTPS)
 
-Defined in `web-dashboard/src/data/security-categories.ts`
+Defined in `web-dashboard/shared/security-categories.ts` (and customizable via `config/security-profile.json`).
 
-**Example:**
+**Default Configuration:**
+In the configuration file and security profile, test URLs are stored using `http://`:
 ```typescript
 {
   id: 'malware',
@@ -613,13 +614,25 @@ Defined in `web-dashboard/src/data/security-categories.ts`
 }
 ```
 
-**Categories include:**
-- Malware, Phishing, Command and Control
-- Adult Content, Gambling, Weapons
-- Hacking, Proxy Avoidance, Peer-to-Peer
-- And 58 more...
+**HTTP vs HTTPS Protocol Toggle (v2.0.143+):**
+The URL Filtering header includes an instant **`[ 🌐 HTTP | 🔒 HTTPS ]`** protocol selector:
+* **`HTTP` Mode (Default, port 80):** Executes tests using standard `http://urlfiltering.paloaltonetworks.com/...`. The firewall/Prisma Access inspects the full URI directly in plaintext.
+* **`HTTPS` Mode (port 443):** Dynamically replaces `http://` with `https://` (`https://urlfiltering.paloaltonetworks.com/...`) across all execution flows:
+  * Single category test execution (▶)
+  * Batch execution (**RUN SELECTED CATEGORIES**)
+  * Scheduled background execution (`sched-url-...`)
+  * CLI command generator (Copy `curl` command 📋)
+* **SSL Decryption Validation:** Testing in `HTTPS` mode is the ideal method to demonstrate Palo Alto / Prisma Access **SSL Forward Proxy Decryption**:
+  * *Without SSL Decryption:* The firewall only sees the SNI `urlfiltering.paloaltonetworks.com` and cannot inspect individual category paths (`/test-malware`, `/test-gambling`).
+  * *With SSL Decryption + Stigix Forward Trust CA:* The firewall decrypts the TLS session, categorizes the request path, applies URL filtering security profiles, and re-encrypts the session using its CA certificate without client-side TLS errors.
 
-**Full list:** See `URL_CATEGORIES` array in `security-categories.ts`
+**Categories include:**
+- Malware, Phishing, Real-Time Detection C2 / Malware / Phishing / Grayware
+- Adult Content, Gambling, Weapons, Cryptocurrency
+- Hacking, Proxy Avoidance, Peer-to-Peer
+- And 60+ more...
+
+**Full list:** See `URL_CATEGORIES` array in `web-dashboard/shared/security-categories.ts`
 
 ---
 

@@ -7983,9 +7983,13 @@ const runScheduledUrlTests = async () => {
         const testId = getNextTestId();
         const targetPort = getPredictiveSourcePort('url_filtering', testId);
 
+        const targetUrl = (config.url_filtering?.protocol === 'https')
+            ? category.url.replace(/^http:\/\//i, 'https://')
+            : category.url;
+
         try {
             // Capture HTTP code and content for keyword detection (Removed -f to allow 404 handling)
-            const curlCmd = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${targetPort} -w '\\n__HTTP__:%{http_code}\\n__PORT__:%{local_port}' '${category.url}'`;
+            const curlCmd = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${targetPort} -w '\\n__HTTP__:%{http_code}\\n__PORT__:%{local_port}' '${targetUrl}'`;
             const { stdout, stderr } = await execPromise(curlCmd);
 
             const httpMatch = stdout.match(/__HTTP__:(\d+)/);
@@ -8004,7 +8008,7 @@ const runScheduledUrlTests = async () => {
 
             // Treat 404 as 'allowed' if no block page is detected (Service might be down, but network allows it)
             const status = ((httpCode >= 200 && httpCode < 400) || (httpCode === 404 && !isBlockPage)) ? 'allowed' : 'blocked';
-            const executedCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${srcPort} -w '\\n__HTTP__:%{http_code}\\n__PORT__:%{local_port}' '${category.url}'`;
+            const executedCommand = `curl -sSL --max-time 10 ${ifaceFlag} --local-port ${srcPort} -w '\\n__HTTP__:%{http_code}\\n__PORT__:%{local_port}' '${targetUrl}'`;
 
             updateStatistics('url_filtering', status);
             await addTestResult('url_filtering', category.name, {
@@ -8012,16 +8016,16 @@ const runScheduledUrlTests = async () => {
                 httpCode,
                 srcPort,
                 status,
-                url: category.url,
+                url: targetUrl,
                 category: category.name,
                 blockPageDetected: isBlockPage,
                 testPageDetected: isTestPage
-            }, testId, { url: category.url, httpCode, srcPort, command: executedCommand }, runId);
+            }, testId, { url: targetUrl, httpCode, srcPort, command: executedCommand }, runId);
 
             console.log(`[SECURITY-URL] [${testId}] ${status.toUpperCase()} - Category: ${category.name} | Code: ${httpCode} | Port: ${srcPort}${isBlockPage ? ' (Block Page Detected)' : ''}`);
         } catch (e: any) {
             updateStatistics('url_filtering', 'blocked');
-            await addTestResult('url_filtering', category.name, { success: false, status: 'blocked', url: category.url, category: category.name, srcPort: targetPort }, testId, { url: category.url, srcPort: targetPort }, runId);
+            await addTestResult('url_filtering', category.name, { success: false, status: 'blocked', url: targetUrl, category: category.name, srcPort: targetPort }, testId, { url: targetUrl, srcPort: targetPort }, runId);
         }
     }
 
