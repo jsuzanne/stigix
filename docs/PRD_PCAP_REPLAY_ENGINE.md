@@ -146,16 +146,17 @@ B. North-South (SASE egress)
 
 ## 6. Security Verdict Model
 
-For threat captures, the client must distinguish **blocked by security** from **network failure**. The verdict model is aligned with existing Stigix C2 scenarios:
+For threat captures, the client must distinguish **blocked by security** from **network failure**. The verdict model is aligned with existing Stigix C2 scenarios and accounts for both active resets and silent drops:
 
-| Observation | Verdict |
-| :--- | :--- |
-| All turns completed, payload received intact | **Bypass** (threat not blocked) |
-| TCP RST / connection closed right after the malicious turn, while a control replay on the same path succeeds | **Enforced** |
-| HTTP block page detected in the server turn (status / signature) | **Enforced** |
-| Timeout before the malicious turn, or control replay also fails | **Inconclusive** |
+| Observation | Verdict | Details |
+| :--- | :--- | :--- |
+| All turns completed, payload received intact | **Bypass** | Threat not blocked by security policy |
+| TCP RST / connection closed right after the malicious turn (control replay succeeds) | **Enforced (Reset)** | Firewall / SASE sent an active RST packet (`reset-server`, `reset-client`, `reset-both`) |
+| Timeout / retransmissions stalled on the malicious turn (control replay succeeds) | **Enforced (Drop)** | Firewall / SASE silently dropped the packet (`drop` action common on Anti-Spyware / Vulnerability profiles) |
+| HTTP block page detected in the server turn (status / signature) | **Enforced (Block Page)** | SASE / Web Security intercepted and served a captive block page |
+| Timeout before reaching the malicious turn, or control replay also fails | **Inconclusive** | Underlay / overlay network failure, unreachable route, or misconfigured port |
 
-* **Control replay:** before each threat replay, a benign profile is replayed on the same source/target/port to prove the path works.
+* **Control replay:** before each threat replay, a benign profile is replayed on the same source/target/port to prove the network path is functional.
 * Each threat profile declares its **malicious turn index** so the verdict can tell "blocked at the exploit" apart from "blocked at the handshake".
 
 ---
@@ -170,34 +171,34 @@ Bind replay flows to **virtual devices from the existing Stigix IoT Simulator** 
 
 Two implementation options, to be validated in a spike:
 
-| Option | How | Pros | Cons |
+| Option | How | Pros | Cons / Prerequisites |
 | :--- | :--- | :--- | :--- |
-| **macvlan per device** | Create a macvlan sub-interface per virtual device (own MAC + DHCP IP); bind kernel sockets to it | Real kernel TCP stack, byte-accurate replay reused as-is | Requires host networking + `NET_ADMIN`; macvlan limits on some hypervisors / Wi-Fi |
-| **Userspace TCP (Scapy)** | Forge TCP on the virtual IP from the simulator's existing Scapy engine | No extra interfaces | Must implement handshake, retransmit, windowing; fragile under loss |
-
-**Recommendation:** macvlan first (Linux host mode only, same constraint as the IoT Simulator today), userspace TCP as fallback.
+| **macvlan per device** (Recommended) | Create a macvlan sub-interface per virtual device (own MAC + DHCP IP); bind kernel sockets to it | Real kernel TCP stack, byte-accurate replay reused as-is | **Environment constraint:** requires Linux host networking + `NET_ADMIN`. In virtualized labs (ESXi, Proxmox, KVM), the vSwitch **must** allow *Promiscuous Mode / MAC Address Changes*. Incompatible with Docker Desktop (macOS/Windows) and Wi-Fi interfaces. |
+| **Userspace TCP (Scapy)** (Fallback) | Forge TCP on the virtual IP from the simulator's existing Scapy engine | No extra kernel interfaces | Must implement handshake, retransmit, windowing; fragile under SD-WAN packet loss and jitter. |
 
 ---
 
 ## 8. TLS / HTTPS Handling
 
 ### 8.1 Cleartext Protocols
-Exploits over HTTP, Modbus, S7, DNP3, BACnet, MQTT, DICOM, HL7, DNS, SMB, LDAP: replayed with full payload fidelity, no certificate involved.
+Exploits and application flows over HTTP, Modbus, S7, DNP3, BACnet, MQTT, DICOM, HL7, DNS, SMB, LDAP: replayed with full payload fidelity, no certificate involved.
 
-### 8.2 Encrypted Captures
-**A TLS payload cannot be extracted from a capture without the session keys.** Supported cases:
+### 8.2 Encrypted Captures & Threat Prevention Reality
+**A TLS payload cannot be extracted from a capture without session keys.**
 
-| Capture | Behavior |
-| :--- | :--- |
-| TLS **with** `SSLKEYLOGFILE` provided | Decrypt at parse time, extract cleartext turns, replay inside a fresh TLS session between the two Stigix nodes |
-| TLS **without** keys | Replay only the **ClientHello metadata (SNI, ALPN)** in a fresh TLS session with filler payload. Often enough for SNI-based App-ID; flagged as **partial fidelity** |
-| QUIC / encrypted UDP | Not supported in Phase 1 (flagged at parse time) |
+| Capture | Behavior | App-ID Parity | Threat Inspection Parity |
+| :--- | :--- | :--- | :--- |
+| TLS **with** `SSLKEYLOGFILE` provided | Decrypt at parse time, extract cleartext turns, replay inside a fresh TLS session between the two Stigix nodes | **Full** | **Full** (Decrypted payload inspected by NGFW / Prisma) |
+| TLS **without** keys | Replay only the **ClientHello metadata (SNI, ALPN)** in a fresh TLS session with dummy filler payload | **Partial** (Level-1 SNI App-ID only, e.g. `salesforce-base`) | ❌ **Strictly Incompatible.** Threat signatures inspect decrypted URLs, headers, or payloads. Replaying filler payloads will never trigger threat signatures. |
+| QUIC / encrypted UDP | Not supported in Phase 1 (flagged at parse time) | None | None |
 
-### 8.3 Prisma Access SSL Decryption Pitfall
-When Prisma decrypts traffic towards a Stigix Cloud Target, it validates the **target's server certificate**. A self-signed certificate is treated as untrusted and re-signed with **Forward-Untrust-CA**, causing client-side failures. Requirements:
-* Cloud Targets serving TLS replays must present a **publicly trusted certificate** (e.g. Let's Encrypt on a DNS name), **or**
-* The decryption policy must exclude the target, **or**
-* The client explicitly trusts Forward-Untrust-CA (lab-only option, clearly labeled).
+> [!IMPORTANT]
+> **No false promises on TLS Threats:** Captures of HTTPS threats without an accompanying `SSLKEYLOGFILE` cannot be replayed for Threat Prevention validation. They can only validate SNI-based App-ID classification.
+
+### 8.3 Prisma Access SSL Decryption & Cloud Targets
+When Prisma decrypts traffic towards a Stigix Cloud Target, it validates the **target's server certificate**.
+* An IP-literal target (`https://195.201.x.x`) cannot obtain a public Let's Encrypt certificate, resulting in an untrusted certificate error re-signed with **Forward-Untrust-CA**.
+* **Requirement:** Stigix Cloud Targets used for TLS decryption testing must be assigned a **valid public FQDN** (e.g., `target1.lab.stigix.io`) with a valid public certificate (Let's Encrypt), or the test traffic must be excluded from SSL decryption rules.
 
 The client trusts **Forward-Trust-CA** through the existing Stigix CA bundle (`config/certs/ca-bundle.pem`).
 
@@ -277,11 +278,12 @@ The client trusts **Forward-Trust-CA** through the existing Stigix CA bundle (`c
 
 | Limitation | Impact | Mitigation |
 | :--- | :--- | :--- |
+| **Multi-channel / ALG protocols** (Active/Passive FTP, SIP/SDP, RPC, Oracle TNS redirect) | Secondary data channels and negotiated ports fail because script replay has no dynamic L7 semantic parser | **Strict Non-Goal for Phase 1.** Excluded at parse time; flag as unsupported multi-channel protocol. |
 | **IPs embedded in payloads** (FTP PORT, SIP/SDP, SMB, H.323) | NGFW ALGs/decoders may see inconsistent addresses | Flag at parse time; optional payload IP rewrite (best effort, length-preserving) |
 | **Dynamic protocol fields** (session IDs, nonces, signatures) | None between two Stigix nodes (both sides replay the script), but strict protocol decoders could flag anomalies | Document; prefer short captures from session start |
 | **Mid-stream captures** (no SYN) | Role detection unreliable | User selects client/server manually |
-| **TLS without keys** | Partial fidelity only | See Section 8.2 |
-| **Original MAC/IP not preserved** | IoT identity lost without simulator binding | Section 7 |
+| **TLS without keys** | Strictly limited to SNI App-ID Level 1; no Threat Prevention | See Section 8.2 |
+| **Original MAC/IP not preserved** | IoT identity lost without simulator binding | Requires Linux host mode + permissive vSwitch (Section 7) |
 
 ---
 
@@ -332,6 +334,7 @@ Kernel TCP/UDP sockets, byte-accurate state machine, verdict model, curated libr
 
 | Date | Stigix Version | Author / Trigger | Summary of Changes |
 |---|---|---|---|
+| 2026-10-03 | `v2.0.145` | Stigix Core Team | Credibility hardening: Enforced (Drop) vs Enforced (Reset) in security verdict model, macvlan lab/hypervisor constraints, TLS threat prevention limitations without SSLKEYLOGFILE, FQDN requirement for Prisma Cloud Targets, and explicit exclusion of multi-channel/ALG protocols. |
 | 2026-10-03 | `v2.0.145` | Stigix Core Team | Technical review: byte-accurate state machine, UDP in Phase 1, security verdict model, IoT Simulator binding (macvlan / userspace TCP), corrected TLS strategy (keylog / SNI-only, Forward-Untrust pitfall), curated library instead of live hub, on-demand profile distribution, goals/non-goals, limitations, risks, success criteria. |
 | 2026-10-03 | `v2.0.145` | Stigix Core Team | Added public PCAP sources, UTD lab field context, Cloud Target topology, and TLS section. |
 | 2026-10-03 | `v2.0.145` | Stigix Core Team | Initial PRD for PCAP Stateful Replay Engine (L7 Socket & Line-Rate roadmap). |
