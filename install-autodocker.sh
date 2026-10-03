@@ -652,14 +652,11 @@ if [ -n "$CONTROLLER_URL" ]; then
     echo "# --- Direct Controller Mode ---" >> .env
     echo "# Set by --controller flag at install time. Bypasses Cloudflare discovery." >> .env
     echo "STIGIX_CONTROLLER_URL=$CONTROLLER_URL" >> .env
-    echo "STIGIX_REGISTRY_ENABLED=true" >> .env
-    # Direct mode requires the v2 image which includes the registry-manager changes
-    echo "TAG=v2" >> .env
     # Set site name from hostname only if not already present
     if ! grep -q "^STIGIX_SITE_NAME=." .env 2>/dev/null; then
         echo "STIGIX_SITE_NAME=${SITE_NAME_OVERRIDE:-$(hostname | cut -d'.' -f1)}" >> .env
     fi
-    echo "✅ Controller URL written to .env (image: v2)"
+    echo "✅ Controller URL written to .env"
 fi
 
 if [ -n "$JOINED_JWT_SECRET" ]; then
