@@ -2,6 +2,10 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.145] - 2026-10-03 — Fix: Multi-Platform Docker Builds for Release Tags (AMD64 + ARM64)
+
+- **fix(ci/cd)**: Enabled multi-platform Docker builds (`linux/amd64,linux/arm64`) on all Git release tags (`refs/tags/*`) in `.github/workflows/build-stigix-allinone.yml`. Previously, only direct pushes to `main` triggered multi-arch builds, leaving tags on `linux/amd64` only. Now Apple Silicon (M1/M2/M3/M4) and ARM64 hosts pull native arm64 containers without emulation warnings.
+
 ## [v2.0.144] - 2026-10-03 — Feature: Stigix V2 Login Console Redesign & URL Filtering HTTPS Toggle
 
 - **feat(ui)**: Redesigned the entire Login screen (`Login.tsx`) with a state-of-the-art Stigix V2 dark glassmorphism aesthetic, cyber grid radial background, ambient neon orbs, animated Activity logo, and updated tagline `"The Engine for SASE Validation"`.

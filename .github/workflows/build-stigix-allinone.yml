@@ -187,12 +187,12 @@ jobs:
       - name: Determine Platforms
         id: plat
         run: |
-          if [[ "$GITHUB_REF" == "refs/heads/main" || ( "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.build_full }}" == "true" ) ]]; then
+          if [[ "$GITHUB_REF" == "refs/heads/main" || "$GITHUB_REF" == refs/tags/* || ( "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.build_full }}" == "true" ) ]]; then
             echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-            echo "🌍 RELEASE MULTI-ARCH BUILD: AMD64 + ARM64 (main branch / full dispatch)"
+            echo "🌍 RELEASE MULTI-ARCH BUILD: AMD64 + ARM64 (main branch / release tag / full dispatch)"
           else
             echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-            echo "⚡ FAST BUILD: AMD64 ONLY (v2 branch / dev releases)"
+            echo "⚡ FAST BUILD: AMD64 ONLY (v2 dev branch)"
           fi
 
       - name: Build and push Stigix All-in-One
