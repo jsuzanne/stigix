@@ -48,6 +48,54 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
     const [isStartingReplay, setIsStartingReplay] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const profileFileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleDownloadProfile = async (fileName: string) => {
+        try {
+            const res = await gFetch(`/api/pcap/profiles/download/${fileName}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Download failed');
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (e: any) {
+            toast.error(e.message || 'Failed to download profile');
+        }
+    };
+
+    const handleProfileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.name.endsWith('.stx-replay')) {
+            toast.error('Only .stx-replay files can be imported directly');
+            return;
+        }
+        const formData = new FormData();
+        formData.append('profile', file);
+        try {
+            const res = await gFetch('/api/pcap/profiles/upload', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData
+            });
+            if (res.ok) {
+                toast.success(`Profile imported: ${file.name}`);
+                fetchProfiles();
+                setSelectedProfile(file.name);
+            } else {
+                toast.error('Import failed');
+            }
+        } catch (err: any) {
+            toast.error(err.message || 'Import failed');
+        }
+    };
 
     // Fetch existing profiles on open
     useEffect(() => {
@@ -560,13 +608,47 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                         </div>
                     )}
 
-                    {activeTab === 'replay' && (
+                    {activeTab === 'replay' && (() => {
+                        const currentProf = compiledProfiles.find(p => p.file_name === selectedProfile);
+                        const connectedEv = activeJob?.recentEvents?.find((e: any) => e.event === 'client_connected');
+                        const serverStartedEv = activeJob?.recentEvents?.find((e: any) => e.event === 'session_started');
+
+                        return (
                         <div className="space-y-5">
                             {/* Profile selection card */}
                             <div className="p-4 bg-muted/20 border border-border rounded-2xl space-y-3">
-                                <div className="text-xs font-bold text-text-primary flex items-center gap-2">
-                                    <Layers size={14} className="text-indigo-400" />
-                                    <span>Select Replay Profile</span>
+                                <div className="text-xs font-bold text-text-primary flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Layers size={14} className="text-indigo-400" />
+                                        <span>Select Replay Profile</span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="file"
+                                            ref={profileFileInputRef}
+                                            onChange={handleProfileUpload}
+                                            accept=".stx-replay"
+                                            className="hidden"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => profileFileInputRef.current?.click()}
+                                            className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer font-medium"
+                                            title="Importer un profil .stx-replay depuis le Leader ou une autre machine"
+                                        >
+                                            <Upload size={11} /> Importer .stx-replay
+                                        </button>
+                                        {selectedProfile && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDownloadProfile(selectedProfile)}
+                                                className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer font-medium"
+                                                title="Télécharger ce profil .stx-replay pour le copier sur un autre nœud"
+                                            >
+                                                <Download size={11} /> Exporter Profil
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
@@ -579,7 +661,7 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                             {compiledProfiles.length === 0 && <option value="">No profiles compiled yet</option>}
                                             {compiledProfiles.map(p => (
                                                 <option key={p.file_name} value={p.file_name}>
-                                                    {p.file_name} ({(p.size_bytes / 1024).toFixed(1)} KB)
+                                                    {p.name ? `${p.name} (${p.file_name})` : p.file_name} ({(p.size_bytes / 1024).toFixed(1)} KB)
                                                 </option>
                                             ))}
                                         </select>
@@ -613,16 +695,34 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                     </div>
                                 </div>
 
-                                {replayRole === 'client' && (
+                                {replayRole === 'server' ? (
+                                    <div className="pt-2">
+                                        <label className="text-[11px] text-text-muted block mb-1">
+                                            Listening Port Override (Optional)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            placeholder="Defaults to profile port (e.g. 18443 if standard port 80/443/8443 is in use)"
+                                            value={portOverride}
+                                            onChange={(e) => setPortOverride(e.target.value)}
+                                            className="w-full px-3 py-1.5 bg-card border border-border rounded-xl text-xs text-text-primary focus:outline-none focus:border-indigo-500 font-mono"
+                                        />
+                                        <p className="text-[10px] text-text-muted mt-1">
+                                            💡 Si le port d'origine du PCAP est déjà occupé par un service de cette machine (ex: 8443), indiquez un port alternatif libre (ex: 18443).
+                                        </p>
+                                    </div>
+                                ) : (
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
                                         <div className="sm:col-span-2">
-                                            <label className="text-[11px] text-text-muted block mb-1">Target Stigix Server IP</label>
+                                            <label className="text-[11px] text-text-muted block mb-1">
+                                                Target Stigix Server IP (Destination)
+                                            </label>
                                             <input
                                                 type="text"
-                                                placeholder="e.g. 192.168.1.50 or Hetzner public IP"
+                                                placeholder="e.g. 192.168.203.100 or 192.168.122.51"
                                                 value={targetIp}
                                                 onChange={(e) => setTargetIp(e.target.value)}
-                                                className="w-full px-3 py-1.5 bg-card border border-border rounded-xl text-xs text-text-primary focus:outline-none focus:border-indigo-500"
+                                                className="w-full px-3 py-1.5 bg-card border border-border rounded-xl text-xs text-text-primary focus:outline-none focus:border-indigo-500 font-mono"
                                             />
                                         </div>
                                         <div>
@@ -632,17 +732,70 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                                 placeholder="Defaults to profile"
                                                 value={portOverride}
                                                 onChange={(e) => setPortOverride(e.target.value)}
-                                                className="w-full px-3 py-1.5 bg-card border border-border rounded-xl text-xs text-text-primary focus:outline-none focus:border-indigo-500"
+                                                className="w-full px-3 py-1.5 bg-card border border-border rounded-xl text-xs text-text-primary focus:outline-none focus:border-indigo-500 font-mono"
                                             />
                                         </div>
                                     </div>
                                 )}
                             </div>
 
+                            {/* IP Mapping & Flow Translation Card */}
+                            {currentProf && (
+                                <div className="p-3.5 bg-muted/20 border border-border/80 rounded-2xl space-y-2.5 text-xs">
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-semibold text-text-primary flex items-center gap-1.5">
+                                            <Layers size={13} className="text-indigo-400" />
+                                            <span>Profil Sélectionné : {currentProf.name || currentProf.file_name}</span>
+                                        </span>
+                                        <span className="text-[10px] text-text-muted">
+                                            {currentProf.total_turns || 0} tours L7 • Catégorie : <span className="uppercase font-semibold text-indigo-400">{currentProf.category || 'custom'}</span>
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                                        <div className="p-2.5 bg-card/60 border border-border/60 rounded-xl">
+                                            <div className="text-[10px] uppercase font-bold text-text-muted mb-1">
+                                                Capture PCAP Originale (L7)
+                                            </div>
+                                            <div className="font-mono text-text-secondary truncate">
+                                                {currentProf.primary_flow?.client_endpoint || 'Client'} ➔ {currentProf.primary_flow?.server_endpoint || 'Serveur'}
+                                            </div>
+                                            <div className="text-[10px] text-text-muted mt-1">
+                                                Adresses historiques de la capture (non injectées sur le réseau).
+                                            </div>
+                                        </div>
+
+                                        <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+                                            <div className="text-[10px] uppercase font-bold text-indigo-400 mb-1">
+                                                Flux Réseau Réel (L3/L4 Routed)
+                                            </div>
+                                            <div className="font-mono text-text-primary font-bold truncate">
+                                                {replayRole === 'client'
+                                                    ? `Client Local ➔ ${targetIp || '192.168.203.100'}:${portOverride || currentProf.primary_flow?.server_port || 8080}`
+                                                    : `0.0.0.0:${portOverride || currentProf.primary_flow?.server_port || 8080} (Serveur Écoute)`
+                                                }
+                                            </div>
+                                            <div className="text-[10px] text-indigo-300/80 mt-1">
+                                                {replayRole === 'client'
+                                                    ? `Vraie connexion TCP établie vers la cible.`
+                                                    : `En attente d'une connexion TCP réelle.`}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="text-[10px] text-text-muted flex items-center gap-1.5 px-1">
+                                        <Globe size={11} className="text-indigo-400 shrink-0" />
+                                        <span>
+                                            <strong>Remplacement IP :</strong> Les paquets utilisent vos vraies IP réseau. Seuls les octets applicatifs L7 sont rejoués à l'identique pour déclencher les signatures (App-ID / Menaces).
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Runner control and status */}
                             <div className="p-4 bg-muted/20 border border-border rounded-2xl space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                         <Activity size={16} className={activeJob?.status === 'running' ? 'text-emerald-400 animate-pulse' : 'text-text-muted'} />
                                         <span className="text-xs font-bold text-text-primary">
                                             Live Execution Telemetry
@@ -685,6 +838,47 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                     )}
                                 </div>
 
+                                {/* Active Live Connection Badge */}
+                                {connectedEv && (
+                                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-1">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                                                <CheckCircle2 size={14} className="text-emerald-400" />
+                                                Connexion Réseau Réelle Établie (L3/L4)
+                                            </span>
+                                            <span className="text-[10px] font-mono text-emerald-300">RTT: {connectedEv.handshake_rtt_ms} ms</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 font-mono text-xs text-text-primary">
+                                            <span className="font-bold text-emerald-300">{connectedEv.local_ip}:{connectedEv.local_port}</span>
+                                            <span className="text-text-muted">➔</span>
+                                            <span className="font-bold text-indigo-300">{connectedEv.target_ip}:{connectedEv.target_port}</span>
+                                        </div>
+                                        <div className="text-[10px] text-text-muted flex items-center gap-1 flex-wrap">
+                                            <span>Remplacement IP effectué :</span>
+                                            <span className="font-mono line-through opacity-70">{connectedEv.pcap_original_src} ➔ {connectedEv.pcap_original_dst}</span>
+                                            <span className="text-emerald-400 font-semibold">remplacé par les adresses réseau réelles ci-dessus.</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {serverStartedEv && (
+                                    <div className="p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-xl space-y-1">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="font-bold text-indigo-400 flex items-center gap-1.5">
+                                                <Activity size={14} className="animate-pulse" />
+                                                Session Rejeu Serveur Active
+                                            </span>
+                                            <span className="text-[10px] font-mono text-text-muted">{serverStartedEv.total_turns} tours prévus</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 font-mono text-xs text-text-primary">
+                                            <span className="text-text-muted">Client distant :</span>
+                                            <span className="font-bold text-emerald-300">{serverStartedEv.client_ip}:{serverStartedEv.client_port}</span>
+                                            <span className="text-text-muted">➔ Port local :</span>
+                                            <span className="font-bold text-indigo-300">{serverStartedEv.server_port}</span>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Event Logs */}
                                 <div className="bg-black/60 border border-border/80 rounded-xl p-3 font-mono text-[11px] h-44 overflow-y-auto space-y-1">
                                     {(!activeJob?.recentEvents || activeJob.recentEvents.length === 0) ? (
@@ -697,8 +891,11 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                                 <span className="text-text-muted">[{new Date(ev.timestamp * 1000).toLocaleTimeString()}]</span>
                                                 <span className="text-indigo-400 font-semibold">{ev.event}:</span>
                                                 <span className="text-text-primary">
-                                                    {ev.error ? <span className="text-rose-400">{ev.error}</span> :
-                                                     ev.verdict ? <span className="text-emerald-400 font-bold">Verdict ➔ {ev.verdict}</span> :
+                                                    {ev.error ? <span className="text-rose-400 font-bold">{ev.error}</span> :
+                                                     ev.verdict ? <span className="text-emerald-400 font-bold">Verdict ➔ {ev.verdict} ({ev.duration_ms}ms)</span> :
+                                                     ev.event === 'client_connected' ? <span className="text-emerald-300 font-semibold">Socket Connected: {ev.local_ip}:{ev.local_port} ➔ {ev.target_ip}:{ev.target_port} (RTT {ev.handshake_rtt_ms}ms)</span> :
+                                                     ev.event === 'session_started' ? <span className="text-indigo-300 font-semibold">Client Connected: {ev.client_ip}:{ev.client_port} ➔ Port {ev.server_port}</span> :
+                                                     ev.event === 'server_listening' ? <span className="text-indigo-300 font-semibold">Listening on {ev.bind_ip}:{ev.port}</span> :
                                                      ev.sender ? `Turn #${ev.seq} (${ev.sender}) - ${ev.bytes}B in ${ev.duration_ms}ms` :
                                                      JSON.stringify(ev)}
                                                 </span>
@@ -708,7 +905,8 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                 </div>
                             </div>
                         </div>
-                    )}
+                        );
+                    })()}
                 </div>
             </div>
         </div>

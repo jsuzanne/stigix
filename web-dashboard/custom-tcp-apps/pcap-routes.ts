@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { spawn } from 'child_process';
+import zlib from 'zlib';
 
 export function createPcapApiRouter(configDir: string, projectRoot: string, pythonPath: string): Router {
     const router = Router();
@@ -168,7 +169,7 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
         });
     });
 
-    // GET /api/pcap/profiles - List available compiled replay profiles
+    // GET /api/pcap/profiles - List available compiled replay profiles with flow metadata
     router.get('/profiles', checkFeatureFlag, (_req: Request, res: Response) => {
         try {
             if (!fs.existsSync(profilesDir)) {
@@ -178,16 +179,56 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
             const profiles = files.map(file => {
                 const fullPath = path.join(profilesDir, file);
                 const stat = fs.statSync(fullPath);
+                let metadata: any = {};
+                try {
+                    const buf = fs.readFileSync(fullPath);
+                    const unzipped = zlib.gunzipSync(buf);
+                    const json = JSON.parse(unzipped.toString('utf8'));
+                    metadata = {
+                        id: json.id,
+                        name: json.name,
+                        category: json.category,
+                        flows_count: json.flows?.length || 0,
+                        total_turns: json.flows?.reduce((acc: number, f: any) => acc + (f.turns?.length || 0), 0) || 0,
+                        primary_flow: json.flows?.[0] ? {
+                            client_endpoint: `${json.flows[0].client_ip}:${json.flows[0].client_port}`,
+                            server_endpoint: `${json.flows[0].server_ip}:${json.flows[0].server_port}`,
+                            server_port: json.flows[0].server_port,
+                            transport: json.flows[0].transport
+                        } : null
+                    };
+                } catch (_) {}
                 return {
                     file_name: file,
                     size_bytes: stat.size,
-                    created_at: stat.birthtime || stat.mtime
+                    created_at: stat.birthtime || stat.mtime,
+                    ...metadata
                 };
             });
             res.json({ profiles });
         } catch (err: any) {
             res.status(500).json({ success: false, error: err.message });
         }
+    });
+
+    // GET /api/pcap/profiles/download/:filename - Download a compiled profile (.stx-replay)
+    router.get('/profiles/download/:filename', checkFeatureFlag, (req: Request, res: Response) => {
+        const safeFile = path.basename(req.params.filename);
+        const filePath = path.join(profilesDir, safeFile);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ success: false, error: 'Profile not found' });
+        }
+        res.setHeader('Content-Disposition', `attachment; filename="${safeFile}"`);
+        res.setHeader('Content-Type', 'application/gzip');
+        fs.createReadStream(filePath).pipe(res);
+    });
+
+    // POST /api/pcap/profiles/upload - Upload an already compiled .stx-replay profile
+    router.post('/profiles/upload', checkFeatureFlag, upload.single('profile'), (req: Request, res: Response) => {
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'No profile file provided' });
+        }
+        res.json({ success: true, file_name: req.file.filename });
     });
 
     // --- M2: Active Replay Process Tracking ---
@@ -311,6 +352,7 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
             status: j.status,
             lastVerdict: j.lastVerdict,
             recentEventsCount: j.recentEvents.length,
+            recentEvents: j.recentEvents,
             latestEvent: j.recentEvents[j.recentEvents.length - 1] || null
         }));
         res.json({ jobs: jobsList });

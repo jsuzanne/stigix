@@ -91,9 +91,12 @@ class TCPServerSession:
         rx_bytes = 0
         tx_bytes = 0
 
+        server_sock_name = self.conn.getsockname()
         emit_event("session_started", {
             "client_ip": self.addr[0],
             "client_port": self.addr[1],
+            "server_ip": server_sock_name[0],
+            "server_port": server_sock_name[1],
             "flow_id": self.flow.get("flow_id"),
             "total_turns": total_turns
         }, self.json_output)
@@ -182,7 +185,16 @@ def run_tcp_server(profile: Dict[str, Any], flow_id: Optional[int], bind_ip: str
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind((bind_ip, server_port))
+    try:
+        sock.bind((bind_ip, server_port))
+    except OSError as e:
+        emit_event("server_error", {
+            "error": f"Failed to bind {bind_ip}:{server_port} ({e})",
+            "port": server_port,
+            "bind_ip": bind_ip
+        }, json_output)
+        sys.exit(1)
+
     sock.listen(10)
 
     emit_event("server_listening", {
@@ -240,10 +252,15 @@ def run_tcp_client(profile: Dict[str, Any], flow_id: Optional[int], target_ip: s
         try:
             sock.connect((target_ip, server_port))
             connect_rtt_ms = round((time.time() - conn_start) * 1000, 2)
+            local_ip, local_port = sock.getsockname()
 
             emit_event("client_connected", {
+                "local_ip": local_ip,
+                "local_port": local_port,
                 "target_ip": target_ip,
                 "target_port": server_port,
+                "pcap_original_src": f"{flow.get('client_ip')}:{flow.get('client_port')}",
+                "pcap_original_dst": f"{flow.get('server_ip')}:{flow.get('server_port')}",
                 "handshake_rtt_ms": connect_rtt_ms
             }, json_output)
 
