@@ -11,12 +11,14 @@ interface PcapReplayModalProps {
     isOpen: boolean;
     onClose: () => void;
     token: string | null;
+    isPcapEnabled?: boolean;
 }
 
 export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
     isOpen,
     onClose,
-    token
+    token,
+    isPcapEnabled = true
 }) => {
     const { gFetch } = usePeerContext();
 
@@ -309,6 +311,15 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
 
                 {/* Modal Body */}
                 <div className="p-6 overflow-y-auto space-y-5 flex-1">
+                    {!isPcapEnabled && (
+                        <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3">
+                            <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
+                            <div className="text-xs text-amber-300/90 leading-relaxed">
+                                <span className="font-bold text-amber-300">Feature Flag Requis :</span> La fonctionnalité PCAP Replay est actuellement désactivée sur cette instance Stigix. Ajoutez <code className="px-1.5 py-0.5 bg-black/40 rounded text-amber-200 font-mono text-[11px]">ENABLE_PCAP_REPLAY=true</code> dans le fichier <code className="px-1.5 py-0.5 bg-black/40 rounded text-amber-200 font-mono text-[11px]">.env</code> de cette machine puis redémarrez le conteneur pour débloquer l'upload et le rejeu en direct.
+                            </div>
+                        </div>
+                    )}
+
                     {activeTab === 'upload' && (
                         <div className="space-y-4">
                             <div
