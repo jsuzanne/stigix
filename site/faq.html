@@ -660,6 +660,20 @@ content_match_ok       true | false</pre>
         </div>
 
         <div class="faq-item">
+          <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Stigix handle Prisma Access SSL Decryption and Forward Trust CA certificates?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
+          <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
+            <p>When SSL Forward Proxy Decryption is active on Prisma Access or a Next-Gen Firewall, the firewall intercepts HTTPS connections and re-encrypts the session using its own <strong>Forward Trust CA</strong>. Without this CA certificate, HTTPS threat tests (EICAR, URL Filtering, DLP) and synthetic SaaS probes will abort with TLS handshake errors before reaching the security inspection engine.</p>
+            <p><strong>Stigix provides native, automated certificate management:</strong></p>
+            <ul>
+              <li><strong>⚡ 1-Click Auto-Import</strong> — In <em>Settings ➔ Prisma SASE API</em>, click <em>Auto-Import from Prisma SASE</em>. Stigix connects to your tenant's SSE API, extracts <code>Forward-Trust-CA</code> (RSA/ECDSA) and <code>Root CA</code>, and builds the trusted bundle.</li>
+              <li><strong>📁 Manual Upload</strong> — You can upload custom <code>.crt</code>/<code>.pem</code> files or paste PEM text for custom enterprise PKIs (e.g. Active Directory CS).</li>
+              <li><strong>🌐 Zero-Touch Mesh Sync</strong> — Importing the CA on the Leader automatically distributes it across all remote mesh spoke nodes (DC1, BR1, BR2, BR5, BR8) via Mesh Provisioning.</li>
+              <li><strong>Runtime Injection</strong> — The CA bundle is automatically injected into Node.js (<code>NODE_EXTRA_CA_CERTS</code>), Python (<code>REQUESTS_CA_BUNDLE</code>, <code>SSL_CERT_FILE</code>), and subprocesses (<code>CURL_CA_BUNDLE</code>).</li>
+            </ul>
+          </div></div></div>
+        </div>
+
+        <div class="faq-item">
           <button class="faq-item__btn" aria-expanded="false"><span class="faq-item__question">How does Stigix support multivendor security testing (Fortinet, Check Point, Cisco)?</span><span class="faq-item__icon"><svg viewBox="0 0 12 12"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg></span></button>
           <div class="faq-item__body"><div class="faq-item__inner"><div class="faq-item__answer">
             <p>Security tests are driven by a <strong>vendor-agnostic profile JSON</strong> (<code>config/security-profile.json</code>). You can swap the entire test set by loading a different profile, each targeting the correct test infrastructure for that vendor.</p>

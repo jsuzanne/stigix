@@ -100,10 +100,11 @@ export class CertificateManager {
         if (!fs.existsSync(this.bundlePath)) return;
 
         try {
-            // 1. Set environment variables for Node child processes and Python engines
+            // 1. Set environment variables for Node child processes, curl, and Python engines
             process.env.NODE_EXTRA_CA_CERTS = this.bundlePath;
             process.env.REQUESTS_CA_BUNDLE = this.bundlePath;
             process.env.SSL_CERT_FILE = this.bundlePath;
+            process.env.CURL_CA_BUNDLE = this.bundlePath;
 
             const bundleContent = fs.readFileSync(this.bundlePath, 'utf8');
 
@@ -352,6 +353,7 @@ export class CertificateManager {
                 delete process.env.NODE_EXTRA_CA_CERTS;
                 delete process.env.REQUESTS_CA_BUNDLE;
                 delete process.env.SSL_CERT_FILE;
+                delete process.env.CURL_CA_BUNDLE;
             } else {
                 this.saveState();
             }
