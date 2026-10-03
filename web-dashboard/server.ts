@@ -40,6 +40,7 @@ import { Server } from 'socket.io';
 import multer from 'multer';
 import { FleetTunnelManager } from './fleet-tunnel.js';
 import { MagicJoinManager } from './magic-join-manager.js';
+import { CertificateManager } from './certificate-manager.js';
 
 // Multer setup for EDL file uploads (memory storage)
 const upload = multer({
@@ -100,6 +101,9 @@ const APP_CONFIG = {
 // Ensure directories exist
 if (!fs.existsSync(APP_CONFIG.configDir)) fs.mkdirSync(APP_CONFIG.configDir, { recursive: true });
 if (!fs.existsSync(APP_CONFIG.logDir)) fs.mkdirSync(APP_CONFIG.logDir, { recursive: true });
+
+// Certificate Manager for Forward Trust CA & Enterprise PKI
+const certificateManager = new CertificateManager(PROJECT_ROOT);
 
 const PRISMA_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'prisma-config.json');
 const UI_CONFIG_FILE = path.join(APP_CONFIG.configDir, 'ui-config.json');
@@ -8680,6 +8684,115 @@ app.post('/api/security/config/test', authenticateToken, async (req, res) => {
     }
 });
 
+// ─── Certificate Management API (Forward Trust CA & Enterprise PKI) ─────────
+
+// GET /api/security/certificates - Get installed CA certificates status and metadata
+app.get('/api/security/certificates', authenticateToken, (req, res) => {
+    try {
+        const status = certificateManager.getStatus();
+        res.json({ success: true, ...status });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// GET /api/security/certificates/bundle - Download or retrieve raw PEM bundle
+app.get('/api/security/certificates/bundle', authenticateToken, (req, res) => {
+    try {
+        const pem = certificateManager.getBundlePem();
+        res.setHeader('Content-Type', 'application/x-pem-file');
+        res.setHeader('Content-Disposition', 'attachment; filename="stigix-ca-bundle.pem"');
+        res.send(pem);
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// POST /api/security/certificates/fetch-prisma - 1-Click Auto-import from Prisma SASE API
+app.post('/api/security/certificates/fetch-prisma', authenticateToken, async (req, res) => {
+    try {
+        const { sls_config: reqConfig } = req.body;
+
+        // Fallback to disk configuration
+        const prismaCfgPath = path.join(PROJECT_ROOT, 'config', 'prisma-config.json');
+        let savedPrisma: any = {};
+        try { savedPrisma = JSON.parse(fs.readFileSync(prismaCfgPath, 'utf8')); } catch {}
+
+        const creds = {
+            tsg_id: reqConfig?.tsg_id || savedPrisma.tsg_id || process.env.PRISMA_SDWAN_TSGID,
+            client_id: reqConfig?.client_id || savedPrisma.client_id || process.env.PRISMA_SDWAN_CLIENT_ID,
+            client_secret: reqConfig?.client_secret || savedPrisma.client_secret || process.env.PRISMA_SDWAN_CLIENT_SECRET
+        };
+
+        const result = await certificateManager.fetchFromPrisma(creds);
+
+        // If on Leader, automatically update Mesh Provisioning bundle for peers
+        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE || 'standalone';
+        if (result.success && mode === 'leader') {
+            const certStatus = certificateManager.getStatus();
+            const bundlePem = certificateManager.getBundlePem();
+            provisioningManager.publishBundle('ca-certificates', {
+                ...certStatus,
+                bundle_pem: bundlePem
+            });
+        }
+
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// POST /api/security/certificates/upload - Manual PEM / CRT upload or text paste
+app.post('/api/security/certificates/upload', authenticateToken, (req, res) => {
+    try {
+        const { pem, name } = req.body;
+        if (!pem) {
+            return res.status(400).json({ success: false, error: 'Certificate PEM content is required' });
+        }
+
+        const result = certificateManager.importManualPem(pem, name);
+
+        // If on Leader, update Mesh Provisioning bundle
+        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE || 'standalone';
+        if (result.success && mode === 'leader') {
+            const certStatus = certificateManager.getStatus();
+            const bundlePem = certificateManager.getBundlePem();
+            provisioningManager.publishBundle('ca-certificates', {
+                ...certStatus,
+                bundle_pem: bundlePem
+            });
+        }
+
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// DELETE /api/security/certificates - Remove certificate or purge all
+app.delete('/api/security/certificates', authenticateToken, (req, res) => {
+    try {
+        const { id } = req.query;
+        const result = certificateManager.deleteCertificate(id as string);
+
+        // If on Leader, update Mesh Provisioning bundle
+        const mode = process.env.STIGIX_REGISTRY_MODE_CURRENT || process.env.STIGIX_REGISTRY_MODE || 'standalone';
+        if (mode === 'leader') {
+            const certStatus = certificateManager.getStatus();
+            const bundlePem = certificateManager.getBundlePem();
+            provisioningManager.publishBundle('ca-certificates', {
+                ...certStatus,
+                bundle_pem: bundlePem
+            });
+        }
+
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // API: Get Test History (with search, pagination, filters)
 app.get('/api/security/results', authenticateToken, async (req, res) => {
     try {
@@ -12416,6 +12529,7 @@ app.delete('/api/iot/devices/:id', authenticateToken, (req, res) => {
 
 // --- Local Registry API & Provisioning Engine (Hybrid Leader) ---
 const provisioningManager = new ProvisioningManager(APP_CONFIG.configDir);
+provisioningManager.setCertificateManager(certificateManager);
 const underlayTopologyManager = new UnderlayTopologyManager(APP_CONFIG.configDir);
 const tcpAppManager = new TcpAppManager(APP_CONFIG.configDir);
 const localRegistryServer = new LocalRegistryServer();

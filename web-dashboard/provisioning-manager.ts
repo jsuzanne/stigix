@@ -12,7 +12,8 @@ export type GlobalBundleType =
     | 'voice-config'
     | 'iot-config'
     | 'custom-tcp-apps'
-    | 'cloud-config';
+    | 'cloud-config'
+    | 'ca-certificates';
 
 export interface ProvisioningManifestBundle {
     type: GlobalBundleType;
@@ -81,6 +82,12 @@ export class ProvisioningManager {
         this.manifestFile = path.join(this.stateDir, 'manifest.json');
 
         this.initDirectories();
+    }
+
+    private certificateManager: any = null;
+
+    public setCertificateManager(cm: any): void {
+        this.certificateManager = cm;
     }
 
     public onBundleApplied(cb: (type: GlobalBundleType, payload: any) => void): void {
@@ -443,6 +450,8 @@ export class ProvisioningManager {
                 return path.join(this.configDir, 'custom-tcp-applications.json');
             case 'cloud-config':
                 return path.join(this.configDir, 'cloud-config.json');
+            case 'ca-certificates':
+                return path.join(this.configDir, 'certs', 'certs-metadata.json');
             default:
                 return path.join(this.configDir, `${type}-config.json`);
         }
@@ -784,6 +793,22 @@ export class ProvisioningManager {
                     applications: mergedApps
                 };
                 fs.writeFileSync(activeFile, JSON.stringify(mergedPayload, null, 2), 'utf8');
+            } else if (type === 'ca-certificates') {
+                const certsDir = path.dirname(activeFile);
+                if (!fs.existsSync(certsDir)) fs.mkdirSync(certsDir, { recursive: true });
+                fs.writeFileSync(activeFile, JSON.stringify(normalizedGlobal, null, 2), 'utf8');
+
+                // Write ca-bundle.pem if included in payload
+                if (normalizedGlobal?.bundle_pem) {
+                    fs.writeFileSync(path.join(certsDir, 'ca-bundle.pem'), normalizedGlobal.bundle_pem, 'utf8');
+                } else if (Array.isArray(normalizedGlobal?.certificates)) {
+                    const bundlePem = normalizedGlobal.certificates.map((c: any) => c.pem).filter(Boolean).join('\n\n') + '\n';
+                    fs.writeFileSync(path.join(certsDir, 'ca-bundle.pem'), bundlePem, 'utf8');
+                }
+
+                if (this.certificateManager) {
+                    this.certificateManager.init();
+                }
             } else {
                 // SLA, Prisma SASE, Security, IoT objects/arrays
                 fs.writeFileSync(activeFile, JSON.stringify(normalizedGlobal, null, 2), 'utf8');

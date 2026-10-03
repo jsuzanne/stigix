@@ -3,7 +3,8 @@ import {
     RefreshCw, Download, AlertCircle, CheckCircle, Clock, Shield, Globe, Lock, Terminal,
     Network, Sliders, ChevronDown, ChevronRight, Server, CheckCircle2, Upload, Power,
     Settings as SettingsIcon, Database, Activity, Cpu, Plus, Edit2, Trash2, MapPin, Zap, Info, XCircle, ShieldAlert, Layers, X, Radio,
-    Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy, History, ChevronUp, PhoneCall, Bot
+    Clipboard, ExternalLink, BarChart3, AlertTriangle, Gauge, Bug, TrendingUp, Search, Users, Copy, History, ChevronUp, PhoneCall, Bot,
+    Key, ShieldCheck, FileText
 } from 'lucide-react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
@@ -648,6 +649,15 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
     const [isTestingPrisma, setIsTestingPrisma] = useState(false);
     const [prismaTestResult, setPrismaTestResult] = useState<{ success?: boolean; error?: string } | null>(null);
     const [prismaDirty, setPrismaDirty] = useState(false);
+
+    // SSL Decryption & Certificate Management States
+    const [certStatus, setCertStatus] = useState<any>(null);
+    const [isFetchingCerts, setIsFetchingCerts] = useState(false);
+    const [isUploadingCert, setIsUploadingCert] = useState(false);
+    const [showUploadModal, setShowUploadModal] = useState(false);
+    const [uploadPem, setUploadPem] = useState('');
+    const [uploadCertName, setUploadCertName] = useState('');
+    const [viewPemModal, setViewPemModal] = useState<{ open: boolean; name: string; pem: string }>({ open: false, name: '', pem: '' });
     const [probeFilterType, setProbeFilterType] = useState('ALL');
     const [probeSearchQuery, setProbeSearchQuery] = useState('');
     const [maxCaptures, setMaxCaptures] = useState(uiConfig?.maxCaptures || 10);
@@ -856,6 +866,19 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             .catch(() => { 
                 setSlsConfig({}); // Fix hang on error
             });
+
+        // Fetch Installed CA Certificates
+        const fetchCertificates = () => {
+            apiFetch('/api/security/certificates', { headers: authHeaders })
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.success) {
+                        setCertStatus(data);
+                    }
+                })
+                .catch(e => console.error("Failed to fetch certificates status", e));
+        };
+        fetchCertificates();
 
         const fetchMcpStatus = () => {
             apiFetch('/api/admin/system/mcp-status', { headers: authHeaders })
@@ -1780,6 +1803,98 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
             setPrismaTestResult({ success: false, error: 'Network error' });
         } finally {
             setIsTestingPrisma(false);
+        }
+    };
+
+    const handleFetchPrismaCerts = async () => {
+        setIsFetchingCerts(true);
+        try {
+            const res = await apiFetch('/api/security/certificates/fetch-prisma', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ sls_config: slsConfig })
+            });
+            const data = await res.json();
+            if (data && data.success) {
+                showSuccess(`Successfully imported ${data.count} CA certificate(s) from Prisma SASE`);
+                const r = await apiFetch('/api/security/certificates', { headers: authHeaders });
+                const updated = await r.json();
+                if (updated && updated.success) setCertStatus(updated);
+            } else {
+                setErrorMsg(`Failed to import certificates: ${data?.error || 'Unknown error'}`);
+            }
+        } catch (err: any) {
+            setErrorMsg(`Network error: ${err.message}`);
+        } finally {
+            setIsFetchingCerts(false);
+        }
+    };
+
+    const handleUploadManualCert = async () => {
+        if (!uploadPem.trim()) {
+            setErrorMsg('Please paste or upload a valid PEM certificate');
+            return;
+        }
+        setIsUploadingCert(true);
+        try {
+            const res = await apiFetch('/api/security/certificates/upload', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({ pem: uploadPem, name: uploadCertName || undefined })
+            });
+            const data = await res.json();
+            if (data && data.success) {
+                showSuccess(`Certificate "${data.certificate?.name || 'CA'}" installed successfully`);
+                setUploadPem('');
+                setUploadCertName('');
+                setShowUploadModal(false);
+                const r = await apiFetch('/api/security/certificates', { headers: authHeaders });
+                const updated = await r.json();
+                if (updated && updated.success) setCertStatus(updated);
+            } else {
+                setErrorMsg(`Upload failed: ${data?.error || 'Unknown error'}`);
+            }
+        } catch (err: any) {
+            setErrorMsg(`Network error: ${err.message}`);
+        } finally {
+            setIsUploadingCert(false);
+        }
+    };
+
+    const handleDeleteCert = async (id?: string) => {
+        try {
+            const query = id ? `?id=${encodeURIComponent(id)}` : '';
+            const res = await apiFetch(`/api/security/certificates${query}`, {
+                method: 'DELETE',
+                headers: authHeaders
+            });
+            const data = await res.json();
+            if (data && data.success) {
+                showSuccess(id ? 'Certificate removed' : 'All CA certificates cleared');
+                const r = await apiFetch('/api/security/certificates', { headers: authHeaders });
+                const updated = await r.json();
+                if (updated && updated.success) setCertStatus(updated);
+            }
+        } catch (err: any) {
+            setErrorMsg(`Failed to delete: ${err.message}`);
+        }
+    };
+
+    const handleDownloadBundle = async () => {
+        try {
+            const res = await apiFetch('/api/security/certificates/bundle', { headers: authHeaders });
+            if (!res.ok) throw new Error('Failed to download bundle');
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'stigix-ca-bundle.pem';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (err: any) {
+            setErrorMsg('Download failed');
         }
     };
 
@@ -4654,6 +4769,7 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                                 { key: 'connectivity-probes', label: 'Probes Sync', icon: Zap, color: 'cyan' },
                                                 { key: 'convergence-sla', label: 'SLA Sync', icon: Activity, color: 'purple' },
                                                 { key: 'prisma-sase', label: 'Prisma SASE Sync', icon: Lock, color: 'blue' },
+                                                { key: 'ca-certificates', label: 'CA Certificates Sync', icon: ShieldCheck, color: 'emerald' },
                                                 { key: 'security-config', label: 'Security Sync', icon: Shield, color: 'red' },
                                                 { key: 'voice-config', label: 'Voice Sync', icon: PhoneCall, color: 'indigo' },
                                                 { key: 'iot-config', label: 'IoT Sync', icon: Radio, color: 'amber' },
@@ -5713,7 +5829,8 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                     {!slsConfig ? (
                         <div className="text-center text-text-muted text-xs font-bold tracking-widest animate-pulse py-12">Loading SLS Configuration...</div>
                     ) : (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div className="space-y-8">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             <div className="space-y-6">
                                 <div className="bg-card-secondary/30 border border-border rounded-2xl p-6 space-y-6">
 
@@ -5815,11 +5932,297 @@ export default function Settings({ token, uiConfig, onUpdateUIConfig, onUpdateCo
                                         <li className="list-disc">Automatically detects the Site on which Stigix is running.</li>
                                         <li className="list-disc">Builds the network topology of Prisma SD-WAN devices.</li>
                                         <li className="list-disc">Checks flow paths for failover convergence tests.</li>
+                                        <li className="list-disc">Enables 1-Click extraction of Forward Trust CA for SSL Decryption testing.</li>
                                     </ul>
                                 </div>
                             </div>
                         </div>
-                    )}
+
+                        {/* ─── Forward Trust CA & SSL Decryption Section ───────── */}
+                        <div className="border-t border-border/60 pt-8 space-y-6">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-emerald-500/10 text-emerald-500 rounded-xl border border-emerald-500/20">
+                                        <Key size={22} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2.5">
+                                            <h3 className="text-base font-black text-text-primary tracking-tight">SSL Decryption & Enterprise CA Certificates</h3>
+                                            {certStatus?.installed ? (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                                    Active & Decryption Ready ({certStatus.count})
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                                    No CA Installed
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] font-bold text-text-muted tracking-wide mt-0.5 opacity-80">
+                                            Trust store for Prisma Access Forward Trust CA, enabling security threat testing and synthetic probes through SSL decryption without TLS errors.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                    <button
+                                        onClick={handleFetchPrismaCerts}
+                                        disabled={isFetchingCerts || !slsConfig?.client_id || !slsConfig?.tsg_id}
+                                        className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md shadow-blue-500/20 disabled:opacity-50 flex items-center gap-2"
+                                        title={(!slsConfig?.client_id || !slsConfig?.tsg_id) ? "Configure Prisma SASE credentials first" : "1-Click auto-import Forward Trust CA directly from Prisma API"}
+                                    >
+                                        {isFetchingCerts ? <RefreshCw size={13} className="animate-spin" /> : <Zap size={13} className="text-yellow-300" />}
+                                        {certStatus?.installed ? 'Re-sync CA from Prisma' : 'Auto-Import from Prisma SASE'}
+                                    </button>
+
+                                    <button
+                                        onClick={() => setShowUploadModal(true)}
+                                        className="px-3.5 py-2.5 bg-card hover:bg-card-hover text-text-primary border border-border hover:border-text-muted/40 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                    >
+                                        <Upload size={13} className="text-blue-400" />
+                                        Upload / Paste .crt
+                                    </button>
+
+                                    {certStatus?.installed && (
+                                        <>
+                                            <button
+                                                onClick={handleDownloadBundle}
+                                                className="p-2.5 bg-card hover:bg-card-hover text-text-muted hover:text-text-primary border border-border rounded-xl transition-all"
+                                                title="Download CA Bundle (PEM)"
+                                            >
+                                                <Download size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteCert()}
+                                                className="p-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-xl transition-all"
+                                                title="Remove all custom CA certificates"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Certificates List / Empty State */}
+                            {!certStatus?.installed || !certStatus?.certificates || certStatus.certificates.length === 0 ? (
+                                <div className="bg-card-secondary/20 border border-border/60 rounded-2xl p-6 text-center space-y-3">
+                                    <div className="w-10 h-10 rounded-full bg-blue-500/10 text-blue-400 mx-auto flex items-center justify-center">
+                                        <Shield size={20} />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xs font-black text-text-primary uppercase tracking-wider">No Custom CA Certificates Installed</h4>
+                                        <p className="text-[11px] text-text-muted max-w-xl mx-auto mt-1 leading-relaxed">
+                                            If your network uses Prisma Access SSL Decryption (Forward Proxy), import your tenant's Forward Trust CA. Stigix will automatically inject it into Node.js and Python engines to validate decrypted threats without TLS handshake errors.
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {certStatus.certificates.map((cert: any) => (
+                                        <div key={cert.id || cert.fingerprint256} className="bg-card-secondary/30 border border-border rounded-2xl p-5 space-y-3 relative group hover:border-blue-500/30 transition-all">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                                                        <Lock size={16} />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-xs font-black text-text-primary tracking-tight truncate max-w-[220px]">
+                                                            {cert.name || cert.common_name}
+                                                        </h4>
+                                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                                            <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[9px] font-bold uppercase">
+                                                                {cert.algorithm || 'RSA'}
+                                                            </span>
+                                                            <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 font-mono text-[9px] font-bold">
+                                                                {cert.folder || cert.source}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleDeleteCert(cert.id)}
+                                                    className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-rose-500/20 text-text-muted hover:text-rose-400 rounded-lg transition-all"
+                                                    title="Delete this certificate"
+                                                >
+                                                    <Trash2 size={13} />
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-1.5 pt-1 text-[10px] font-bold">
+                                                <div className="flex items-center justify-between text-text-muted">
+                                                    <span>Common Name (CN):</span>
+                                                    <span className="font-mono text-text-primary truncate max-w-[180px]">{cert.common_name}</span>
+                                                </div>
+                                                <div className="flex items-center justify-between text-text-muted">
+                                                    <span>Issuer:</span>
+                                                    <span className="font-mono text-text-secondary truncate max-w-[180px]">{cert.issuer}</span>
+                                                </div>
+                                                <div className="flex items-center justify-between text-text-muted">
+                                                    <span>Valid Until:</span>
+                                                    <span className="font-mono text-emerald-400">{cert.valid_to ? new Date(cert.valid_to).toLocaleDateString() : 'N/A'}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-2 border-t border-border/40 flex items-center justify-between">
+                                                <span className="font-mono text-[9px] text-text-muted truncate max-w-[200px]" title={cert.fingerprint256}>
+                                                    SHA256: {cert.fingerprint256?.substring(0, 17)}...
+                                                </span>
+                                                <button
+                                                    onClick={async () => {
+                                                        try {
+                                                            const res = await apiFetch(`/api/security/certificates/bundle`, { headers: authHeaders });
+                                                            const raw = await res.text();
+                                                            setViewPemModal({ open: true, name: cert.name || cert.common_name, pem: raw });
+                                                        } catch {}
+                                                    }}
+                                                    className="text-[9px] font-black text-blue-400 hover:text-blue-300 uppercase tracking-wider"
+                                                >
+                                                    View PEM
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+                </div>
+            )}
+
+            {/* ─── Upload Manual Certificate Modal ─────────────────────────────── */}
+            {showUploadModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-card border border-border rounded-2xl w-full max-w-xl p-6 space-y-6 shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-500/10 text-blue-400 rounded-xl">
+                                    <Upload size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-text-primary tracking-tight">Upload Enterprise CA Certificate</h3>
+                                    <p className="text-[10px] text-text-muted">Paste PEM certificate text or upload a .crt / .pem file</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowUploadModal(false)} className="p-1.5 hover:bg-card-hover rounded-lg text-text-muted">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest pl-1">Certificate Name (Optional)</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Prisma-Forward-Trust-CA"
+                                    value={uploadCertName}
+                                    onChange={e => setUploadCertName(e.target.value)}
+                                    className="w-full bg-card-secondary/50 border border-border rounded-xl px-4 py-2.5 text-xs font-mono outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between pl-1">
+                                    <label className="text-[10px] font-extrabold text-text-muted uppercase tracking-widest">Certificate Content (PEM Format)</label>
+                                    <label className="text-[9px] font-black text-blue-400 hover:text-blue-300 uppercase tracking-wider cursor-pointer flex items-center gap-1">
+                                        <FileText size={12} />
+                                        Choose File (.crt, .pem)
+                                        <input
+                                            type="file"
+                                            accept=".crt,.pem,.cer"
+                                            className="hidden"
+                                            onChange={e => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                    const reader = new FileReader();
+                                                    reader.onload = (ev) => {
+                                                        const text = ev.target?.result as string;
+                                                        if (text) setUploadPem(text);
+                                                        if (!uploadCertName) setUploadCertName(file.name.replace(/\.[^/.]+$/, ''));
+                                                    };
+                                                    reader.readAsText(file);
+                                                }
+                                            }}
+                                        />
+                                    </label>
+                                </div>
+                                <textarea
+                                    rows={8}
+                                    placeholder="-----BEGIN CERTIFICATE-----&#10;MIIDAjCCAeqgAwIBAgIFAII3n3QwDQYJKoZIhvcNAQELBQAwLzEtMCsGA1UEAxMk...&#10;-----END CERTIFICATE-----"
+                                    value={uploadPem}
+                                    onChange={e => setUploadPem(e.target.value)}
+                                    className="w-full bg-card-secondary/50 border border-border rounded-xl p-4 text-xs font-mono outline-none focus:ring-1 focus:ring-blue-500 text-text-primary resize-none font-medium"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3 pt-2">
+                            <button
+                                onClick={() => setShowUploadModal(false)}
+                                className="px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-text-muted hover:text-text-primary bg-card hover:bg-card-hover border border-border transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleUploadManualCert}
+                                disabled={isUploadingCert || !uploadPem.trim()}
+                                className="px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-md shadow-blue-600/20 disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {isUploadingCert ? <RefreshCw size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                                Install Certificate
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ─── View PEM Certificate Modal ──────────────────────────────────── */}
+            {viewPemModal.open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-card border border-border rounded-2xl w-full max-w-xl p-6 space-y-6 shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                                    <Key size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-text-primary tracking-tight">{viewPemModal.name}</h3>
+                                    <p className="text-[10px] text-text-muted font-mono">X.509 Certificate (PEM)</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setViewPemModal({ open: false, name: '', pem: '' })} className="p-1.5 hover:bg-card-hover rounded-lg text-text-muted">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="relative">
+                            <pre className="w-full bg-card-secondary/70 border border-border rounded-xl p-4 text-[11px] font-mono text-emerald-300 max-h-80 overflow-y-auto select-all whitespace-pre-wrap break-all">
+                                {viewPemModal.pem}
+                            </pre>
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(viewPemModal.pem);
+                                    showSuccess('Certificate PEM copied to clipboard');
+                                }}
+                                className="absolute top-3 right-3 p-2 bg-card/80 hover:bg-card text-text-muted hover:text-text-primary border border-border rounded-lg shadow transition-all flex items-center gap-1 text-[9px] font-bold uppercase"
+                            >
+                                <Copy size={12} />
+                                Copy
+                            </button>
+                        </div>
+
+                        <div className="flex justify-end">
+                            <button
+                                onClick={() => setViewPemModal({ open: false, name: '', pem: '' })}
+                                className="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-card hover:bg-card-hover text-text-primary border border-border transition-all"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 

@@ -2,6 +2,14 @@
 
 All notable changes made specifically on the `v2` branch are documented in this file.
 
+## [v2.0.143] - 2026-10-03 — Feature: Prisma Access SSL Decryption & 1-Click CA Certificate Import
+
+- **feat(security)**: Added native support for Palo Alto Prisma Access **Forward Trust CA** and custom enterprise Root CA certificates in `certificate-manager.ts`.
+- **feat(security)**: Implemented **1-Click Auto-Import** from Prisma SASE / SSE API (`/sse/config/v1/certificates`), automatically extracting `Forward-Trust-CA` (RSA & ECDSA) and `Root CA` into `config/certs/ca-bundle.pem`.
+- **feat(security)**: Automated runtime injection across Node.js (`NODE_EXTRA_CA_CERTS`, `https.globalAgent`) and Python engines (`REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`), enabling seamless HTTPS threat testing (EICAR, URL Filtering, DLP) through Prisma Access SSL decryption without TLS errors.
+- **feat(provisioning)**: Added `ca-certificates` to Stigix Mesh Provisioning. Importing the CA certificate on the Leader automatically propagates and activates the certificate bundle across all remote spoke nodes (DC1, BR1, BR2, BR5, BR8).
+- **feat(ui)**: Added SSL Decryption & Enterprise CA Certificates management card in **Settings ➔ Prisma SASE API**, featuring 1-Click import, manual file upload/PEM paste modal, certificate metadata cards (Common Name, Issuer, Validity, SHA-256), bundle download, and raw PEM viewer.
+
 ## [v2.0.142] - 2026-10-02 — Feature: Real-Time Progress Bar & Spinners for VyOS Topology Actions
 
 - **feat(topology)**: Added animated spinners (`Loader2`), laser sweep progress bars, and execution state labels across all 3 VyOS underlay buttons (`SHUT PORT` / `NO SHUT`, `INJECT QOS`, `CLEAR QOS`).

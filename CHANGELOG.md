@@ -5,7 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.138] - 2026-10-01
+## [2.0.143] - 2026-10-03
+
+### Added
+- **Prisma Access SSL Decryption & 1-Click CA Certificate Import (`certificate-manager.ts`, `server.ts`, `Settings.tsx`)**:
+  - Native support for Palo Alto Prisma Access Forward Trust CA and custom Root CAs in `certificate-manager.ts`.
+  - 1-Click auto-import from Prisma SASE API (`/sse/config/v1/certificates`), extracting Forward Trust CAs into `config/certs/ca-bundle.pem`.
+  - Automatic injection into Node.js (`NODE_EXTRA_CA_CERTS`) and Python engines (`REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`) to validate decrypted HTTPS traffic without TLS handshake failures. 🛡️
+  - Added `ca-certificates` bundle to Mesh Provisioning: importing the CA on the Leader automatically distributes it across all remote mesh spoke nodes (DC1, BR1, BR2, BR5, BR8). 🌐
+
+## [2.0.142] - 2026-10-02
+
+### Added
+- **VyOS Topology Action Real-Time Progress Bar & Spinners (`Topology.tsx`)**:
+  - Added execution spinners, progress bars, and operation states for interface shut/no-shut, latency/loss injection, and QoS clearing. 🚀
 
 ### Fixed / Improved
 - **Security Dashboard Card Verdict Persistence (`Security.tsx`, `test-logger.ts`, `server.ts`)**:
