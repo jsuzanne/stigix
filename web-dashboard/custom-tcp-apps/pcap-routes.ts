@@ -191,7 +191,7 @@ export function createPcapApiRouter(configDir: string, projectRoot: string, pyth
                         flows_count: json.flows?.length || 0,
                         total_turns: json.flows?.reduce((acc: number, f: any) => acc + (f.turns?.length || 0), 0) || 0,
                         primary_flow: json.flows?.[0] ? {
-                            client_endpoint: `${json.flows[0].client_ip}:${json.flows[0].client_port}`,
+                            client_endpoint: json.flows[0].client_port ? `${json.flows[0].client_ip}:${json.flows[0].client_port}` : json.flows[0].client_ip,
                             server_endpoint: `${json.flows[0].server_ip}:${json.flows[0].server_port}`,
                             server_port: json.flows[0].server_port,
                             transport: json.flows[0].transport

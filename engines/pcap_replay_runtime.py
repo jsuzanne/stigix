@@ -188,12 +188,31 @@ def run_tcp_server(profile: Dict[str, Any], flow_id: Optional[int], bind_ip: str
     try:
         sock.bind((bind_ip, server_port))
     except OSError as e:
-        emit_event("server_error", {
-            "error": f"Failed to bind {bind_ip}:{server_port} ({e})",
-            "port": server_port,
-            "bind_ip": bind_ip
-        }, json_output)
-        sys.exit(1)
+        # If default port is in conflict and no explicit override was set, try fallback port 10000 + port
+        if port_override is None:
+            fallback_port = 10000 + server_port if server_port < 50000 else server_port - 10000
+            try:
+                sock.bind((bind_ip, fallback_port))
+                emit_event("port_fallback", {
+                    "original_port": server_port,
+                    "active_port": fallback_port,
+                    "reason": f"Port {server_port} already in use ({e}). Switched automatically to {fallback_port}."
+                }, json_output)
+                server_port = fallback_port
+            except OSError as e2:
+                emit_event("server_error", {
+                    "error": f"Failed to bind {bind_ip}:{server_port} and fallback {fallback_port} ({e2})",
+                    "port": server_port,
+                    "bind_ip": bind_ip
+                }, json_output)
+                sys.exit(1)
+        else:
+            emit_event("server_error", {
+                "error": f"Failed to bind {bind_ip}:{server_port} ({e})",
+                "port": server_port,
+                "bind_ip": bind_ip
+            }, json_output)
+            sys.exit(1)
 
     sock.listen(10)
 

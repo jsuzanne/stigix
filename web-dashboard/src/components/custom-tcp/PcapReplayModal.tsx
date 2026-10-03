@@ -130,10 +130,9 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                 const running = (data.jobs || []).find((j: any) => j.status === 'running');
                 if (running) {
                     setActiveJob(running);
-                } else if (activeJob && activeJob.status === 'running') {
-                    // Update final status
-                    const updated = (data.jobs || []).find((j: any) => j.id === activeJob.id);
-                    if (updated) setActiveJob(updated);
+                } else if (data.jobs && data.jobs.length > 0) {
+                    // Show latest job if no job is currently running
+                    setActiveJob(data.jobs[data.jobs.length - 1]);
                 }
             }
         } catch (_) {}
@@ -263,6 +262,20 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
             }
 
             toast.success(`Replay started as ${replayRole.toUpperCase()} (PID ${data.pid})`);
+            setActiveJob({
+                id: data.job_id,
+                role: replayRole,
+                status: 'running',
+                target: targetIp,
+                port: portOverride ? parseInt(portOverride, 10) : undefined,
+                recentEvents: [
+                    {
+                        timestamp: Date.now() / 1000,
+                        event: 'starting',
+                        text: `Démarrage du processus ${replayRole.toUpperCase()} (PID ${data.pid})...`
+                    }
+                ]
+            });
             fetchJobs();
         } catch (err: any) {
             toast.error(err.message || 'Failed to start replay');
@@ -737,6 +750,24 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                         </div>
                                     </div>
                                 )}
+
+                                {currentProf?.primary_flow?.server_port === 8443 && !portOverride && (
+                                    <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-amber-300">
+                                        <div className="flex items-center gap-1.5">
+                                            <AlertTriangle size={13} className="text-amber-400 shrink-0" />
+                                            <span>
+                                                <strong>Conflit Port 8443 :</strong> Ce port est utilisé par Stigix Custom Apps sur DC1. Utilisez le port alternatif <strong>18443</strong> sur le Serveur et le Client.
+                                            </span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPortOverride('18443')}
+                                            className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 rounded-lg font-semibold text-[10px] cursor-pointer shrink-0"
+                                        >
+                                            ⚡ Utiliser 18443
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             {/* IP Mapping & Flow Translation Card */}
@@ -882,8 +913,15 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                 {/* Event Logs */}
                                 <div className="bg-black/60 border border-border/80 rounded-xl p-3 font-mono text-[11px] h-44 overflow-y-auto space-y-1">
                                     {(!activeJob?.recentEvents || activeJob.recentEvents.length === 0) ? (
-                                        <div className="text-text-muted/60 italic py-8 text-center">
-                                            No active replay running. Click "Start Replay" to execute turn sequence.
+                                        <div className="text-text-muted/60 italic py-8 text-center flex flex-col items-center justify-center gap-2">
+                                            {activeJob?.status === 'running' ? (
+                                                <>
+                                                    <RefreshCw size={16} className="animate-spin text-indigo-400" />
+                                                    <span>Établissement de la connexion vers {activeJob.target || 'serveur'}:{activeJob.port || 'port par défaut'}...</span>
+                                                </>
+                                            ) : (
+                                                <span>Aucun rejeu actif. Cliquez sur "Start Replay" pour lancer la séquence.</span>
+                                            )}
                                         </div>
                                     ) : (
                                         activeJob.recentEvents.map((ev: any, idx: number) => (
@@ -896,6 +934,8 @@ export const PcapReplayModal: React.FC<PcapReplayModalProps> = ({
                                                      ev.event === 'client_connected' ? <span className="text-emerald-300 font-semibold">Socket Connected: {ev.local_ip}:{ev.local_port} ➔ {ev.target_ip}:{ev.target_port} (RTT {ev.handshake_rtt_ms}ms)</span> :
                                                      ev.event === 'session_started' ? <span className="text-indigo-300 font-semibold">Client Connected: {ev.client_ip}:{ev.client_port} ➔ Port {ev.server_port}</span> :
                                                      ev.event === 'server_listening' ? <span className="text-indigo-300 font-semibold">Listening on {ev.bind_ip}:{ev.port}</span> :
+                                                     ev.event === 'port_fallback' ? <span className="text-amber-400 font-semibold">{ev.reason}</span> :
+                                                     ev.text ? <span className="text-indigo-300">{ev.text}</span> :
                                                      ev.sender ? `Turn #${ev.seq} (${ev.sender}) - ${ev.bytes}B in ${ev.duration_ms}ms` :
                                                      JSON.stringify(ev)}
                                                 </span>
