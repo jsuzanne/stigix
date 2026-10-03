@@ -135,7 +135,7 @@ while [[ "$#" -gt 0 ]]; do
         --mode|-m) INSTALL_MODE="$2"; shift 2 ;;
         --controller|-c) CONTROLLER_URL="$2"; shift 2 ;;
         --token|-t) JOIN_TOKEN="$2"; shift 2 ;;
-        --site|-s) SITE_NAME_OVERRIDE="$2"; shift 2 ;;
+        --site|--site-name|--site_name|-s) SITE_NAME_OVERRIDE="$2"; shift 2 ;;
         --ip|-i) ADVERTISED_IP_OVERRIDE="$2"; shift 2 ;;
         --dry-run|-d) DRY_RUN=true; shift ;;
         --help|-h) show_help ;;
@@ -156,7 +156,7 @@ if [ -n "$JOIN_TOKEN" ]; then
         3) B64_CLEAN="${B64_CLEAN}=" ;;
     esac
     
-    DECODED_JSON=$(echo "$B64_CLEAN" | base64 -d 2>/dev/null || echo "{}")
+    DECODED_JSON=$(echo "$B64_CLEAN" | base64 -d 2>/dev/null || echo "$B64_CLEAN" | base64 -D 2>/dev/null || echo "$B64_CLEAN" | openssl base64 -d 2>/dev/null || echo "{}")
     
     CANDIDATES=()
     TOKEN_SITE=""
@@ -172,6 +172,30 @@ if [ -n "$JOIN_TOKEN" ]; then
                 CANDIDATES+=("$line")
             fi
         done <<< "$PY_EXTRACT"
+    elif command -v node &>/dev/null; then
+        NODE_EXTRACT=$(node -e "try { const d=JSON.parse(process.argv[1]); (d.endpoints||[]).forEach(e=>console.log(e)); if (d.site_hint) console.log('SITE_HINT=' + d.site_hint); if (d.realm) console.log('REALM=' + d.realm); } catch(e){}" "$DECODED_JSON" 2>/dev/null)
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^SITE_HINT=(.*) ]]; then
+                TOKEN_SITE="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^REALM=(.*) ]]; then
+                TOKEN_REALM="${BASH_REMATCH[1]}"
+            elif [ -n "$line" ]; then
+                CANDIDATES+=("$line")
+            fi
+        done <<< "$NODE_EXTRACT"
+    fi
+
+    # Fallback to POSIX grep / sed if python/node was not available or output was empty
+    if [ -z "$TOKEN_SITE" ]; then
+        TOKEN_SITE=$(echo "$DECODED_JSON" | grep -o '"site_hint"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/')
+    fi
+    if [ -z "$TOKEN_REALM" ]; then
+        TOKEN_REALM=$(echo "$DECODED_JSON" | grep -o '"realm"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]+)".*/\1/')
+    fi
+    if [ ${#CANDIDATES[@]} -eq 0 ]; then
+        while IFS= read -r ep; do
+            [ -n "$ep" ] && CANDIDATES+=("$ep")
+        done < <(echo "$DECODED_JSON" | grep -o '"https\?://[^"]*"' | tr -d '"')
     fi
     
     [ -n "$TOKEN_SITE" ] && [ -z "$SITE_NAME_OVERRIDE" ] && SITE_NAME_OVERRIDE="$TOKEN_SITE"
@@ -654,9 +678,8 @@ fi
 
 mkdir -p ./config ./logs ./mcp-data
 
-if [ -n "$SITE_NAME_OVERRIDE" ]; then
-    echo "{\"siteName\":\"$SITE_NAME_OVERRIDE\"}" > ./config/site-name.json
-fi
+FINAL_SITE_NAME="${SITE_NAME_OVERRIDE:-$(hostname | cut -d'.' -f1)}"
+echo "{\"siteName\":\"$FINAL_SITE_NAME\"}" > ./config/site-name.json
 
 if [ -n "$CHOSEN_PRIMARY_IP" ]; then
     IFACE_FOR_IP=$(ip -4 -o addr show 2>/dev/null | grep "$CHOSEN_PRIMARY_IP" | awk '{print $2}' | head -n 1)
